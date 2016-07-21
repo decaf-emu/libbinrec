@@ -1,0 +1,63 @@
+libbinrec: a recompiling translator for machine code
+====================================================
+Copyright (c) 2016 Andrew Church <achurch@achurch.org>
+See the file "COPYING" for conditions on use and redistribution.
+
+Version: 0.1
+
+
+Overview
+--------
+libbinrec is a library for translating machine code from one CPU
+architecture into equivalent and efficient machine code for a
+different architecture, such as when emulating one CPU on another.
+libbinrec is designed primarily for use in just-in-time (JIT)
+compilation, which trades faster execution on average (translated code
+can approach a 1:1 source-to-native instruction ratio, as opposed to
+the dozens of native instructions which may be required to interpret
+each source instruction on the fly) for additional overhead when
+executing a block of code for the first time.
+
+Currently, libbinrec only supports the PowerPC 750CL instruction set as
+input and 64-bit x86 machine code as output.
+
+
+Requirements
+------------
+libbinrec is written in pure C99 (with some additional compiler- and
+architecture-specific code used to improve performance) and should
+compile with any standards-compliant compiler.  The included Makefile is
+written for GNU Make and supports building on Linux and other Unix-like
+systems, Mac OS X, or Windows (MinGW), using Clang, GCC, or the Intel C
+compiler.  libbinrec also includes a CMake (see <https://cmake.org>)
+control file for ease of integration into CMake-based projects.
+
+
+Building
+--------
+libbinrec can be built by simply running the "make" command (or "gmake",
+if GNU Make is installed under that name on your system) in the top
+directory of the libbinrec distribution.  This will create shared and
+static library files in the top directory, which can then be installed
+on the system with "make install".
+
+Several configuration variables are available to control the build
+process or specify nonstandard paths for dependent libraries.  These can
+be set on the "make" command line; for example, "make ENABLE_ASSERT=1".
+See the "Configuration" section at the top of the "Makefile" file for
+details.
+
+
+Using libbinrec
+---------------
+See the documentation in include/binrec.h for details.
+
+When using libbinrec from a C++ program, the C++ header (binrec++.h) may
+be more convenient; this header provides a "binrec" namespace for all
+constants and functions, and wraps most functions in C++ classes for
+convenience.
+
+
+Reporting bugs
+--------------
+Please send any bug reports or suggestions directly to the author.

@@ -1,0 +1,9 @@
+libbinrec: a recompiling translator for machine code
+====================================================
+Copyright (c) 2016 Andrew Church <achurch@achurch.org>
+
+libbinrec may be used under the terms of the GNU General Public License
+version 3 ("GPLv3") or any later version, or as separately agreed with
+the author.
+
+See the file "GPLv3.txt" for the terms of the GPLv3.

@@ -1,0 +1,12 @@
+prefix=@PREFIX@
+exec_prefix=${prefix}
+libdir=@LIBDIR@
+includedir=@INCDIR@
+
+Name: binrec
+Description: Library for recompiling and translating machine code
+Version: @VERSION@
+Requires:
+Conflicts:
+Libs: -L${libdir} -lbinrec -lm
+Cflags: -I${includedir}
