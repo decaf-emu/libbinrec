@@ -29,7 +29,7 @@ architecture-specific code used to improve performance) and should
 compile with any standards-compliant compiler.  The included Makefile is
 written for GNU Make and supports building on Linux and other Unix-like
 systems, Mac OS X, or Windows (MinGW), using Clang, GCC, or the Intel C
-compiler.  libbinrec also includes a CMake (see <https://cmake.org>)
+compiler.  libbinrec also includes a CMake (see <https://cmake.org/>)
 control file for ease of integration into CMake-based projects.
 
 

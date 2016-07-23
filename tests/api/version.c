@@ -8,10 +8,16 @@
  */
 
 #include "include/binrec.h"
-#include "src/common.h"
+#include "tests/common.h"
+
+#ifndef VERSION
+# error VERSION must be defined to the expected version string.
+#endif
 
 
-const char *binrec_version(void)
+int main(void)
 {
-    return VERSION;
+    const char *version = binrec_version();
+    EXPECT_STREQ(version, VERSION);
+    return EXIT_SUCCESS;
 }

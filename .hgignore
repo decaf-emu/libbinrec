@@ -5,3 +5,11 @@ syntax: glob
 *.a
 *.so
 *.dylib
+*.gcno
+*.gcda
+
+syntax: regexp
+
+^tests/.*/[^.]+(\.exe)?$
+^tests/coverage$
+^tests/coverage-tests\.h$
