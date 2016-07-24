@@ -119,6 +119,7 @@ static void default_native_free(UNUSED void *userdata, void *ptr)
 static int add_partial_readonly_page(binrec_t *handle,
                                      uint32_t start, uint32_t end)
 {
+    ASSERT(handle);
     ASSERT(end >= start);
 
     const uint32_t page = start & ~READONLY_PAGE_MASK;
@@ -195,6 +196,7 @@ binrec_t *binrec_create_handle(const binrec_setup_t *setup)
         handle->setup.native_free = default_native_free;
     }
 
+    handle->max_inline_depth = 1;
     memset(handle->partial_readonly_pages, 0xFF,
            sizeof(handle->partial_readonly_pages));
 
@@ -212,6 +214,8 @@ void binrec_destroy_handle(binrec_t *handle)
 
 void binrec_set_optimization_flags(binrec_t *handle, unsigned int flags)
 {
+    ASSERT(handle);
+
     if (flags & BINREC_OPT_ENABLE) {
         handle->optimizations = flags;
     } else {
@@ -221,8 +225,36 @@ void binrec_set_optimization_flags(binrec_t *handle, unsigned int flags)
 
 /*-----------------------------------------------------------------------*/
 
+void binrec_set_max_inline_length(binrec_t *handle, int length)
+{
+    ASSERT(handle);
+
+    if (length >= 0) {
+        handle->max_inline_length = length;
+    } else {
+        log_error(handle, "Invalid max inline length %d", length);
+    }
+}
+
+/*-----------------------------------------------------------------------*/
+
+void binrec_set_max_inline_depth(binrec_t *handle, int depth)
+{
+    ASSERT(handle);
+
+    if (depth >= 1) {
+        handle->max_inline_depth = depth;
+    } else {
+        log_error(handle, "Invalid max inline depth %d", depth);
+    }
+}
+
+/*-----------------------------------------------------------------------*/
+
 int binrec_add_readonly_region(binrec_t *handle, uint32_t base, uint32_t size)
 {
+    ASSERT(handle);
+
     uint32_t top = base + size;
 
     if ((base & READONLY_PAGE_MASK) != 0) {
@@ -257,6 +289,8 @@ int binrec_add_readonly_region(binrec_t *handle, uint32_t base, uint32_t size)
 
 void binrec_clear_readonly_regions(binrec_t *handle)
 {
+    ASSERT(handle);
+
     memset(handle->readonly_map, 0, sizeof(handle->readonly_map));
     memset(handle->partial_readonly_pages, 0xFF,
            sizeof(handle->partial_readonly_pages));
@@ -268,6 +302,8 @@ int binrec_translate(
     binrec_t *handle, uint32_t address, uint32_t *src_length_ret,
     binrec_entry_t *native_code_ret, size_t *native_size_ret)
 {
+    ASSERT(handle);
+
     return 0;  // FIXME: not yet implemented
 }
 

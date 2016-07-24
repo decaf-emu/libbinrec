@@ -177,6 +177,10 @@ struct binrec_t {
     /* Current set of optimization flags. */
     unsigned int optimizations;
 
+    /* Settings for inlining. */
+    int max_inline_length;
+    int max_inline_depth;
+
     /* Map of read-only pages within the guest address space.  Two bits are
      * allocated to each page; the higher-order bit indicates that the
      * entire page is read-only, and the lower-order bit indicates that

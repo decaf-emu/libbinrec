@@ -22,6 +22,9 @@ extern "C" {
  * to the source CPU or architecture, i.e. the input to the translator, and
  * "host" or "native" refers to the target CPU or architecture, i.e. the
  * output of the translator.
+ *
+ * Note that the numeric values of constants in this header are not part of
+ * the public API; always use the symbolic names rather than the value.
  */
 
 /*************************************************************************/
@@ -73,9 +76,8 @@ typedef struct binrec_setup_t {
      * machine code will perform loads and stores by adding the target
      * address to this pointer.  Client code is responsible for mapping the
      * parts of this region corresponding to valid guest memory and for
-     * handling any invalid-access exceptions which occur during
-     * translation (due to code falling off the end of guest-accessible
-     * memory) or execution (due to code reading from an invalid address).
+     * handling any invalid-access exceptions which occur during execution
+     * (due to code reading from an invalid address).
      */
     void *memory_base;
 
@@ -175,11 +177,13 @@ typedef struct binrec_setup_t {
  *
  * When optimization is enabled, the following transformations are always
  * performed:
- *    - Load instructions which reverence memory areas marked read-only
- *      (see binrec_add_readonly_region()) are replaced by load-immediate
- *      instructions using the value read from memory.
- *    - Dead stores (assignments to registers which are never referenced)
- *      are eliminated from the translated code.
+ *
+ * - Load instructions which reverence memory areas marked read-only
+ *   (see binrec_add_readonly_region()) are replaced by load-immediate
+ *   instructions using the value read from memory.
+ *
+ * - Dead stores (assignments to registers which are never referenced)
+ *   are eliminated from the translated code.
  */
 #define BINREC_OPT_ENABLE  (1<<0)
 
@@ -211,6 +215,23 @@ typedef struct binrec_setup_t {
  * will be removed via dead store elimination.
  */
 #define BINREC_OPT_FOLD_CONSTANTS  (1<<4)
+
+/**
+ * BINREC_OPT_NATIVE_CALLS:  Treat subroutine-call instructions (like x86
+ * CALL or PowerPC BL) as instructions with side effects rather than
+ * branches.
+ *
+ * This optimization can significantly improve performance of non-leaf
+ * functions by allowing larger parts of the function to be translated as
+ * a single unit.
+ *
+ * While this optimization is "safe" in the sense that the translated code
+ * will always behave correctly, code which uses call instructions in
+ * nonstandard ways (such as a call to the next instruction to obtain the
+ * instruction's address) can potentially cause a host stack overflow if
+ * executed too often.
+ */
+#define BINREC_OPT_NATIVE_CALLS  (1<<5)
 
 /*************************************************************************/
 /**************** Interface: Library version information *****************/
@@ -248,6 +269,21 @@ extern binrec_t *binrec_create_handle(const binrec_setup_t *setup);
 extern void binrec_destroy_handle(binrec_t *handle);
 
 /**
+ * binrec_set_code_range:  Set the minimum and maximum addresses from which
+ * to read source machine instructions.  Branch instructions which attempt
+ * to jump outside this range will terminate the translation unit, and if
+ * the source machine code runs off the end of the range, the unit will be
+ * terminated at the final instruction completely contained within the range.
+ *
+ * [Parameters]
+ *     handle: Handle to operate on.
+ *     start: Start address of code range.
+ *     length: Length of code range, in bytes.
+ */
+extern void binrec_set_code_range(binrec_t *handle, uint32_t start,
+                                  uint32_t length);
+
+/**
  * binrec_set_optimization_flags:  Set which optimizations should be
  * performed on translated blocks.  Enabling more optimizations will
  * improve the performance of translated code but increase the overhead
@@ -264,6 +300,64 @@ extern void binrec_destroy_handle(binrec_t *handle);
  *     flags: Bitmask of optimizations to apply (BINREC_OPT_*).
  */
 extern void binrec_set_optimization_flags(binrec_t *handle, unsigned int flags);
+
+/**
+ * binrec_set_max_inline_length:  Set the maximum length (number of source
+ * instructions, including the final return instruction) of subroutines to
+ * inline.  The default is zero, meaning no subroutines will be inlined.
+ *
+ * If a nonzero length limit is set with this function, then when the
+ * translator encounters a subroutine call instruction to a fixed address,
+ * it will scan ahead up to this many instructions for a return
+ * instruction.  If one is found, and if there are no branch instructions
+ * that branch past the return, the subroutine will be inlined into the
+ * current translation unit, saving the cost of jumping to a different
+ * unit (which can be significant depending on how many guest registers
+ * need to be spilled).
+ *
+ * If an inlined subroutine contains a further call instruction, that
+ * subroutine will not be inlined regardless of its length.  (But see
+ * binrec_set_max_inline_depth() to enable such recursive inlining.)
+ *
+ * Note that if a nonzero length limit is set, inlining may be performed
+ * regardless of whether any optimization flags are set.
+ *
+ * [Parameters]
+ *     handle: Handle to operate on.
+ *     length: Maximum inline length (must be at least 0).
+ */
+extern void binrec_set_max_inline_length(binrec_t *handle, int length);
+
+/**
+ * binrec_set_max_inline_depth:  Set the maximum depth of subroutines to
+ * inline.  The default is 1.
+ *
+ * If a depth limit greater than 1 is set with this function, then when a
+ * call instruction is encountered during inlining, the translator will
+ * perform the same inlining check on the called subroutine, up to the
+ * specified depth.  For example, when translating at A in the following
+ * pseudocode:
+ *     A: call B
+ *        ret
+ *     B: call C
+ *        ret
+ *     C: call D
+ *        ret
+ *     D: call E
+ *        ret
+ *     E: nop
+ *        ret
+ * if the maximum inline depth is set to 2 (and assuming the maximum length
+ * is set to at least 2), both B and C will be inlined, but D will not, and
+ * the A routine will be translated as if it was written:
+ *     A: call D
+ *        ret
+ *
+ * [Parameters]
+ *     handle: Handle to operate on.
+ *     depth: Maximum inline depth (must be at least 1).
+ */
+extern void binrec_set_max_inline_depth(binrec_t *handle, int depth);
 
 /**
  * binrec_add_readonly_region:  Mark the given region of memory as

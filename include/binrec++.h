@@ -40,6 +40,7 @@ namespace Optimize {
     const unsigned int DROP_DEAD_BRANCHES = BINREC_OPT_DROP_DEAD_BRANCHES;
     const unsigned int DECONDITION = BINREC_OPT_DECONDITION;
     const unsigned int FOLD_CONSTANTS = BINREC_OPT_FOLD_CONSTANTS;
+    const unsigned int NATIVE_CALLS = BINREC_OPT_NATIVE_CALLS;
 }
 
 /**
@@ -60,7 +61,7 @@ class Handle {
     /**
      * initialize:  Initialize the handle.  Wraps binrec_create_handle().
      * This method must be called before calling any other methods on the
-     * handle.
+     * handle, and must not be called again once it has succeeded.
      *
      * [Parameters]
      *     setup: Handle parameters, as for binrec_create_handle().
@@ -68,10 +69,9 @@ class Handle {
      *     True if handle was successfully initialized, false if not.
      */
     bool initialize(const Setup &setup) {
-        if (!handle) {
-            handle = ::binrec_create_handle(&setup);
-            return handle != nullptr;
-        }
+        ASSERT(!handle);
+        handle = ::binrec_create_handle(&setup);
+        return handle != nullptr;
     }
 
     /**
@@ -79,7 +79,24 @@ class Handle {
      * on translated blocks.  Wraps binrec_set_optimization_flags().
      */
     void set_optimization_flags(unsigned int flags) {
+        ASSERT(handle);
         ::binrec_set_optimization_flags(handle, flags);
+    }
+
+    /**
+     * set_max_inline_length:  Set the maximum length of subroutines to
+     * inline.  Wraps binrec_set_max_inline_length().
+     */
+    void set_max_inline_length(int length) {
+        ::binrec_set_max_inline_length(handle, length);
+    }
+
+    /**
+     * set_max_inline_depth:  Set the maximum depth of subroutines to
+     * inline.  Wraps binrec_set_max_inline_depth().
+     */
+    void set_max_inline_depth(int depth) {
+        ::binrec_set_max_inline_depth(handle, depth);
     }
 
     /**
@@ -87,7 +104,7 @@ class Handle {
      * Wraps binrec_add_readonly_region().
      */
     bool add_readonly_region(uint32_t base, uint32_t size) {
-        return 0 != ::binrec_add_readonly_region(handle, base, size);
+        return bool(::binrec_add_readonly_region(handle, base, size));
     }
 
     /**
@@ -104,8 +121,8 @@ class Handle {
      */
     bool translate(uint32_t address, uint32_t *src_length_ret,
                    Entry *native_code_ret, size_t *native_size_ret) {
-        return 0 != ::binrec_translate(handle, address, src_length_ret,
-                                       native_code_ret, native_size_ret);
+        return bool(::binrec_translate(handle, address, src_length_ret,
+                                       native_code_ret, native_size_ret));
     }
 
   private:
