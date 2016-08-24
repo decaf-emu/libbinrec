@@ -28,7 +28,7 @@
  * requires 
  */
 #ifndef READONLY_PAGE_BITS
-# define READONLY_PAGE_BITS  12
+    #define READONLY_PAGE_BITS  12
 #endif
 
 /**
@@ -37,7 +37,7 @@
  * page size (plus 4 bytes for the page's base address).
  */
 #ifndef MAX_PARTIAL_READONLY
-# define MAX_PARTIAL_READONLY  64
+    #define MAX_PARTIAL_READONLY  64
 #endif
 
 /*************************************************************************/
@@ -62,10 +62,14 @@
  * hint is provided that the expression is always true.
  */
 #ifdef ENABLE_ASSERT
-# include <assert.h>
-# define ASSERT  assert
+    #include <assert.h>
+    #define ASSERT  assert
 #else
-# define ASSERT(expr)  do {if (UNLIKELY(!(expr))) {UNREACHABLE;}} while (0)
+    #if defined(_MSC_VER)
+        #define ASSERT(expr)  __assume((expr))
+    #else
+        #define ASSERT(expr)  do {if (UNLIKELY(!(expr))) {UNREACHABLE;}} while (0)
+    #endif
 #endif
 
 /**
@@ -73,9 +77,9 @@
  * is not expected to be called often.
  */
 #if IS_GCC(4,3) || IS_CLANG(3,2)
-# define COLD_FUNCTION  __attribute__((cold))
+    #define COLD_FUNCTION  __attribute__((cold))
 #else
-# define COLD_FUNCTION  /*nothing*/
+    #define COLD_FUNCTION  /*nothing*/
 #endif
 
 /**
@@ -84,9 +88,9 @@
  * effects.
  */
 #if IS_GCC(2,95) || IS_CLANG(1,0)
-# define CONST_FUNCTION  __attribute__((const))
+    #define CONST_FUNCTION  __attribute__((const))
 #else
-# define CONST_FUNCTION  /*nothing*/
+    #define CONST_FUNCTION  /*nothing*/
 #endif
 
 /**
@@ -95,9 +99,9 @@
  * function has no side effects.
  */
 #if IS_GCC(3,0) || IS_CLANG(1,0)
-# define PURE_FUNCTION  __attribute__((pure))
+    #define PURE_FUNCTION  __attribute__((pure))
 #else
-# define PURE_FUNCTION  /*nothing*/
+    #define PURE_FUNCTION  /*nothing*/
 #endif
 
 /**
@@ -105,11 +109,11 @@
  * given expression is likely or unlikely to evaluate to true.
  */
 #if IS_GCC(3,0) || IS_CLANG(1,0)
-# define LIKELY(expr)    (__builtin_expect(!!(expr), 1))
-# define UNLIKELY(expr)  (__builtin_expect(!!(expr), 0))
+    #define LIKELY(expr)    (__builtin_expect(!!(expr), 1))
+    #define UNLIKELY(expr)  (__builtin_expect(!!(expr), 0))
 #else
-# define LIKELY(expr)    (expr)
-# define UNLIKELY(expr)  (expr)
+    #define LIKELY(expr)    (expr)
+    #define UNLIKELY(expr)  (expr)
 #endif
 
 /**
@@ -117,18 +121,20 @@
  * location can never be reached.
  */
 #if IS_GCC(4,5) || IS_CLANG(2,7)
-# define UNREACHABLE  __builtin_unreachable()
+    #define UNREACHABLE  __builtin_unreachable()
+#elif defined(_MSC_VER)
+    #define UNREACHABLE  __assume(0)
 #else
-# define UNREACHABLE  /*nothing*/
+    #define UNREACHABLE  /*nothing*/
 #endif
 
 /**
  * UNUSED:  Attribute indicating that a definition is intentionally unused.
  */
 #if IS_GCC(2,95) || IS_CLANG(1,0)
-# define UNUSED  __attribute__((unused))
+    #define UNUSED  __attribute__((unused))
 #else
-# define UNUSED  /*nothing*/
+    #define UNUSED  /*nothing*/
 #endif
 
 /**
@@ -154,7 +160,7 @@
  * which may make debugging easier.
  */
 #ifndef INTERNAL
-# define INTERNAL(name)  _libbinrec_##name
+    #define INTERNAL(name)  _libbinrec_##name
 #endif
 
 /*************************************************************************/
@@ -173,6 +179,10 @@ struct binrec_t {
      * allocation functions were specified as NULL, they are filled in here
      * with default functions. */
     binrec_setup_t setup;
+
+    /* Valid address range (inclusive) for code translation. */
+    uint32_t code_range_start;
+    uint32_t code_range_end;
 
     /* Current set of optimization flags. */
     unsigned int optimizations;

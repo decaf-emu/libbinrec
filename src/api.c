@@ -196,6 +196,7 @@ binrec_t *binrec_create_handle(const binrec_setup_t *setup)
         handle->setup.native_free = default_native_free;
     }
 
+    handle->code_range_end = -1;
     handle->max_inline_depth = 1;
     memset(handle->partial_readonly_pages, 0xFF,
            sizeof(handle->partial_readonly_pages));
@@ -208,6 +209,24 @@ binrec_t *binrec_create_handle(const binrec_setup_t *setup)
 void binrec_destroy_handle(binrec_t *handle)
 {
     free(handle);
+}
+
+/*-----------------------------------------------------------------------*/
+
+void binrec_set_code_range(binrec_t *handle, uint32_t start, uint32_t end)
+{
+    ASSERT(handle);
+
+    if (UNLIKELY(end < start)) {
+        log_error(handle, "Invalid code range 0x%X-0x%X");
+        /* Signal an invalid state to binrec_translate(). */
+        handle->code_range_start = 1;
+        handle->code_range_end = 0;
+        return;
+    }
+
+    handle->code_range_start = start;
+    handle->code_range_end = end;
 }
 
 /*-----------------------------------------------------------------------*/
@@ -232,7 +251,7 @@ void binrec_set_max_inline_length(binrec_t *handle, int length)
     if (length >= 0) {
         handle->max_inline_length = length;
     } else {
-        log_error(handle, "Invalid max inline length %d", length);
+        log_error(handle, "Invalid maximum inline length %d", length);
     }
 }
 
@@ -299,8 +318,8 @@ void binrec_clear_readonly_regions(binrec_t *handle)
 /*-----------------------------------------------------------------------*/
 
 int binrec_translate(
-    binrec_t *handle, uint32_t address, uint32_t *src_length_ret,
-    binrec_entry_t *native_code_ret, size_t *native_size_ret)
+    binrec_t *handle, uint32_t address, binrec_entry_t *native_code_ret,
+    size_t *native_size_ret)
 {
     ASSERT(handle);
 

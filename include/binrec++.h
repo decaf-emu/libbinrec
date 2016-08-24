@@ -11,7 +11,7 @@
 #define BINRECXX_H
 
 #ifndef __cplusplus
-# error This header can only be used with C++.
+    #error This header can only be used with C++.
 #endif
 
 #include "binrec.h"
@@ -36,11 +36,13 @@ using LogLevel = ::binrec_loglevel_t;
  */
 namespace Optimize {
     const unsigned int ENABLE = BINREC_OPT_ENABLE;
+    const unsigned int CALLEE_SAVED_REGS_UNSAFE = BINREC_OPT_CALLEE_SAVED_REGS_UNSAFE;
     const unsigned int DROP_DEAD_BLOCKS = BINREC_OPT_DROP_DEAD_BLOCKS;
     const unsigned int DROP_DEAD_BRANCHES = BINREC_OPT_DROP_DEAD_BRANCHES;
     const unsigned int DECONDITION = BINREC_OPT_DECONDITION;
     const unsigned int FOLD_CONSTANTS = BINREC_OPT_FOLD_CONSTANTS;
     const unsigned int NATIVE_CALLS = BINREC_OPT_NATIVE_CALLS;
+    const unsigned int STACK_FRAMES_UNSAFE = BINREC_OPT_STACK_FRAMES_UNSAFE;
 }
 
 /**
@@ -75,11 +77,18 @@ class Handle {
     }
 
     /**
+     * set_code_range:  Set the range of addresses from which to read
+     * source machine instructions.  Wraps binrec_set_code_range().
+     */
+    void set_code_range(uint32_t start, uint32_t end) {
+        ::binrec_set_code_range(handle, start, end);
+    }
+
+    /**
      * set_optimization_flags:  Set which optimizations should be performed
      * on translated blocks.  Wraps binrec_set_optimization_flags().
      */
     void set_optimization_flags(unsigned int flags) {
-        ASSERT(handle);
         ::binrec_set_optimization_flags(handle, flags);
     }
 
@@ -119,10 +128,10 @@ class Handle {
      * translate:  Translate a block of guest machine code into native
      * machine code.  Wraps binrec_translate().
      */
-    bool translate(uint32_t address, uint32_t *src_length_ret,
-                   Entry *native_code_ret, size_t *native_size_ret) {
-        return bool(::binrec_translate(handle, address, src_length_ret,
-                                       native_code_ret, native_size_ret));
+    bool translate(uint32_t address, Entry *native_code_ret,
+                   size_t *native_size_ret) {
+        return bool(::binrec_translate(handle, address, native_code_ret,
+                                       native_size_ret));
     }
 
   private:
