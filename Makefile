@@ -46,14 +46,25 @@ BUILD_SHARED = 1
 BUILD_STATIC = 1
 
 
-# ENABLE_ASSERT:  If this variable is set to 1, additional assertion checks
-# will be compiled into the code to guard against bugs in the library.
-# This requires support for the assert() macro and <assert.h> header in the
-# system's runtime libraries.
+# ENABLE_ASSERT:  If this variable is set to 1, assertion checks will be
+# compiled into the code to guard against bugs in the library.  This
+# requires support for the assert() macro and <assert.h> header in the
+# system's runtime libraries.  Enabling this option may have a moderate
+# performance impact.
 #
 # The default is 1 (assertion checks will be included).
 
 ENABLE_ASSERT = 1
+
+
+# ENABLE_OPERAND_SANITY_CHECKS:  If this variable is set to 1, assertion
+# checks will be added on instruction operands to verify that registers
+# are being used correctly.  Enabling this option may have a moderate
+# performance impact.
+#
+# The default is 1 (operand sanity checks will be included).
+
+ENABLE_OPERAND_SANITY_CHECKS = 1
 
 
 # INSTALL_PKGCONFIG:  If this variable is set to 1, the build process will
@@ -68,9 +79,9 @@ INSTALL_PKGCONFIG = 0
 # WARNINGS_AS_ERRORS:  If this variable is set to 1, the build will abort
 # if the compiler emits any warnings.
 #
-# The default is 0 (warnings will not abort the build).
+# The default is 1 (warnings will abort the build).
 
-WARNINGS_AS_ERRORS = 0
+WARNINGS_AS_ERRORS = 1
 
 #----------------------- Installation target paths -----------------------#
 
@@ -129,9 +140,9 @@ SHARED_LIB = lib$(PACKAGE).$(if $(filter darwin%,$(OSTYPE)),dylib,$(if $(filter 
 STATIC_LIB = lib$(PACKAGE).a
 
 # Source and object filenames:
-LIBRARY_SOURCES := $(wildcard src/*.c)
+LIBRARY_SOURCES := $(sort $(wildcard src/*.c src/*/*.c))
 LIBRARY_OBJECTS := $(LIBRARY_SOURCES:%.c=%.o)
-TEST_SOURCES := $(wildcard tests/*/*.c)
+TEST_SOURCES := $(sort $(wildcard tests/*/*.c tests/*/*/*.c))
 TEST_OBJECTS := $(TEST_SOURCES:%.c=%.o)
 TEST_BINS := $(TEST_SOURCES:%.c=%)
 
@@ -196,11 +207,9 @@ endif
 
 ifeq ($(CC_TYPE),clang)
     BASE_FLAGS = -O2 -pipe -g -I. \
-        -pedantic -Wall -Wextra $(call if-true,WARNINGS_AS_ERRORS,-Werror) \
-        -Wcast-align -Winit-self -Wpointer-arith -Wshadow -Wwrite-strings \
-        -Wundef -Wno-unused-parameter -Wvla \
-        $(call if-true,ENABLE_ASM_ARM_NEON,-mfpu=neon) \
-        $(call if-true,ENABLE_ASM_X86_SSE2,-msse -msse2)
+        -Wall -Wextra -Wcast-align -Winit-self -Wpointer-arith -Wshadow \
+        -Wwrite-strings -Wundef -Wno-unused-parameter -Wvla \
+        $(call if-true,WARNINGS_AS_ERRORS,-Werror)
     BASE_CFLAGS = $(BASE_FLAGS) -std=c99 \
         -Wmissing-declarations -Wstrict-prototypes
     GCOV = llvm-cov
@@ -213,19 +222,17 @@ else ifeq ($(CC_TYPE),gcc)
     BASE_FLAGS = -O2 -pipe -g -I. \
         -Wall -Wextra $(call if-true,WARNINGS_AS_ERRORS,-Werror) \
         -Wcast-align -Winit-self -Wlogical-op -Wpointer-arith -Wshadow \
-        -Wwrite-strings -Wundef -Wno-unused-parameter -Wvla \
-        $(call if-true,ENABLE_ASM_ARM_NEON,-mfpu=neon) \
-        $(call if-true,ENABLE_ASM_X86_SSE2,-msse -msse2)
-    BASE_CFLAGS = $(BASE_FLAGS) -std=c99 -pedantic \
+        -Wwrite-strings -Wundef -Wno-unused-parameter -Wvla
+    BASE_CFLAGS = $(BASE_FLAGS) -std=c99 \
         -Wmissing-declarations -Wstrict-prototypes
     GCOV = gcov >/dev/null
     GCOV_OPTS = -b -c -l -p
     GCOV_FILE_OPTS = -o "`echo \"$1\" | sed -e 's|\.[^./]*$$|_cov.o|'`" '$1'
 else ifeq ($(CC_TYPE),icc)
     BASE_FLAGS = -O2 -g -I. \
-        $(call if-true,WARNINGS_AS_ERRORS,-Werror) \
         -Wpointer-arith -Wreturn-type -Wshadow -Wuninitialized \
-        -Wunknown-pragmas -Wunused-function -Wunused-variable -Wwrite-strings
+        -Wunknown-pragmas -Wunused-function -Wunused-variable -Wwrite-strings \
+        $(call if-true,WARNINGS_AS_ERRORS,-Werror)
     BASE_CFLAGS = $(BASE_FLAGS) -std=c99 \
         -Wmissing-declarations -Wstrict-prototypes
 else
@@ -243,10 +250,6 @@ ifneq ($(filter clang gcc icc,$(CC_TYPE)),)
 else
     ARCH := unknown
     OSTYPE := unknown
-endif
-
-ifneq ($(filter i386 x86_64,$(ARCH)),)
-    ENABLE_ASM_X86_SSE2 = 1
 endif
 
 ifneq ($(filter darwin%,$(OSTYPE)),)
@@ -277,6 +280,7 @@ endif
 
 ALL_DEFS = $(strip \
     $(call define-if-true,ENABLE_ASSERT) \
+    $(call define-if-true,ENABLE_OPERAND_SANITY_CHECKS) \
     -DVERSION=\"$(VERSION)\")
 
 ALL_CFLAGS = $(BASE_CFLAGS) $(ALL_DEFS) $(CFLAGS)

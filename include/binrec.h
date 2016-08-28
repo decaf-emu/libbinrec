@@ -113,6 +113,8 @@ typedef struct binrec_setup_t {
     int state_offset_reserve_flag;
     /* lwarx/stwcx reservation address (uint32_t) */
     int state_offset_reserve_address;
+    /* Next instruction address (updated on return from translated code) */
+    int state_offset_nia;
 
     /**
      * userdata:  Opaque pointer which is passed to all callback functions.
@@ -176,7 +178,7 @@ typedef struct binrec_setup_t {
 
 } binrec_setup_t;
 
-/*------------------------- Optimization flags --------------------------*/
+/*--------------------- General optimization flags ----------------------*/
 
 /**
  * BINREC_OPT_ENABLE:  Enable optimization of translated code.  If this
@@ -185,12 +187,15 @@ typedef struct binrec_setup_t {
  * When optimization is enabled, the following transformations are always
  * performed:
  *
- * - Load instructions which reverence memory areas marked read-only
+ * - Load instructions which reference memory areas marked read-only
  *   (see binrec_add_readonly_region()) are replaced by load-immediate
  *   instructions using the value read from memory.
  *
  * - Dead stores (assignments to registers which are never referenced)
  *   are eliminated from the translated code.
+ *
+ * - Branches to other (unconditional or same-conditioned) branch
+ *   instructions will be threaded through to the final branch destination.
  */
 #define BINREC_OPT_ENABLE  (1<<0)
 
@@ -258,6 +263,28 @@ typedef struct binrec_setup_t {
 #define BINREC_OPT_NATIVE_CALLS  (1<<6)
 
 /**
+ * BINREC_OPT_NATIVE_IEEE_TINY:  Use the host's definition of "tiny" for
+ * IEEE floating-point arithmetic, even when that differs from the guest
+ * definition.
+ *
+ * When translating between architectures which use different definitions
+ * of "tiny" (IEEE allows two different behaviors: tiny before rounding
+ * and tiny after rounding), this optimization allows floating-point
+ * operations to be translated directly to their equivalent host
+ * instructions, at the cost of slightly different results for operations
+ * with a result which is treated as "tiny" on one architecture and not
+ * the other.  If this optimization is disabled, floating-point operations
+ * must check explicitly for a "tiny" result, which can require several
+ * additional host instructions per guest instruction.
+ *
+ * If the host and guest use the same "tiny" rules, floating-point
+ * operations can always be translated directly to native instructions
+ * (at least with regard to tininess), and this flag has no effect on
+ * translation.
+ */
+#define BINREC_OPT_NATIVE_IEEE_TINY  (1<<7)
+
+/**
  * BINREC_OPT_STACK_FRAMES_UNSAFE:  Assume that a given function's stack
  * frame is only stored to by that function (unless it passes a stack-based
  * pointer to another function), and translate store/load instruction pairs
@@ -276,7 +303,55 @@ typedef struct binrec_setup_t {
  * This optimization is UNSAFE: if the assumption described above is
  * violated by guest code, the translated code will not behave correctly.
  */
-#define BINREC_OPT_STACK_FRAMES_UNSAFE  (1<<7)
+#define BINREC_OPT_STACK_FRAMES_UNSAFE  (1<<8)
+
+/*-------------- Architecture-specific optimization flags ---------------*/
+
+/**
+ * BINREC_OPT_G_PPC_CONSTANT_GQRS_UNSAFE:  Assume that the values of the
+ * GQRs (graphics quantization registers, used with paired-single load and
+ * store instructions) are constant with respect to the entry point of a
+ * translation unit.
+ *
+ * If this optimization is enabled, the translator will read the values of
+ * any GQRs referenced by guest code and translate paired-single load and
+ * store instructions to appropriate host instructions based on those
+ * values.  Otherwise, the translated host code will read the GQRs and
+ * choose an appropriate load or store operation at runtime, which is
+ * typically more than an order of magnitude slower.
+ *
+ * If guest code modifies a GQR and then performs a paired-single load or
+ * store based on that GQR, the translated code will take the new value of
+ * the GQR into account; if the value written to the GQR is not a constant,
+ * this optimization will be effectively disabled for the remainder of the
+ * translation unit.
+ *
+ * This optimization is UNSAFE: if the assumption described above is
+ * violated by guest code, the translated code will not behave correctly.
+ */
+#define BINREC_OPT_G_PPC_CONSTANT_GQRS_UNSAFE  (1<<16)
+
+/**
+ * BINREC_OPT_G_PPC_NATIVE_RECIPROCAL:  Translate guest PowerPC
+ * reciprocal-estimate instructions (fres and frsqrte) directly to their
+ * host equivalents, maintaining compliance with the PowerPC architecture
+ * specification but disregarding the precise behavior of the guest
+ * architecture.
+ *
+ * The PowerPC architecture specifies bounds within which the results of
+ * these instructions will fall relative to the true (mathematical) result.
+ * Programs written to be compliant with the architecture will work
+ * correctly regardless of the exact output of the instruction, though the
+ * precise behavior of the program (for example, the low-end bits of the
+ * result) may change.  This flag allows the translator to choose faster
+ * host instructions which may not give exactly the same result but still
+ * satisfy the PowerPC architecture constraints.
+ *
+ * If this optimization is disabled, the translator will attempt to match
+ * the precise behavior of the guest architecture, at the cost of several
+ * additional host instructions per affected guest instruction.
+ */
+#define BINREC_OPT_G_PPC_NATIVE_RECIPROCAL  (1<<17)
 
 /*************************************************************************/
 /**************** Interface: Library version information *****************/

@@ -32,6 +32,13 @@ systems, Mac OS X, or Windows (MinGW), using Clang, GCC, or the Intel C
 compiler.  libbinrec also includes a CMake (see <https://cmake.org/>)
 control file for ease of integration into CMake-based projects.
 
+Some code within libbinrec assumes that the execution environment uses
+two's-complement representations for signed integer values, that the
+exact-size integer types int8_t, int16_t, int32_t, and int64_t exist,
+and that the "int" and "intptr_t" types are at least 32 bits wide.
+There are currently no plans to support environments for which these do
+not all hold.
+
 
 Building
 --------

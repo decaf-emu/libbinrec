@@ -42,7 +42,13 @@ namespace Optimize {
     const unsigned int DECONDITION = BINREC_OPT_DECONDITION;
     const unsigned int FOLD_CONSTANTS = BINREC_OPT_FOLD_CONSTANTS;
     const unsigned int NATIVE_CALLS = BINREC_OPT_NATIVE_CALLS;
+    const unsigned int NATIVE_IEEE_TINY = BINREC_OPT_NATIVE_IEEE_TINY;
     const unsigned int STACK_FRAMES_UNSAFE = BINREC_OPT_STACK_FRAMES_UNSAFE;
+
+    namespace GuestPPC {
+        const unsigned int CONSTANT_GQRS_UNSAFE = BINREC_OPT_G_PPC_CONSTANT_GQRS_UNSAFE;
+        const unsigned int NATIVE_RECIPROCAL = BINREC_OPT_G_PPC_NATIVE_RECIPROCAL;
+    }
 }
 
 /**

@@ -9,6 +9,8 @@
 
 #include "include/binrec.h"
 #include "src/common.h"
+#include "src/guest-ppc.h"
+#include "src/rtl.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -323,7 +325,55 @@ int binrec_translate(
 {
     ASSERT(handle);
 
-    return 0;  // FIXME: not yet implemented
+    if (UNLIKELY(handle->code_range_end < handle->code_range_start)) {
+        log_error(handle, "Code range invalid");
+        return 0;
+    }
+    if (UNLIKELY(address < handle->code_range_start)
+     || UNLIKELY(address > handle->code_range_end)) {
+        log_error(handle, "Address 0x%X not within code range 0x%X-0x%X",
+                  address, handle->code_range_start, handle->code_range_end);
+        return 0;
+    }
+
+    RTLUnit *unit = rtl_create_unit(handle);
+    if (UNLIKELY(!unit)) {
+        log_error(handle, "Failed to create RTLUnit");
+        return 0;
+    }
+
+    if (!guest_ppc_translate(handle, address, unit)) {
+        log_error(handle, "Failed to parse guest instructions starting at"
+                  " 0x%X", address);
+        return 0;
+    }
+
+    if (!rtl_finalize_unit(unit)) {
+        log_error(handle, "Failed to finalize RTL for code at 0x%X", address);
+        rtl_destroy_unit(unit);
+        return 0;
+    }
+
+    if (!rtl_optimize_unit(unit, handle->optimizations)) {
+        log_warning(handle, "Failed to optimize RTL for code at 0x%X",
+                    address);
+        /* Don't treat this as an error; just translate the unoptimized
+         * unit. */
+    }
+
+#if 0  // FIXME: not yet implemented
+    const bool result = host_x86_translate(handle, unit,
+                                           native_code_ret, native_size_ret);
+    rtl_destroy_unit(unit);
+    if (!result) {
+        log_error(handle, "Failed to generate host code for 0x%X", address);
+        return 0;
+    }
+
+    return 1;
+#else
+    return 0;
+#endif
 }
 
 /*************************************************************************/

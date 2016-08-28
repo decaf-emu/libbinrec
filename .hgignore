@@ -2,6 +2,7 @@ syntax: glob
 
 *.o
 *.d
+*.d.tmp
 *.a
 *.so
 *.dylib
@@ -10,6 +11,8 @@ syntax: glob
 
 syntax: regexp
 
-^tests/.*/[^.]+(\.exe)?$
+^tests/api/[^.]+(\.exe)?$
+^tests/endian/[^.]+(\.exe)?$
+^tests/(guest|host)-[^./]*/[^./]*/[^.]+(\.exe)?$
 ^tests/coverage$
 ^tests/coverage-tests\.h$

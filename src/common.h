@@ -10,7 +10,11 @@
 #ifndef SRC_COMMON_H
 #define SRC_COMMON_H
 
+#include "include/binrec.h"
+
 #include <stdbool.h>
+#include <stdlib.h>
+#include <string.h>
 
 /*************************************************************************/
 /************************ Configuration constants ************************/
@@ -91,6 +95,18 @@
     #define CONST_FUNCTION  __attribute__((const))
 #else
     #define CONST_FUNCTION  /*nothing*/
+#endif
+
+/**
+ * NOINLINE:  Function attribute indicating that the function should never
+ * be inlined, even if the compiler thinks it would be a good idea.
+ */
+#if IS_GCC(3,1) || IS_CLANG(1,0)
+    #define NOINLINE  __attribute__((noinline))
+#elif defined(_MSC_VER)
+    #define NOINLINE  __declspec(noinline)
+#else
+    #define NOINLINE  /*nothing*/
 #endif
 
 /**
@@ -227,6 +243,21 @@ extern void log_info(binrec_t *handle, const char *format, ...);
 extern void log_warning(binrec_t *handle, const char *format, ...);
 #define log_error INTERNAL(log_error)
 extern void log_error(binrec_t *handle, const char *format, ...);
+
+/**
+ * log_ice:  Log an internal compiler error, including the source file and
+ * line number at which the error occurred.
+ *
+ * [Parameters]
+ *     handle: Current handle.
+ *     format: printf()-style format string.  Must be a stirng literal.
+ *     ...: Format arguments.
+ */
+#define _log_ice INTERNAL(_log_ice)
+extern void _log_ice(binrec_t *handle, const char *file, int line,
+                     const char *format, ...);
+#define log_ice(handle, ...)  \
+    _log_ice((handle), __FILE__, __LINE__, __VA_ARGS__)
 
 /*************************************************************************/
 /*************************************************************************/
