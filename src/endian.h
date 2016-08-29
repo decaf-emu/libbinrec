@@ -10,6 +10,7 @@
 #ifndef SRC_ENDIAN_H
 #define SRC_ENDIAN_H
 
+#include <stdbool.h>
 #include <stdint.h>
 
 /*
