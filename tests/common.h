@@ -97,6 +97,10 @@
 
 /*-----------------------------------------------------------------------*/
 
+/* EXPECT_STREQ helper to print line-by-line differences between strings.
+ * Defined in common.c. */
+extern void _diff_strings(FILE *f, const char *from, const char *to);
+
 /**
  * EXPECT_STREQ:  Check that the given string expression is equal to an
  * expected value, and fail the test if not.  A value of NULL is permitted.
@@ -109,8 +113,15 @@
     } else if (!_expr && _value) {                                      \
         FAIL("%s was NULL but should have been \"%s\"", #expr, _value); \
     } else if (_expr && _value && strcmp(_expr, _value) != 0) {         \
-        FAIL("%s was \"%s\" but should have been \"%s\"",               \
-             #expr, _expr, _value);                                     \
+        if (strchr(_value, '\n')) {                                     \
+            fprintf(stderr, "%s:%d: %s differed from the expected text:\n", \
+                    __FILE__, __LINE__, #expr);                         \
+            _diff_strings(stderr, _value, _expr);                       \
+            return EXIT_FAILURE;                                        \
+        } else {                                                        \
+            FAIL("%s was \"%s\" but should have been \"%s\"",           \
+                 #expr, _expr, _value);                                 \
+        }                                                               \
     }                                                                   \
 } while (0)
 
