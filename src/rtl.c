@@ -204,8 +204,10 @@ static void rtl_describe_register(const RTLRegister *reg,
           default:
             break;  // FIXME: not yet implemented
         }
+
     } else if (reg->source == RTLREG_FUNC_ARG) {
         snprintf(buf, bufsize, "arg[%u]", reg->arg_index);
+
     } else if (reg->source == RTLREG_MEMORY) {
         snprintf(buf, bufsize, "(%ssigned) @(%d,r%u).%s",
                  reg->memory.is_signed ? "" : "un",
@@ -213,8 +215,10 @@ static void rtl_describe_register(const RTLRegister *reg,
                  reg->memory.size==1 ? "b" :
                  reg->memory.size==2 ? "h" :
                  reg->memory.size==4 ? "w" : "ptr");
+
     } else if (reg->source == RTLREG_ALIAS) {
         snprintf(buf, bufsize, "a%u", reg->alias.src);
+
     } else if (reg->source == RTLREG_RESULT
                || reg->source == RTLREG_RESULT_NOFOLD) {
         static const char * const operators[] = {
@@ -243,6 +247,7 @@ static void rtl_describe_register(const RTLRegister *reg,
             [RTLOP_SRA  ] = true,
             [RTLOP_SLTS ] = true,
         };
+
         switch (reg->result.opcode) {
           case RTLOP_MOVE:
             snprintf(buf, bufsize, "r%u", reg->result.src1);
@@ -299,8 +304,9 @@ static void rtl_describe_register(const RTLRegister *reg,
             snprintf(buf, bufsize, "???");
             break;
         }  // switch (reg->result.opcode)
+
     } else {
-        snprintf(buf, bufsize, "???");
+        ASSERT(!"Invalid register source");
     }
 }
 
@@ -314,9 +320,10 @@ static void rtl_describe_register(const RTLRegister *reg,
  *     index: Index of instruction to decode.
  *     buf: Buffer into which to store result text.
  *     bufsize: Size of buffer (should be at least 500).
+ *     verbose: True to append register descriptions to the instruction.
  */
 static void rtl_decode_insn(const RTLUnit *unit, uint32_t index,
-                            char *buf, int bufsize)
+                            char *buf, int bufsize, bool verbose)
 {
     ASSERT(unit != NULL);
     ASSERT(unit->insns != NULL);
@@ -378,12 +385,12 @@ static void rtl_decode_insn(const RTLUnit *unit, uint32_t index,
     char * const top = buf + bufsize;
     char regbuf[100];
 
-    #define APPEND_REG_DESC(regnum)  do { \
+    #define APPEND_REG_DESC(regnum)  do { if (verbose) { \
         const unsigned int _regnum = (regnum); \
         rtl_describe_register(&unit->regs[_regnum], regbuf, sizeof(regbuf)); \
         s += snprintf(s, top - s, "           r%u: %s\n", _regnum, regbuf); \
         ASSERT(s < top); \
-    } while (0)
+    } } while (0)
 
     const RTLInsn * const insn = &unit->insns[index];
     const char * const name = opcode_names[insn->opcode];
@@ -975,7 +982,7 @@ bool rtl_optimize_unit(RTLUnit *unit, uint32_t flags)
 
 /*-----------------------------------------------------------------------*/
 
-char *rtl_disassemble_unit(const RTLUnit *unit)
+char *rtl_disassemble_unit(const RTLUnit *unit, bool verbose)
 {
     ASSERT(unit != NULL);
     ASSERT(unit->insns != NULL);
@@ -989,7 +996,7 @@ char *rtl_disassemble_unit(const RTLUnit *unit)
 
     for (uint32_t index = 0; index < unit->num_insns; index++) {
         char text[500];
-        rtl_decode_insn(unit, index, text, sizeof(text));
+        rtl_decode_insn(unit, index, text, sizeof(text), verbose);
         const int text_len = strlen(text);
         /* We leave an extra byte here for the blank line we insert between
          * the disassembly and block list. */

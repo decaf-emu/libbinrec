@@ -84,7 +84,7 @@ int main(int argc, char **argv)
 
     char *disassembly;
     if (expected_success) {
-        EXPECT(disassembly = rtl_disassemble_unit(unit));
+        EXPECT(disassembly = rtl_disassemble_unit(unit, false));
     } else {
         ASSERT(disassembly = malloc(1));
         *disassembly = '\0';

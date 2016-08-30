@@ -349,11 +349,13 @@ extern bool rtl_optimize_unit(RTLUnit *unit, uint32_t flags);
  *
  * [Parameters]
  *     unit: RTLUnit to disassemble.
+ *     verbose: True to include a description of each source register after
+ *         each instruction, false for instructions and basic blocks only.
  * [Return value]
  *     Newly allocated string containing the disassembly, or NULL on error.
  */
 #define rtl_disassemble_unit INTERNAL(rtl_disassemble_unit)
-extern char *rtl_disassemble_unit(const RTLUnit *unit);
+extern char *rtl_disassemble_unit(const RTLUnit *unit, bool verbose);
 
 /**
  * rtl_destroy_unit:  Destroy the given unit, freeing any resources it
