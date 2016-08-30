@@ -60,6 +60,20 @@
         || (__GNUC__ == major && __GNUC_MINOR__ >= minor))
 
 /**
+ * ALWAYS_INLINE:  Function attribute indicating that the function should
+ * always be inlined, even if the compiler thinks it would not be a good
+ * idea.  If no compiler-specific hint is available, "inline" will be
+ * substituted instead.
+ */
+#if IS_GCC(3,1) || IS_CLANG(1,0)
+    #define ALWAYS_INLINE  inline __attribute__((always_inline))
+#elif defined(_MSC_VER)
+    #define ALWAYS_INLINE  __forceinline
+#else
+    #define ALWAYS_INLINE  inline
+#endif
+
+/**
  * ASSERT:  Verify that the given condition is true, and abort the program
  * if it is not.  If ENABLE_ASSERT is not defined, the expression is
  * evaluated and its result is discarded; if supported by the compiler, a

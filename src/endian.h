@@ -10,8 +10,7 @@
 #ifndef SRC_ENDIAN_H
 #define SRC_ENDIAN_H
 
-#include <stdbool.h>
-#include <stdint.h>
+#include "src/common.h"
 
 /*
  * This header provides functions for converting values between different
@@ -39,7 +38,7 @@
 /**
  * is_little_endian:  Return whether the native environment is little-endian.
  */
-static inline bool is_little_endian(void) {
+static ALWAYS_INLINE CONST_FUNCTION bool is_little_endian(void) {
     return *(uint16_t *)"\1" == 1;  // Optimizes to a compile-time constant.
 }
 
@@ -48,7 +47,7 @@ static inline bool is_little_endian(void) {
 /**
  * bswap16:  Reverse the byte order of the given 16-bit value.
  */
-static inline uint16_t bswap16(uint16_t x)
+static ALWAYS_INLINE CONST_FUNCTION uint16_t bswap16(uint16_t x)
 {
     #ifndef SUPPRESS_ENDIAN_INTRINSICS
         #if defined(__GNUC__)
@@ -63,7 +62,7 @@ static inline uint16_t bswap16(uint16_t x)
 /**
  * bswap32:  Reverse the byte order of the given 32-bit value.
  */
-static inline uint32_t bswap32(uint32_t x)
+static ALWAYS_INLINE CONST_FUNCTION uint32_t bswap32(uint32_t x)
 {
     #ifndef SUPPRESS_ENDIAN_INTRINSICS
         #if defined(__INTEL_COMPILER)  // Must precede __GNUC__ test.
@@ -80,7 +79,7 @@ static inline uint32_t bswap32(uint32_t x)
 /**
  * bswap64:  Reverse the byte order of the given 64-bit value.
  */
-static inline uint64_t bswap64(uint64_t x)
+static ALWAYS_INLINE CONST_FUNCTION uint64_t bswap64(uint64_t x)
 {
     #ifndef SUPPRESS_ENDIAN_INTRINSICS
         #if defined(__GNUC__)
@@ -105,7 +104,7 @@ static inline uint64_t bswap64(uint64_t x)
  * bswap_be16:  Convert the given 16-bit value between big-endian and
  * native byte order.
  */
-static inline uint16_t bswap_be16(uint16_t x) {
+static ALWAYS_INLINE CONST_FUNCTION uint16_t bswap_be16(uint16_t x) {
     return is_little_endian() ? bswap16(x) : x;
 }
 
@@ -113,7 +112,7 @@ static inline uint16_t bswap_be16(uint16_t x) {
  * bswap_be32:  Convert the given 32-bit value between big-endian and
  * native byte order.
  */
-static inline uint32_t bswap_be32(uint32_t x) {
+static ALWAYS_INLINE CONST_FUNCTION uint32_t bswap_be32(uint32_t x) {
     return is_little_endian() ? bswap32(x) : x;
 }
 
@@ -121,7 +120,7 @@ static inline uint32_t bswap_be32(uint32_t x) {
  * bswap_be64:  Convert the given 64-bit value between big-endian and
  * native byte order.
  */
-static inline uint64_t bswap_be64(uint64_t x) {
+static ALWAYS_INLINE CONST_FUNCTION uint64_t bswap_be64(uint64_t x) {
     return is_little_endian() ? bswap64(x) : x;
 }
 
@@ -131,7 +130,7 @@ static inline uint64_t bswap_be64(uint64_t x) {
  * bswap_le16:  Convert the given 16-bit value between big-endian and
  * native byte order.
  */
-static inline uint16_t bswap_le16(uint16_t x) {
+static ALWAYS_INLINE CONST_FUNCTION uint16_t bswap_le16(uint16_t x) {
     return is_little_endian() ? x : bswap16(x);
 }
 
@@ -139,7 +138,7 @@ static inline uint16_t bswap_le16(uint16_t x) {
  * bswap_le32:  Convert the given 32-bit value between big-endian and
  * native byte order.
  */
-static inline uint32_t bswap_le32(uint32_t x) {
+static ALWAYS_INLINE CONST_FUNCTION uint32_t bswap_le32(uint32_t x) {
     return is_little_endian() ? x : bswap32(x);
 }
 
@@ -147,7 +146,7 @@ static inline uint32_t bswap_le32(uint32_t x) {
  * bswap_le64:  Convert the given 64-bit value between big-endian and
  * native byte order.
  */
-static inline uint64_t bswap_le64(uint64_t x) {
+static ALWAYS_INLINE CONST_FUNCTION uint64_t bswap_le64(uint64_t x) {
     return is_little_endian() ? x : bswap64(x);
 }
 
