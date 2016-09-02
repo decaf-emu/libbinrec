@@ -62,6 +62,13 @@ ENABLE_ASSERT = 1
 # are being used correctly.  Enabling this option may have a moderate
 # performance impact.
 #
+# The checks covered by this option differ from those covered by
+# ENABLE_ASSERT in that assertion failures generally indicate bugs in data
+# management by the core library code which would otherwise cause a crash,
+# while operand check failures generally indicate bugs in specific machine
+# code translation modules which might lead to incorrect code being
+# generated but are not likely to cause a crash by themselves.
+#
 # The default is 1 (operand sanity checks will be included).
 
 ENABLE_OPERAND_SANITY_CHECKS = 1
