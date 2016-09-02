@@ -207,9 +207,9 @@ endif
 
 ifeq ($(CC_TYPE),clang)
     BASE_FLAGS = -O2 -pipe -g -I. \
+        $(call if-true,WARNINGS_AS_ERRORS,-Werror) \
         -Wall -Wextra -Wcast-align -Winit-self -Wpointer-arith -Wshadow \
-        -Wwrite-strings -Wundef -Wno-unused-parameter -Wvla \
-        $(call if-true,WARNINGS_AS_ERRORS,-Werror)
+        -Wwrite-strings -Wundef -Wno-unused-parameter -Wvla
     BASE_CFLAGS = $(BASE_FLAGS) -std=c99 \
         -Wmissing-declarations -Wstrict-prototypes
     GCOV = llvm-cov
@@ -230,9 +230,9 @@ else ifeq ($(CC_TYPE),gcc)
     GCOV_FILE_OPTS = -o "`echo \"$1\" | sed -e 's|\.[^./]*$$|_cov.o|'`" '$1'
 else ifeq ($(CC_TYPE),icc)
     BASE_FLAGS = -O2 -g -I. \
+        $(call if-true,WARNINGS_AS_ERRORS,-Werror) \
         -Wpointer-arith -Wreturn-type -Wshadow -Wuninitialized \
-        -Wunknown-pragmas -Wunused-function -Wunused-variable -Wwrite-strings \
-        $(call if-true,WARNINGS_AS_ERRORS,-Werror)
+        -Wunknown-pragmas -Wunused-function -Wunused-variable -Wwrite-strings
     BASE_CFLAGS = $(BASE_FLAGS) -std=c99 \
         -Wmissing-declarations -Wstrict-prototypes
 else
@@ -409,11 +409,11 @@ $(STATIC_LIB): $(LIBRARY_OBJECTS)
 
 #--------------------------- Test build rules ----------------------------#
 
-$(TEST_BINS) : %: %.o tests/common.o $(STATIC_LIB)
+$(TEST_BINS) : %: %.o tests/common.o tests/log-capture.o $(STATIC_LIB)
 	$(ECHO) 'Linking $@'
 	$(Q)$(CC) $(LDFLAGS) -o '$@' $^ $(LIBS)
 
-tests/coverage: tests/coverage-main.o tests/common.o $(LIBRARY_OBJECTS:%.o=%_cov.o) $(TEST_SOURCES:%.c=%_cov.o)
+tests/coverage: tests/coverage-main.o tests/common.o tests/log-capture.o $(LIBRARY_OBJECTS:%.o=%_cov.o) $(TEST_SOURCES:%.c=%_cov.o)
 	$(ECHO) 'Linking $@'
 	$(Q)$(CC) $(ALL_CFLAGS) $(LDFLAGS) -o '$@' $^ $(LIBS) --coverage
 

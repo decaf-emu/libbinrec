@@ -58,8 +58,6 @@ bool rtl_block_add(RTLUnit *unit)
     for (i = 0; i < lenof(unit->blocks[index].exits); i++) {
         unit->blocks[index].exits[i] = -1;
     }
-    unit->blocks[index].next_call_block = -1;
-    unit->blocks[index].prev_call_block = -1;
 
     return true;
 }
@@ -88,6 +86,7 @@ bool rtl_block_add_edge(RTLUnit *unit, int from_index, int to_index)
     }
     if (UNLIKELY(i >= lenof(unit->blocks[from_index].exits))) {
         log_ice(unit->handle, "Too many exits from block %u", from_index);
+        return false;
     }
     unit->blocks[from_index].exits[i] = to_index;
 
@@ -108,17 +107,9 @@ bool rtl_block_add_edge(RTLUnit *unit, int from_index, int to_index)
         /* Move all the current edges over to the dummy block. */
         for (i = 0; i < lenof(unit->blocks[to_index].entries); i++) {
             const int other_block = unit->blocks[to_index].entries[i];
-            int j;
-            for (j = 0; j < lenof(unit->blocks[other_block].exits); j++) {
-                if (unit->blocks[other_block].exits[j] == to_index) {
-                    break;
-                }
-            }
-            if (UNLIKELY(j >= lenof(unit->blocks[other_block].exits))) {
-                log_ice(unit->handle, "Edge to unit %u missing from unit %u",
-                        to_index, other_block);
-                return false;
-            }
+            const int j = (unit->blocks[other_block].exits[0] == to_index
+                           ? 0 : 1);
+            ASSERT(unit->blocks[other_block].exits[j] == to_index);
             unit->blocks[other_block].exits[j] = dummy_block;
             unit->blocks[dummy_block].entries[i] = other_block;
         }
@@ -151,24 +142,16 @@ void rtl_block_remove_edge(RTLUnit *unit, int from_index, int exit_index)
     RTLBlock * const from_block = &unit->blocks[from_index];
     const int to_index = from_block->exits[exit_index];
     RTLBlock * const to_block = &unit->blocks[to_index];
-    int entry_index;
 
     for (; exit_index < lenof(from_block->exits) - 1; exit_index++) {
         from_block->exits[exit_index] = from_block->exits[exit_index + 1];
     }
     from_block->exits[lenof(from_block->exits) - 1] = -1;
 
-    for (entry_index = 0; entry_index < lenof(to_block->entries);
-         entry_index++)
-    {
-        if (to_block->entries[entry_index] == from_index) {
-            break;
-        }
-    }
-    if (UNLIKELY(entry_index >= lenof(to_block->entries))) {
-        log_ice(unit->handle, "Edge %u->%u missing from %u.entries",
-                from_index, to_index, to_index);
-        return;
+    int entry_index = 0;
+    while (to_block->entries[entry_index] != from_index) {
+        entry_index++;
+        ASSERT(entry_index < lenof(to_block->entries));
     }
 
     for (; entry_index < lenof(to_block->entries) - 1; entry_index++) {

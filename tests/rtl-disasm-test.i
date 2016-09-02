@@ -37,27 +37,10 @@
 #include "src/guest-ppc.h"
 #include "src/rtl.h"
 #include "tests/common.h"
+#include "tests/log-capture.h"
 
-static char *log_messages = NULL;
 
-static void do_log(UNUSED void *userdata, binrec_loglevel_t loglevel,
-                   const char *message)
-{
-    static const char * const level_prefix[] = {
-        [BINREC_LOGLEVEL_INFO   ] = "info",
-        [BINREC_LOGLEVEL_WARNING] = "warning",
-        [BINREC_LOGLEVEL_ERROR  ] = "error",
-    };
-    const int current_len = log_messages ? strlen(log_messages) : 0;
-    const int message_len =
-        snprintf(NULL, 0, "[%s] %s\n", level_prefix[loglevel], message);
-    const int new_size = current_len + message_len + 1;
-    ASSERT(log_messages = realloc(log_messages, new_size));
-    ASSERT(snprintf(log_messages + current_len, message_len + 1, "[%s] %s\n",
-                    level_prefix[loglevel], message) == message_len);
-}
-
-int main(int argc, char **argv)
+int main(void)
 {
     void *aligned_input;
     ASSERT(aligned_input = malloc(sizeof(input)));
@@ -65,7 +48,7 @@ int main(int argc, char **argv)
 
     binrec_setup_t final_setup = setup;
     final_setup.memory_base = aligned_input;
-    final_setup.log = do_log;
+    final_setup.log = log_capture;
     binrec_t *handle;
     EXPECT(handle = binrec_create_handle(&final_setup));
 
@@ -75,6 +58,7 @@ int main(int argc, char **argv)
     EXPECT(unit = rtl_create_unit(handle));
 
     if (guest_ppc_translate(handle, 0, unit) != expected_success) {
+        const char *log_messages = get_log_messages();
         if (log_messages) {
             fputs(log_messages, stderr);
         }
@@ -91,6 +75,7 @@ int main(int argc, char **argv)
     }
 
     char *output;
+    const char *log_messages = get_log_messages();
     if (log_messages) {
         const int output_size = strlen(log_messages) + strlen(disassembly) + 1;
         ASSERT(output = malloc(output_size));

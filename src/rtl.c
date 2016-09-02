@@ -12,6 +12,7 @@
 #include "src/rtl-internal.h"
 
 #include <inttypes.h>
+#include <stdarg.h>
 #include <stdio.h>
 
 /*************************************************************************/
@@ -45,17 +46,19 @@ static bool add_block_edges(RTLUnit * const unit)
              || insn->opcode == RTLOP_GOTO_IF_NZ) {
                 const unsigned int label = insn->label;
                 if (UNLIKELY(unit->label_blockmap[label] < 0)) {
-                    log_error(unit->handle, "%p/%u: GOTO to unknown label %u",
-                              unit, block->last_insn, label);
+                    log_error(unit->handle, "Instruction %u: GOTO to undefined"
+                              " label L%u", block->last_insn, label);
                     return false;
                 } else if (UNLIKELY(!rtl_block_add_edge(unit, block_index, unit->label_blockmap[label]))) {
-                    log_error(unit->handle, "%p: Failed to add edge %u->%u for"
-                              " %s L%u", unit, block_index,
-                              unit->label_blockmap[label],
-                              insn->opcode == RTLOP_GOTO ? "GOTO" :
-                              insn->opcode == RTLOP_GOTO_IF_Z ? "GOTO_IF_Z" :
-                                  "GOTO_IF_NZ",
-                              label);
+                    static const char * const opcode_names[] = {
+                        [RTLOP_GOTO       - RTLOP_GOTO] = "GOTO",
+                        [RTLOP_GOTO_IF_Z  - RTLOP_GOTO] = "GOTO_IF_Z",
+                        [RTLOP_GOTO_IF_NZ - RTLOP_GOTO] = "GOTO_IF_NZ",
+                    };
+                    log_error(unit->handle, "Instruction %u: Failed to add"
+                              " edge %u->%u for %s L%u",
+                              block_index, unit->label_blockmap[label],
+                              opcode_names[insn->opcode - RTLOP_GOTO], label);
                     return false;
                 }
             }
@@ -127,8 +130,8 @@ static void update_live_ranges(RTLUnit * const unit)
  * function parameter registers on the rtl_add_insn() fast path.
  */
 static NOINLINE bool rtl_add_insn_with_extend(
-    RTLUnit *unit, RTLOpcode opcode, uint32_t dest, uintptr_t src1,
-    uint32_t src2, uint32_t other)
+    RTLUnit *unit, RTLOpcode opcode, uint32_t dest, uint32_t src1,
+    uint32_t src2, uint64_t other)
 {
     uint32_t new_insns_size = unit->num_insns + INSNS_EXPAND_SIZE;
     RTLInsn *new_insns = realloc(unit->insns,
@@ -156,8 +159,8 @@ static NOINLINE bool rtl_add_insn_with_extend(
  * function parameter registers on the rtl_add_insn() fast path.
  */
 static NOINLINE bool rtl_add_insn_with_new_block(
-    RTLUnit *unit, RTLOpcode opcode, uint32_t dest, uintptr_t src1,
-    uint32_t src2, uint32_t other)
+    RTLUnit *unit, RTLOpcode opcode, uint32_t dest, uint32_t src1,
+    uint32_t src2, uint64_t other)
 {
     if (UNLIKELY(!rtl_block_add(unit))) {
         return false;
@@ -168,6 +171,23 @@ static NOINLINE bool rtl_add_insn_with_new_block(
 
     /* Run back through rtl_add_insn() to handle the rest. */
     return rtl_add_insn(unit, opcode, dest, src1, src2, other);
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
+ * snprintf_assert:  Wrapper for snprintf() which ASSERT()s that the
+ * written string fits within the supplied buffer.  Helper for
+ * rtl_decode_insn().
+ */
+static int snprintf_assert(char *buf, size_t size, const char *format, ...)
+{
+    va_list args;
+    va_start(args, format);
+    int result = vsnprintf(buf, size, format, args);
+    va_end(args);
+    ASSERT((size_t)result < size);
+    return result;
 }
 
 /*-----------------------------------------------------------------------*/
@@ -188,42 +208,80 @@ static void rtl_describe_register(const RTLRegister *reg,
     ASSERT(buf != NULL);
     ASSERT(bufsize > 0);
 
-    if (reg->source == RTLREG_CONSTANT) {
-        switch (reg->type) {
+    switch ((RTLRegType)reg->source) {
+
+      case RTLREG_UNDEFINED:
+        /* This is only reachable if code incorrectly generates an
+         * instruction that uses an undefined register and operand sanity
+         * checks are disabled, but we handle it anyway for the sake of
+         * completeness. */
+        snprintf(buf, bufsize, "(undefined)");
+        return;
+
+      case RTLREG_CONSTANT:
+        switch ((RTLDataType)reg->type) {
           case RTLTYPE_INT32:
             if (reg->value.int32 >= 0x10000
-             && reg->value.int32 < (uint32_t)-0x10000) {
+             && reg->value.int32 < (uint32_t)-0x8000) {
                 snprintf(buf, bufsize, "0x%X", reg->value.int32);
             } else {
                 snprintf(buf, bufsize, "%d", reg->value.int32);
             }
-            break;
+            return;
           case RTLTYPE_ADDRESS:
             snprintf(buf, bufsize, "0x%"PRIX64, reg->value.address);
-            break;
-          default:
+            return;
+          case RTLTYPE_FLOAT:
+          case RTLTYPE_DOUBLE:
+          case RTLTYPE_V2_DOUBLE:
             break;  // FIXME: not yet implemented
         }
+        ASSERT(!"Invalid constant type");
 
-    } else if (reg->source == RTLREG_FUNC_ARG) {
+      case RTLREG_FUNC_ARG:
         snprintf(buf, bufsize, "arg[%u]", reg->arg_index);
+        return;
 
-    } else if (reg->source == RTLREG_MEMORY) {
-        snprintf(buf, bufsize, "(%ssigned) @(%d,r%u).%s",
-                 reg->memory.is_signed ? "" : "un",
-                 reg->memory.offset, reg->memory.addr_reg,
-                 reg->memory.size==1 ? "b" :
-                 reg->memory.size==2 ? "h" :
-                 reg->memory.size==4 ? "w" : "ptr");
+      case RTLREG_MEMORY: {
+        const char *type = NULL;
+        switch ((RTLDataType)reg->type) {
+          case RTLTYPE_INT32:
+            type = (reg->memory.size == 4 ? "i32" :
+                    reg->memory.size == 2
+                        ? (reg->memory.is_signed ? "s16" : "u16")
+                        : (reg->memory.is_signed ? "s8" : "u8"));
+            break;
+          case RTLTYPE_ADDRESS:
+            type = "addr";
+            break;
+          case RTLTYPE_FLOAT:
+            type = "f32";
+            break;
+          case RTLTYPE_DOUBLE:
+            type = "f64";
+            break;
+          case RTLTYPE_V2_DOUBLE:
+            type = "f64x2";
+            break;
+        }
+        ASSERT(type);
+        snprintf(buf, bufsize, "@%d(r%u).%s",
+                 reg->memory.offset, reg->memory.addr_reg, type);
+        return;
+      }
 
-    } else if (reg->source == RTLREG_ALIAS) {
+      case RTLREG_ALIAS:
         snprintf(buf, bufsize, "a%u", reg->alias.src);
+        return;
 
-    } else if (reg->source == RTLREG_RESULT
-               || reg->source == RTLREG_RESULT_NOFOLD) {
+      case RTLREG_RESULT:
+      case RTLREG_RESULT_NOFOLD: {
         static const char * const operators[] = {
+            [RTLOP_SCAST ] = "scast",
+            [RTLOP_ZCAST ] = "zcast",
             [RTLOP_ADD   ] = "+",
             [RTLOP_SUB   ] = "-",
+            [RTLOP_NEG   ] = "-",
             [RTLOP_MUL   ] = "*",
             [RTLOP_DIVU  ] = "/",
             [RTLOP_DIVS  ] = "/",
@@ -232,20 +290,25 @@ static void rtl_describe_register(const RTLRegister *reg,
             [RTLOP_AND   ] = "&",
             [RTLOP_OR    ] = "|",
             [RTLOP_XOR   ] = "^",
+            [RTLOP_NOT   ] = "~",
             [RTLOP_SLL   ] = "<<",
             [RTLOP_SRL   ] = ">>",
             [RTLOP_SRA   ] = ">>",
-            [RTLOP_ROR   ] = "ROR",
-            [RTLOP_CLZ   ] = "CLZ",
+            [RTLOP_ROR   ] = "ror",
+            [RTLOP_CLZ   ] = "clz",
             [RTLOP_SLTU  ] = "<",
             [RTLOP_SLTS  ] = "<",
-            [RTLOP_BSWAP ] = "BSWAP",
+            [RTLOP_SLEU  ] = "<=",
+            [RTLOP_SLES  ] = "<=",
+            [RTLOP_SEQ   ] = "==",
+            [RTLOP_BSWAP ] = "bswap",
         };
         static const bool is_signed[] = {
             [RTLOP_DIVS ] = true,
             [RTLOP_MODS ] = true,
             [RTLOP_SRA  ] = true,
             [RTLOP_SLTS ] = true,
+            [RTLOP_SLES ] = true,
         };
 
         switch (reg->result.opcode) {
@@ -256,9 +319,13 @@ static void rtl_describe_register(const RTLRegister *reg,
             snprintf(buf, bufsize, "r%u ? r%u : r%u", reg->result.cond,
                      reg->result.src1, reg->result.src2);
             break;
+          case RTLOP_NEG:
           case RTLOP_NOT:
-            snprintf(buf, bufsize, "~r%u", reg->result.src1);
+            snprintf(buf, bufsize, "%sr%u",
+                     operators[reg->result.opcode], reg->result.src1);
             break;
+          case RTLOP_SCAST:
+          case RTLOP_ZCAST:
           case RTLOP_CLZ:
           case RTLOP_BSWAP:
             snprintf(buf, bufsize, "%s(r%u)",
@@ -280,6 +347,9 @@ static void rtl_describe_register(const RTLRegister *reg,
           case RTLOP_ROR:
           case RTLOP_SLTU:
           case RTLOP_SLTS:
+          case RTLOP_SLEU:
+          case RTLOP_SLES:
+          case RTLOP_SEQ:
             snprintf(buf, bufsize, "%sr%u %s r%u",
                      is_signed[reg->result.opcode] ? "(signed) " : "",
                      reg->result.src1, operators[reg->result.opcode],
@@ -292,22 +362,24 @@ static void rtl_describe_register(const RTLRegister *reg,
                      reg->result.src1, reg->result.src2);
             break;
           case RTLOP_BFEXT:
-            snprintf(buf, bufsize, "BFEXT(r%u, %u, %u)",
+            snprintf(buf, bufsize, "bfext(r%u, %u, %u)",
                      reg->result.src1, reg->result.start, reg->result.count);
             break;
           case RTLOP_BFINS:
-            snprintf(buf, bufsize, "BFINS(r%u, r%u, %u, %u)",
+            snprintf(buf, bufsize, "bfins(r%u, r%u, %u, %u)",
                      reg->result.src1, reg->result.src2,
                      reg->result.start, reg->result.count);
             break;
           default:
-            snprintf(buf, bufsize, "???");
+            ASSERT(!"Invalid result opcode");
             break;
         }  // switch (reg->result.opcode)
+        return;
+      }  // case RTLREG_RESULT, RTLREG_RESULT_NOFOLD
 
-    } else {
-        ASSERT(!"Invalid register source");
-    }
+    }  // switch (reg->source)
+
+    ASSERT(!"Invalid register source");
 }
 
 /*-----------------------------------------------------------------------*/
@@ -335,11 +407,12 @@ static void rtl_decode_insn(const RTLUnit *unit, uint32_t index,
         [RTLOP_SET_ALIAS ] = "SET_ALIAS",
         [RTLOP_GET_ALIAS ] = "GET_ALIAS",
         [RTLOP_MOVE      ] = "MOVE",
+        [RTLOP_SELECT    ] = "SELECT",
         [RTLOP_SCAST     ] = "SCAST",
         [RTLOP_ZCAST     ] = "ZCAST",
-        [RTLOP_SELECT    ] = "SELECT",
         [RTLOP_ADD       ] = "ADD",
         [RTLOP_SUB       ] = "SUB",
+        [RTLOP_NEG       ] = "NEG",
         [RTLOP_MUL       ] = "MUL",
         [RTLOP_MULHU     ] = "MULHU",
         [RTLOP_MULHS     ] = "MULHS",
@@ -358,20 +431,23 @@ static void rtl_decode_insn(const RTLUnit *unit, uint32_t index,
         [RTLOP_CLZ       ] = "CLZ",
         [RTLOP_SLTU      ] = "SLTU",
         [RTLOP_SLTS      ] = "SLTS",
+        [RTLOP_SLEU      ] = "SLEU",
+        [RTLOP_SLES      ] = "SLES",
+        [RTLOP_SEQ       ] = "SEQ",
         [RTLOP_BSWAP     ] = "BSWAP",
         [RTLOP_BFEXT     ] = "BFEXT",
         [RTLOP_BFINS     ] = "BFINS",
         [RTLOP_LOAD_IMM  ] = "LOAD_IMM",
         [RTLOP_LOAD_ARG  ] = "LOAD_ARG",
-        [RTLOP_LOAD_BS   ] = "LOAD_BS",
-        [RTLOP_LOAD_BU   ] = "LOAD_BU",
-        [RTLOP_LOAD_HS   ] = "LOAD_HS",
-        [RTLOP_LOAD_HU   ] = "LOAD_HU",
-        [RTLOP_LOAD_W    ] = "LOAD_W",
+        [RTLOP_LOAD_S8   ] = "LOAD_S8",
+        [RTLOP_LOAD_U8   ] = "LOAD_U8",
+        [RTLOP_LOAD_S16  ] = "LOAD_S16",
+        [RTLOP_LOAD_U16  ] = "LOAD_U16",
+        [RTLOP_LOAD_I32  ] = "LOAD_I32",
         [RTLOP_LOAD_ADDR ] = "LOAD_ADDR",
-        [RTLOP_STORE_B   ] = "STORE_B",
-        [RTLOP_STORE_H   ] = "STORE_H",
-        [RTLOP_STORE_W   ] = "STORE_W",
+        [RTLOP_STORE_I8  ] = "STORE_I8",
+        [RTLOP_STORE_I16 ] = "STORE_I16",
+        [RTLOP_STORE_I32 ] = "STORE_I32",
         [RTLOP_STORE_ADDR] = "STORE_ADDR",
         [RTLOP_LABEL     ] = "LABEL",
         [RTLOP_GOTO      ] = "GOTO",
@@ -388,8 +464,8 @@ static void rtl_decode_insn(const RTLUnit *unit, uint32_t index,
     #define APPEND_REG_DESC(regnum)  do { if (verbose) { \
         const unsigned int _regnum = (regnum); \
         rtl_describe_register(&unit->regs[_regnum], regbuf, sizeof(regbuf)); \
-        s += snprintf(s, top - s, "           r%u: %s\n", _regnum, regbuf); \
-        ASSERT(s < top); \
+        s += snprintf_assert(s, top - s, "           r%u: %s\n", \
+                             _regnum, regbuf); \
     } } while (0)
 
     const RTLInsn * const insn = &unit->insns[index];
@@ -398,48 +474,42 @@ static void rtl_decode_insn(const RTLUnit *unit, uint32_t index,
     const unsigned int src1 = insn->src1;
     const unsigned int src2 = insn->src2;
 
-    s += snprintf(s, top - s, "%5d: ", index);
-    ASSERT(s < top);
+    s += snprintf_assert(s, top - s, "%5d: ", index);
 
     switch ((RTLOpcode)insn->opcode) {
 
       case RTLOP_NOP:
         if (insn->src_imm) {
-            s += snprintf(s, top - s, "%-10s 0x%"PRIX64"\n", name,
-                          insn->src_imm);
-            ASSERT(s < top);
+            s += snprintf_assert(s, top - s, "%-10s 0x%"PRIX64"\n",
+                                 name, insn->src_imm);
         } else {
-            s += snprintf(s, top - s, "%s\n", name);
-            ASSERT(s < top);
+            s += snprintf_assert(s, top - s, "%s\n", name);
         }
         return;
 
       case RTLOP_SET_ALIAS:
-        s += snprintf(s, top - s, "%-10s a%u, r%u\n", name, dest, src1);
-        ASSERT(s < top);
+        s += snprintf_assert(s, top - s, "%-10s a%u, r%u\n", name, dest, src1);
         APPEND_REG_DESC(src1);
         return;
 
       case RTLOP_GET_ALIAS:
-        s += snprintf(s, top - s, "%-10s r%u, a%u\n", name, dest, src1);
-        ASSERT(s < top);
+        s += snprintf_assert(s, top - s, "%-10s r%u, a%u\n", name, dest, src1);
         return;
 
       case RTLOP_MOVE:
       case RTLOP_SCAST:
       case RTLOP_ZCAST:
+      case RTLOP_NEG:
       case RTLOP_NOT:
       case RTLOP_CLZ:
       case RTLOP_BSWAP:
-        s += snprintf(s, top - s, "%-10s r%u, r%u\n", name, dest, src1);
-        ASSERT(s < top);
+        s += snprintf_assert(s, top - s, "%-10s r%u, r%u\n", name, dest, src1);
         APPEND_REG_DESC(src1);
         return;
 
       case RTLOP_SELECT:
-        s += snprintf(s, top - s, "%-10s r%u, r%u, r%u, r%u\n", name,
-                      dest, src1, src2, insn->cond);
-        ASSERT(s < top);
+        s += snprintf_assert(s, top - s, "%-10s r%u, r%u, r%u, r%u\n",
+                             name, dest, src1, src2, insn->cond);
         APPEND_REG_DESC(src1);
         APPEND_REG_DESC(src2);
         APPEND_REG_DESC(insn->cond);
@@ -463,115 +533,107 @@ static void rtl_decode_insn(const RTLUnit *unit, uint32_t index,
       case RTLOP_ROR:
       case RTLOP_SLTU:
       case RTLOP_SLTS:
-        s += snprintf(s, top - s, "%-10s r%u, r%u, r%u\n", name, dest, src1,
-                      src2);
-        ASSERT(s < top);
+      case RTLOP_SLEU:
+      case RTLOP_SLES:
+      case RTLOP_SEQ:
+        s += snprintf_assert(s, top - s, "%-10s r%u, r%u, r%u\n",
+                             name, dest, src1, src2);
         APPEND_REG_DESC(src1);
         APPEND_REG_DESC(src2);
         return;
 
       case RTLOP_BFEXT:
-        s += snprintf(s, top - s, "%-10s r%u, r%u, %u, %u\n", name, dest,
-                      src1, insn->bitfield.start, insn->bitfield.count);
-        ASSERT(s < top);
+        s += snprintf_assert(s, top - s, "%-10s r%u, r%u, %u, %u\n",
+                             name, dest, src1, insn->bitfield.start,
+                             insn->bitfield.count);
         APPEND_REG_DESC(src1);
         return;
 
       case RTLOP_BFINS:
-        s += snprintf(s, top - s, "%-10s r%u, r%u, r%u, %u, %u\n", name, dest,
-                      src1, src2, insn->bitfield.start, insn->bitfield.count);
-        ASSERT(s < top);
+        s += snprintf_assert(s, top - s, "%-10s r%u, r%u, r%u, %u, %u\n",
+                             name, dest, src1, src2, insn->bitfield.start,
+                             insn->bitfield.count);
         APPEND_REG_DESC(src1);
         APPEND_REG_DESC(src2);
         return;
 
       case RTLOP_LOAD_IMM:
-        s += snprintf(s, top - s, "%-10s r%u, ", name, dest);
-        ASSERT(s < top);
+        s += snprintf_assert(s, top - s, "%-10s r%u, ", name, dest);
         ASSERT(dest > 0 && dest < unit->next_reg);
         switch (unit->regs[dest].type) {
           case RTLTYPE_INT32:
             ASSERT(insn->src_imm <= 0xFFFFFFFF);
             if (insn->src_imm >= 0x10000
-             && insn->src_imm < (uint32_t)-0x10000) {
-                s += snprintf(s, top - s, "0x%"PRIX64"\n", insn->src_imm);
-                ASSERT(s < top);
+             && insn->src_imm < (uint32_t)-0x8000) {
+                s += snprintf_assert(s, top - s, "0x%"PRIX64"\n",
+                                     insn->src_imm);
             } else {
-                s += snprintf(s, top - s, "%d\n", (int32_t)insn->src_imm);
-                ASSERT(s < top);
+                s += snprintf_assert(s, top - s, "%d\n",
+                                     (int32_t)insn->src_imm);
             }
             break;
           case RTLTYPE_ADDRESS:
-            s += snprintf(s, top - s, "0x%"PRIX64"\n", insn->src_imm);
-            ASSERT(s < top);
+            s += snprintf_assert(s, top - s, "0x%"PRIX64"\n", insn->src_imm);
             break;
           default:
-            break;  // FIXME: not yet implemented
+            ASSERT(!"Invalid type for LOAD_IMM");
         }
         return;
 
       case RTLOP_LOAD_ARG:
-        s += snprintf(s, top - s, "%-10s r%u, args[%u]\n", name, dest,
-                      (unsigned int)insn->src_imm);
-        ASSERT(s < top);
+        s += snprintf_assert(s, top - s, "%-10s r%u, %u\n",
+                             name, dest, (unsigned int)insn->src_imm);
         return;
 
-      case RTLOP_LOAD_BU:
-      case RTLOP_LOAD_BS:
-      case RTLOP_LOAD_HU:
-      case RTLOP_LOAD_HS:
-      case RTLOP_LOAD_W:
+      case RTLOP_LOAD_U8:
+      case RTLOP_LOAD_S8:
+      case RTLOP_LOAD_U16:
+      case RTLOP_LOAD_S16:
+      case RTLOP_LOAD_I32:
       case RTLOP_LOAD_ADDR:
-        s += snprintf(s, top - s, "%-10s r%u, %d(r%u)\n", name, dest,
-                      insn->offset, src1);
-        ASSERT(s < top);
+        s += snprintf_assert(s, top - s, "%-10s r%u, %d(r%u)\n",
+                             name, dest, insn->offset, src1);
         APPEND_REG_DESC(src1);
         return;
 
-      case RTLOP_STORE_B:
-      case RTLOP_STORE_H:
-      case RTLOP_STORE_W:
+      case RTLOP_STORE_I8:
+      case RTLOP_STORE_I16:
+      case RTLOP_STORE_I32:
       case RTLOP_STORE_ADDR:
-        s += snprintf(s, top - s, "%-10s %d(r%u), r%u\n", name,
-                      insn->offset, dest, src1);
-        ASSERT(s < top);
-        APPEND_REG_DESC(src1);
+        s += snprintf_assert(s, top - s, "%-10s %d(r%u), r%u\n",
+                             name, insn->offset, dest, src1);
         APPEND_REG_DESC(dest);
+        APPEND_REG_DESC(src1);
         return;
 
       case RTLOP_LABEL:
       case RTLOP_GOTO:
-        s += snprintf(s, top - s, "%-10s L%u\n", name, insn->label);
-        ASSERT(s < top);
+        s += snprintf_assert(s, top - s, "%-10s L%u\n", name, insn->label);
         return;
 
       case RTLOP_GOTO_IF_Z:
       case RTLOP_GOTO_IF_NZ:
-        s += snprintf(s, top - s, "%-10s L%u, r%u\n", name, insn->label, src1);
-        ASSERT(s < top);
+        s += snprintf_assert(s, top - s, "%-10s r%u, L%u\n",
+                             name, src1, insn->label);
         APPEND_REG_DESC(src1);
         return;
 
       case RTLOP_RETURN:
         if (src1) {
-            s += snprintf(s, top - s, "%-10s r%u\n", name, src1);
-            ASSERT(s < top);
+            s += snprintf_assert(s, top - s, "%-10s r%u\n", name, src1);
             APPEND_REG_DESC(src1);
         } else {
-            s += snprintf(s, top - s, "%-10s\n", name);
-            ASSERT(s < top);
+            s += snprintf_assert(s, top - s, "%s\n", name);
         }
         return;
 
       case RTLOP_ILLEGAL:
-        s += snprintf(s, top - s, "%s\n", name);
-        ASSERT(s < top);
+        s += snprintf_assert(s, top - s, "%s\n", name);
         return;
 
     }  // switch (insn->opcode)
 
-    s += snprintf(s, top - s, "???\n");
-    ASSERT(s < top);
+    ASSERT(!"Invalid opcode");
 
     #undef APPEND_REG_DESC
 }
@@ -679,9 +741,6 @@ RTLUnit *rtl_create_unit(binrec_t *handle)
 
     unit->finalized = 0;
 
-    unit->first_call_block = -1;
-    unit->last_call_block = -1;
-
     unit->insns = malloc(sizeof(*unit->insns) * unit->insns_size);
     if (!unit->insns) {
         log_error(handle, "No memory for %d RTLInsns", unit->insns_size);
@@ -750,9 +809,6 @@ void rtl_clear_unit(RTLUnit *unit)
     unit->next_label = 1;
 
     unit->finalized = 0;
-
-    unit->first_call_block = -1;
-    unit->last_call_block = -1;
 }
 
 /*-----------------------------------------------------------------------*/
@@ -1038,10 +1094,6 @@ char *rtl_disassemble_unit(const RTLUnit *unit, bool verbose)
         ASSERT(buflen + 1 <= bufsize);
     }
 
-    char *shrunk_buf = realloc(buf, buflen + 1);
-    if (shrunk_buf) {
-        buf = shrunk_buf;
-    }
     return buf;
 }
 

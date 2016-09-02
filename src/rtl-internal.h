@@ -214,11 +214,10 @@ typedef struct RTLBlock {
     int32_t first_insn;         // unit->insns[] index of first insn in block
     int32_t last_insn;          // unit->insns[] index of last insn in block
     int16_t next_block;         // unit->blocks[] index of next block in code
-                                //    stream (may not be the sequentially next
-                                //    block in the array due to optimization);
+                                //    stream (excluding dropped blocks);
                                 //    -1 indicates the end of the code stream
     int16_t prev_block;         // unit->blocks[] index of previous block in
-                                //    code stream
+                                //    code stream, or -1 if the first block
     int16_t entries[8];         // unit->blocks[] indices of dominating blocks;
                                 //    -1 indicates an unused slot.  Holes in
                                 //    the list are not permitted.  For more
@@ -227,10 +226,6 @@ typedef struct RTLBlock {
     int16_t exits[2];           // unit->blocks[] indices of postdominating
                                 //    blocks.  A terminating insn can go at
                                 //    most two places (conditional GOTO).
-
-    /* These fields are provided as hints to RTL-to-native translators: */
-    int16_t next_call_block;    // Next block with a CALL_NATIVE insn (-1=none)
-    int16_t prev_call_block;    // Prev. block with a CALL_NATIVE insn (-1=none)
 
     /* The following fields are used only by RTL-to-native translators: */
     union {
@@ -273,11 +268,7 @@ struct RTLUnit {
     uint16_t aliases_size;      // Size of alias register array (entries)
     uint16_t next_alias;        // Next alias register number to allocate
 
-    uint8_t finalized;          // Nonzero if block has been finalized
-
-    /* These fields are provided as hints to RTL-to-native translators: */
-    int16_t first_call_block;   // First block with a CALL_NATIVE insn (-1=none)
-    int16_t last_call_block;    // Last block with a CALL_NATIVE insn (-1=none)
+    uint8_t finalized;          // Nonzero if unit has been finalized
 
     /* The following fields are used only by optimization routines: */
     uint8_t *block_seen;        // Array of "seen" flags for all blocks
@@ -298,6 +289,8 @@ struct RTLUnit {
 /*************************************************************************/
 /**************** Library-internal function declarations *****************/
 /*************************************************************************/
+
+/*----------------------- Basic block processing ------------------------*/
 
 /**** Basic block processing function declarations ****/
 
@@ -336,9 +329,7 @@ extern bool rtl_block_add_edge(RTLUnit *unit, int from_index, int to_index);
 extern void rtl_block_remove_edge(RTLUnit *unit, int from_index,
                                   int exit_index);
 
-/*-----------------------------------------------------------------------*/
-
-/**** Instruction encoding function declarations ****/
+/*------------------------ Instruction encoding -------------------------*/
 
 /* Internal table used by rtl_insn_make(). */
 extern bool (* const makefunc_table[])(RTLUnit *, RTLInsn *, unsigned int,
@@ -374,10 +365,7 @@ static inline bool rtl_insn_make(RTLUnit *unit, RTLInsn *insn,
                                            dest, src1, src2, other);
 }
 
-
-/*-----------------------------------------------------------------------*/
-
-/**** Optimization function declarations ****/
+/*---------------------------- Optimization -----------------------------*/
 
 /**
  * rtl_opt_fold_constants:  Perform constant folding on the given RTL unit,
@@ -433,6 +421,33 @@ extern int rtl_opt_drop_dead_blocks(RTLUnit *unit);
  *     Nonzero on success, zero on error
  */
 extern int rtl_opt_drop_dead_branches(RTLUnit *unit);
+
+/*------------------------ Register information -------------------------*/
+
+/**
+ * rtl_register_is_int:  Return whether the given register has an integral
+ * type.
+ */
+static inline bool rtl_register_is_int(const RTLRegister *reg)
+{
+    const uint32_t int_types =
+        1U << RTLTYPE_INT32 |
+        1U << RTLTYPE_ADDRESS;
+    return (int_types & (1U << reg->type)) != 0;
+}
+
+/**
+ * rtl_register_is_float:  Return whether the given register has a
+ * floating-point type.
+ */
+static inline bool rtl_register_is_float(const RTLRegister *reg)
+{
+    const uint32_t float_types =
+        1U << RTLTYPE_FLOAT |
+        1U << RTLTYPE_DOUBLE |
+        1U << RTLTYPE_V2_DOUBLE;
+    return (float_types & (1U << reg->type)) != 0;
+}
 
 /*************************************************************************/
 /*************************************************************************/

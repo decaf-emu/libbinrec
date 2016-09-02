@@ -13,6 +13,7 @@ syntax: regexp
 
 ^tests/api/[^.]+(\.exe)?$
 ^tests/endian/[^.]+(\.exe)?$
+^tests/rtl/[^.]+(\.exe)?$
 ^tests/(guest|host)-[^./]*/[^./]*/[^.]+(\.exe)?$
 ^tests/coverage$
 ^tests/coverage-tests\.h$

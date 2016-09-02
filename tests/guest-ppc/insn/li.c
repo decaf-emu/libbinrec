@@ -32,7 +32,7 @@ static const bool expected_success = true;
 
 static const char expected[] =
     "[warning] Scanning terminated at 0x8 due to code range limit\n"
-    "    0: LOAD_ARG   r1, args[0]\n"
+    "    0: LOAD_ARG   r1, 0\n"
     "    1: LABEL      L1\n"
     "    2: LOAD_IMM   r2, 4660\n"
     "    3: SET_ALIAS  a2, r2\n"
@@ -42,11 +42,11 @@ static const char expected[] =
     "    7: SET_ALIAS  a1, r4\n"
     "    8: LABEL      L2\n"
     "    9: GET_ALIAS  r5, a2\n"
-    "   10: STORE_W    268(r1), r5\n"
+    "   10: STORE_I32  268(r1), r5\n"
     "   11: GET_ALIAS  r6, a3\n"
-    "   12: STORE_W    272(r1), r6\n"
+    "   12: STORE_I32  272(r1), r6\n"
     "   13: GET_ALIAS  r7, a1\n"
-    "   14: STORE_W    504(r1), r7\n"
+    "   14: STORE_I32  504(r1), r7\n"
     "   15: RETURN     r1\n"
     "\n"
     "Block    0: <none> --> [0,0] --> 1\n"

@@ -48,7 +48,7 @@
  */
 #define EXPECT_FALSE(expr)  do {                                        \
     if ((expr)) {                                                       \
-        FAIL("%s was not true as expected", #expr);                     \
+        FAIL("%s was not false as expected", #expr);                     \
     }                                                                   \
 } while (0)
 
@@ -92,6 +92,20 @@
     const long double _value = (value);                                 \
     if (!(_expr == _value)) {                                           \
         FAIL("%s was %Lg but should have been %Lg", #expr, _expr, _value); \
+    }                                                                   \
+} while (0)
+
+/*-----------------------------------------------------------------------*/
+
+/**
+ * EXPECT_PTREQ:  Check that the given pointer expression is equal to (has
+ * the same address as) an expected value, and fail the test if not.
+ */
+#define EXPECT_PTREQ(expr, value)  do {                                 \
+    const void * const _expr = (expr);                                  \
+    const void * const _value = (value);                                \
+    if (_expr != _value) {                                              \
+        FAIL("%s was %p but should have been %p", #expr, _expr, _value); \
     }                                                                   \
 } while (0)
 

@@ -12,6 +12,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "include/binrec.h"
+#include "tests/log-capture.h"
 
 #define TEST(func)  extern int func(void);
 #include "tests/coverage-tests.h"
@@ -35,6 +36,7 @@ int main(int argc, char **argv)
         if (verbose) {
             printf("%s\n", tests[i].name);
         }
+        clear_log_messages();
         const int result = (*tests[i].f)();
         if (result != EXIT_SUCCESS) {
             printf("FAILED: %s\n", tests[i].name);
