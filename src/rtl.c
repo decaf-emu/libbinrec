@@ -46,8 +46,8 @@ static bool add_block_edges(RTLUnit * const unit)
              || insn->opcode == RTLOP_GOTO_IF_NZ) {
                 const unsigned int label = insn->label;
                 if (UNLIKELY(unit->label_blockmap[label] < 0)) {
-                    log_error(unit->handle, "Instruction %u: GOTO to undefined"
-                              " label L%u", block->last_insn, label);
+                    log_error(unit->handle, "GOTO to undefined label L%u at"
+                              " %u", label, block->last_insn);
                     return false;
                 } else if (UNLIKELY(!rtl_block_add_edge(unit, block_index, unit->label_blockmap[label]))) {
                     static const char * const opcode_names[] = {
@@ -55,10 +55,11 @@ static bool add_block_edges(RTLUnit * const unit)
                         [RTLOP_GOTO_IF_Z  - RTLOP_GOTO] = "GOTO_IF_Z",
                         [RTLOP_GOTO_IF_NZ - RTLOP_GOTO] = "GOTO_IF_NZ",
                     };
-                    log_error(unit->handle, "Instruction %u: Failed to add"
-                              " edge %u->%u for %s L%u",
-                              block_index, unit->label_blockmap[label],
-                              opcode_names[insn->opcode - RTLOP_GOTO], label);
+                    log_ice(unit->handle, "Failed to add edge %u->%u for"
+                            " %s L%u at %u",
+                            block_index, unit->label_blockmap[label],
+                            opcode_names[insn->opcode - RTLOP_GOTO], label,
+                            block->last_insn);
                     return false;
                 }
             }
@@ -134,11 +135,11 @@ static NOINLINE bool rtl_add_insn_with_extend(
     uint32_t src2, uint64_t other)
 {
     uint32_t new_insns_size = unit->num_insns + INSNS_EXPAND_SIZE;
-    RTLInsn *new_insns = realloc(unit->insns,
-                                 sizeof(*unit->insns) * new_insns_size);
+    RTLInsn *new_insns =
+        rtl_realloc(unit, unit->insns, sizeof(*unit->insns) * new_insns_size);
     if (UNLIKELY(!new_insns)) {
-        log_error(unit->handle, "No memory to expand unit %p to %d insns",
-                  unit, new_insns_size);
+        log_error(unit->handle, "No memory to expand unit to %u instructions",
+                  new_insns_size);
         return false;
     }
     unit->insns = new_insns;
@@ -178,7 +179,7 @@ static NOINLINE bool rtl_add_insn_with_new_block(
 /**
  * snprintf_assert:  Wrapper for snprintf() which ASSERT()s that the
  * written string fits within the supplied buffer.  Helper for
- * rtl_decode_insn().
+ * rtl_decode_insn() and rtl_describe_block().
  */
 static int snprintf_assert(char *buf, size_t size, const char *format, ...)
 {
@@ -661,44 +662,36 @@ static void rtl_describe_block(const RTLUnit *unit, int index,
     char *s = buf;
     char * const top = buf + bufsize;
 
-    s += snprintf(s, top - s, "Block %4u: ", index);
-    ASSERT(s < top);
+    s += snprintf_assert(s, top - s, "Block %4u: ", index);
 
     if (block->entries[0] < 0) {
-        s += snprintf(s, top - s, "<none>");
-        ASSERT(s < top);
+        s += snprintf_assert(s, top - s, "<none>");
     } else {
         for (int j = 0; j < lenof(block->entries) && block->entries[j] >= 0;
              j++)
         {
-            s += snprintf(s, top - s, "%s%u", j==0 ? "" : ",",
-                          block->entries[j]);
-            ASSERT(s < top);
+            s += snprintf_assert(s, top - s, "%s%u", j==0 ? "" : ",",
+                                 block->entries[j]);
         }
     }
 
     if (block->first_insn <= block->last_insn) {
-        s += snprintf(s, top - s, " --> [%d,%d] --> ",
-                 block->first_insn, block->last_insn);
-        ASSERT(s < top);
+        s += snprintf_assert(s, top - s, " --> [%d,%d] --> ",
+                             block->first_insn, block->last_insn);
     } else {
-        s += snprintf(s, top - s, " --> [empty] --> ");
-        ASSERT(s < top);
+        s += snprintf_assert(s, top - s, " --> [empty] --> ");
     }
 
     if (block->exits[0] < 0) {
-        s += snprintf(s, top - s, "<none>");
-        ASSERT(s < top);
+        s += snprintf_assert(s, top - s, "<none>");
     } else {
         for (int j = 0; j < lenof(block->exits) && block->exits[j] >= 0; j++) {
-            s += snprintf(s, top - s, "%s%u",
-                          j==0 ? "" : ",", block->exits[j]);
-            ASSERT(s < top);
+            s += snprintf_assert(s, top - s, "%s%u",
+                                 j==0 ? "" : ",", block->exits[j]);
         }
     }
 
-    s += snprintf(s, top - s, "\n");
-    ASSERT(s < top);
+    s += snprintf_assert(s, top - s, "\n");
 }
 
 /*************************************************************************/
@@ -707,7 +700,9 @@ static void rtl_describe_block(const RTLUnit *unit, int index,
 
 RTLUnit *rtl_create_unit(binrec_t *handle)
 {
-    RTLUnit *unit = malloc(sizeof(*unit));
+    RTLUnit dummy_unit;  // For calling the handle's malloc() callback.
+    dummy_unit.handle = handle;
+    RTLUnit *unit = rtl_malloc(&dummy_unit, sizeof(*unit));
     if (!unit) {
         log_error(handle, "No memory for RTLUnit");
         return NULL;
@@ -741,37 +736,39 @@ RTLUnit *rtl_create_unit(binrec_t *handle)
 
     unit->finalized = 0;
 
-    unit->insns = malloc(sizeof(*unit->insns) * unit->insns_size);
+    unit->disassembly = NULL;
+
+    unit->insns = rtl_malloc(unit, sizeof(*unit->insns) * unit->insns_size);
     if (!unit->insns) {
-        log_error(handle, "No memory for %d RTLInsns", unit->insns_size);
+        log_error(handle, "No memory for %u instructions", unit->insns_size);
         goto fail;
     }
 
-    unit->blocks = malloc(sizeof(*unit->blocks) * unit->blocks_size);
+    unit->blocks = rtl_malloc(unit, sizeof(*unit->blocks) * unit->blocks_size);
     if (!unit->blocks) {
-        log_error(handle, "No memory for %d RTLBlocks", unit->blocks_size);
+        log_error(handle, "No memory for %u blocks", unit->blocks_size);
         goto fail;
     }
 
-    unit->regs = malloc(sizeof(*unit->regs) * unit->regs_size);
+    unit->regs = rtl_malloc(unit, sizeof(*unit->regs) * unit->regs_size);
     if (!unit->regs) {
-        log_error(handle, "No memory for %d RTLRegisters", unit->regs_size);
+        log_error(handle, "No memory for %u registers", unit->regs_size);
         goto fail;
     }
     memset(&unit->regs[0], 0, sizeof(*unit->regs));
 
     unit->alias_types =
-        malloc(sizeof(*unit->alias_types) * unit->aliases_size);
+        rtl_malloc(unit, sizeof(*unit->alias_types) * unit->aliases_size);
     if (!unit->alias_types) {
-        log_error(handle, "No memory for %d alias registers", unit->regs_size);
+        log_error(handle, "No memory for %u alias registers", unit->regs_size);
         goto fail;
     }
     unit->alias_types[0] = 0;
 
     unit->label_blockmap =
-        malloc(sizeof(*unit->label_blockmap) * unit->labels_size);
+        rtl_malloc(unit, sizeof(*unit->label_blockmap) * unit->labels_size);
     if (!unit->label_blockmap) {
-        log_error(handle, "No memory for %d labels", unit->labels_size);
+        log_error(handle, "No memory for %u labels", unit->labels_size);
         goto fail;
     }
     unit->label_blockmap[0] = -1;
@@ -779,12 +776,12 @@ RTLUnit *rtl_create_unit(binrec_t *handle)
     return unit;
 
   fail:
-    free(unit->insns);
-    free(unit->blocks);
-    free(unit->regs);
-    free(unit->alias_types);
-    free(unit->label_blockmap);
-    free(unit);
+    rtl_free(unit, unit->insns);
+    rtl_free(unit, unit->blocks);
+    rtl_free(unit, unit->regs);
+    rtl_free(unit, unit->alias_types);
+    rtl_free(unit, unit->label_blockmap);
+    rtl_free(unit, unit);
     return NULL;
 }
 
@@ -857,8 +854,8 @@ uint32_t rtl_alloc_register(RTLUnit *unit, RTLDataType type)
 
     if (UNLIKELY(unit->next_reg >= unit->regs_size)) {
         if (unit->regs_size >= REGS_LIMIT) {
-            log_error(unit->handle, "Too many registers in unit %p (limit %u)",
-                      unit, REGS_LIMIT);
+            log_error(unit->handle, "Too many registers in unit (limit %u)",
+                      REGS_LIMIT);
             return 0;
         }
         unsigned int new_regs_size;
@@ -868,10 +865,10 @@ uint32_t rtl_alloc_register(RTLUnit *unit, RTLDataType type)
             new_regs_size = unit->next_reg + REGS_EXPAND_SIZE;
         }
         RTLRegister * const new_regs =
-            realloc(unit->regs, sizeof(*unit->regs) * new_regs_size);
+            rtl_realloc(unit, unit->regs, sizeof(*unit->regs) * new_regs_size);
         if (UNLIKELY(!new_regs)) {
-            log_error(unit->handle, "No memory to expand unit %p to %d"
-                      " registers", unit, new_regs_size);
+            log_error(unit->handle, "No memory to expand unit to %u registers",
+                      new_regs_size);
             return 0;
         }
         unit->regs = new_regs;
@@ -907,8 +904,8 @@ uint32_t rtl_alloc_alias_register(RTLUnit *unit, RTLDataType type)
 
     if (UNLIKELY(unit->next_alias >= unit->aliases_size)) {
         if (unit->aliases_size >= ALIASES_LIMIT) {
-            log_error(unit->handle, "Too many alias registers in unit %p"
-                      " (limit %u)", unit, ALIASES_LIMIT);
+            log_error(unit->handle, "Too many alias registers in unit"
+                      " (limit %u)", ALIASES_LIMIT);
             return 0;
         }
         unsigned int new_aliases_size;
@@ -917,11 +914,12 @@ uint32_t rtl_alloc_alias_register(RTLUnit *unit, RTLDataType type)
         } else {
             new_aliases_size = unit->next_alias + ALIASES_EXPAND_SIZE;
         }
-        RTLDataType * const new_alias_types = realloc(
-            unit->alias_types, sizeof(*unit->alias_types) * new_aliases_size);
+        RTLDataType * const new_alias_types =
+            rtl_realloc(unit, unit->alias_types,
+                        sizeof(*unit->alias_types) * new_aliases_size);
         if (UNLIKELY(!new_alias_types)) {
-            log_error(unit->handle, "No memory to expand unit %p to %d"
-                      " alias registers", unit, new_aliases_size);
+            log_error(unit->handle, "No memory to expand unit to %u alias"
+                      " registers", new_aliases_size);
             return 0;
         }
         unit->alias_types = new_alias_types;
@@ -943,8 +941,8 @@ uint32_t rtl_alloc_label(RTLUnit *unit)
 
     if (UNLIKELY(unit->next_label >= unit->labels_size)) {
         if (unit->labels_size >= LABELS_LIMIT) {
-            log_error(unit->handle, "Too many labels in unit %p (limit %u)",
-                      unit, LABELS_LIMIT);
+            log_error(unit->handle, "Too many labels in unit (limit %u)",
+                      LABELS_LIMIT);
             return 0;
         }
         unsigned int new_labels_size;
@@ -954,11 +952,11 @@ uint32_t rtl_alloc_label(RTLUnit *unit)
             new_labels_size = unit->next_label + LABELS_EXPAND_SIZE;
         }
         int16_t * const new_label_blockmap =
-            realloc(unit->label_blockmap,
-                    sizeof(*unit->label_blockmap) * new_labels_size);
+            rtl_realloc(unit, unit->label_blockmap,
+                        sizeof(*unit->label_blockmap) * new_labels_size);
         if (UNLIKELY(!new_label_blockmap)) {
-            log_error(unit->handle, "No memory to expand unit %p to %d labels",
-                      unit, new_labels_size);
+            log_error(unit->handle, "No memory to expand unit to %u labels",
+                      new_labels_size);
             return 0;
         }
         unit->label_blockmap = new_label_blockmap;
@@ -1038,13 +1036,16 @@ bool rtl_optimize_unit(RTLUnit *unit, uint32_t flags)
 
 /*-----------------------------------------------------------------------*/
 
-char *rtl_disassemble_unit(const RTLUnit *unit, bool verbose)
+const char *rtl_disassemble_unit(RTLUnit *unit, bool verbose)
 {
     ASSERT(unit != NULL);
     ASSERT(unit->insns != NULL);
     ASSERT(unit->blocks != NULL);
     ASSERT(unit->regs != NULL);
     ASSERT(unit->label_blockmap != NULL);
+
+    rtl_free(unit, unit->disassembly);
+    unit->disassembly = NULL;
 
     char *buf = NULL;
     int buflen = 0;
@@ -1058,10 +1059,10 @@ char *rtl_disassemble_unit(const RTLUnit *unit, bool verbose)
          * the disassembly and block list. */
         if (buflen + text_len + 2 > bufsize) {
             const int newsize = buflen + text_len + 2 + 10000;
-            char *newbuf = realloc(buf, newsize);
+            char *newbuf = rtl_realloc(unit, buf, newsize);
             if (UNLIKELY(!newbuf)) {
                 log_error(unit->handle, "Out of memory disassembling unit");
-                free(buf);
+                rtl_free(unit, buf);
                 return NULL;
             }
             buf = newbuf;
@@ -1081,10 +1082,10 @@ char *rtl_disassemble_unit(const RTLUnit *unit, bool verbose)
         const int text_len = strlen(text);
         if (buflen + text_len + 1 > bufsize) {
             const int newsize = buflen + text_len + 1 + 10000;
-            char *newbuf = realloc(buf, newsize);
+            char *newbuf = rtl_realloc(unit, buf, newsize);
             if (UNLIKELY(!newbuf)) {
                 log_error(unit->handle, "Out of memory disassembling unit");
-                free(buf);
+                rtl_free(unit, buf);
                 return NULL;
             }
             buf = newbuf;
@@ -1094,6 +1095,7 @@ char *rtl_disassemble_unit(const RTLUnit *unit, bool verbose)
         ASSERT(buflen + 1 <= bufsize);
     }
 
+    unit->disassembly = buf;
     return buf;
 }
 
@@ -1102,12 +1104,13 @@ char *rtl_disassemble_unit(const RTLUnit *unit, bool verbose)
 void rtl_destroy_unit(RTLUnit *unit)
 {
     if (unit) {
-        free(unit->insns);
-        free(unit->blocks);
-        free(unit->regs);
-        free(unit->alias_types);
-        free(unit->label_blockmap);
-        free(unit);
+        rtl_free(unit, unit->insns);
+        rtl_free(unit, unit->blocks);
+        rtl_free(unit, unit->regs);
+        rtl_free(unit, unit->alias_types);
+        rtl_free(unit, unit->label_blockmap);
+        rtl_free(unit, unit->disassembly);
+        rtl_free(unit, unit);
     }
 }
 

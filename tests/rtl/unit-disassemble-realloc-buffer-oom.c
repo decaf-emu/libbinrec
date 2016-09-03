@@ -11,12 +11,16 @@
 #include "src/rtl-internal.h"
 #include "tests/common.h"
 #include "tests/log-capture.h"
+#include "tests/mem-wrappers.h"
 
 
 int main(void)
 {
     binrec_setup_t setup;
     memset(&setup, 0, sizeof(setup));
+    setup.malloc = mem_wrap_malloc;
+    setup.realloc = mem_wrap_realloc;
+    setup.free = mem_wrap_free;
     setup.log = log_capture;
     binrec_t *handle;
     EXPECT(handle = binrec_create_handle(&setup));
@@ -34,7 +38,19 @@ int main(void)
     EXPECT(rtl_finalize_unit(unit));
 
     const char *disassembly;
-    EXPECT(disassembly = rtl_disassemble_unit(unit, false));
+    for (int count = 0; ; count++) {
+        if (count >= 100) {
+            FAIL("Failed to create a unit after 100 tries");
+        }
+        mem_wrap_fail_after(count);
+        disassembly = rtl_disassemble_unit(unit, false);
+        if (disassembly) {
+            if (count == 0) {
+                FAIL("Disassembly did not fail on memory allocation failure");
+            }
+            break;
+        }
+    }
 
     const char *s = disassembly;
 

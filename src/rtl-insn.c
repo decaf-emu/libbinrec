@@ -631,16 +631,17 @@ static bool make_label(RTLUnit *unit, RTLInsn *insn, unsigned int dest,
     if ((uint32_t)unit->blocks[unit->cur_block].first_insn != unit->num_insns) {
         unit->blocks[unit->cur_block].last_insn = unit->num_insns - 1;
         if (UNLIKELY(!rtl_block_add(unit))) {
-            log_ice(unit->handle, "%u: Failed to start a new basic block",
+            log_ice(unit->handle, "Failed to start a new basic block at %u",
                     unit->num_insns);
             return false;
         }
         const uint32_t new_block = unit->num_blocks - 1;
-        if (UNLIKELY(!rtl_block_add_edge(unit, unit->cur_block, new_block))){
-            log_ice(unit->handle, "%u: Failed to add edge %u->%u",
-                    unit->num_insns, unit->cur_block, new_block);
-            return false;
-        }
+        /* The only ways rtl_block_add_edge() can fail is if the block
+         * already has two outgoing edges or the new block is full of
+         * incoming edges. We never add outgoing edges except when
+         * terminating a block, and the new block will have no incoming
+         * edges, so this call will always succeed. */
+        ASSERT(rtl_block_add_edge(unit, unit->cur_block, new_block));
         unit->cur_block = new_block;
         unit->blocks[unit->cur_block].first_insn = unit->num_insns;
     }
@@ -709,16 +710,13 @@ static bool make_goto_cond(RTLUnit *unit, RTLInsn *insn, unsigned int dest,
      * start a new basic block with an edge connecting from this one. */
     unit->blocks[unit->cur_block].last_insn = unit->num_insns;
     if (UNLIKELY(!rtl_block_add(unit))) {
-        log_ice(unit->handle, "%u: Failed to start a new basic block",
+        log_ice(unit->handle, "Failed to start a new basic block at %u",
                 unit->num_insns);
         return false;
     }
     const unsigned int new_block = unit->num_blocks - 1;
-    if (UNLIKELY(!rtl_block_add_edge(unit, unit->cur_block, new_block))) {
-        log_ice(unit->handle, "%u: Failed to add edge %u->%u",
-                unit->num_insns, unit->cur_block, new_block);
-        return false;
-    }
+    /* See note in make_label() for why this can never fail. */
+    ASSERT(rtl_block_add_edge(unit, unit->cur_block, new_block));
     unit->cur_block = new_block;
     unit->blocks[unit->cur_block].first_insn = unit->num_insns + 1;
 

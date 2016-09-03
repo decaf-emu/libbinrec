@@ -10,7 +10,9 @@
 #ifndef SRC_RTL_H
 #define SRC_RTL_H
 
-#include "src/common.h"
+#ifndef SRC_COMMON_H
+    #include "src/common.h"
+#endif
 
 /*
  * This header defines constants and structures for the RTL (register
@@ -347,22 +349,22 @@ extern bool rtl_optimize_unit(RTLUnit *unit, uint32_t flags);
 
 /**
  * rtl_disassemble_unit:  Return a string containing a disassembled version
- * of the RTL code in the given unit.  The returned string should be freed
- * with free() when no longer needed.
+ * of the RTL code in the given unit.  The returned string pointer remains
+ * valid until the next call to rtl_disassemble_unit() on the same unit, or
+ * until the unit is destroyed.
  *
  * [Parameters]
  *     unit: RTLUnit to disassemble.
  *     verbose: True to include a description of each source register after
- *         each instruction, false for instructions and basic blocks only.
+ *         each instruction, false to omit register descriptions.
  * [Return value]
- *     Newly allocated string containing the disassembly, or NULL on error.
+ *     String containing the disassembly, or NULL on error.
  */
 #define rtl_disassemble_unit INTERNAL(rtl_disassemble_unit)
-extern char *rtl_disassemble_unit(const RTLUnit *unit, bool verbose);
+extern const char *rtl_disassemble_unit(RTLUnit *unit, bool verbose);
 
 /**
- * rtl_destroy_unit:  Destroy the given unit, freeing any resources it
- * used.
+ * rtl_destroy_unit:  Destroy the given unit, freeing any resources it used.
  *
  * [Parameters]
  *     unit: RTLUnit to destroy (may be NULL).
@@ -370,6 +372,7 @@ extern char *rtl_disassemble_unit(const RTLUnit *unit, bool verbose);
 #define rtl_destroy_unit INTERNAL(rtl_destroy_unit)
 extern void rtl_destroy_unit(RTLUnit *unit);
 
+/*************************************************************************/
 /*************************************************************************/
 
 #endif  // RTL_H

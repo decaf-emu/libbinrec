@@ -38,9 +38,9 @@ int main(void)
     EXPECT_EQ(unit->alias_types[ALIASES_LIMIT - 1], RTLTYPE_INT32);
 
     char expected_log[100];
-    ASSERT(snprintf(expected_log, sizeof(expected_log),
-                    "[error] Too many alias registers in unit %p (limit %u)\n",
-                    unit, ALIASES_LIMIT));
+    snprintf(expected_log, sizeof(expected_log),
+             "[error] Too many alias registers in unit (limit %u)\n",
+             ALIASES_LIMIT);
     EXPECT_STREQ(get_log_messages(), expected_log);
 
     rtl_destroy_unit(unit);

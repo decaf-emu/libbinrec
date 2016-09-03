@@ -10,7 +10,10 @@
 #ifndef TESTS_LOG_CAPTURE_H
 #define TESTS_LOG_CAPTURE_H
 
-#include "include/binrec.h"
+#ifndef BINREC_H
+    #include "include/binrec.h"
+#endif
+#include <stdbool.h>
 
 /*************************************************************************/
 /*************************************************************************/
@@ -35,33 +38,37 @@ extern const char *get_log_messages(void);
  */
 extern void clear_log_messages(void);
 
+/**
+ * find_ice:  Look for the given text as an internal compiler error (ICE)
+ * in the given log message buffer.  Helper for the EXPECT_ICE macro.
+ *
+ * [Parameters]
+ *     log: Log message buffer returned from get_log_messages().
+ *     text: Text of the expected ICE, excluding the "Internal compiler
+ *         error:" and filename / line number header.
+ * [Return value]
+ *     True if the error was found, false if not.
+ */
+extern bool find_ice(const char *log, const char *text);
+
 /*-----------------------------------------------------------------------*/
 
 /**
  * EXPECT_ICE:  Check that the accumulated log message buffer contains an
  * internal compiler error with the given text, then clear the buffer.
+ * The passed-in string should not contain the "Internal compiler error:"
+ * header or a trailing newline.
  */
-#define EXPECT_ICE(text)  do {                                          \
-    const char * const _text = (text);                                  \
-    ASSERT(_text);                                                      \
-    const char * const _log = get_log_messages();                       \
-    if (!_log) {                                                        \
-        FAIL("Expected an error but none was detected");                \
-    }                                                                   \
-    const char *_ice = "[error] Internal compiler error:";              \
-    if (strncmp(_log, _ice, strlen(_ice)) != 0) {                       \
+#define EXPECT_ICE(text)  do {                          \
+    const char * const _text = (text);                  \
+    ASSERT(_text);                                      \
+    const char * const _log = get_log_messages();       \
+    if (!_log) {                                        \
+        FAIL("Expected an error but none was detected"); \
+    } else if (!find_ice(_log, _text)) {                \
         FAIL("Did not detect the expected error.  Log follows:\n%s", _log); \
-    }                                                                   \
-    const char *_colon = strstr(_log + strlen(_ice), ": ");             \
-    ASSERT(_colon);                                                     \
-    const char *_log_text = _colon + 2;                                 \
-    const int _text_len = strlen(_text);                                \
-    if (strncmp(_log_text, _text, _text_len) != 0                       \
-     || _log_text[_text_len] != '\n'                                    \
-     || _log_text[_text_len+1] != '\0') {                               \
-        FAIL("Did not detect the expected error.  Log follows:\n%s", _log); \
-    }                                                                   \
-    clear_log_messages();                                               \
+    }                                                   \
+    clear_log_messages();                               \
 } while (0)
 
 /*************************************************************************/

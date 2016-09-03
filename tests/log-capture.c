@@ -41,3 +41,30 @@ void clear_log_messages(void)
     free(log_messages);
     log_messages = NULL;
 }
+
+bool find_ice(const char *log, const char *text)
+{
+    ASSERT(log);
+    ASSERT(text);
+
+    while (*log) {
+        const char *ice = "[error] Internal compiler error: ";
+        if (strncmp(log, ice, strlen(ice)) == 0) {
+            const char *colon = strstr(log + strlen(ice), ": ");
+            ASSERT(colon);
+            const char *log_text = colon + 2;
+            const int text_len = strlen(text);
+            if (strncmp(log_text, text, text_len) == 0
+             && log_text[text_len] == '\n') {
+                return true;
+            }
+        }
+
+        log += strcspn(log, "\n");
+        if (*log) {
+            log++;
+        }
+    }
+
+    return false;
+}

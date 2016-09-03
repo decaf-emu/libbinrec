@@ -10,6 +10,10 @@
 #ifndef SRC_RTL_INTERNAL_H
 #define SRC_RTL_INTERNAL_H
 
+#ifndef SRC_RTL_H
+    #include "src/rtl.h"
+#endif
+
 /*************************************************************************/
 /************************* Configuration options *************************/
 /*************************************************************************/
@@ -270,6 +274,9 @@ struct RTLUnit {
 
     uint8_t finalized;          // Nonzero if unit has been finalized
 
+    char *disassembly;          // Last disassembly result, or NULL if none
+                                //    (saved so we can free it at destroy time)
+
     /* The following fields are used only by optimization routines: */
     uint8_t *block_seen;        // Array of "seen" flags for all blocks
                                 //    (used by rtlopt_drop_dead_blocks())
@@ -368,6 +375,121 @@ static inline bool rtl_insn_make(RTLUnit *unit, RTLInsn *insn,
     return (*makefunc_table[insn->opcode])(unit, insn,
                                            dest, src1, src2, other);
 }
+
+/*-------------------------- Memory management --------------------------*/
+
+/**
+ * rtl_malloc:  Allocate general-purpose memory.
+ *
+ * [Parameters]
+ *     unit: Associated RTLUnit.
+ *     size: Size of memory to allocate, in bytes.
+ * [Return value]
+ *     Allocated memory block, or NULL on error.
+ */
+static inline void *rtl_malloc(const RTLUnit *unit, size_t size)
+{
+    ASSERT(unit);
+    ASSERT(unit->handle);
+
+    if (unit->handle->setup.malloc) {
+        return (*unit->handle->setup.malloc)(
+            unit->handle->setup.userdata, size);
+    } else {
+        return malloc(size);
+    }
+}
+
+/**
+ * rtl_realloc:  Resize a general-purpose memory block.
+ *
+ * [Parameters]
+ *     unit: Associated RTLUnit.
+ *     ptr: Memory block to resize.
+ *     size: New size of memory block, in bytes.
+ * [Return value]
+ *     Resized memory block, or NULL on error.
+ */
+static inline void *rtl_realloc(const RTLUnit *unit, void *ptr, size_t size)
+{
+    ASSERT(unit);
+    ASSERT(unit->handle);
+
+    if (unit->handle->setup.realloc) {
+        return (*unit->handle->setup.realloc)(
+            unit->handle->setup.userdata, ptr, size);
+    } else {
+        return realloc(ptr, size);
+    }
+}
+
+/**
+ * rtl_free:  Free general-purpose memory.
+ *
+ * [Parameters]
+ *     unit: Associated RTLUnit.
+ *     ptr: Memory block to free.
+ */
+static inline void rtl_free(const RTLUnit *unit, void *ptr)
+{
+    ASSERT(unit);
+    ASSERT(unit->handle);
+
+    if (unit->handle->setup.free) {
+        (*unit->handle->setup.free)(unit->handle->setup.userdata, ptr);
+    } else {
+        free(ptr);
+    }
+}
+
+/**
+ * rtl_code_malloc:  Allocate an output code buffer.
+ *
+ * [Parameters]
+ *     unit: Associated RTLUnit.
+ *     size: Size of buffer, in bytes.  Must be nonzero.
+ *     alignment: Desired buffer alignment, in bytes.  Must be a power of 2.
+ * [Return value]
+ *     Allocated buffer, or NULL on error.
+ */
+#define rtl_code_malloc INTERNAL(rtl_code_malloc)
+extern void *rtl_code_malloc(const RTLUnit *unit, size_t size,
+                             size_t alignment);
+
+/**
+ * rtl_code_realloc:  Expand an output code buffer.
+ *
+ * [Parameters]
+ *     unit: Associated RTLUnit.
+ *     ptr: Output code buffer to expand.
+ *     old_size: Old size of buffer, in bytes.
+ *     new_size: New size of buffer, in bytes.  Must be nonzero.
+ *     alignment: Buffer alignment, in bytes.  Must be equal to the value
+ *         passed to rtl_code_malloc() when the block was allocated.
+ * [Return value]
+ *     Expanded buffer, or NULL on error.
+ */
+#define rtl_code_realloc INTERNAL(rtl_code_realloc)
+extern void *rtl_code_realloc(const RTLUnit *unit, void *ptr, size_t old_size,
+                              size_t new_size, size_t alignment);
+
+/**
+ * rtl_code_free:  Free an output code buffer.
+ *
+ * [Parameters]
+ *     unit: Associated RTLUnit.
+ *     ptr: Output code buffer to free.
+ */
+#define rtl_code_free INTERNAL(rtl_code_free)
+extern void rtl_code_free(const RTLUnit *unit, void *ptr);
+
+/*----------------------------------*/
+
+/* Ensure that code always calls one of the wrappers above rather than
+ * malloc()/realloc()/free() directly. */
+#define malloc  _invalid_call_to_malloc
+#define realloc _invalid_call_to_realloc
+#define free    _invalid_call_to_free
 
 /*---------------------------- Optimization -----------------------------*/
 

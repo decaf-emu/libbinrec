@@ -10,7 +10,9 @@
 #ifndef SRC_COMMON_H
 #define SRC_COMMON_H
 
-#include "include/binrec.h"
+#ifndef BINREC_H
+    #include "include/binrec.h"
+#endif
 
 #include <stdbool.h>
 #include <stdlib.h>

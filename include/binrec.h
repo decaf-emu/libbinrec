@@ -122,48 +122,95 @@ typedef struct binrec_setup_t {
     void *userdata;
 
     /**
-     * native_malloc:  Pointer to a function which allocates a block of
-     * memory for native code.  If NULL, malloc() will be used and
-     * alignment will be performed internally.
+     * malloc:  Pointer to a function which allocates memory, like malloc().
+     * If NULL, the system's malloc() will be used.
+     *
+     * Like standard malloc(), this function may return either NULL or a
+     * pointer to a zero-size memory block if passed a size of zero.
      *
      * [Parameters]
      *     userdata: User data pointer from setup structure.
      *     size: Size of block to allocate, in bytes.
+     * [Return value]
+     *     Pointer to allocated memory, or NULL on error or if size == 0.
+     */
+    void *(*malloc)(void *userdata, size_t size);
+
+    /**
+     * realloc:  Pointer to a function which resizes a block of allocated
+     * memory, like realloc().  If NULL, the system's realloc() will be used.
+     *
+     * Like standard realloc(), this function may return either NULL or a
+     * pointer to a zero-size memory block if passed a size of zero.
+     *
+     * [Parameters]
+     *     userdata: User data pointer from setup structure.
+     *     ptr: Block to resize, or NULL to allocate a new block.
+     *     size: New size of block, in bytes, or 0 to free the block.
+     * [Return value]
+     *     Pointer to allocated memory, or NULL on error or if size == 0.
+     */
+    void *(*realloc)(void *userdata, void *ptr, size_t size);
+
+    /**
+     * free:  Pointer to a function which frees a block of allocated
+     * memory, like free().  If NULL, the system's free() will be used.
+     *
+     * [Parameters]
+     *     userdata: User data pointer from setup structure.
+     *     ptr: Block to free (may be NULL).
+     * [Return value]
+     *     Pointer to allocated memory, or NULL on error.
+     */
+    void (*free)(void *userdata, void *ptr);
+
+    /**
+     * code_malloc:  Pointer to a function which allocates a block of
+     * memory for output machine code.  If NULL, the malloc() callback (or
+     * the system's malloc(), if that callback is also NULL) will be used
+     * and alignment will be performed internally.
+     *
+     * [Parameters]
+     *     userdata: User data pointer from setup structure.
+     *     size: Size of block to allocate, in bytes (guaranteed to be
+     *         nonzero).
      *     alignment: Required address alignment, in bytes (guaranteed to
      *         be a power of 2).
      * [Return value]
      *     Pointer to allocated memory, or NULL on error.
      */
-    void *(*native_malloc)(void *userdata, size_t size, size_t alignment);
+    void *(*code_malloc)(void *userdata, size_t size, size_t alignment);
 
     /**
-     * native_realloc:  Pointer to a function which resizes a block of
-     * memory allocated with the native_malloc function.  If NULL,
-     * realloc() will be used.
+     * code_realloc:  Pointer to a function which resizes a block of memory
+     * allocated with the code_malloc() callback.  If NULL, the realloc()
+     * callback (or the system's realloc(), if that callback is also NULL)
+     * will be used.
      *
      * [Parameters]
      *     userdata: User data pointer from setup structure.
      *     ptr: Pointer to block to resize (guaranteed to be non-NULL).
      *     old_size: Current size of block, in bytes.
-     *     new_size: New size of block, in bytes.
+     *     new_size: New size of block, in bytes (guaranteed to be nonzero).
      *     alignment: Required address alignment, in bytes (guaranteed to
      *         be equal to the value used for initial allocation).
      * [Return value]
      *     Pointer to allocated memory, or NULL on error.
      */
-    void *(*native_realloc)(void *userdata, void *ptr, size_t old_size,
-                            size_t new_size, size_t alignment);
+    void *(*code_realloc)(void *userdata, void *ptr, size_t old_size,
+                          size_t new_size, size_t alignment);
 
     /**
-     * native_free:  Pointer to a function which frees a block of memory
-     * allocated with the native_malloc function.  If NULL, free() will be
-     * used.
+     * code_free:  Pointer to a function which frees a block of memory
+     * allocated with the code_malloc() callback.  If NULL, the free()
+     * callback (or the system's free(), if that callback is also NULL)
+     * will be used.
      *
      * [Parameters]
      *     userdata: User data pointer from setup structure.
      *     ptr: Pointer to block to free (may be NULL).
      */
-    void (*native_free)(void *userdata, void *ptr);
+    void (*code_free)(void *userdata, void *ptr);
 
     /**
      * log:  Pointer to a function to log messages from the library.
@@ -536,16 +583,16 @@ extern void binrec_clear_readonly_regions(binrec_t *handle);
  * [Parameters]
  *     handle: Handle to use for translation.
  *     address: Address (in guest memory) of first instruction to translate.
- *     native_code_ret: Pointer to variable to receive a pointer to the
- *         translated (native) machine code.
- *     native_size_ret: Pointer to variable to receive the length of the
+ *     code_ret: Pointer to variable to receive a pointer to the
+ *         translated machine code.
+ *     size_ret: Pointer to variable to receive the length of the
  *         translated machine code, in bytes.
  * [Return value]
  *     True (nonzero) on success, false (zero) on error.
  */
 extern int binrec_translate(
-    binrec_t *handle, uint32_t address, binrec_entry_t *native_code_ret,
-    size_t *native_size_ret);
+    binrec_t *handle, uint32_t address, binrec_entry_t *code_ret,
+    size_t *size_ret);
 
 /*************************************************************************/
 /*************************************************************************/

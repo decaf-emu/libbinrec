@@ -11,12 +11,16 @@
 #include "src/rtl-internal.h"
 #include "tests/common.h"
 #include "tests/log-capture.h"
+#include "tests/mem-wrappers.h"
 
 
 int main(void)
 {
     binrec_setup_t setup;
     memset(&setup, 0, sizeof(setup));
+    setup.malloc = mem_wrap_malloc;
+    setup.realloc = mem_wrap_realloc;
+    setup.free = mem_wrap_free;
     setup.log = log_capture;
     binrec_t *handle;
     EXPECT(handle = binrec_create_handle(&setup));
@@ -24,19 +28,23 @@ int main(void)
     RTLUnit *unit;
     EXPECT(unit = rtl_create_unit(handle));
 
-    EXPECT_EQ(rtl_alloc_label(unit), 1);
-    EXPECT_EQ(unit->next_label, 2);
-    EXPECT_EQ(unit->label_blockmap[1], -1);
+    uint32_t label;
+    EXPECT(label = rtl_alloc_label(unit));
 
-    /* Check behavior when the label array needs to be expanded. */
-    unit->labels_size = 2;
-    EXPECT_EQ(rtl_alloc_label(unit), 2);
-    EXPECT_EQ(unit->labels_size, 2 + LABELS_EXPAND_SIZE);
-    EXPECT_EQ(unit->next_label, 3);
-    EXPECT_EQ(unit->label_blockmap[1], -1);
-    EXPECT_EQ(unit->label_blockmap[2], -1);
+    EXPECT(rtl_add_insn(unit, RTLOP_NOP, 0, 0, 0, 0));
+    EXPECT_EQ(unit->num_insns, 1);
+    EXPECT_EQ(unit->num_blocks, 1);
+    EXPECT(unit->have_block);
+    EXPECT_EQ(unit->cur_block, 0);
 
-    EXPECT_STREQ(get_log_messages(), NULL);
+    unit->blocks_size = 1;
+    mem_wrap_fail_after(0);
+    EXPECT_FALSE(rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, label));
+    EXPECT_ICE("Failed to start a new basic block at 1");
+    EXPECT_EQ(unit->num_insns, 1);
+    EXPECT_EQ(unit->num_blocks, 1);
+    EXPECT(unit->have_block);
+    EXPECT_EQ(unit->cur_block, 0);
 
     rtl_destroy_unit(unit);
     binrec_destroy_handle(handle);

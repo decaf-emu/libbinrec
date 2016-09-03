@@ -66,25 +66,23 @@ int main(void)
              expected_success ? "succeed" : "fail");
     }
 
-    char *disassembly;
+    const char *disassembly;
     if (expected_success) {
         EXPECT(disassembly = rtl_disassemble_unit(unit, false));
     } else {
-        ASSERT(disassembly = malloc(1));
-        *disassembly = '\0';
+        disassembly = "";
     }
 
     char *output;
     const char *log_messages = get_log_messages();
-    if (log_messages) {
-        const int output_size = strlen(log_messages) + strlen(disassembly) + 1;
-        ASSERT(output = malloc(output_size));
-        ASSERT(snprintf(output, output_size, "%s%s", log_messages, disassembly)
-               == output_size - 1);
-        free(disassembly);
-    } else {
-        output = disassembly;
+    if (!log_messages) {
+        log_messages = "";
     }
+
+    const int output_size = strlen(log_messages) + strlen(disassembly) + 1;
+    ASSERT(output = malloc(output_size));
+    ASSERT(snprintf(output, output_size, "%s%s", log_messages, disassembly)
+           == output_size - 1);
     EXPECT_STREQ(output, expected);
 
     free(output);

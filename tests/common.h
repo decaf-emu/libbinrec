@@ -10,6 +10,12 @@
 #ifndef TESTS_COMMON_H
 #define TESTS_COMMON_H
 
+/* Disable malloc() suppression from rtl-internal.h, in case it was
+ * included. */
+#undef malloc
+#undef realloc
+#undef free
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>

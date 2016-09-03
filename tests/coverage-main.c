@@ -13,6 +13,7 @@
 #include <string.h>
 #include "include/binrec.h"
 #include "tests/log-capture.h"
+#include "tests/mem-wrappers.h"
 
 #define TEST(func)  extern int func(void);
 #include "tests/coverage-tests.h"
@@ -37,6 +38,7 @@ int main(int argc, char **argv)
             printf("%s\n", tests[i].name);
         }
         clear_log_messages();
+        mem_wrap_cancel_fail();
         const int result = (*tests[i].f)();
         if (result != EXIT_SUCCESS) {
             printf("FAILED: %s\n", tests[i].name);

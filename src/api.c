@@ -16,102 +16,7 @@
 #include <string.h>
 
 /*************************************************************************/
-/*********************** Default memory allocator ************************/
-/*************************************************************************/
-
-static void *default_native_malloc(
-    UNUSED void *userdata, size_t size, size_t alignment)
-{
-    ASSERT(alignment > 0);
-    ASSERT((alignment & (alignment - 1)) == 0);  // Ensure it's a power of 2.
-
-    if (alignment < sizeof(void *)) {
-        alignment = sizeof(void *);
-    }
-
-    /* We store the actual pointer returned by malloc() immediately before
-     * the aligned block, so we can pass it to realloc() or free() later. */
-    size += sizeof(void *);
-
-    if (alignment <= sizeof(void *)) {
-        /* malloc() guarantees at least pointer-size alignment, so we don't
-         * have to do anything special. */
-        void **base = malloc(size);
-        if (!base) {
-            return NULL;
-        }
-        *base = base;
-        return &base[1];
-    } else {
-        /* We need to align the buffer manually.  We use "char *" here for
-         * convenience, since the C standard guarantees that sizeof(char)
-         * is 1. */
-        char *base = malloc(size + (alignment - 1));
-        if (!base) {
-            return NULL;
-        }
-        /* This alignment operation will always leave at least one pointer's
-         * worth of space before the aligned address.  If malloc() returned
-         * an address with the correct alignment, we add one alignment unit
-         * (which here is greater than the size of a pointer) to the base
-         * address; otherwise, since malloc() returns an address aligned at
-         * least to the size of a pointer, there must be at least one
-         * pointer's difference between the base address and the next
-         * aligned address. */
-        char *ptr = base + (alignment - ((uintptr_t)base % alignment));
-        ((void **)ptr)[-1] = base;
-        return ptr;
-    }
-}
-
-/*-----------------------------------------------------------------------*/
-
-static void *default_native_realloc(
-    UNUSED void *userdata, void *ptr, size_t old_size, size_t new_size,
-    size_t alignment)
-{
-    ASSERT(ptr);
-    ASSERT(alignment > 0);
-    ASSERT((alignment & (alignment - 1)) == 0);  // Ensure it's a power of 2.
-
-    if (alignment < sizeof(void *)) {
-        alignment = sizeof(void *);
-    }
-
-    void *base = ((void **)ptr)[-1];
-    new_size += sizeof(void *);
-    if (alignment <= sizeof(void *)) {
-        void **new_base = realloc(base, new_size);
-        if (!new_base) {
-            return NULL;
-        }
-        *new_base = new_base;
-        return &new_base[1];
-    } else {
-        char *new_base = realloc(base, new_size + (alignment - 1));
-        char *new_ptr =
-            new_base + (alignment - ((uintptr_t)new_base % alignment));
-        const size_t new_offset = new_ptr - new_base;
-        const size_t old_offset = (uintptr_t)ptr - (uintptr_t)base;
-        if (new_offset != old_offset) {
-            /* The alignment changed, so we have to move the data. */
-            const size_t move_size = min(old_size, new_size);
-            memmove(new_ptr, new_base + old_offset, move_size);
-        }
-        ((void **)new_ptr)[-1] = new_base;
-        return new_ptr;
-    }
-}
-
-/*-----------------------------------------------------------------------*/
-
-static void default_native_free(UNUSED void *userdata, void *ptr)
-{
-    free(((void **)ptr)[-1]);
-}
-
-/*************************************************************************/
-/************************ Other helper functions *************************/
+/*************************** Helper functions ****************************/
 /*************************************************************************/
 
 /**
@@ -179,23 +84,44 @@ const char *binrec_version(void)
 
 binrec_t *binrec_create_handle(const binrec_setup_t *setup)
 {
-    binrec_t *handle = calloc(1, sizeof(*handle));
-    if (!handle) {
+    ASSERT(setup);
+
+    binrec_t *handle;
+    if (setup->malloc) {
+        handle = (*setup->malloc)(setup->userdata, sizeof(*handle));
+    } else {
+        handle = malloc(sizeof(*handle));
+    }
+    if (UNLIKELY(!handle)) {
         return NULL;
     }
 
+    memset(handle, 0, sizeof(*handle));
     handle->setup = *setup;
-    const int have_malloc = (setup->native_malloc != NULL);
-    const int have_realloc = (setup->native_realloc != NULL);
-    const int have_free = (setup->native_free != NULL);
-    if (have_malloc + have_realloc + have_free != 3) {
-        if (have_malloc + have_realloc + have_free > 0) {
-            log_warning(handle, "Some but not all memory allocation functions"
-                        " were defined.  Using default allocator instead.");
-        }
-        handle->setup.native_malloc = default_native_malloc;
-        handle->setup.native_realloc = default_native_realloc;
-        handle->setup.native_free = default_native_free;
+
+    const int have_malloc = (setup->malloc != NULL);
+    const int have_realloc = (setup->realloc != NULL);
+    const int have_free = (setup->free != NULL);
+    if (have_malloc + have_realloc + have_free != 3
+     && have_malloc + have_realloc + have_free > 0) {
+        log_warning(handle, "Some but not all memory allocation functions"
+                    " were defined.  Using system allocator instead.");
+        handle->setup.malloc = NULL;
+        handle->setup.realloc = NULL;
+        handle->setup.free = NULL;
+    }
+
+    const int have_code_malloc = (setup->code_malloc != NULL);
+    const int have_code_realloc = (setup->code_realloc != NULL);
+    const int have_code_free = (setup->code_free != NULL);
+    if (have_code_malloc + have_code_realloc + have_code_free != 3
+     && have_code_malloc + have_code_realloc + have_code_free > 0) {
+        log_warning(handle, "Some but not all output code memory allocation"
+                    " functions were defined.  Using default allocator"
+                    " instead.");
+        handle->setup.code_malloc = NULL;
+        handle->setup.code_realloc = NULL;
+        handle->setup.code_free = NULL;
     }
 
     handle->code_range_end = -1;

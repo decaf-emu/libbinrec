@@ -32,8 +32,8 @@ bool rtl_block_add(RTLUnit *unit)
 
     if (UNLIKELY(unit->num_blocks >= unit->blocks_size)) {
         int new_blocks_size = unit->num_blocks + BLOCKS_EXPAND_SIZE;
-        RTLBlock *new_blocks = realloc(unit->blocks,
-                                     sizeof(*unit->blocks) * new_blocks_size);
+        RTLBlock *new_blocks = rtl_realloc(
+            unit, unit->blocks, sizeof(*unit->blocks) * new_blocks_size);
         if (UNLIKELY(!new_blocks)) {
             log_error(unit->handle, "No memory to expand unit to %d blocks",
                       new_blocks_size);
@@ -88,7 +88,8 @@ bool rtl_block_add_edge(RTLUnit *unit, int from_index, int to_index)
         log_ice(unit->handle, "Too many exits from block %u", from_index);
         return false;
     }
-    unit->blocks[from_index].exits[i] = to_index;
+    const int exit_index = i;
+    unit->blocks[from_index].exits[exit_index] = to_index;
 
     /* If we overflow the entry list, add a dummy block to take some of the
      * entries out. */
@@ -101,6 +102,8 @@ bool rtl_block_add_edge(RTLUnit *unit, int from_index, int to_index)
         /* No room in the entry list, so we need to create a dummy block. */
         if (UNLIKELY(!rtl_block_add(unit))) {
             log_ice(unit->handle, "Failed to add dummy unit");
+            /* Careful not to leave a dangling edge! */
+            unit->blocks[from_index].exits[exit_index] = -1;
             return false;
         }
         const int dummy_block = unit->num_blocks - 1;

@@ -11,12 +11,16 @@
 #include "src/rtl-internal.h"
 #include "tests/common.h"
 #include "tests/log-capture.h"
+#include "tests/mem-wrappers.h"
 
 
 int main(void)
 {
     binrec_setup_t setup;
     memset(&setup, 0, sizeof(setup));
+    setup.malloc = mem_wrap_malloc;
+    setup.realloc = mem_wrap_realloc;
+    setup.free = mem_wrap_free;
     setup.log = log_capture;
     binrec_t *handle;
     EXPECT(handle = binrec_create_handle(&setup));
@@ -30,19 +34,20 @@ int main(void)
     EXPECT_EQ(unit->regs[1].source, RTLREG_UNDEFINED);
     EXPECT_FALSE(unit->regs[1].live);
 
-    /* Check behavior when the register array needs to be expanded. */
     unit->regs_size = 2;
-    EXPECT_EQ(rtl_alloc_register(unit, RTLTYPE_ADDRESS), 2);
-    EXPECT_EQ(unit->regs_size, 2 + REGS_EXPAND_SIZE);
-    EXPECT_EQ(unit->next_reg, 3);
+    mem_wrap_fail_after(0);
+    EXPECT_FALSE(rtl_alloc_register(unit, RTLTYPE_ADDRESS));
+    EXPECT_EQ(unit->regs_size, 2);
+    EXPECT_EQ(unit->next_reg, 2);
     EXPECT_EQ(unit->regs[1].type, RTLTYPE_INT32);
     EXPECT_EQ(unit->regs[1].source, RTLREG_UNDEFINED);
     EXPECT_FALSE(unit->regs[1].live);
-    EXPECT_EQ(unit->regs[2].type, RTLTYPE_ADDRESS);
-    EXPECT_EQ(unit->regs[2].source, RTLREG_UNDEFINED);
-    EXPECT_FALSE(unit->regs[2].live);
 
-    EXPECT_STREQ(get_log_messages(), NULL);
+    char expected_log[100];
+    snprintf(expected_log, sizeof(expected_log),
+             "[error] No memory to expand unit to %u registers\n",
+             2 + REGS_EXPAND_SIZE);
+    EXPECT_STREQ(get_log_messages(), expected_log);
 
     rtl_destroy_unit(unit);
     binrec_destroy_handle(handle);

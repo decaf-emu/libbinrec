@@ -11,32 +11,39 @@
 #include "src/rtl-internal.h"
 #include "tests/common.h"
 #include "tests/log-capture.h"
+#include "tests/mem-wrappers.h"
 
 
 int main(void)
 {
     binrec_setup_t setup;
     memset(&setup, 0, sizeof(setup));
+    setup.malloc = mem_wrap_malloc;
+    setup.realloc = mem_wrap_realloc;
+    setup.free = mem_wrap_free;
     setup.log = log_capture;
     binrec_t *handle;
     EXPECT(handle = binrec_create_handle(&setup));
 
     RTLUnit *unit;
     EXPECT(unit = rtl_create_unit(handle));
+    EXPECT_EQ(unit->num_blocks, 0);
 
-    EXPECT_EQ(rtl_alloc_label(unit), 1);
-    EXPECT_EQ(unit->next_label, 2);
-    EXPECT_EQ(unit->label_blockmap[1], -1);
+    EXPECT(rtl_block_add(unit));
+    EXPECT_EQ(unit->num_blocks, 1);
+    RTLBlock *blocks = unit->blocks;
 
-    /* Check behavior when the label array needs to be expanded. */
-    unit->labels_size = 2;
-    EXPECT_EQ(rtl_alloc_label(unit), 2);
-    EXPECT_EQ(unit->labels_size, 2 + LABELS_EXPAND_SIZE);
-    EXPECT_EQ(unit->next_label, 3);
-    EXPECT_EQ(unit->label_blockmap[1], -1);
-    EXPECT_EQ(unit->label_blockmap[2], -1);
+    unit->blocks_size = 1;
+    mem_wrap_fail_after(0);
+    EXPECT_FALSE(rtl_block_add(unit));
+    EXPECT_PTREQ(unit->blocks, blocks);
+    EXPECT_EQ(unit->num_blocks, 1);
 
-    EXPECT_STREQ(get_log_messages(), NULL);
+    char expected_log[100];
+    snprintf(expected_log, sizeof(expected_log),
+             "[error] No memory to expand unit to %u blocks\n",
+             1 + BLOCKS_EXPAND_SIZE);
+    EXPECT_STREQ(get_log_messages(), expected_log);
 
     rtl_destroy_unit(unit);
     binrec_destroy_handle(handle);

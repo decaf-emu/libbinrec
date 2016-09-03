@@ -416,11 +416,16 @@ $(STATIC_LIB): $(LIBRARY_OBJECTS)
 
 #--------------------------- Test build rules ----------------------------#
 
-$(TEST_BINS) : %: %.o tests/common.o tests/log-capture.o $(STATIC_LIB)
+TEST_UTILITY_OBJECTS = \
+    tests/common.o \
+    tests/log-capture.o \
+    tests/mem-wrappers.o
+
+$(TEST_BINS) : %: %.o $(TEST_UTILITY_OBJECTS) $(STATIC_LIB)
 	$(ECHO) 'Linking $@'
 	$(Q)$(CC) $(LDFLAGS) -o '$@' $^ $(LIBS)
 
-tests/coverage: tests/coverage-main.o tests/common.o tests/log-capture.o $(LIBRARY_OBJECTS:%.o=%_cov.o) $(TEST_SOURCES:%.c=%_cov.o)
+tests/coverage: tests/coverage-main.o $(TEST_UTILITY_OBJECTS:%.o=%_cov.o) $(LIBRARY_OBJECTS:%.o=%_cov.o) $(TEST_SOURCES:%.c=%_cov.o)
 	$(ECHO) 'Linking $@'
 	$(Q)$(CC) $(ALL_CFLAGS) $(LDFLAGS) -o '$@' $^ $(LIBS) --coverage
 

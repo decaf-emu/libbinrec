@@ -41,9 +41,9 @@ int main(void)
     EXPECT_FALSE(unit->regs[REGS_LIMIT - 1].live);
 
     char expected_log[100];
-    ASSERT(snprintf(expected_log, sizeof(expected_log),
-                    "[error] Too many registers in unit %p (limit %u)\n",
-                    unit, REGS_LIMIT));
+    snprintf(expected_log, sizeof(expected_log),
+             "[error] Too many registers in unit (limit %u)\n",
+             REGS_LIMIT);
     EXPECT_STREQ(get_log_messages(), expected_log);
 
     rtl_destroy_unit(unit);

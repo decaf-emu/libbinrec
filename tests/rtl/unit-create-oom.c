@@ -11,32 +11,35 @@
 #include "src/rtl-internal.h"
 #include "tests/common.h"
 #include "tests/log-capture.h"
+#include "tests/mem-wrappers.h"
 
 
 int main(void)
 {
     binrec_setup_t setup;
     memset(&setup, 0, sizeof(setup));
+    setup.malloc = mem_wrap_malloc;
+    setup.realloc = mem_wrap_realloc;
+    setup.free = mem_wrap_free;
     setup.log = log_capture;
     binrec_t *handle;
     EXPECT(handle = binrec_create_handle(&setup));
 
     RTLUnit *unit;
-    EXPECT(unit = rtl_create_unit(handle));
-
-    EXPECT_EQ(rtl_alloc_label(unit), 1);
-    EXPECT_EQ(unit->next_label, 2);
-    EXPECT_EQ(unit->label_blockmap[1], -1);
-
-    /* Check behavior when the label array needs to be expanded. */
-    unit->labels_size = 2;
-    EXPECT_EQ(rtl_alloc_label(unit), 2);
-    EXPECT_EQ(unit->labels_size, 2 + LABELS_EXPAND_SIZE);
-    EXPECT_EQ(unit->next_label, 3);
-    EXPECT_EQ(unit->label_blockmap[1], -1);
-    EXPECT_EQ(unit->label_blockmap[2], -1);
-
-    EXPECT_STREQ(get_log_messages(), NULL);
+    for (int count = 0; ; count++) {
+        if (count >= 100) {
+            FAIL("Failed to create a unit after 100 tries");
+        }
+        mem_wrap_fail_after(count);
+        unit = rtl_create_unit(handle);
+        if (unit) {
+            if (count == 0) {
+                FAIL("Unit creation did not fail on memory allocation"
+                     " failure");
+            }
+            break;
+        }
+    }
 
     rtl_destroy_unit(unit);
     binrec_destroy_handle(handle);
