@@ -177,21 +177,28 @@ static void update_used_changed(GuestPPCBlockInfo *block, const uint32_t insn)
         mark_cr_changed(block, get_crfD(insn));
         break;
 
-      case OPCD_MULLI:
+      case OPCD_ADDIC_:
+        mark_cr_changed(block, 0);
+        /* fall through */
       case OPCD_SUBFIC:
       case OPCD_ADDIC:
-      case OPCD_ADDIC_:
+        mark_xer_used(block);
+        mark_xer_changed(block);
+        /* fall through */
+      case OPCD_MULLI:
       case OPCD_ADDIS:
         mark_gpr_used(block, get_rA(insn));
         mark_gpr_changed(block, get_rD(insn));
         break;
 
+      case OPCD_ANDI_:
+      case OPCD_ANDIS_:
+        mark_cr_changed(block, 0);
+        /* fall through */
       case OPCD_ORI:
       case OPCD_ORIS:
       case OPCD_XORI:
       case OPCD_XORIS:
-      case OPCD_ANDI_:
-      case OPCD_ANDIS_:
         mark_gpr_used(block, get_rS(insn));
         mark_gpr_changed(block, get_rA(insn));
         break;
@@ -891,8 +898,10 @@ bool guest_ppc_scan(GuestPPCContext *ctx)
          * this is the first instruction scanned). */
         if (!block) {
             /* If this opcode is invalid, we may be passing over data for
-             * a jump table, so don't treat this as part of a block. */
-            if (UNLIKELY(is_invalid)) {
+             * a jump table, so don't treat this as part of a block.  But
+             * always translate invalid instructions at the beginning of
+             * a block. */
+            if (address > start && UNLIKELY(is_invalid)) {
                 continue;
             }
             /* Otherwise, start a new block at this address.  Do this even

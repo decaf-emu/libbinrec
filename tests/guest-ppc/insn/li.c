@@ -7,21 +7,7 @@
  * NO WARRANTY is provided with this software.
  */
 
-#include "include/binrec.h"
-#include <stdbool.h>
-
-static const binrec_setup_t setup = {
-    .state_offset_gpr = 0x100,
-    .state_offset_fpr = 0x140,
-    .state_offset_gqr = 0x1C0,
-    .state_offset_lr = 0x1E0,
-    .state_offset_ctr = 0x1E4,
-    .state_offset_xer = 0x1E8,
-    .state_offset_fpscr = 0x1EC,
-    .state_offset_reserve_flag = 0x1F0,
-    .state_offset_reserve_address = 0x1F4,
-    .state_offset_nia = 0x1F8,
-};
+#include "tests/guest-ppc/insn/common.h"
 
 static const uint8_t input[] = {
     0x38, 0x60, 0x12, 0x34,  // li r3,4660
@@ -46,7 +32,7 @@ static const char expected[] =
     "   11: GET_ALIAS  r6, a3\n"
     "   12: STORE_I32  272(r1), r6\n"
     "   13: GET_ALIAS  r7, a1\n"
-    "   14: STORE_I32  504(r1), r7\n"
+    "   14: STORE_I32  956(r1), r7\n"
     "   15: RETURN     r1\n"
     "\n"
     "Block    0: <none> --> [0,0] --> 1\n"
