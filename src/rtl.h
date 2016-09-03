@@ -33,15 +33,15 @@
  * Note that input machine instructions do not always map directly to RTL
  * instructions.  As a somewhat extreme example, the "movsb" instruction
  * in the Intel x86 architecture might translate to:
- *     LOAD_W   reg1, (state_reg, #esi_offset)
- *     LOAD_BU  reg2, (reg1)
- *     LOAD_IMM reg3, #1
- *     ADD      reg4, reg1, reg3
- *     STORE_W  (state_reg, #esi_offset), reg4
- *     LOAD_W   reg5, (state_reg, #edi_offset)
- *     STORE_B  (reg5), reg2
- *     ADD      reg6, reg1, reg5
- *     STORE_W  (state_reg, #edi_offset), reg6
+ *     LOAD_I32  reg1, (state_reg, #esi_offset)
+ *     LOAD_U8   reg2, (reg1)
+ *     LOAD_IMM  reg3, #1
+ *     ADD       reg4, reg1, reg3
+ *     STORE_I32 (state_reg, #esi_offset), reg4
+ *     LOAD_I32  reg5, (state_reg, #edi_offset)
+ *     STORE_I8  (reg5), reg2
+ *     ADD       reg6, reg1, reg5
+ *     STORE_I32 (state_reg, #edi_offset), reg6
  *
  * The RTL used here deviates slightly from a "pure" RTL in that it allows
  * certain operations involving immediate values (notably memory access
