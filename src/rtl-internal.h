@@ -303,6 +303,7 @@ struct RTLUnit {
  * [Return value]
  *     True on success, false on error.
  */
+#define rtl_block_add INTERNAL(rtl_block_add)
 extern bool rtl_block_add(RTLUnit *unit);
 
 /**
@@ -315,6 +316,7 @@ extern bool rtl_block_add(RTLUnit *unit);
  * [Return value]
  *     True on success, false on error.
  */
+#define rtl_block_add_edge INTERNAL(rtl_block_add_edge)
 extern bool rtl_block_add_edge(RTLUnit *unit, int from_index, int to_index);
 
 /**
@@ -326,12 +328,14 @@ extern bool rtl_block_add_edge(RTLUnit *unit, int from_index, int to_index);
  *     exit_index: Index of edge to remove in the dominating basic block's
  *         exit list (blocks[from_index].exits[]).
  */
+#define rtl_block_remove_edge INTERNAL(rtl_block_remove_edge)
 extern void rtl_block_remove_edge(RTLUnit *unit, int from_index,
                                   int exit_index);
 
 /*------------------------ Instruction encoding -------------------------*/
 
 /* Internal table used by rtl_insn_make(). */
+#define makefunc_table INTERNAL(makefunc_table)
 extern bool (* const makefunc_table[])(RTLUnit *, RTLInsn *, unsigned int,
                                        uint32_t, uint32_t, uint64_t);
 
@@ -379,6 +383,7 @@ static inline bool rtl_insn_make(RTLUnit *unit, RTLInsn *insn,
  * [Return value]
  *     Nonzero on success, zero on error
  */
+#define rtl_opt_fold_constants INTERNAL(rtl_opt_fold_constants)
 extern int rtl_opt_fold_constants(RTLUnit *unit);
 
 /**
@@ -395,6 +400,7 @@ extern int rtl_opt_fold_constants(RTLUnit *unit);
  * [Return value]
  *     Nonzero on success, zero on error
  */
+#define rtl_opt_decondition INTERNAL(rtl_opt_decondition)
 extern int rtl_opt_decondition(RTLUnit *unit);
 
 /**
@@ -408,6 +414,7 @@ extern int rtl_opt_decondition(RTLUnit *unit);
  * [Return value]
  *     Nonzero on success, zero on error
  */
+#define rtl_opt_drop_dead_blocks INTERNAL(rtl_opt_drop_dead_blocks)
 extern int rtl_opt_drop_dead_blocks(RTLUnit *unit);
 
 /**
@@ -420,6 +427,7 @@ extern int rtl_opt_drop_dead_blocks(RTLUnit *unit);
  * [Return value]
  *     Nonzero on success, zero on error
  */
+#define rtl_opt_drop_dead_branches INTERNAL(rtl_opt_drop_dead_branches)
 extern int rtl_opt_drop_dead_branches(RTLUnit *unit);
 
 /*------------------------ Register information -------------------------*/
