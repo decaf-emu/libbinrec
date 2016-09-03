@@ -29,7 +29,7 @@
  * which increases overhead during translation.
  *
  * The default value of 12 gives a page size of 4k (0x1000 bytes) and
- * requires 
+ * requires 256k of memory per handle.
  */
 #ifndef READONLY_PAGE_BITS
     #define READONLY_PAGE_BITS  12
@@ -39,6 +39,9 @@
  * MAX_PARTIAL_READONLY:  Sets the maximum number of partially read-only
  * pages to track.  Each entry requires 1 bit of memory per byte in the
  * page size (plus 4 bytes for the page's base address).
+ *
+ * The default value of 64, if used with the default READONLY_PAGE_BITS
+ * value of 12, requires approximately 32k of memory per handle.
  */
 #ifndef MAX_PARTIAL_READONLY
     #define MAX_PARTIAL_READONLY  64
