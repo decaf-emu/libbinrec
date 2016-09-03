@@ -65,6 +65,7 @@ int main(void)
         rtl_code_free(unit, ptr);
     }
 
+    rtl_destroy_unit(unit);
     binrec_destroy_handle(handle);
     return EXIT_SUCCESS;
 }

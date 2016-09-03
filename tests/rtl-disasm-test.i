@@ -86,6 +86,7 @@ int main(void)
     EXPECT_STREQ(output, expected);
 
     free(output);
+    rtl_destroy_unit(unit);
     binrec_destroy_handle(handle);
     free(aligned_input);
     return EXIT_SUCCESS;

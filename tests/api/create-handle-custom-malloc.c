@@ -30,7 +30,6 @@ int main(void)
     binrec_setup_t setup;
     memset(&setup, 0, sizeof(setup));
     binrec_t *handle;
-    EXPECT(handle = binrec_create_handle(&setup));
 
     /* Check that the default handlers don't overwrite a set of supplied
      * handlers.  We don't make use of forced failure here, but the memory

@@ -39,5 +39,6 @@ int main(void)
                           "Block    0: <none> --> [0,0] --> <none>\n"));
 
     rtl_destroy_unit(unit);
+    binrec_destroy_handle(handle);
     return EXIT_SUCCESS;
 }
