@@ -368,6 +368,7 @@ bool guest_ppc_translate(binrec_t *handle, uint32_t address, RTLUnit *unit)
         goto error;
     }
 
+    free(ctx.blocks);
     return 1;
 
   error:
