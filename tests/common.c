@@ -135,10 +135,14 @@ void _diff_strings(FILE *f, const char *from, const char *to)
             int print_count;
             if (!in_diff) {
                 fprintf(f, "...\n");
-                print_count = min(from_line - 1, 3);
+                print_count = min(from_line, 3);
             } else {
                 print_count = match_count - 3;
             }
+
+            memmove(&from_bol[1], &from_bol[0],
+                    sizeof(*from_bol) * (lenof(from_bol) - 1));
+            from_bol[0] = from;
             for (int i = print_count; i >= 1; i--) {
                 ASSERT(from_bol[i-1][-1] == '\n');
                 const int line_len = from_bol[i-1] - from_bol[i] - 1;
