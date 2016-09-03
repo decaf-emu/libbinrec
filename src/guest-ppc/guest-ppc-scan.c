@@ -66,9 +66,8 @@ static GuestPPCBlockInfo *get_block(GuestPPCContext *ctx, uint32_t address)
     GuestPPCBlockInfo *block = &ctx->blocks[low];
     memmove(block+1, block, sizeof(*ctx->blocks) * (ctx->num_blocks - low));
     ctx->num_blocks++;
+    memset(block, 0, sizeof(*block));
     block->start = address;
-    block->len = 0;
-    block->label = 0;
     return block;
 }
 
