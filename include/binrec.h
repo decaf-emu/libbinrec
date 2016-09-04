@@ -592,7 +592,7 @@ extern void binrec_clear_readonly_regions(binrec_t *handle);
  */
 extern int binrec_translate(
     binrec_t *handle, uint32_t address, binrec_entry_t *code_ret,
-    size_t *size_ret);
+    long *size_ret);
 
 /*************************************************************************/
 /*************************************************************************/

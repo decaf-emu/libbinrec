@@ -252,7 +252,7 @@ void binrec_clear_readonly_regions(binrec_t *handle)
 
 int binrec_translate(
     binrec_t *handle, uint32_t address, binrec_entry_t *native_code_ret,
-    size_t *native_size_ret)
+    long *native_size_ret)
 {
     ASSERT(handle);
 
