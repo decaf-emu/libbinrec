@@ -210,9 +210,7 @@
 
 struct binrec_t {
 
-    /* Handle configuration, as passed to binrec_create().  If the memory
-     * allocation functions were specified as NULL, they are filled in here
-     * with default functions. */
+    /* Handle configuration, as passed to binrec_create(). */
     binrec_setup_t setup;
 
     /* Valid address range (inclusive) for code translation. */
