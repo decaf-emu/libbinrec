@@ -98,6 +98,10 @@ binrec_t *binrec_create_handle(const binrec_setup_t *setup)
         handle = malloc(sizeof(*handle));
     }
     if (UNLIKELY(!handle)) {
+        if (setup->log) {
+            (*setup->log)(setup->userdata, BINREC_LOGLEVEL_ERROR,
+                          "No memory for handle");
+        }
         return NULL;
     }
 

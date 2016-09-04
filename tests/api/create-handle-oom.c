@@ -10,6 +10,7 @@
 #include "include/binrec.h"
 #include "src/common.h"
 #include "tests/common.h"
+#include "tests/log-capture.h"
 #include "tests/mem-wrappers.h"
 
 
@@ -20,9 +21,11 @@ int main(void)
     setup.malloc = mem_wrap_malloc;
     setup.realloc = mem_wrap_realloc;
     setup.free = mem_wrap_free;
+    setup.log = log_capture;
 
     mem_wrap_fail_after(0);
     EXPECT_FALSE(binrec_create_handle(&setup));
+    EXPECT_STREQ(get_log_messages(), "[error] No memory for handle\n");
 
     return EXIT_SUCCESS;
 }
