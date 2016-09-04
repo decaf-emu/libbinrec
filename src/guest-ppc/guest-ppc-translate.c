@@ -368,11 +368,11 @@ bool guest_ppc_translate(binrec_t *handle, uint32_t address, RTLUnit *unit)
     }
 
     binrec_free(ctx.handle, ctx.blocks);
-    return 1;
+    return true;
 
   error:
     binrec_free(ctx.handle, ctx.blocks);
-    return 0;
+    return false;
 }
 
 /*************************************************************************/
