@@ -39,6 +39,9 @@ and that the "int" and "intptr_t" types are at least 32 bits wide.
 There are currently no plans to support environments for which these do
 not all hold.
 
+The included tests also assume (for convenience) that a null pointer is
+represented by an all-zero bit pattern.
+
 
 Building
 --------
