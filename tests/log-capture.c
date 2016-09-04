@@ -8,6 +8,7 @@
  */
 
 #include "src/common.h"
+#include "tests/common.h"
 #include "tests/log-capture.h"
 #include <stdio.h>
 

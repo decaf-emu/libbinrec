@@ -247,6 +247,8 @@ struct binrec_t {
 /********************** Internal utility functions ***********************/
 /*************************************************************************/
 
+/*-------------------------- Logging routines ---------------------------*/
+
 /**
  * log_info, log_warning, log_error:  Log an informational message, warning,
  * or error, respectively.
@@ -277,6 +279,118 @@ extern void _log_ice(binrec_t *handle, const char *file, int line,
                      const char *format, ...);
 #define log_ice(handle, ...)  \
     _log_ice((handle), __FILE__, __LINE__, __VA_ARGS__)
+
+/*--------------------- Memory allocation routines ----------------------*/
+
+/**
+ * binrec_malloc:  Allocate general-purpose memory.
+ *
+ * [Parameters]
+ *     handle: Translation handle.
+ *     size: Size of memory to allocate, in bytes.
+ * [Return value]
+ *     Allocated memory block, or NULL on error.
+ */
+static inline void *binrec_malloc(const binrec_t *handle, size_t size)
+{
+    ASSERT(handle);
+
+    if (handle->setup.malloc) {
+        return (*handle->setup.malloc)(handle->setup.userdata, size);
+    } else {
+        return malloc(size);
+    }
+}
+
+/**
+ * binrec_realloc:  Resize a general-purpose memory block.
+ *
+ * [Parameters]
+ *     handle: Translation handle.
+ *     ptr: Memory block to resize.
+ *     size: New size of memory block, in bytes.
+ * [Return value]
+ *     Resized memory block, or NULL on error.
+ */
+static inline void *binrec_realloc(const binrec_t *handle,
+                                   void *ptr, size_t size)
+{
+    ASSERT(handle);
+
+    if (handle->setup.realloc) {
+        return (*handle->setup.realloc)(handle->setup.userdata, ptr, size);
+    } else {
+        return realloc(ptr, size);
+    }
+}
+
+/**
+ * binrec_free:  Free general-purpose memory.
+ *
+ * [Parameters]
+ *     handle: Translation handle.
+ *     ptr: Memory block to free.
+ */
+static inline void binrec_free(const binrec_t *handle, void *ptr)
+{
+    ASSERT(handle);
+
+    if (handle->setup.free) {
+        (*handle->setup.free)(handle->setup.userdata, ptr);
+    } else {
+        free(ptr);
+    }
+}
+
+/**
+ * binrec_code_malloc:  Allocate an output code buffer.
+ *
+ * [Parameters]
+ *     handle: Translation handle.
+ *     size: Size of buffer, in bytes.  Must be nonzero.
+ *     alignment: Desired buffer alignment, in bytes.  Must be a power of 2.
+ * [Return value]
+ *     Allocated buffer, or NULL on error.
+ */
+#define binrec_code_malloc INTERNAL(binrec_code_malloc)
+extern void *binrec_code_malloc(const binrec_t *handle, size_t size,
+                                size_t alignment);
+
+/**
+ * binrec_code_realloc:  Expand an output code buffer.
+ *
+ * [Parameters]
+ *     handle: Translation handle.
+ *     ptr: Output code buffer to expand.
+ *     old_size: Old size of buffer, in bytes.
+ *     new_size: New size of buffer, in bytes.  Must be nonzero.
+ *     alignment: Buffer alignment, in bytes.  Must be equal to the value
+ *         passed to binrec_code_malloc() when the block was allocated.
+ * [Return value]
+ *     Expanded buffer, or NULL on error.
+ */
+#define binrec_code_realloc INTERNAL(binrec_code_realloc)
+extern void *binrec_code_realloc(const binrec_t *handle, void *ptr,
+                                 size_t old_size, size_t new_size,
+                                 size_t alignment);
+
+/**
+ * binrec_code_free:  Free an output code buffer.
+ *
+ * [Parameters]
+ *     handle: Translation handle.
+ *     ptr: Output code buffer to free.
+ */
+#define binrec_code_free INTERNAL(binrec_code_free)
+extern void binrec_code_free(const binrec_t *handle, void *ptr);
+
+/*----------------------------------*/
+
+/* Ensure that code always calls one of the wrappers above rather than
+ * malloc()/realloc()/free() directly. */
+#define malloc  _invalid_call_to_malloc
+#define realloc _invalid_call_to_realloc
+#define free    _invalid_call_to_free
 
 /*************************************************************************/
 /*************************************************************************/

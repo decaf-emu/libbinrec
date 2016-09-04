@@ -7,9 +7,9 @@
  * NO WARRANTY is provided with this software.
  */
 
-#include "src/rtl-internal.h"
+#include "src/common.h"
 
-/* Disable malloc() suppression from rtl-internal.h. */
+/* Disable malloc() suppression from common.h. */
 #undef malloc
 #undef realloc
 #undef free
@@ -18,17 +18,16 @@
 /*************** Output buffer memory management routines ****************/
 /*************************************************************************/
 
-void *rtl_code_malloc(const RTLUnit *unit, size_t size, size_t alignment)
+void *binrec_code_malloc(const binrec_t *handle, size_t size, size_t alignment)
 {
-    ASSERT(unit);
-    ASSERT(unit->handle);
+    ASSERT(handle);
     ASSERT(size > 0);
     ASSERT(alignment > 0);
     ASSERT((alignment & (alignment - 1)) == 0);  // Ensure it's a power of 2.
 
-    if (unit->handle->setup.code_malloc) {
-        return (*unit->handle->setup.code_malloc)(
-            unit->handle->setup.userdata, size, alignment);
+    if (handle->setup.code_malloc) {
+        return (*handle->setup.code_malloc)(
+            handle->setup.userdata, size, alignment);
     }
 
     if (alignment < sizeof(void *)) {
@@ -42,7 +41,7 @@ void *rtl_code_malloc(const RTLUnit *unit, size_t size, size_t alignment)
     if (alignment <= sizeof(void *)) {
         /* malloc() guarantees at least pointer-size alignment, so we don't
          * have to do anything special. */
-        void **base = rtl_malloc(unit, size);
+        void **base = binrec_malloc(handle, size);
         if (UNLIKELY(!base)) {
             return NULL;
         }
@@ -52,7 +51,7 @@ void *rtl_code_malloc(const RTLUnit *unit, size_t size, size_t alignment)
         /* We need to align the buffer manually.  We use "char *" here for
          * convenience, since the C standard guarantees that sizeof(char)
          * is 1. */
-        char *base = rtl_malloc(unit, size + (alignment - 1));
+        char *base = binrec_malloc(handle, size + (alignment - 1));
         if (UNLIKELY(!base)) {
             return NULL;
         }
@@ -72,20 +71,19 @@ void *rtl_code_malloc(const RTLUnit *unit, size_t size, size_t alignment)
 
 /*-----------------------------------------------------------------------*/
 
-void *rtl_code_realloc(const RTLUnit *unit, void *ptr, size_t old_size,
-                       size_t new_size, size_t alignment)
+void *binrec_code_realloc(const binrec_t *handle, void *ptr, size_t old_size,
+                          size_t new_size, size_t alignment)
 {
-    ASSERT(unit);
-    ASSERT(unit->handle);
+    ASSERT(handle);
     ASSERT(ptr);
     ASSERT(old_size > 0);
     ASSERT(new_size > 0);
     ASSERT(alignment > 0);
     ASSERT((alignment & (alignment - 1)) == 0);
 
-    if (unit->handle->setup.code_realloc) {
-        return (*unit->handle->setup.code_realloc)(
-            unit->handle->setup.userdata, ptr, old_size, new_size, alignment);
+    if (handle->setup.code_realloc) {
+        return (*handle->setup.code_realloc)(
+            handle->setup.userdata, ptr, old_size, new_size, alignment);
     }
 
     if (alignment < sizeof(void *)) {
@@ -95,14 +93,15 @@ void *rtl_code_realloc(const RTLUnit *unit, void *ptr, size_t old_size,
     void *base = ((void **)ptr)[-1];
     new_size += sizeof(void *);
     if (alignment <= sizeof(void *)) {
-        void **new_base = rtl_realloc(unit, base, new_size);
+        void **new_base = binrec_realloc(handle, base, new_size);
         if (UNLIKELY(!new_base)) {
             return NULL;
         }
         *new_base = new_base;
         return &new_base[1];
     } else {
-        char *new_base = rtl_realloc(unit, base, new_size + (alignment - 1));
+        char *new_base =
+            binrec_realloc(handle, base, new_size + (alignment - 1));
         if (UNLIKELY(!new_base)) {
             return NULL;
         }
@@ -122,17 +121,16 @@ void *rtl_code_realloc(const RTLUnit *unit, void *ptr, size_t old_size,
 
 /*-----------------------------------------------------------------------*/
 
-void rtl_code_free(const RTLUnit *unit, void *ptr)
+void binrec_code_free(const binrec_t *handle, void *ptr)
 {
-    ASSERT(unit);
-    ASSERT(unit->handle);
+    ASSERT(handle);
 
-    if (unit->handle->setup.code_free) {
-        return (*unit->handle->setup.code_free)(
-            unit->handle->setup.userdata, ptr);
+    if (handle->setup.code_free) {
+        return (*handle->setup.code_free)(
+            handle->setup.userdata, ptr);
     }
 
-    rtl_free(unit, ((void **)ptr)[-1]);
+    binrec_free(handle, ((void **)ptr)[-1]);
 }
 
 /*************************************************************************/

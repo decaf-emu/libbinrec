@@ -54,8 +54,8 @@ static GuestPPCBlockInfo *get_block(GuestPPCContext *ctx, uint32_t address)
 
     if (ctx->num_blocks >= ctx->blocks_size) {
         const int new_size = ctx->blocks_size + BLOCKS_EXPAND_SIZE;
-        GuestPPCBlockInfo *new_blocks = realloc(
-            ctx->blocks, sizeof(*ctx->blocks) * new_size);
+        GuestPPCBlockInfo *new_blocks = binrec_realloc(
+            ctx->handle, ctx->blocks, sizeof(*ctx->blocks) * new_size);
         if (UNLIKELY(!new_blocks)) {
             return false;
         }

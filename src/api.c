@@ -12,6 +12,11 @@
 #include "src/guest-ppc.h"
 #include "src/rtl.h"
 
+/* Disable malloc() suppression from common.h. */
+#undef malloc
+#undef realloc
+#undef free
+
 #include <stdlib.h>
 #include <string.h>
 

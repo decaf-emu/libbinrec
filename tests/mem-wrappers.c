@@ -8,6 +8,7 @@
  */
 
 #include "src/common.h"
+#include "tests/common.h"
 #include "tests/mem-wrappers.h"
 #include <stdbool.h>
 

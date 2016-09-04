@@ -19,9 +19,6 @@ int main(void)
     binrec_t *handle;
     EXPECT(handle = binrec_create_handle(&setup));
 
-    RTLUnit *unit;
-    EXPECT(unit = rtl_create_unit(handle));
-
     /* Check behavior at various alignments, both less and greater than the
      * system's default alignment. */
 
@@ -36,7 +33,7 @@ int main(void)
     for (size_t alignment = 1; alignment < MAX_ALIGNMENT; alignment *= 2) {
 
         const size_t size1 = alignment;
-        void *ptr = rtl_code_malloc(unit, size1, alignment);
+        void *ptr = binrec_code_malloc(handle, size1, alignment);
         if (!ptr) {
             FAIL("code_malloc failed for alignment %zu", alignment);
         } else if ((uintptr_t)ptr % alignment != 0) {
@@ -51,7 +48,7 @@ int main(void)
         EXPECT(dummy = malloc(alignment*4/3));
 
         const size_t size2 = 2*alignment;
-        ptr = rtl_code_realloc(unit, ptr, size1, size2, alignment);
+        ptr = binrec_code_realloc(handle, ptr, size1, size2, alignment);
         if (!ptr) {
             FAIL("code_realloc failed for alignment %zu", alignment);
         } else if ((uintptr_t)ptr % alignment != 0) {
@@ -62,10 +59,9 @@ int main(void)
         }
 
         free(dummy);
-        rtl_code_free(unit, ptr);
+        binrec_code_free(handle, ptr);
     }
 
-    rtl_destroy_unit(unit);
     binrec_destroy_handle(handle);
     return EXIT_SUCCESS;
 }

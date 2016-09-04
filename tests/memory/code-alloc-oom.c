@@ -28,26 +28,22 @@ int main(void)
     binrec_t *handle;
     EXPECT(handle = binrec_create_handle(&setup));
 
-    RTLUnit *unit;
-    EXPECT(unit = rtl_create_unit(handle));
-
     handle->setup.malloc = custom_malloc;
     /* Check both code paths. */
-    EXPECT_FALSE(rtl_code_malloc(unit, 1, sizeof(void *)));
-    EXPECT_FALSE(rtl_code_malloc(unit, 1, 2 * sizeof(void *)));
+    EXPECT_FALSE(binrec_code_malloc(handle, 1, sizeof(void *)));
+    EXPECT_FALSE(binrec_code_malloc(handle, 1, 2 * sizeof(void *)));
     handle->setup.malloc = NULL;
 
     handle->setup.realloc = custom_realloc;
     void *ptr;
-    EXPECT(ptr = rtl_code_malloc(unit, 2, sizeof(void *)));
-    EXPECT_FALSE(rtl_code_realloc(unit, ptr, 2, 1, sizeof(void *)));
-    rtl_code_free(unit, ptr);
-    EXPECT(ptr = rtl_code_malloc(unit, 2, 2 * sizeof(void *)));
-    EXPECT_FALSE(rtl_code_realloc(unit, ptr, 2, 1, 2 * sizeof(void *)));
-    rtl_code_free(unit, ptr);
+    EXPECT(ptr = binrec_code_malloc(handle, 2, sizeof(void *)));
+    EXPECT_FALSE(binrec_code_realloc(handle, ptr, 2, 1, sizeof(void *)));
+    binrec_code_free(handle, ptr);
+    EXPECT(ptr = binrec_code_malloc(handle, 2, 2 * sizeof(void *)));
+    EXPECT_FALSE(binrec_code_realloc(handle, ptr, 2, 1, 2 * sizeof(void *)));
+    binrec_code_free(handle, ptr);
     handle->setup.realloc = NULL;
 
-    rtl_destroy_unit(unit);
     binrec_destroy_handle(handle);
     return EXIT_SUCCESS;
 }

@@ -335,11 +335,10 @@ bool guest_ppc_translate(binrec_t *handle, uint32_t address, RTLUnit *unit)
 
     GuestPPCContext ctx;
     memset(&ctx, 0, sizeof(ctx));
-    ctx.blocks = NULL;
-
     ctx.handle = handle;
     ctx.unit = unit;
     ctx.start = address;
+    ctx.blocks = NULL;
 
     /* Scan guest memory to determine the range of code to translate and
      * record relevant properties about the code. */
@@ -368,11 +367,11 @@ bool guest_ppc_translate(binrec_t *handle, uint32_t address, RTLUnit *unit)
         goto error;
     }
 
-    free(ctx.blocks);
+    binrec_free(ctx.handle, ctx.blocks);
     return 1;
 
   error:
-    free(ctx.blocks);
+    binrec_free(ctx.handle, ctx.blocks);
     return 0;
 }
 
