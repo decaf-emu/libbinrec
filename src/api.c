@@ -141,7 +141,7 @@ binrec_t *binrec_create_handle(const binrec_setup_t *setup)
 
 void binrec_destroy_handle(binrec_t *handle)
 {
-    free(handle);
+    binrec_free(handle, handle);
 }
 
 /*-----------------------------------------------------------------------*/
