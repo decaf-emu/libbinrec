@@ -489,12 +489,14 @@ static void rtl_decode_insn(const RTLUnit *unit, uint32_t index,
         return;
 
       case RTLOP_SET_ALIAS:
-        s += snprintf_assert(s, top - s, "%-10s a%u, r%u\n", name, dest, src1);
+        s += snprintf_assert(s, top - s, "%-10s a%u, r%u\n",
+                             name, insn->alias, src1);
         APPEND_REG_DESC(src1);
         return;
 
       case RTLOP_GET_ALIAS:
-        s += snprintf_assert(s, top - s, "%-10s r%u, a%u\n", name, dest, src1);
+        s += snprintf_assert(s, top - s, "%-10s r%u, a%u\n",
+                             name, dest, insn->alias);
         return;
 
       case RTLOP_MOVE:
@@ -602,9 +604,9 @@ static void rtl_decode_insn(const RTLUnit *unit, uint32_t index,
       case RTLOP_STORE_I32:
       case RTLOP_STORE_ADDR:
         s += snprintf_assert(s, top - s, "%-10s %d(r%u), r%u\n",
-                             name, insn->offset, dest, src1);
-        APPEND_REG_DESC(dest);
+                             name, insn->offset, src1, src2);
         APPEND_REG_DESC(src1);
+        APPEND_REG_DESC(src2);
         return;
 
       case RTLOP_LABEL:

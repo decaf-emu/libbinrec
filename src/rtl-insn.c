@@ -98,18 +98,18 @@ static bool make_set_alias(RTLUnit *unit, RTLInsn *insn, unsigned int dest,
     ASSERT(unit != NULL);
     ASSERT(unit->regs != NULL);
     ASSERT(insn != NULL);
-    ASSERT(dest < unit->next_alias);
     ASSERT(src1 < unit->next_reg);
+    ASSERT(other < unit->next_alias);
 
 #ifdef ENABLE_OPERAND_SANITY_CHECKS
-    OPERAND_ASSERT(dest != 0);
     OPERAND_ASSERT(src1 != 0);
+    OPERAND_ASSERT(other != 0);
     OPERAND_ASSERT(unit->regs[src1].source != RTLREG_UNDEFINED);
-    OPERAND_ASSERT(unit->regs[src1].type == unit->alias_types[dest]);
+    OPERAND_ASSERT(unit->regs[src1].type == unit->alias_types[other]);
 #endif
 
-    insn->dest = dest;
     insn->src1 = src1;
+    insn->alias = (uint16_t)other;
 
     RTLRegister * const src1reg = &unit->regs[src1];
     const uint32_t insn_index = unit->num_insns;
@@ -130,22 +130,22 @@ static bool make_get_alias(RTLUnit *unit, RTLInsn *insn, unsigned int dest,
     ASSERT(unit->regs != NULL);
     ASSERT(insn != NULL);
     ASSERT(dest < unit->next_reg);
-    ASSERT(src1 < unit->next_alias);
+    ASSERT(other < unit->next_alias);
 
 #ifdef ENABLE_OPERAND_SANITY_CHECKS
     OPERAND_ASSERT(dest != 0);
-    OPERAND_ASSERT(src1 != 0);
+    OPERAND_ASSERT(other != 0);
     OPERAND_ASSERT(unit->regs[dest].source == RTLREG_UNDEFINED);
-    OPERAND_ASSERT(unit->regs[dest].type == unit->alias_types[src1]);
+    OPERAND_ASSERT(unit->regs[dest].type == unit->alias_types[other]);
 #endif
 
     insn->dest = dest;
-    insn->src1 = src1;
+    insn->alias = (uint16_t)other;
 
     RTLRegister * const destreg = &unit->regs[dest];
     const uint32_t insn_index = unit->num_insns;
     destreg->source = RTLREG_ALIAS;
-    destreg->alias.src = src1;
+    destreg->alias.src = (uint16_t)other;
     mark_live(unit, insn_index, destreg, dest);
 
     return true;
@@ -221,7 +221,7 @@ static bool make_select(RTLUnit *unit, RTLInsn *insn, unsigned int dest,
     insn->dest = dest;
     insn->src1 = src1;
     insn->src2 = src2;
-    insn->cond = other;
+    insn->cond = (uint16_t)other;
 
     RTLRegister * const destreg = &unit->regs[dest];
     RTLRegister * const src1reg = &unit->regs[src1];
@@ -232,7 +232,7 @@ static bool make_select(RTLUnit *unit, RTLInsn *insn, unsigned int dest,
     destreg->result.opcode = insn->opcode;
     destreg->result.src1 = src1;
     destreg->result.src2 = src2;
-    destreg->result.cond = other;
+    destreg->result.cond = (uint16_t)other;
     mark_live(unit, insn_index, destreg, dest);
     mark_live(unit, insn_index, src1reg, src1);
     mark_live(unit, insn_index, src2reg, src2);
@@ -485,7 +485,7 @@ static bool make_load_arg(RTLUnit *unit, RTLInsn *insn, unsigned int dest,
     RTLRegister * const destreg = &unit->regs[dest];
     const uint32_t insn_index = unit->num_insns;
     destreg->source = RTLREG_FUNC_ARG;
-    destreg->arg_index = other;
+    destreg->arg_index = (unsigned int)other;
     mark_live(unit, insn_index, destreg, dest);
 
     return true;
@@ -547,7 +547,7 @@ static bool make_load(RTLUnit *unit, RTLInsn *insn, unsigned int dest,
     const uint32_t insn_index = unit->num_insns;
     destreg->source = RTLREG_MEMORY;
     destreg->memory.addr_reg = src1;
-    destreg->memory.offset = other;
+    destreg->memory.offset = (int16_t)other;
     destreg->memory.size = insn_info[lookup_index].size;
     destreg->memory.is_signed = insn_info[lookup_index].is_signed;
     mark_live(unit, insn_index, destreg, dest);
@@ -567,8 +567,8 @@ static bool make_store(RTLUnit *unit, RTLInsn *insn, unsigned int dest,
     ASSERT(unit != NULL);
     ASSERT(unit->regs != NULL);
     ASSERT(insn != NULL);
-    ASSERT(dest < unit->next_reg);
     ASSERT(src1 < unit->next_reg);
+    ASSERT(src2 < unit->next_reg);
 
     /* Required data types for each instruction. */
     static const uint8_t type_lookup[] = {
@@ -582,18 +582,18 @@ static bool make_store(RTLUnit *unit, RTLInsn *insn, unsigned int dest,
     const int lookup_index = insn->opcode - RTLOP_STORE_I8;
     ASSERT(lookup_index >= 0 && lookup_index < lenof(type_lookup));
 
-    OPERAND_ASSERT(dest != 0);
     OPERAND_ASSERT(src1 != 0);
-    OPERAND_ASSERT(unit->regs[dest].source != RTLREG_UNDEFINED);
-    OPERAND_ASSERT(unit->regs[dest].type == RTLTYPE_ADDRESS);
+    OPERAND_ASSERT(src2 != 0);
     OPERAND_ASSERT(unit->regs[src1].source != RTLREG_UNDEFINED);
-    OPERAND_ASSERT(unit->regs[src1].type == type_lookup[lookup_index]);
+    OPERAND_ASSERT(unit->regs[src1].type == RTLTYPE_ADDRESS);
+    OPERAND_ASSERT(unit->regs[src2].source != RTLREG_UNDEFINED);
+    OPERAND_ASSERT(unit->regs[src2].type == type_lookup[lookup_index]);
     OPERAND_ASSERT(other <= 0x7FFF || other >= UINT64_C(-0x8000));
 #endif
 
-    insn->dest = dest;
     insn->src1 = src1;
-    insn->offset = other;
+    insn->src2 = src2;
+    insn->offset = (int16_t)other;
 
     RTLRegister * const destreg = &unit->regs[dest];
     RTLRegister * const src1reg = &unit->regs[src1];
@@ -623,7 +623,7 @@ static bool make_label(RTLUnit *unit, RTLInsn *insn, unsigned int dest,
     OPERAND_ASSERT(other != 0);
 #endif
 
-    insn->label = other;
+    insn->label = (uint16_t)other;
 
     /* If this is _not_ the first instruction in the current basic block,
      * end it and create a new basic block starting here, since there could
@@ -669,7 +669,7 @@ static bool make_goto(RTLUnit *unit, RTLInsn *insn, unsigned int dest,
     OPERAND_ASSERT(other != 0);
 #endif
 
-    insn->label = other;
+    insn->label = (uint16_t)other;
 
     /* Terminate the current basic block after this instruction. */
     unit->blocks[unit->cur_block].last_insn = unit->num_insns;
@@ -700,7 +700,7 @@ static bool make_goto_cond(RTLUnit *unit, RTLInsn *insn, unsigned int dest,
 #endif
 
     insn->src1 = src1;
-    insn->label = other;
+    insn->label = (uint16_t)other;
 
     RTLRegister * const src1reg = &unit->regs[src1];
     const uint32_t insn_index = unit->num_insns;

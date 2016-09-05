@@ -30,30 +30,30 @@ int main(void)
 
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg1, 0, 0, 10));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg2, 0, 0, 20));
-    EXPECT(rtl_add_insn(unit, RTLOP_STORE_I8, reg1, reg2, 0, 0));
-    EXPECT(rtl_add_insn(unit, RTLOP_STORE_I8, reg1, reg2, 0, 0x7FFF));
-    EXPECT(rtl_add_insn(unit, RTLOP_STORE_I8, reg1, reg2, 0, -0x8000));
+    EXPECT(rtl_add_insn(unit, RTLOP_STORE_I8, 0, reg1, reg2, 0));
+    EXPECT(rtl_add_insn(unit, RTLOP_STORE_I8, 0, reg1, reg2, 0x7FFF));
+    EXPECT(rtl_add_insn(unit, RTLOP_STORE_I8, 0, reg1, reg2, -0x8000));
     EXPECT_EQ(unit->num_insns, 5);
     EXPECT_EQ(unit->insns[2].opcode, RTLOP_STORE_I8);
-    EXPECT_EQ(unit->insns[2].dest, reg1);
-    EXPECT_EQ(unit->insns[2].src1, reg2);
+    EXPECT_EQ(unit->insns[2].src1, reg1);
+    EXPECT_EQ(unit->insns[2].src2, reg2);
     EXPECT_EQ(unit->insns[2].offset, 0);
     EXPECT_EQ(unit->insns[3].opcode, RTLOP_STORE_I8);
-    EXPECT_EQ(unit->insns[3].dest, reg1);
-    EXPECT_EQ(unit->insns[3].src1, reg2);
+    EXPECT_EQ(unit->insns[3].src1, reg1);
+    EXPECT_EQ(unit->insns[3].src2, reg2);
     EXPECT_EQ(unit->insns[3].offset, 0x7FFF);
     EXPECT_EQ(unit->insns[4].opcode, RTLOP_STORE_I8);
-    EXPECT_EQ(unit->insns[4].dest, reg1);
-    EXPECT_EQ(unit->insns[4].src1, reg2);
+    EXPECT_EQ(unit->insns[4].src1, reg1);
+    EXPECT_EQ(unit->insns[4].src2, reg2);
     EXPECT_EQ(unit->insns[4].offset, -0x8000);
     EXPECT(unit->have_block);
 
 #ifdef ENABLE_OPERAND_SANITY_CHECKS
-    EXPECT_FALSE(rtl_add_insn(unit, RTLOP_STORE_I8, reg1, reg2, 0, 0x8000));
+    EXPECT_FALSE(rtl_add_insn(unit, RTLOP_STORE_I8, 0, reg1, reg2, 0x8000));
     EXPECT_ICE("Operand constraint violated:"
                " other <= 0x7FFF || other >= UINT64_C(-0x8000)");
     EXPECT_EQ(unit->num_insns, 5);
-    EXPECT_FALSE(rtl_add_insn(unit, RTLOP_STORE_I8, reg1, reg2, 0, -0x8001));
+    EXPECT_FALSE(rtl_add_insn(unit, RTLOP_STORE_I8, 0, reg1, reg2, -0x8001));
     EXPECT_ICE("Operand constraint violated:"
                " other <= 0x7FFF || other >= UINT64_C(-0x8000)");
     EXPECT_EQ(unit->num_insns, 5);

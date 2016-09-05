@@ -32,9 +32,9 @@ int main(void)
 
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg, 0, 0, 10));
     EXPECT_EQ(unit->num_insns, 1);
-    EXPECT_FALSE(rtl_add_insn(unit, RTLOP_SET_ALIAS, alias, reg, 0, 0));
+    EXPECT_FALSE(rtl_add_insn(unit, RTLOP_SET_ALIAS, 0, reg, 0, alias));
     EXPECT_ICE("Operand constraint violated:"
-               " unit->regs[src1].type == unit->alias_types[dest]");
+               " unit->regs[src1].type == unit->alias_types[other]");
     EXPECT_EQ(unit->num_insns, 1);
 
     rtl_destroy_unit(unit);

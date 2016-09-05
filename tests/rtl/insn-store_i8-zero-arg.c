@@ -33,11 +33,11 @@ int main(void)
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg1, 0, 0, 10));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg2, 0, 0, 20));
     EXPECT_EQ(unit->num_insns, 2);
-    EXPECT_FALSE(rtl_add_insn(unit, RTLOP_STORE_I8, 0, reg2, 0, 32));
-    EXPECT_ICE("Operand constraint violated: dest != 0");
-    EXPECT_EQ(unit->num_insns, 2);
-    EXPECT_FALSE(rtl_add_insn(unit, RTLOP_STORE_I8, reg1, 0, 0, 32));
+    EXPECT_FALSE(rtl_add_insn(unit, RTLOP_STORE_I8, 0, 0, reg2, 32));
     EXPECT_ICE("Operand constraint violated: src1 != 0");
+    EXPECT_EQ(unit->num_insns, 2);
+    EXPECT_FALSE(rtl_add_insn(unit, RTLOP_STORE_I8, 0, reg1, 0, 32));
+    EXPECT_ICE("Operand constraint violated: src2 != 0");
     EXPECT_EQ(unit->num_insns, 2);
 
     rtl_destroy_unit(unit);

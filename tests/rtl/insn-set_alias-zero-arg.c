@@ -33,9 +33,9 @@ int main(void)
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg, 0, 0, 10));
     EXPECT_EQ(unit->num_insns, 1);
     EXPECT_FALSE(rtl_add_insn(unit, RTLOP_SET_ALIAS, 0, reg, 0, 0));
-    EXPECT_ICE("Operand constraint violated: dest != 0");
+    EXPECT_ICE("Operand constraint violated: other != 0");
     EXPECT_EQ(unit->num_insns, 1);
-    EXPECT_FALSE(rtl_add_insn(unit, RTLOP_SET_ALIAS, alias, 0, 0, 0));
+    EXPECT_FALSE(rtl_add_insn(unit, RTLOP_SET_ALIAS, 0, 0, 0, alias));
     EXPECT_ICE("Operand constraint violated: src1 != 0");
     EXPECT_EQ(unit->num_insns, 1);
 

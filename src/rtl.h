@@ -119,10 +119,10 @@ typedef enum RTLOpcode {
     RTLOP_NOP = 1,
 
     /* Alias register operations */
-    RTLOP_SET_ALIAS,    // alias[dest] = src1
-                        //    [dest is an alias register index]
-    RTLOP_GET_ALIAS,    // dest = alias[src1]
-                        //    [src1 is an alias register index]
+    RTLOP_SET_ALIAS,    // alias[other] = src1
+                        //    [other is an alias register index]
+    RTLOP_GET_ALIAS,    // dest = alias[other]
+                        //    [other is an alias register index]
 
     /* Integer operations */
     RTLOP_MOVE,         // dest = src1
@@ -191,10 +191,10 @@ typedef enum RTLOpcode {
     RTLOP_LOAD_S16,     // dest = *(int16_t *)(src1 + other)
     RTLOP_LOAD_I32,     // dest = *(uint32_t *)(src1 + other)
     RTLOP_LOAD_ADDR,    // dest = *(uintptr_t *)(src1 + other)
-    RTLOP_STORE_I8,     // *(uint8_t *)(dest + other) = src1
-    RTLOP_STORE_I16,    // *(uint16_t *)(dest + other) = src1
-    RTLOP_STORE_I32,    // *(uint32_t *)(dest + other) = src1
-    RTLOP_STORE_ADDR,   // *(uintptr_t *)(dest + other) = src1
+    RTLOP_STORE_I8,     // *(uint8_t *)(src1 + other) = src2
+    RTLOP_STORE_I16,    // *(uint16_t *)(src1 + other) = src2
+    RTLOP_STORE_I32,    // *(uint32_t *)(src1 + other) = src2
+    RTLOP_STORE_ADDR,   // *(uintptr_t *)(src1 + other) = src2
 
     /* Branch operations ("other" is a label number) */
     RTLOP_LABEL,        // LABEL(other):

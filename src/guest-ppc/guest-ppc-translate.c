@@ -105,7 +105,7 @@ static bool init_unit(GuestPPCContext *ctx)
                 DECLARE_NEW_REGISTER(reg, RTLTYPE_INT32);
                 ADD_INSN(RTLOP_LOAD_I32, reg, ctx->psb_reg, 0,
                          ctx->handle->setup.state_offset_gpr + i*4);
-                ADD_INSN(RTLOP_SET_ALIAS, ctx->alias.gpr[i], reg, 0, 0);
+                ADD_INSN(RTLOP_SET_ALIAS, 0, reg, 0, ctx->alias.gpr[i]);
             }
         }
 
@@ -139,7 +139,7 @@ static bool init_unit(GuestPPCContext *ctx)
             DECLARE_NEW_REGISTER(reg, RTLTYPE_INT32);
             ADD_INSN(RTLOP_LOAD_I32, reg, ctx->psb_reg, 0,
                      ctx->handle->setup.state_offset_lr);
-            ADD_INSN(RTLOP_SET_ALIAS, ctx->alias.lr, reg, 0, 0);
+            ADD_INSN(RTLOP_SET_ALIAS, 0, reg, 0, ctx->alias.lr);
         }
     }
 
@@ -149,7 +149,7 @@ static bool init_unit(GuestPPCContext *ctx)
             DECLARE_NEW_REGISTER(reg, RTLTYPE_INT32);
             ADD_INSN(RTLOP_LOAD_I32, reg, ctx->psb_reg, 0,
                      ctx->handle->setup.state_offset_ctr);
-            ADD_INSN(RTLOP_SET_ALIAS, ctx->alias.ctr, reg, 0, 0);
+            ADD_INSN(RTLOP_SET_ALIAS, 0, reg, 0, ctx->alias.ctr);
         }
     }
 
@@ -159,7 +159,7 @@ static bool init_unit(GuestPPCContext *ctx)
             DECLARE_NEW_REGISTER(reg, RTLTYPE_INT32);
             ADD_INSN(RTLOP_LOAD_I32, reg, ctx->psb_reg, 0,
                      ctx->handle->setup.state_offset_xer);
-            ADD_INSN(RTLOP_SET_ALIAS, ctx->alias.xer, reg, 0, 0);
+            ADD_INSN(RTLOP_SET_ALIAS, 0, reg, 0, ctx->alias.xer);
         }
     }
 
@@ -169,7 +169,7 @@ static bool init_unit(GuestPPCContext *ctx)
             DECLARE_NEW_REGISTER(reg, RTLTYPE_INT32);
             ADD_INSN(RTLOP_LOAD_I32, reg, ctx->psb_reg, 0,
                      ctx->handle->setup.state_offset_fpscr);
-            ADD_INSN(RTLOP_SET_ALIAS, ctx->alias.fpscr, reg, 0, 0);
+            ADD_INSN(RTLOP_SET_ALIAS, 0, reg, 0, ctx->alias.fpscr);
         }
     }
 
@@ -180,12 +180,12 @@ static bool init_unit(GuestPPCContext *ctx)
             DECLARE_NEW_REGISTER(flag, RTLTYPE_INT32);
             ADD_INSN(RTLOP_LOAD_U8, flag, ctx->psb_reg, 0,
                      ctx->handle->setup.state_offset_reserve_flag);
-            ADD_INSN(RTLOP_SET_ALIAS, ctx->alias.reserve_flag, flag, 0, 0);
+            ADD_INSN(RTLOP_SET_ALIAS, 0, flag, 0, ctx->alias.reserve_flag);
             DECLARE_NEW_REGISTER(address, RTLTYPE_INT32);
             ADD_INSN(RTLOP_LOAD_I32, address, ctx->psb_reg, 0,
                      ctx->handle->setup.state_offset_reserve_address);
-            ADD_INSN(RTLOP_SET_ALIAS, ctx->alias.reserve_address, address,
-                     0, 0);
+            ADD_INSN(RTLOP_SET_ALIAS, 0, address, 0,
+                     ctx->alias.reserve_address);
         }
     }
 
@@ -214,8 +214,8 @@ static bool add_epilogue(GuestPPCContext *ctx)
     for (int i = 0; i < 32; i++) {
         if (ctx->gpr_changed & (1 << i)) {
             DECLARE_NEW_REGISTER(reg, RTLTYPE_INT32);
-            ADD_INSN(RTLOP_GET_ALIAS, reg, ctx->alias.gpr[i], 0, 0);
-            ADD_INSN(RTLOP_STORE_I32, ctx->psb_reg, reg, 0,
+            ADD_INSN(RTLOP_GET_ALIAS, reg, 0, 0, ctx->alias.gpr[i]);
+            ADD_INSN(RTLOP_STORE_I32, 0, ctx->psb_reg, reg,
                      ctx->handle->setup.state_offset_gpr + i*4);
         }
 
@@ -245,7 +245,7 @@ static bool add_epilogue(GuestPPCContext *ctx)
         for (int i = 0; i < 8; i++) {
             if (ctx->cr_changed & (1 << i)) {
                 DECLARE_NEW_REGISTER(crN, RTLTYPE_INT32);
-                ADD_INSN(RTLOP_GET_ALIAS, crN, ctx->alias.cr[i], 0, 0);
+                ADD_INSN(RTLOP_GET_ALIAS, crN, 0, 0, ctx->alias.cr[i]);
                 uint32_t shifted_crN;
                 if (i == 7) {
                     shifted_crN = crN;
@@ -260,52 +260,52 @@ static bool add_epilogue(GuestPPCContext *ctx)
                 cr = new_cr;
             }
         }
-        ADD_INSN(RTLOP_STORE_I32, ctx->psb_reg, cr, 0,
+        ADD_INSN(RTLOP_STORE_I32, 0, ctx->psb_reg, cr,
                  ctx->handle->setup.state_offset_cr);
     }
 
     if (ctx->lr_changed) {
         DECLARE_NEW_REGISTER(reg, RTLTYPE_INT32);
-        ADD_INSN(RTLOP_GET_ALIAS, reg, ctx->alias.lr, 0, 0);
-        ADD_INSN(RTLOP_STORE_I32, ctx->psb_reg, reg, 0,
+        ADD_INSN(RTLOP_GET_ALIAS, reg, 0, 0, ctx->alias.lr);
+        ADD_INSN(RTLOP_STORE_I32, 0, ctx->psb_reg, reg,
                  ctx->handle->setup.state_offset_lr);
     }
 
     if (ctx->ctr_changed) {
         DECLARE_NEW_REGISTER(reg, RTLTYPE_INT32);
-        ADD_INSN(RTLOP_GET_ALIAS, reg, ctx->alias.ctr, 0, 0);
-        ADD_INSN(RTLOP_STORE_I32, ctx->psb_reg, reg, 0,
+        ADD_INSN(RTLOP_GET_ALIAS, reg, 0, 0, ctx->alias.ctr);
+        ADD_INSN(RTLOP_STORE_I32, 0, ctx->psb_reg, reg,
                  ctx->handle->setup.state_offset_ctr);
     }
 
     if (ctx->xer_changed) {
         DECLARE_NEW_REGISTER(reg, RTLTYPE_INT32);
-        ADD_INSN(RTLOP_GET_ALIAS, reg, ctx->alias.xer, 0, 0);
-        ADD_INSN(RTLOP_STORE_I32, ctx->psb_reg, reg, 0,
+        ADD_INSN(RTLOP_GET_ALIAS, reg, 0, 0, ctx->alias.xer);
+        ADD_INSN(RTLOP_STORE_I32, 0, ctx->psb_reg, reg,
                  ctx->handle->setup.state_offset_xer);
     }
 
     if (ctx->fpscr_changed) {
         DECLARE_NEW_REGISTER(reg, RTLTYPE_INT32);
-        ADD_INSN(RTLOP_GET_ALIAS, reg, ctx->alias.fpscr, 0, 0);
-        ADD_INSN(RTLOP_STORE_I32, ctx->psb_reg, reg, 0,
+        ADD_INSN(RTLOP_GET_ALIAS, reg, 0, 0, ctx->alias.fpscr);
+        ADD_INSN(RTLOP_STORE_I32, 0, ctx->psb_reg, reg,
                  ctx->handle->setup.state_offset_fpscr);
     }
 
     if (ctx->reserve_changed) {
         DECLARE_NEW_REGISTER(flag, RTLTYPE_INT32);
-        ADD_INSN(RTLOP_GET_ALIAS, flag, ctx->alias.reserve_flag, 0, 0);
-        ADD_INSN(RTLOP_STORE_I8, ctx->psb_reg, flag, 0,
+        ADD_INSN(RTLOP_GET_ALIAS, flag, 0, 0, ctx->alias.reserve_flag);
+        ADD_INSN(RTLOP_STORE_I8, 0, ctx->psb_reg, flag,
                  ctx->handle->setup.state_offset_reserve_flag);
         DECLARE_NEW_REGISTER(address, RTLTYPE_INT32);
-        ADD_INSN(RTLOP_GET_ALIAS, address, ctx->alias.reserve_address, 0, 0);
-        ADD_INSN(RTLOP_STORE_I32, ctx->psb_reg, address, 0,
+        ADD_INSN(RTLOP_GET_ALIAS, address, 0, 0, ctx->alias.reserve_address);
+        ADD_INSN(RTLOP_STORE_I32, 0, ctx->psb_reg, address,
                  ctx->handle->setup.state_offset_reserve_address);
     }
 
     DECLARE_NEW_REGISTER(nia_reg, RTLTYPE_INT32);
-    ADD_INSN(RTLOP_GET_ALIAS, nia_reg, ctx->alias.nia, 0, 0);
-    ADD_INSN(RTLOP_STORE_I32, ctx->psb_reg, nia_reg, 0,
+    ADD_INSN(RTLOP_GET_ALIAS, nia_reg, 0, 0, ctx->alias.nia);
+    ADD_INSN(RTLOP_STORE_I32, 0, ctx->psb_reg, nia_reg,
              ctx->handle->setup.state_offset_nia);
     ADD_INSN(RTLOP_RETURN, 0, ctx->psb_reg, 0, 0);
 

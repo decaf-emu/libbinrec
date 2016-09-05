@@ -32,7 +32,7 @@ int main(void)
     EXPECT(alias = rtl_alloc_alias_register(unit, RTLTYPE_FLOAT));
 
     EXPECT(rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, label));
-    EXPECT(rtl_add_insn(unit, RTLOP_GET_ALIAS, reg, alias, 0, 0));
+    EXPECT(rtl_add_insn(unit, RTLOP_GET_ALIAS, reg, 0, 0, alias));
     EXPECT_EQ(unit->num_insns, 2);
     EXPECT_FALSE(rtl_add_insn(unit, RTLOP_GOTO_IF_NZ, 0, reg, 0, label));
     EXPECT_ICE("Operand constraint violated:"

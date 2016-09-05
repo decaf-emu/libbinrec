@@ -109,6 +109,7 @@ typedef struct RTLInsn_ {
             uint8_t count;    // Number of bits for a bitfield
         } bitfield;
         int16_t offset;       // Byte offset for load/store instructions
+        uint16_t alias;       // Alias index for SET/GET_ALIAS
         uint16_t label;       // GOTO target label
         uint16_t target;      // CALL_NATIVE branch target register
         uint64_t src_imm;     // Source immediate value

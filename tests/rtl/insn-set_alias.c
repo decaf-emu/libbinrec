@@ -31,11 +31,11 @@ int main(void)
     ASSERT(reg2 != alias);
 
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg2, 0, 0, 10));
-    EXPECT(rtl_add_insn(unit, RTLOP_SET_ALIAS, alias, reg2, 0, 0));
+    EXPECT(rtl_add_insn(unit, RTLOP_SET_ALIAS, 0, reg2, 0, alias));
     EXPECT_EQ(unit->num_insns, 2);
     EXPECT_EQ(unit->insns[1].opcode, RTLOP_SET_ALIAS);
-    EXPECT_EQ(unit->insns[1].dest, alias);
     EXPECT_EQ(unit->insns[1].src1, reg2);
+    EXPECT_EQ(unit->insns[1].alias, alias);
     EXPECT(unit->have_block);
 
     EXPECT(rtl_finalize_unit(unit));

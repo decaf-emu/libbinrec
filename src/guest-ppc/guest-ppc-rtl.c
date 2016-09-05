@@ -48,7 +48,7 @@ static bool update_cr0(
     ADD_INSN(RTLOP_LOAD_IMM, zero, 0, 0, 0);
     if (!xer) {
         ALLOC_REGISTER(xer, RTLTYPE_INT32);
-        ADD_INSN(RTLOP_GET_ALIAS, xer, ctx->alias.xer, 0, 0);
+        ADD_INSN(RTLOP_GET_ALIAS, xer, 0, 0, ctx->alias.xer);
     }
 
     DECLARE_NEW_REGISTER(lt, RTLTYPE_INT32);
@@ -66,7 +66,7 @@ static bool update_cr0(
     ADD_INSN(RTLOP_BFINS, cr0_3, cr0_2, gt, 2 | 1<<8);
     DECLARE_NEW_REGISTER(cr0, RTLTYPE_INT32);
     ADD_INSN(RTLOP_BFINS, cr0, cr0_3, lt, 3 | 1<<8);
-    ADD_INSN(RTLOP_SET_ALIAS, ctx->alias.cr[0], cr0, 0, 0);
+    ADD_INSN(RTLOP_SET_ALIAS, 0, cr0, 0, ctx->alias.cr[0]);
 
     return true;
 }
@@ -97,7 +97,7 @@ static bool translate_arith_imm(
     RTLUnit * const unit = ctx->unit;
 
     DECLARE_NEW_REGISTER(rA, RTLTYPE_INT32);
-    ADD_INSN(RTLOP_GET_ALIAS, rA, ctx->alias.gpr[get_rA(insn)], 0, 0);
+    ADD_INSN(RTLOP_GET_ALIAS, rA, 0, 0, ctx->alias.gpr[get_rA(insn)]);
     DECLARE_NEW_REGISTER(imm, RTLTYPE_INT32);
     const uint32_t imm_val = get_SIMM(insn);
     ADD_INSN(RTLOP_LOAD_IMM, imm, 0, 0, shift_imm ? imm_val<<16 : imm_val);
@@ -107,13 +107,13 @@ static bool translate_arith_imm(
     DECLARE_NEW_REGISTER(result, RTLTYPE_INT32);
     ADD_INSN(rtlop, result, imm, rA, 0);
 
-    ADD_INSN(RTLOP_SET_ALIAS, ctx->alias.gpr[get_rD(insn)], result, 0, 0);
+    ADD_INSN(RTLOP_SET_ALIAS, 0, result, 0, ctx->alias.gpr[get_rD(insn)]);
     ctx->live.gpr[get_rD(insn)] = result;
 
     uint32_t xer = 0;
     if (set_ca) {
         ALLOC_REGISTER(xer, RTLTYPE_INT32);
-        ADD_INSN(RTLOP_GET_ALIAS, xer, ctx->alias.xer, 0, 0);
+        ADD_INSN(RTLOP_GET_ALIAS, xer, 0, 0, ctx->alias.xer);
         DECLARE_NEW_REGISTER(ca, RTLTYPE_INT32);
         if (rtlop == RTLOP_ADD) {
             ADD_INSN(RTLOP_SLTU, ca, result, imm, 0);
@@ -123,7 +123,7 @@ static bool translate_arith_imm(
         }
         DECLARE_NEW_REGISTER(new_xer, RTLTYPE_INT32);
         ADD_INSN(RTLOP_BFINS, new_xer, xer, ca, 29 | 1<<8);
-        ADD_INSN(RTLOP_SET_ALIAS, ctx->alias.xer, new_xer, 0, 0);
+        ADD_INSN(RTLOP_SET_ALIAS, 0, new_xer, 0, ctx->alias.xer);
     }
 
     if (set_cr0) {
@@ -179,7 +179,7 @@ static inline bool translate_insn(
             DECLARE_NEW_REGISTER(result, RTLTYPE_INT32);
             ADD_INSN(RTLOP_LOAD_IMM, result, 0, 0, (uint32_t)get_SIMM(insn));
             ADD_INSN(RTLOP_SET_ALIAS,
-                     ctx->alias.gpr[get_rD(insn)], result, 0, 0);
+                     0, result, 0, ctx->alias.gpr[get_rD(insn)]);
             ctx->live.gpr[get_rD(insn)] = result;
             return true;
         } else {
@@ -229,7 +229,7 @@ bool guest_ppc_gen_rtl(GuestPPCContext *ctx, int index)
     #define ICE_SUFFIX  " at 0x%X", start + block->len
     DECLARE_NEW_REGISTER(nia_reg, RTLTYPE_INT32);
     ADD_INSN(RTLOP_LOAD_IMM, nia_reg, 0, 0, start + block->len);
-    ADD_INSN(RTLOP_SET_ALIAS, ctx->alias.nia, nia_reg, 0, 0);
+    ADD_INSN(RTLOP_SET_ALIAS, 0, nia_reg, 0, ctx->alias.nia);
 
     return true;
 }

@@ -30,7 +30,7 @@ int main(void)
     EXPECT(reg = rtl_alloc_register(unit, RTLTYPE_INT32));
     EXPECT(alias = rtl_alloc_alias_register(unit, RTLTYPE_INT32));
 
-    EXPECT_FALSE(rtl_add_insn(unit, RTLOP_SET_ALIAS, alias, reg, 0, 0));
+    EXPECT_FALSE(rtl_add_insn(unit, RTLOP_SET_ALIAS, 0, reg, 0, alias));
     EXPECT_ICE("Operand constraint violated:"
                " unit->regs[src1].source != RTLREG_UNDEFINED");
     EXPECT_EQ(unit->num_insns, 0);

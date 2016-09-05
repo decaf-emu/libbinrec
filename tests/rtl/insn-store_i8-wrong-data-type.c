@@ -33,9 +33,9 @@ int main(void)
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg1, 0, 0, 10));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg2, 0, 0, 20));
     EXPECT_EQ(unit->num_insns, 2);
-    EXPECT_FALSE(rtl_add_insn(unit, RTLOP_STORE_I8, reg1, reg2, 0, 32));
+    EXPECT_FALSE(rtl_add_insn(unit, RTLOP_STORE_I8, 0, reg1, reg2, 32));
     EXPECT_ICE("Operand constraint violated:"
-               " unit->regs[src1].type == type_lookup[lookup_index]");
+               " unit->regs[src2].type == type_lookup[lookup_index]");
     EXPECT_EQ(unit->num_insns, 2);
 
     rtl_destroy_unit(unit);

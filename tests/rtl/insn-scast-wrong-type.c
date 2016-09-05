@@ -34,7 +34,7 @@ int main(void)
     EXPECT(alias = rtl_alloc_alias_register(unit, RTLTYPE_FLOAT));
 
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg1, 0, 0, 10));
-    EXPECT(rtl_add_insn(unit, RTLOP_GET_ALIAS, reg2, alias, 0, 0));
+    EXPECT(rtl_add_insn(unit, RTLOP_GET_ALIAS, reg2, 0, 0, alias));
     EXPECT_EQ(unit->num_insns, 2);
     EXPECT_FALSE(rtl_add_insn(unit, RTLOP_SCAST, reg3, reg1, 0, 0));
     EXPECT_ICE("Operand constraint violated:"

@@ -30,9 +30,9 @@ int main(void)
     EXPECT(reg = rtl_alloc_register(unit, RTLTYPE_INT32));
     EXPECT(alias = rtl_alloc_alias_register(unit, RTLTYPE_ADDRESS));
 
-    EXPECT_FALSE(rtl_add_insn(unit, RTLOP_GET_ALIAS, reg, alias, 0, 0));
+    EXPECT_FALSE(rtl_add_insn(unit, RTLOP_GET_ALIAS, reg, 0, 0, alias));
     EXPECT_ICE("Operand constraint violated:"
-               " unit->regs[dest].type == unit->alias_types[src1]");
+               " unit->regs[dest].type == unit->alias_types[other]");
     EXPECT_EQ(unit->num_insns, 0);
 
     rtl_destroy_unit(unit);
