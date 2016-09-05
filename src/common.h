@@ -56,13 +56,13 @@
 /* Convenience macros for testing compiler versions.  major and minor must
  * be literal integers. */
 #define IS_CLANG(major,minor)   \
-    defined(__clang__)          \
-    && (__clang_major__ > major \
-        || (__clang_major__ == major && __clang_minor__ >= minor))
+    (defined(__clang__)         \
+     && (__clang_major__ > major \
+         || (__clang_major__ == major && __clang_minor__ >= minor)))
 #define IS_GCC(major,minor)     \
-    defined(__GNUC__)           \
-    && (__GNUC__ > major        \
-        || (__GNUC__ == major && __GNUC_MINOR__ >= minor))
+    (defined(__GNUC__)          \
+     && (__GNUC__ > major       \
+         || (__GNUC__ == major && __GNUC_MINOR__ >= minor)))
 
 /**
  * ALWAYS_INLINE:  Function attribute indicating that the function should
