@@ -63,6 +63,12 @@
     (defined(__GNUC__)          \
      && (__GNUC__ > major       \
          || (__GNUC__ == major && __GNUC_MINOR__ >= minor)))
+#define IS_ICC(major,minor)    \
+    (defined(__INTEL_COMPILER) \
+     && __INTEL_COMPILER >= (major * 100 + minor))
+#define IS_MSVC(major,minor)    \
+    (defined(_MSC_VER)          \
+     && _MSC_VER >= (major * 100 + minor))
 
 /**
  * ALWAYS_INLINE:  Function attribute indicating that the function should
@@ -72,7 +78,7 @@
  */
 #if IS_GCC(3,1) || IS_CLANG(1,0)
     #define ALWAYS_INLINE  inline __attribute__((always_inline))
-#elif defined(_MSC_VER)
+#elif IS_MSVC(1,0)
     #define ALWAYS_INLINE  __forceinline
 #else
     #define ALWAYS_INLINE  inline
@@ -88,7 +94,7 @@
     #include <assert.h>
     #define ASSERT  assert
 #else
-    #if defined(_MSC_VER)
+    #if IS_MSVC(1,0)
         #define ASSERT(expr)  __assume((expr))
     #else
         #define ASSERT(expr)  do {if (UNLIKELY(!(expr))) {UNREACHABLE;}} while (0)
@@ -117,12 +123,24 @@
 #endif
 
 /**
+ * LIKELY, UNLIKELY:  Construct which indicates to the compiler that the
+ * given expression is likely or unlikely to evaluate to true.
+ */
+#if IS_GCC(3,0) || IS_CLANG(1,0)
+    #define LIKELY(expr)    (__builtin_expect(!!(expr), 1))
+    #define UNLIKELY(expr)  (__builtin_expect(!!(expr), 0))
+#else
+    #define LIKELY(expr)    (expr)
+    #define UNLIKELY(expr)  (expr)
+#endif
+
+/**
  * NOINLINE:  Function attribute indicating that the function should never
  * be inlined, even if the compiler thinks it would be a good idea.
  */
 #if IS_GCC(3,1) || IS_CLANG(1,0)
     #define NOINLINE  __attribute__((noinline))
-#elif defined(_MSC_VER)
+#elif IS_MSVC(1,0)
     #define NOINLINE  __declspec(noinline)
 #else
     #define NOINLINE  /*nothing*/
@@ -140,24 +158,12 @@
 #endif
 
 /**
- * LIKELY, UNLIKELY:  Construct which indicates to the compiler that the
- * given expression is likely or unlikely to evaluate to true.
- */
-#if IS_GCC(3,0) || IS_CLANG(1,0)
-    #define LIKELY(expr)    (__builtin_expect(!!(expr), 1))
-    #define UNLIKELY(expr)  (__builtin_expect(!!(expr), 0))
-#else
-    #define LIKELY(expr)    (expr)
-    #define UNLIKELY(expr)  (expr)
-#endif
-
-/**
  * UNREACHABLE:  Compiler intrinsic indicating that the current code
  * location can never be reached.
  */
 #if IS_GCC(4,5) || IS_CLANG(2,7)
     #define UNREACHABLE  __builtin_unreachable()
-#elif defined(_MSC_VER)
+#elif IS_MSVC(1,0)
     #define UNREACHABLE  __assume(0)
 #else
     #define UNREACHABLE  /*nothing*/

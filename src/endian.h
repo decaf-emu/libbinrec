@@ -10,7 +10,9 @@
 #ifndef SRC_ENDIAN_H
 #define SRC_ENDIAN_H
 
-#include "src/common.h"
+#ifndef SRC_COMMON_H
+    #include "src/common.h"
+#endif
 
 /*
  * This header provides functions for converting values between different
@@ -50,9 +52,9 @@ static ALWAYS_INLINE CONST_FUNCTION bool is_little_endian(void) {
 static ALWAYS_INLINE CONST_FUNCTION uint16_t bswap16(uint16_t x)
 {
     #ifndef SUPPRESS_ENDIAN_INTRINSICS
-        #if defined(__GNUC__)
+        #if IS_GCC(4,8)
             return __builtin_bswap16(x);
-        #elif defined(_MSC_VER)
+        #elif IS_MSVC(1,0)
             return _byteswap_ushort(x);
         #endif
     #endif
@@ -65,11 +67,11 @@ static ALWAYS_INLINE CONST_FUNCTION uint16_t bswap16(uint16_t x)
 static ALWAYS_INLINE CONST_FUNCTION uint32_t bswap32(uint32_t x)
 {
     #ifndef SUPPRESS_ENDIAN_INTRINSICS
-        #if defined(__INTEL_COMPILER)  // Must precede __GNUC__ test.
+        #if IS_ICC(1,0)  // Must precede IS_GCC test.
             return _bswap(x);
-        #elif defined(__GNUC__)
+        #elif IS_GCC(4,3)
             return __builtin_bswap32(x);
-        #elif defined(_MSC_VER)
+        #elif IS_MSVC(1,0)
             return _byteswap_ulong(x);
         #endif
     #endif
@@ -82,9 +84,9 @@ static ALWAYS_INLINE CONST_FUNCTION uint32_t bswap32(uint32_t x)
 static ALWAYS_INLINE CONST_FUNCTION uint64_t bswap64(uint64_t x)
 {
     #ifndef SUPPRESS_ENDIAN_INTRINSICS
-        #if defined(__GNUC__)
+        #if IS_GCC(4,3)
             return __builtin_bswap64(x);
-        #elif defined(_MSC_VER)
+        #elif IS_MSVC(1,0)
             return _byteswap_uint64(x);
         #endif
     #endif
