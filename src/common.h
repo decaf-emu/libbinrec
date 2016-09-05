@@ -70,6 +70,14 @@
     (defined(_MSC_VER)          \
      && _MSC_VER >= (major * 100 + minor))
 
+/* Wrap Clang's __has_builtin() to avoid preprocessor errors on other
+ * compilers. */
+#if IS_CLANG(1,0)
+    #define CLANG_HAS_BUILTIN(name)  __has_builtin(name)
+#else
+    #define CLANG_HAS_BUILTIN(name)  0
+#endif
+
 /**
  * ALWAYS_INLINE:  Function attribute indicating that the function should
  * always be inlined, even if the compiler thinks it would not be a good

@@ -52,7 +52,7 @@ static ALWAYS_INLINE CONST_FUNCTION bool is_little_endian(void) {
 static ALWAYS_INLINE CONST_FUNCTION uint16_t bswap16(uint16_t x)
 {
     #ifndef SUPPRESS_ENDIAN_INTRINSICS
-        #if IS_GCC(4,8)
+        #if IS_GCC(4,8) || CLANG_HAS_BUILTIN(__builtin_bswap16)
             return __builtin_bswap16(x);
         #elif IS_MSVC(1,0)
             return _byteswap_ushort(x);
@@ -69,7 +69,7 @@ static ALWAYS_INLINE CONST_FUNCTION uint32_t bswap32(uint32_t x)
     #ifndef SUPPRESS_ENDIAN_INTRINSICS
         #if IS_ICC(1,0)  // Must precede IS_GCC test.
             return _bswap(x);
-        #elif IS_GCC(4,3)
+        #elif IS_GCC(4,3) || CLANG_HAS_BUILTIN(__builtin_bswap32)
             return __builtin_bswap32(x);
         #elif IS_MSVC(1,0)
             return _byteswap_ulong(x);
@@ -84,7 +84,7 @@ static ALWAYS_INLINE CONST_FUNCTION uint32_t bswap32(uint32_t x)
 static ALWAYS_INLINE CONST_FUNCTION uint64_t bswap64(uint64_t x)
 {
     #ifndef SUPPRESS_ENDIAN_INTRINSICS
-        #if IS_GCC(4,3)
+        #if IS_GCC(4,3) || CLANG_HAS_BUILTIN(__builtin_bswap64)
             return __builtin_bswap64(x);
         #elif IS_MSVC(1,0)
             return _byteswap_uint64(x);
