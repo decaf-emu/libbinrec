@@ -41,7 +41,12 @@
  * is_little_endian:  Return whether the native environment is little-endian.
  */
 static ALWAYS_INLINE CONST_FUNCTION bool is_little_endian(void) {
-    return *(uint16_t *)"\1" == 1;  // Optimizes to a compile-time constant.
+    /* This expression optimizes to a compile-time constant.  It requires
+     * that constant strings are stored at addresses aligned appropriately
+     * for reading a 16-bit value, but that seems to be true on all modern
+     * platforms.  The cast through void * is to suppress alignment
+     * warnings. */
+    return *(const uint16_t *)(const void *)"\1" == 1;
 }
 
 /*-----------------------------------------------------------------------*/

@@ -48,14 +48,14 @@ void *binrec_code_malloc(const binrec_t *handle, size_t size, size_t alignment)
     }
 
     /* Align the pointer to be returned. */
-    char *ptr = base + sizeof(void *);
-    if ((uintptr_t)ptr % alignment != 0) {
-        ptr += alignment - ((uintptr_t)ptr % alignment);
+    uintptr_t ptr = (uintptr_t)(base + sizeof(void *));
+    if (ptr % alignment != 0) {
+        ptr += alignment - (ptr % alignment);
     }
 
     /* Save the base pointer and return. */
     ((void **)ptr)[-1] = base;
-    return ptr;
+    return (void *)ptr;
 }
 
 /*-----------------------------------------------------------------------*/
@@ -86,21 +86,21 @@ void *binrec_code_realloc(const binrec_t *handle, void *ptr, size_t old_size,
         return NULL;
     }
 
-    char *new_ptr = new_base + sizeof(void *);
-    if ((uintptr_t)new_ptr % alignment != 0) {
-        new_ptr += alignment - ((uintptr_t)new_ptr % alignment);
+    uintptr_t new_ptr = (uintptr_t)(new_base + sizeof(void *));
+    if (new_ptr % alignment != 0) {
+        new_ptr += alignment - (new_ptr % alignment);
     }
 
-    const size_t new_offset = new_ptr - new_base;
+    const size_t new_offset = new_ptr - (uintptr_t)new_base;
     const size_t old_offset = (uintptr_t)ptr - (uintptr_t)base;
     if (new_offset != old_offset) {
         /* The alignment changed, so we have to move the data. */
         const size_t move_size = min(old_size, new_size);
-        memmove(new_ptr, new_base + old_offset, move_size);
+        memmove((void *)new_ptr, new_base + old_offset, move_size);
     }
 
     ((void **)new_ptr)[-1] = new_base;
-    return new_ptr;
+    return (void *)new_ptr;
 }
 
 /*-----------------------------------------------------------------------*/
