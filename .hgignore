@@ -12,6 +12,7 @@ syntax: glob
 syntax: regexp
 
 ^tests/api/[^.]+(\.exe)?$
+^tests/bitutils/[^.]+(\.exe)?$
 ^tests/endian/[^.]+(\.exe)?$
 ^tests/memory/[^.]+(\.exe)?$
 ^tests/rtl/[^.]+(\.exe)?$

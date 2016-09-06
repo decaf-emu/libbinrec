@@ -53,8 +53,10 @@
 /***************************** Helper macros *****************************/
 /*************************************************************************/
 
-/* Convenience macros for testing compiler versions.  major and minor must
- * be literal integers. */
+/* Convenience macros for testing standard compliance and compiler versions.
+ * major and minor must be literal integers. */
+#define IS_STDC(version_date)   \
+    (defined(__STDC__) && __STDC__ && __STDC_VERSION__ >= 201112)
 #define IS_CLANG(major,minor)   \
     (defined(__clang__)         \
      && (__clang_major__ > major \
@@ -64,11 +66,9 @@
      && (__GNUC__ > major       \
          || (__GNUC__ == major && __GNUC_MINOR__ >= minor)))
 #define IS_ICC(major,minor)    \
-    (defined(__INTEL_COMPILER) \
-     && __INTEL_COMPILER >= (major * 100 + minor))
+    (defined(__INTEL_COMPILER) && __INTEL_COMPILER >= (major * 100 + minor))
 #define IS_MSVC(major,minor)    \
-    (defined(_MSC_VER)          \
-     && _MSC_VER >= (major * 100 + minor))
+    (defined(_MSC_VER) && _MSC_VER >= (major * 100 + minor))
 
 /* Wrap Clang's __has_builtin() to avoid preprocessor errors on other
  * compilers. */
@@ -163,6 +163,23 @@
     #define PURE_FUNCTION  __attribute__((pure))
 #else
     #define PURE_FUNCTION  /*nothing*/
+#endif
+
+/**
+ * STATIC_ASSERT:  Verify that the given condition is true at compile time,
+ * and generate a compilation error if it is not.  These assertions are
+ * always enabled, regardless of whether ENABLE_ASSERT is defined.
+ */
+#if IS_STDC(201112) || IS_GCC(4,6)
+    #define STATIC_ASSERT(expr, message)  _Static_assert(expr, message)
+#elif IS_MSVC(1,0)
+    #define STATIC_ASSERT(expr, message)  static_assert(expr, message)
+#else
+    #define STATIC_ASSERT(expr, message)  do { \
+        struct static_assert { \
+            int _error_if_negative : 1 - 2 * ((expr) == 0); \
+        }; \
+    } while (0)
 #endif
 
 /**
