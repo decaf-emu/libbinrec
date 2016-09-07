@@ -160,8 +160,8 @@ static bool translate_block(HostX86Context *ctx, int block_index)
         UNUSED const uint32_t src1 = insn->src1; //FIXME: not yet used
         UNUSED const uint32_t src2 = insn->src2; //FIXME: not yet used
 
-        /* No translations need more than 64 bytes. */
-        if (UNLIKELY(!binrec_ensure_code_space(ctx->handle, 64))) {
+        /* No instruction translations need more than 16 bytes. */
+        if (UNLIKELY(!binrec_ensure_code_space(ctx->handle, 16))) {
             return false;
         }
 
@@ -485,6 +485,12 @@ static bool append_epilogue(HostX86Context *ctx)
 
     ctx->label_offsets[0] = handle->code_len;
 
+    /* The maximum size of the epilogue is the same as the maximum size of
+     * the prologue, plus 1 for the RET instruction. */
+    if (UNLIKELY(!binrec_ensure_code_space(handle, 98))) {
+        return false;
+    }
+
     int sp_offset = ctx->frame_size + 16 * popcnt32(regs_saved >> 16);
     for (int reg = 31; reg >= 16; reg--) {
         if (regs_saved & (1 << reg)) {
@@ -529,9 +535,6 @@ static bool append_epilogue(HostX86Context *ctx)
         }
     }
 
-    if (UNLIKELY(!binrec_ensure_code_space(handle, 1))) {
-        return false;
-    }
     append_opcode(handle, X86OP_RET);
 
     return true;
