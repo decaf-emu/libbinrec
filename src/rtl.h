@@ -114,8 +114,13 @@ typedef enum RTLDataType_ {
 typedef enum RTLOpcode {
     /* Zero is invalid. */
 
-    /* No operation (note that an immediate value can be given in the
-     * "other" operand for debugging purposes) */
+    /* No operation.  For debugging purposes, an immediate value (such as
+     * an instruction address) can be given in the "other" operand, which
+     * will typically be encoded into a no-op instruction in the output.
+     * Registers can also be given in the dest, src1, and src2 fields;
+     * these have no effect on code behavior, but they do extend the live
+     * range of the registers, which can be useful in forcing certain
+     * registers to remain live in tests. */
     RTLOP_NOP = 1,
 
     /* Alias register operations */

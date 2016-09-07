@@ -82,8 +82,29 @@ static bool make_nop(RTLUnit *unit, RTLInsn *insn, unsigned int dest,
                      uint32_t src1, uint32_t src2, uint64_t other)
 {
     ASSERT(insn != NULL);
+    ASSERT(dest < unit->next_reg);
+    ASSERT(src1 < unit->next_reg);
+    ASSERT(src2 < unit->next_reg);
 
+    insn->dest = dest;
+    insn->src1 = src1;
+    insn->src2 = src2;
     insn->src_imm = other;
+
+    const uint32_t insn_index = unit->num_insns;
+    if (dest) {
+        RTLRegister * const destreg = &unit->regs[dest];
+        mark_live(unit, insn_index, destreg, dest);
+    }
+    if (src1) {
+        RTLRegister * const src1reg = &unit->regs[src1];
+        mark_live(unit, insn_index, src1reg, src1);
+    }
+    if (src2) {
+        RTLRegister * const src2reg = &unit->regs[src2];
+        mark_live(unit, insn_index, src2reg, src2);
+    }
+
     return true;
 }
 

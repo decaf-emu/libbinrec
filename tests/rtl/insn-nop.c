@@ -24,14 +24,26 @@ int main(void)
     RTLUnit *unit;
     EXPECT(unit = rtl_create_unit(handle));
 
+    uint32_t reg1, reg2, reg3;
+    EXPECT(reg1 = rtl_alloc_register(unit, RTLTYPE_INT32));
+    EXPECT(reg2 = rtl_alloc_register(unit, RTLTYPE_ADDRESS));
+    EXPECT(reg3 = rtl_alloc_register(unit, RTLTYPE_FLOAT));
+
     EXPECT(rtl_add_insn(unit, RTLOP_NOP, 0, 0, 0, 0));
-    EXPECT(rtl_add_insn(unit, RTLOP_NOP, 0, 0, 0, UINT64_C(0x123456789)));
+    EXPECT(rtl_add_insn(unit, RTLOP_NOP, reg1, reg2, reg3,
+                        UINT64_C(0x123456789)));
     EXPECT_EQ(unit->num_insns, 2);
     EXPECT_EQ(unit->insns[0].opcode, RTLOP_NOP);
     EXPECT_EQ(unit->insns[0].src_imm, 0);
     EXPECT_EQ(unit->insns[1].opcode, RTLOP_NOP);
     EXPECT_EQ(unit->insns[1].src_imm, UINT64_C(0x123456789));
     EXPECT(unit->have_block);
+    EXPECT_EQ(unit->regs[reg1].birth, 1);
+    EXPECT_EQ(unit->regs[reg1].death, 1);
+    EXPECT_EQ(unit->regs[reg2].birth, 1);
+    EXPECT_EQ(unit->regs[reg2].death, 1);
+    EXPECT_EQ(unit->regs[reg3].birth, 1);
+    EXPECT_EQ(unit->regs[reg3].death, 1);
 
     EXPECT(rtl_finalize_unit(unit));
 
