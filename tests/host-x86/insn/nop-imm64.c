@@ -9,6 +9,7 @@
 
 #include "src/rtl-internal.h"
 #include "tests/common.h"
+#include "tests/host-x86/common.h"
 
 
 static const binrec_setup_t setup = {

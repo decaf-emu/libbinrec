@@ -198,7 +198,7 @@ void _diff_mem(FILE *f, const uint8_t *from, const uint8_t *to, long len)
         if (pos < 0) {
             pos = 0;
         } else if (pos > len-16) {
-            pos = len-16;
+            pos = (len-13) & ~3;
         }
     }
 

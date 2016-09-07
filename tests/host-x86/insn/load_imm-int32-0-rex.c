@@ -18,19 +18,23 @@ static const binrec_setup_t setup = {
 
 static bool add_rtl(RTLUnit *unit)
 {
-    EXPECT(alloc_dummy_registers(unit, 1, RTLTYPE_INT32));
+    EXPECT(alloc_dummy_registers(unit, 9, RTLTYPE_INT32));
 
     uint32_t reg;
     EXPECT(reg = rtl_alloc_register(unit, RTLTYPE_INT32));
-    EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg, 0, 0, 0x7FFFFFFF));
+    EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg, 0, 0, 0));
 
     return true;
 }
 
 static const uint8_t expected_code[] = {
+    0x53,                               // push %rbx
+    0x55,                               // push %rbp
     0x48,0x83,0xEC,0x08,                // sub $8,%rsp
-    0xB9,0xFF,0xFF,0xFF,0x7F,           // mov %eax,0x7FFFFFFF
+    0x45,0x33,0xD2,                     // xor %r10d,%r10d
     0x48,0x83,0xC4,0x08,                // add $8,%rsp
+    0x5D,                               // pop %rbp
+    0x5B,                               // pop %rbx
     0xC3,                               // ret
 };
 

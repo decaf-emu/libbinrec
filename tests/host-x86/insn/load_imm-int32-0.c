@@ -9,6 +9,7 @@
 
 #include "src/rtl-internal.h"
 #include "tests/common.h"
+#include "tests/host-x86/common.h"
 
 
 static const binrec_setup_t setup = {
@@ -17,15 +18,18 @@ static const binrec_setup_t setup = {
 
 static bool add_rtl(RTLUnit *unit)
 {
+    EXPECT(alloc_dummy_registers(unit, 1, RTLTYPE_INT32));
+
     uint32_t reg;
     EXPECT(reg = rtl_alloc_register(unit, RTLTYPE_INT32));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg, 0, 0, 0));
+
     return true;
 }
 
 static const uint8_t expected_code[] = {
     0x48,0x83,0xEC,0x08,                // sub $8,%rsp
-    0x33,0xC0,                          // xor %eax,%eax
+    0x33,0xC9,                          // xor %ecx,%ecx
     0x48,0x83,0xC4,0x08,                // add $8,%rsp
     0xC3,                               // ret
 };

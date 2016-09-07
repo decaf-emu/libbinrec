@@ -192,7 +192,8 @@ static bool translate_block(HostX86Context *ctx, int block_index)
                         append_opcode(ctx->handle, X86OP_REX_R | X86OP_REX_B);
                     }
                     append_opcode(ctx->handle, X86OP_XOR_Gv_Ev);
-                    append_ModRM(ctx->handle, X86MOD_REG, host_dest, host_dest);
+                    append_ModRM(ctx->handle, X86MOD_REG, host_dest & 7,
+                                 host_dest & 7);
                 } else if (imm <= UINT64_C(0xFFFFFFFF)) {
                     if (host_dest & 8) {
                         append_opcode(ctx->handle, X86OP_REX_B);
@@ -205,7 +206,7 @@ static bool translate_block(HostX86Context *ctx, int block_index)
                                                 ? X86OP_REX_W | X86OP_REX_B
                                                 : X86OP_REX_W));
                     append_opcode(ctx->handle, X86OP_MOV_Ev_Iz);
-                    append_ModRM(ctx->handle, X86MOD_REG, host_dest, host_dest);
+                    append_ModRM(ctx->handle, X86MOD_REG, 0, host_dest & 7);
                     append_imm32(ctx->handle, (uint32_t)imm);
                 } else {
                     append_opcode(ctx->handle, (host_dest & 8
