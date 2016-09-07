@@ -18,6 +18,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+struct RTLUnit;
+
 /*************************************************************************/
 /************************ Configuration constants ************************/
 /*************************************************************************/
@@ -49,6 +51,15 @@
     #define MAX_PARTIAL_READONLY  64
 #endif
 
+/**
+ * CODE_EXPAND_SIZE:  Sets the increment, in bytes, by which the generated
+ * (host) code buffer is expanded during translation.  This is also used
+ * for the initial size of the buffer.
+ */
+#ifndef CODE_EXPAND_SIZE
+    #define CODE_EXPAND_SIZE  4096
+#endif
+
 /*************************************************************************/
 /***************************** Helper macros *****************************/
 /*************************************************************************/
@@ -57,17 +68,17 @@
  * major and minor must be literal integers. */
 #define IS_STDC(version_date)   \
     (defined(__STDC__) && __STDC__ && __STDC_VERSION__ >= 201112)
-#define IS_CLANG(major,minor)   \
+#define IS_CLANG(major, minor)  \
     (defined(__clang__)         \
      && (__clang_major__ > major \
          || (__clang_major__ == major && __clang_minor__ >= minor)))
-#define IS_GCC(major,minor)     \
+#define IS_GCC(major, minor)    \
     (defined(__GNUC__)          \
      && (__GNUC__ > major       \
          || (__GNUC__ == major && __GNUC_MINOR__ >= minor)))
-#define IS_ICC(major,minor)    \
+#define IS_ICC(major, minor)    \
     (defined(__INTEL_COMPILER) && __INTEL_COMPILER >= (major * 100 + minor))
-#define IS_MSVC(major,minor)    \
+#define IS_MSVC(major, minor)   \
     (defined(_MSC_VER) && _MSC_VER >= (major * 100 + minor))
 
 /* Wrap Clang's __has_builtin() to avoid preprocessor errors on other
@@ -76,6 +87,21 @@
     #define CLANG_HAS_BUILTIN(name)  __has_builtin(name)
 #else
     #define CLANG_HAS_BUILTIN(name)  0
+#endif
+
+/**
+ * ALIGNED_CAST:  Cast "ptr" to pointer type "type", suppressing warnings
+ * due to increased alignment.  If possible, an assertion check is made
+ * that the pointer really is aligned to the required alignment.
+ */
+#if IS_GCC(2,95)
+    #define ALIGNED_CAST(type, ptr)  __extension__({ \
+        type _result = (type)(void *)(ptr); \
+        ASSERT((uintptr_t)_result % __alignof__(type) == 0); \
+        _result; \
+    })
+#else
+    #define ALIGNED_CAST(type, ptr)  ((type)(void *)(ptr))
 #endif
 
 /**
@@ -244,12 +270,23 @@ struct binrec_t {
     /* Handle configuration, as passed to binrec_create(). */
     binrec_setup_t setup;
 
+    /* Buffer for generated code. */
+    uint8_t *code_buffer;
+    /* Allocated size of the code buffer, in bytes. */
+    long code_buffer_size;
+    /* Number of bytes of actual code stored in the buffer. */
+    long code_len;
+    /* Alignment to use when (re)allocating the code buffer. */
+    size_t code_alignment;
+
     /* Valid address range (inclusive) for code translation. */
     uint32_t code_range_start;
     uint32_t code_range_end;
 
     /* Current set of optimization flags. */
-    unsigned int optimizations;
+    unsigned int common_opt;
+    unsigned int guest_opt;
+    unsigned int host_opt;
 
     /* Settings for inlining. */
     int max_inline_length;
@@ -372,46 +409,39 @@ static inline void binrec_free(const binrec_t *handle, void *ptr)
 }
 
 /**
- * binrec_code_malloc:  Allocate an output code buffer.
+ * binrec_expand_code_buffer:  Expand the code buffer to at least the
+ * given size.
+ *
+ * Translators should normally call binrec_ensure_code_space() instead of
+ * this function.
  *
  * [Parameters]
  *     handle: Translation handle.
- *     size: Size of buffer, in bytes.  Must be nonzero.
- *     alignment: Desired buffer alignment, in bytes.  Must be a power of 2.
+ *     new_size: New buffer size (must be greater than the current size).
  * [Return value]
- *     Allocated buffer, or NULL on error.
+ *     True on success, false if not enough memory was available.
  */
-#define binrec_code_malloc INTERNAL(binrec_code_malloc)
-extern void *binrec_code_malloc(const binrec_t *handle, size_t size,
-                                size_t alignment);
+#define binrec_expand_code_buffer INTERNAL(binrec_expand_code_buffer)
+extern bool binrec_expand_code_buffer(binrec_t *handle, long new_size);
 
 /**
- * binrec_code_realloc:  Expand an output code buffer.
+ * binrec_ensure_code_space:  Ensure that the given number of bytes are
+ * available past the current output code length in the handle's output
+ * code buffer.
  *
  * [Parameters]
  *     handle: Translation handle.
- *     ptr: Output code buffer to expand.
- *     old_size: Old size of buffer, in bytes.
- *     new_size: New size of buffer, in bytes.  Must be nonzero.
- *     alignment: Buffer alignment, in bytes.  Must be equal to the value
- *         passed to binrec_code_malloc() when the block was allocated.
+ *     bytes: Number of bytes required.
  * [Return value]
- *     Expanded buffer, or NULL on error.
+ *     True on success, false if not enough memory was available.
  */
-#define binrec_code_realloc INTERNAL(binrec_code_realloc)
-extern void *binrec_code_realloc(const binrec_t *handle, void *ptr,
-                                 size_t old_size, size_t new_size,
-                                 size_t alignment);
-
-/**
- * binrec_code_free:  Free an output code buffer.
- *
- * [Parameters]
- *     handle: Translation handle.
- *     ptr: Output code buffer to free.
- */
-#define binrec_code_free INTERNAL(binrec_code_free)
-extern void binrec_code_free(const binrec_t *handle, void *ptr);
+static inline bool binrec_ensure_code_space(binrec_t *handle, long bytes)
+{
+    if (LIKELY(handle->code_len + bytes <= handle->code_buffer_size)) {
+        return true;
+    }
+    return binrec_expand_code_buffer(handle, handle->code_len + bytes);
+}
 
 /*----------------------------------*/
 

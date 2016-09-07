@@ -7,7 +7,8 @@
  * NO WARRANTY is provided with this software.
  */
 
-#include "src/rtl-internal.h"
+#include "src/common.h"
+#include "src/memory.h"
 #include "tests/common.h"
 #include "tests/mem-wrappers.h"
 

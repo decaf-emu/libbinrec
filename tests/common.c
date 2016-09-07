@@ -10,6 +10,8 @@
 #include "src/common.h"
 #include "tests/common.h"
 
+/*************************************************************************/
+/*************************************************************************/
 
 /**
  * _diff_strings:  Search for differences between two strings and print
@@ -169,3 +171,53 @@ void _diff_strings(FILE *f, const char *from, const char *to)
         }
     }
 }
+
+/*-----------------------------------------------------------------------*/
+
+/**
+ * _diff_mem:  Search for differences between two memory buffers and print
+ * them to the given file.  Helper for the EXPECT_MEMEQ macro in common.h.
+ *
+ * [Parameters]
+ *     f: File to which to print differences (typically stdout or stderr).
+ *     from, to: Memory buffers to compare.
+ *     len: Number of bytes to compare.
+ */
+void _diff_mem(FILE *f, const uint8_t *from, const uint8_t *to, long len)
+{
+    int pos;
+    if (len <= 16) {
+        pos = 0;
+    } else {
+        for (pos = 0; pos < len; pos++) {
+            if (from[pos] != to[pos]) {
+                break;
+            }
+        }
+        pos = (pos & ~3) - 4;
+        if (pos < 0) {
+            pos = 0;
+        } else if (pos > len-16) {
+            pos = len-16;
+        }
+    }
+
+    char from_str[53], to_str[53];
+    for (int i = 0; i < 16 && pos+i < len; i++) {
+        if (i > 0 && i%4 == 0) {
+            from_str[i*3+(i/4)-1] = ' ';
+            to_str[i*3+(i/4)-1] = ' ';
+        }
+        snprintf(&from_str[i*3+(i/4)], 5, " %02X", from[pos+i]);
+        snprintf(&to_str[i*3+(i/4)], 5, "%c%02X",
+                 to[pos+i] == from[pos+i] ? ' ' : '*', to[pos+i]);
+    }
+
+    fprintf(f,
+            "    Expected [@0x%X]: %s\n"
+            "      Actual [@0x%X]: %s\n",
+            pos, from_str, pos, to_str);
+}
+
+/*************************************************************************/
+/*************************************************************************/

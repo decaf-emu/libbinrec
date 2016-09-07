@@ -480,7 +480,7 @@ static bool make_load_arg(RTLUnit *unit, RTLInsn *insn, unsigned int dest,
 #endif
 
     insn->dest = dest;
-    insn->src_imm = other;
+    insn->arg_index = other;
 
     RTLRegister * const destreg = &unit->regs[dest];
     const uint32_t insn_index = unit->num_insns;

@@ -110,9 +110,10 @@ typedef struct RTLInsn_ {
         } bitfield;
         int16_t offset;       // Byte offset for load/store instructions
         uint16_t alias;       // Alias index for SET/GET_ALIAS
+        uint8_t arg_index;    // Argument index for LOAD_ARG
         uint16_t label;       // GOTO target label
         uint16_t target;      // CALL_NATIVE branch target register
-        uint64_t src_imm;     // Source immediate value
+        uint64_t src_imm;     // Source immediate value or argument index
     };
 } RTLInsn;
 
@@ -123,13 +124,13 @@ typedef struct RTLInsn_ {
  * unit.
  */
 typedef enum RTLRegType_ {
-    RTLREG_UNDEFINED = 0,   // Not yet defined to anything
-    RTLREG_CONSTANT,        // Constant value
-    RTLREG_FUNC_ARG,        // Function argument
-    RTLREG_MEMORY,          // Memory reference
-    RTLREG_ALIAS,           // Loaded from an alias register
-    RTLREG_RESULT,          // Result of an operation on other registers
-    RTLREG_RESULT_NOFOLD,   // Result of an operation (not constant foldable)
+    RTLREG_UNDEFINED = 0,       // Not yet defined to anything
+    RTLREG_CONSTANT,            // Constant value
+    RTLREG_FUNC_ARG,            // Function argument
+    RTLREG_MEMORY,              // Memory reference
+    RTLREG_ALIAS,               // Loaded from an alias register
+    RTLREG_RESULT,              // Result of an operation on other registers
+    RTLREG_RESULT_NOFOLD,       // Result of operation (not constant foldable)
 } RTLRegType;
 
 /**
@@ -154,9 +155,9 @@ struct RTLRegister {
     uint8_t live;               // Nonzero if this register has been referenced
                                 //    (this field is never cleared once set)
     uint16_t live_link;         // Next register in live list (sorted by birth)
-    uint32_t birth;             // First RTL insn index when register is live
+    int32_t birth;              // First RTL insn index when register is live
                                 //    (= insn where it's assigned, because SSA)
-    uint32_t death;             // Last RTL insn index when register is live
+    int32_t death;              // Last RTL insn index when register is live
 
     /* Register value information. */
     union {
@@ -191,20 +192,6 @@ struct RTLRegister {
             };
         } result;
     };
-
-    /* The following fields are for use by RTL-to-native translators: */
-    uint32_t last_used;         // Last insn index where this register was used
-    uint8_t native_allocated;   // Nonzero if a native reg has been allocated
-    uint8_t native_reg;         // Native register allocated for this register
-    uint8_t frame_allocated;    // Nonzero if a frame slot has been allocated
-    uint8_t frame_slot;         // Frame slot allocated for this register
-    int16_t stack_offset;       // Stack offset of this register's frame slot
-    RTLRegister *next_merged;   // Next register in merge chain, or NULL
-    union {
-        struct {
-            uint8_t something;  // FIXME: not yet implemented
-        } x86;
-    };
 };
 
 /*----------------------------------*/
@@ -220,9 +207,9 @@ typedef struct RTLBlock {
     int32_t last_insn;          // unit->insns[] index of last insn in block
     int16_t next_block;         // unit->blocks[] index of next block in code
                                 //    stream (excluding dropped blocks);
-                                //    -1 indicates the end of the code stream
+                                //    -1 indicates the end of the code stream.
     int16_t prev_block;         // unit->blocks[] index of previous block in
-                                //    code stream, or -1 if the first block
+                                //    code stream, or -1 if the first block.
     int16_t entries[8];         // unit->blocks[] indices of dominating blocks;
                                 //    -1 indicates an unused slot.  Holes in
                                 //    the list are not permitted.  For more
@@ -231,13 +218,6 @@ typedef struct RTLBlock {
     int16_t exits[2];           // unit->blocks[] indices of postdominating
                                 //    blocks.  A terminating insn can go at
                                 //    most two places (conditional GOTO).
-
-    /* The following fields are used only by RTL-to-native translators: */
-    union {
-        struct {
-            uint8_t something;  // FIXME: not yet implemented
-        } x86;
-    };
 } RTLBlock;
 
 /*----------------------------------*/
@@ -262,16 +242,19 @@ struct RTLUnit {
     int16_t *label_blockmap;    // Label-to-block-index mapping (-1 = unset)
     uint16_t labels_size;       // Size of label-to-block map array (entries)
     uint16_t next_label;        // Next label number to allocate
+                                //    (== number of allocated labels)
 
     RTLRegister *regs;          // Register array
     uint16_t regs_size;         // Size of register array (entries)
     uint16_t next_reg;          // Next register number to allocate
+                                //    (== number of allocated registers)
     uint16_t first_live_reg;    // First register in live range list
     uint16_t last_live_reg;     // Last register in live range list
 
     RTLDataType *alias_types;   // Alias register data type array
     uint16_t aliases_size;      // Size of alias register array (entries)
     uint16_t next_alias;        // Next alias register number to allocate
+                                //    (== number of allocated alias registers)
 
     uint8_t finalized;          // Nonzero if unit has been finalized
 
@@ -281,17 +264,6 @@ struct RTLUnit {
     /* The following fields are used only by optimization routines: */
     uint8_t *block_seen;        // Array of "seen" flags for all blocks
                                 //    (used by rtlopt_drop_dead_blocks())
-
-    /* The following fields are used only by RTL-to-native translators: */
-    void *native_buffer;        // Native code buffer
-    uint32_t native_bufsize;    // Allocated size of native code buffer
-    uint32_t native_length;     // Length of native code
-    uint32_t *label_offsets;    // Array of native offsets for labels
-    union {
-        struct {
-            uint8_t something;  // FIXME: not yet implemented
-        } x86;
-    };
 };
 
 /*************************************************************************/
@@ -402,28 +374,6 @@ static inline void rtl_free(const RTLUnit *unit, void *ptr)
 {
     ASSERT(unit);
     binrec_free(unit->handle, ptr);
-}
-
-static inline void *rtl_code_malloc(const RTLUnit *unit, size_t size,
-                                    size_t alignment)
-{
-    ASSERT(unit);
-    return binrec_code_malloc(unit->handle, size, alignment);
-}
-
-static inline void *rtl_code_realloc(const RTLUnit *unit, void *ptr,
-                                     size_t old_size, size_t new_size,
-                                     size_t alignment)
-{
-    ASSERT(unit);
-    return binrec_code_realloc(unit->handle, ptr, old_size, new_size,
-                               alignment);
-}
-
-static inline void rtl_code_free(const RTLUnit *unit, void *ptr)
-{
-    ASSERT(unit);
-    return binrec_code_free(unit->handle, ptr);
 }
 
 /*---------------------------- Optimization -----------------------------*/

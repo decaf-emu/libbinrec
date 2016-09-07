@@ -22,6 +22,11 @@ namespace binrec {
 /*************************************************************************/
 
 /**
+ * Arch:  Enumeration of supported architectures.  Wraps binrec_arch_t.
+ */
+using Arch = ::binrec_arch_t;
+
+/**
  * Entry:  Function type of generated native code.  Wraps binrec_entry_t.
  */
 using Entry = ::binrec_entry_t;
@@ -35,11 +40,11 @@ using LogLevel = ::binrec_loglevel_t;
  * Optimize:  Namespace wrapping optimization flags.
  */
 namespace Optimize {
-    const unsigned int ENABLE = BINREC_OPT_ENABLE;
+    const unsigned int BASIC = BINREC_OPT_BASIC;
     const unsigned int CALLEE_SAVED_REGS_UNSAFE = BINREC_OPT_CALLEE_SAVED_REGS_UNSAFE;
+    const unsigned int DECONDITION = BINREC_OPT_DECONDITION;
     const unsigned int DROP_DEAD_BLOCKS = BINREC_OPT_DROP_DEAD_BLOCKS;
     const unsigned int DROP_DEAD_BRANCHES = BINREC_OPT_DROP_DEAD_BRANCHES;
-    const unsigned int DECONDITION = BINREC_OPT_DECONDITION;
     const unsigned int FOLD_CONSTANTS = BINREC_OPT_FOLD_CONSTANTS;
     const unsigned int NATIVE_CALLS = BINREC_OPT_NATIVE_CALLS;
     const unsigned int NATIVE_IEEE_TINY = BINREC_OPT_NATIVE_IEEE_TINY;
@@ -48,6 +53,10 @@ namespace Optimize {
     namespace GuestPPC {
         const unsigned int CONSTANT_GQRS_UNSAFE = BINREC_OPT_G_PPC_CONSTANT_GQRS_UNSAFE;
         const unsigned int NATIVE_RECIPROCAL = BINREC_OPT_G_PPC_NATIVE_RECIPROCAL;
+    }
+
+    namespace HostX86 {
+        const unsigned int CONSTANT_OPERANDS = BINREC_OPT_H_X86_CONSTANT_OPERANDS;
     }
 }
 
@@ -94,8 +103,11 @@ class Handle {
      * set_optimization_flags:  Set which optimizations should be performed
      * on translated blocks.  Wraps binrec_set_optimization_flags().
      */
-    void set_optimization_flags(unsigned int flags) {
-        ::binrec_set_optimization_flags(handle, flags);
+    void set_optimization_flags(unsigned int common_opt,
+                                unsigned int guest_opt,
+                                unsigned int host_opt) {
+        ::binrec_set_optimization_flags(handle,
+                                        common_opt, guest_opt, host_opt);
     }
 
     /**

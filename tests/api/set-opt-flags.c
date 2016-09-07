@@ -20,24 +20,25 @@ int main(void)
     EXPECT(handle = binrec_create_handle(&setup));
 
     /* Optimizations should default to off. */
-    EXPECT_EQ(handle->optimizations, 0);
+    EXPECT_EQ(handle->common_opt, 0);
+    EXPECT_EQ(handle->guest_opt, 0);
+    EXPECT_EQ(handle->host_opt, 0);
 
     /* Check that we can set flags. */
-    binrec_set_optimization_flags(
-        handle, BINREC_OPT_ENABLE | BINREC_OPT_DECONDITION);
-    EXPECT_EQ(handle->optimizations,
-              BINREC_OPT_ENABLE | BINREC_OPT_DECONDITION);
+    binrec_set_optimization_flags(handle,
+                                  BINREC_OPT_BASIC | BINREC_OPT_DECONDITION,
+                                  BINREC_OPT_G_PPC_NATIVE_RECIPROCAL,
+                                  BINREC_OPT_H_X86_CONSTANT_OPERANDS);
+    EXPECT_EQ(handle->common_opt, BINREC_OPT_BASIC | BINREC_OPT_DECONDITION);
+    EXPECT_EQ(handle->guest_opt, BINREC_OPT_G_PPC_NATIVE_RECIPROCAL);
+    EXPECT_EQ(handle->host_opt, BINREC_OPT_H_X86_CONSTANT_OPERANDS);
 
     /* Check that flags overwrite the existing settings rather than adding
      * to them. */
-    binrec_set_optimization_flags(
-        handle, BINREC_OPT_ENABLE | BINREC_OPT_FOLD_CONSTANTS);
-    EXPECT_EQ(handle->optimizations,
-              BINREC_OPT_ENABLE | BINREC_OPT_FOLD_CONSTANTS);
-
-    /* Check that omitting ENABLE suppresses all other flags. */
-    binrec_set_optimization_flags(handle, BINREC_OPT_FOLD_CONSTANTS);
-    EXPECT_EQ(handle->optimizations, 0);
+    binrec_set_optimization_flags(handle, BINREC_OPT_FOLD_CONSTANTS, 0, 0);
+    EXPECT_EQ(handle->common_opt, BINREC_OPT_FOLD_CONSTANTS);
+    EXPECT_EQ(handle->guest_opt, 0);
+    EXPECT_EQ(handle->host_opt, 0);
 
     binrec_destroy_handle(handle);
     return EXIT_SUCCESS;

@@ -103,8 +103,8 @@ static void update_live_ranges(RTLUnit * const unit)
         }
         if (latest_entry_block >= block_index
          && unit->blocks[latest_entry_block].last_insn >= 0) {  // Just in case
-            const uint32_t birth_limit = block->first_insn;
-            const uint32_t min_death =
+            const int32_t birth_limit = block->first_insn;
+            const int32_t min_death =
                 unit->blocks[latest_entry_block].last_insn;
             unsigned int reg;
             for (reg = unit->first_live_reg;
@@ -142,6 +142,8 @@ static NOINLINE bool rtl_add_insn_with_extend(
                   new_insns_size);
         return false;
     }
+    memset(&new_insns[unit->insns_size], 0,
+           sizeof(*new_insns) * (new_insns_size - unit->insns_size));
     unit->insns = new_insns;
     unit->insns_size = new_insns_size;
 
@@ -585,7 +587,7 @@ static void rtl_decode_insn(const RTLUnit *unit, uint32_t index,
 
       case RTLOP_LOAD_ARG:
         s += snprintf_assert(s, top - s, "%-10s r%u, %u\n",
-                             name, dest, (unsigned int)insn->src_imm);
+                             name, dest, insn->arg_index);
         return;
 
       case RTLOP_LOAD_U8:
@@ -745,6 +747,9 @@ RTLUnit *rtl_create_unit(binrec_t *handle)
         log_error(handle, "No memory for %u instructions", unit->insns_size);
         goto fail;
     }
+    /* Clear instruction buffers so output translators can rely on unused
+     * fields in an instruction always being zero. */
+    memset(unit->insns, 0, sizeof(*unit->insns) * unit->insns_size);
 
     unit->blocks = rtl_malloc(unit, sizeof(*unit->blocks) * unit->blocks_size);
     if (!unit->blocks) {

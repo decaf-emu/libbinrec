@@ -8,6 +8,7 @@
  */
 
 #include "src/common.h"
+#include "src/memory.h"
 
 /* Disable malloc() suppression from common.h. */
 #undef malloc
@@ -115,6 +116,27 @@ void binrec_code_free(const binrec_t *handle, void *ptr)
     }
 
     binrec_free(handle, ((void **)ptr)[-1]);
+}
+
+/*-----------------------------------------------------------------------*/
+
+bool binrec_expand_code_buffer(binrec_t *handle, long new_size)
+{
+    ASSERT(handle);
+    ASSERT(handle->code_buffer);
+    ASSERT(new_size > handle->code_buffer_size);
+
+    new_size = ((new_size + CODE_EXPAND_SIZE - 1)
+                / CODE_EXPAND_SIZE) * CODE_EXPAND_SIZE;
+    void *new_buffer = binrec_code_realloc(
+        handle, handle->code_buffer, handle->code_buffer_size, new_size,
+        handle->code_alignment);
+    if (!new_buffer) {
+        return false;
+    }
+    handle->code_buffer = new_buffer;
+    handle->code_buffer_size = new_size;
+    return true;
 }
 
 /*************************************************************************/

@@ -10,6 +10,8 @@
 #include "include/binrec.h"
 #include "src/common.h"
 #include "src/guest-ppc.h"
+#include "src/host-x86.h"
+#include "src/memory.h"
 #include "src/rtl.h"
 
 /* Disable malloc() suppression from common.h. */
@@ -23,6 +25,26 @@
 /*************************************************************************/
 /*************************** Helper functions ****************************/
 /*************************************************************************/
+
+/**
+ * arch_name:  Return a human-readable name for the given architecture.
+ */
+static const char *arch_name(binrec_arch_t arch)
+{
+    switch (arch) {
+      case BINREC_ARCH_POWERPC_750CL:
+        return "PowerPC 750CL";
+      case BINREC_ARCH_X86_64_SYSV:
+        return "x86-64 (SysV ABI)";
+      case BINREC_ARCH_X86_64_WINDOWS:
+        return "x86-64 (Windows ABI)";
+      case BINREC_ARCH_X86_64_WINDOWS_SEH:
+        return "x86-64 (Windows ABI with unwind data)";
+    }
+    return "(invalid architecture)";
+}
+
+/*-----------------------------------------------------------------------*/
 
 /**
  * add_partial_readonly_page:  Mark the given partial page as read-only.
@@ -107,6 +129,7 @@ binrec_t *binrec_create_handle(const binrec_setup_t *setup)
 
     memset(handle, 0, sizeof(*handle));
     handle->setup = *setup;
+    handle->code_buffer = NULL;
 
     const int have_malloc = (setup->malloc != NULL);
     const int have_realloc = (setup->realloc != NULL);
@@ -145,6 +168,11 @@ binrec_t *binrec_create_handle(const binrec_setup_t *setup)
 
 void binrec_destroy_handle(binrec_t *handle)
 {
+    /* We should never have a leftover code buffer; either it will be
+     * transferred to the caller of binrec_translate(), or it will be
+     * freed by binrec_translate() due to translation failure. */
+    ASSERT(!handle->code_buffer);
+
     binrec_free(handle, handle);
 }
 
@@ -168,15 +196,15 @@ void binrec_set_code_range(binrec_t *handle, uint32_t start, uint32_t end)
 
 /*-----------------------------------------------------------------------*/
 
-void binrec_set_optimization_flags(binrec_t *handle, unsigned int flags)
+void binrec_set_optimization_flags(
+    binrec_t *handle, unsigned int common_opt, unsigned int guest_opt,
+    unsigned int host_opt)
 {
     ASSERT(handle);
 
-    if (flags & BINREC_OPT_ENABLE) {
-        handle->optimizations = flags;
-    } else {
-        handle->optimizations = 0;
-    }
+    handle->common_opt = common_opt;
+    handle->guest_opt = guest_opt;
+    handle->host_opt = host_opt;
 }
 
 /*-----------------------------------------------------------------------*/
@@ -254,11 +282,37 @@ void binrec_clear_readonly_regions(binrec_t *handle)
 
 /*-----------------------------------------------------------------------*/
 
-int binrec_translate(
-    binrec_t *handle, uint32_t address, binrec_entry_t *native_code_ret,
-    long *native_size_ret)
+int binrec_translate(binrec_t *handle, uint32_t address,
+                     binrec_entry_t *code_ret, long *size_ret)
 {
     ASSERT(handle);
+    ASSERT(code_ret);
+    ASSERT(size_ret);
+
+    bool (*guest_translate)(binrec_t *handle, uint32_t address, RTLUnit *unit);
+    switch (handle->setup.guest) {
+      case BINREC_ARCH_POWERPC_750CL:
+        guest_translate = guest_ppc_translate;
+        break;
+      default:
+        log_error(handle, "Unsupported guest architecture: %s",
+                  arch_name(handle->setup.guest));
+        return 0;
+    }
+
+    bool (*host_translate)(binrec_t *handle, RTLUnit *unit);
+    switch (handle->setup.host) {
+      case BINREC_ARCH_X86_64_SYSV:
+      case BINREC_ARCH_X86_64_WINDOWS:
+      case BINREC_ARCH_X86_64_WINDOWS_SEH:
+        host_translate = host_x86_translate;
+        handle->code_alignment = 16;
+        break;
+      default:
+        log_error(handle, "Unsupported host architecture: %s",
+                  arch_name(handle->setup.host));
+        return 0;
+    }
 
     if (UNLIKELY(handle->code_range_end < handle->code_range_start)) {
         log_error(handle, "Code range invalid");
@@ -277,7 +331,7 @@ int binrec_translate(
         return 0;
     }
 
-    if (!guest_ppc_translate(handle, address, unit)) {
+    if (!(*guest_translate)(handle, address, unit)) {
         log_error(handle, "Failed to parse guest instructions starting at"
                   " 0x%X", address);
         return 0;
@@ -289,26 +343,44 @@ int binrec_translate(
         return 0;
     }
 
-    if (!rtl_optimize_unit(unit, handle->optimizations)) {
+    if (!rtl_optimize_unit(unit, handle->common_opt)) {
         log_warning(handle, "Failed to optimize RTL for code at 0x%X",
                     address);
         /* Don't treat this as an error; just translate the unoptimized
          * unit. */
     }
 
-#if 0  // FIXME: not yet implemented
-    const bool result = host_x86_translate(handle, unit,
-                                           native_code_ret, native_size_ret);
+    handle->code_buffer_size = CODE_EXPAND_SIZE;
+    handle->code_buffer = binrec_code_malloc(
+        handle, handle->code_buffer_size, handle->code_alignment);
+    if (UNLIKELY(!handle->code_buffer)) {
+        log_error(handle, "No memory for initial output code buffer (%ld"
+                  " bytes)", handle->code_buffer_size);
+        rtl_destroy_unit(unit);
+        return 0;
+    }
+    handle->code_len = 0;
+
+    const bool result = (*host_translate)(handle, unit);
     rtl_destroy_unit(unit);
     if (!result) {
         log_error(handle, "Failed to generate host code for 0x%X", address);
+        binrec_code_free(handle, handle->code_buffer);
+        handle->code_buffer = NULL;
         return 0;
     }
 
+    void *shrunk_buffer = binrec_code_realloc(
+        handle, handle->code_buffer, (size_t)handle->code_buffer_size,
+        (size_t)handle->code_len, handle->code_alignment);
+    if (LIKELY(shrunk_buffer)) {  // Should never fail, but play it safe.
+        handle->code_buffer = shrunk_buffer;
+    }
+
+    *code_ret = (binrec_entry_t)handle->code_buffer;
+    *size_ret = handle->code_len;
+    handle->code_buffer = NULL;
     return 1;
-#else
-    return 0;
-#endif
 }
 
 /*************************************************************************/

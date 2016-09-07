@@ -148,6 +148,34 @@ extern void _diff_strings(FILE *f, const char *from, const char *to);
     }                                                                   \
 } while (0)
 
+/*-----------------------------------------------------------------------*/
+
+/* EXPECT_MEMEQ helper to print differences between memory buffers.
+ * Defined in common.c. */
+extern void _diff_mem(FILE *f, const uint8_t *from, const uint8_t *to,
+                      long len);
+
+/**
+ * EXPECT_MEMEQ:  Check that the given memory buffer has the expected
+ * contents, and fail the test if not.  A value of NULL is permitted.
+ */
+#define EXPECT_MEMEQ(buf, expected, len)  do {                          \
+    const void * const _buf = (buf);                                    \
+    const void * const _expected = (expected);                          \
+    const long _len = (len);                                            \
+    ASSERT(_len >= 0);                                                  \
+    if (_buf && !_expected) {                                           \
+        FAIL("%s was %p but should have been NULL", #buf, _buf);        \
+    } else if (!_buf && _expected) {                                    \
+        FAIL("%s was NULL but should not have been", #buf);             \
+    } else if (_buf && _expected && memcmp(_buf, _expected, _len) != 0) { \
+        fprintf(stderr, "%s:%d: %s differed from the expected data:\n", \
+                    __FILE__, __LINE__, #buf);                          \
+        _diff_mem(stderr, _expected, _buf, _len);                       \
+        return EXIT_FAILURE;                                            \
+    }                                                                   \
+} while (0)
+
 /*************************************************************************/
 /*************************************************************************/
 
