@@ -144,24 +144,25 @@ typedef struct HostX86Context {
  *
  * [Parameters]
  *     ctx: Translation context.
+ * [Return value]
+ *     True on success, false on error.
  */
 #define host_x86_allocate_registers INTERNAL(host_x86_allocate_registers)
-extern void host_x86_allocate_registers(HostX86Context *ctx);
+extern bool host_x86_allocate_registers(HostX86Context *ctx);
 
 /**
  * host_x86_int_arg_register:  Return the register used for the given
- * integer function argument.  The argument index must be within the
- * range of arguments passed in registers for the selected host ABI
- * (0-5 for x86-64 SysV, 0-3 for x86-64 Windows).
+ * integer function argument.
  *
  * [Parameters]
  *     ctx: Translation context.
  *     index: Argument index.
  * [Return value]
- *     Register for argument.
+ *     Register for argument (X86Register), or -1 if the given argument is
+ *     not passed in a register.
  */
 #define host_x86_int_arg_register INTERNAL(host_x86_int_arg_register)
-extern PURE_FUNCTION X86Register host_x86_int_arg_register(
+extern PURE_FUNCTION int host_x86_int_arg_register(
     HostX86Context *ctx, int index);
 
 /*************************************************************************/

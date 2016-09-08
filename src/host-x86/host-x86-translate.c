@@ -437,6 +437,35 @@ static bool translate_block(HostX86Context *ctx, int block_index)
             break;
           }  // case RTLOP_LOAD_IMM
 
+          case RTLOP_LOAD_ARG: {
+            const X86Register host_dest = ctx->regs[dest].host_reg;
+            const int host_src_i =
+                host_x86_int_arg_register(ctx, insn->arg_index);
+            ASSERT(host_src_i >= 0);  // Ensured by register allocation.
+            const X86Register host_src = (X86Register)host_src_i;
+            if (host_dest == host_src) {
+                break;  // Nothing to do!
+            }
+            uint8_t rex = 0;
+            if (unit->regs[dest].type == RTLTYPE_ADDRESS) {
+                rex |= X86_REX_W;
+            }
+            if (host_dest & 8) {
+                rex |= X86_REX_R;
+            }
+            if (host_src & 8) {
+                rex |= X86_REX_B;
+            }
+            if (rex) {
+                append_rex_opcode(&code, rex, X86OP_MOV_Gv_Ev);
+            } else {
+                append_opcode(&code, X86OP_MOV_Gv_Ev);
+            }
+            append_ModRM(&code, X86MOD_REG, host_dest & 7,
+                         host_src & 7);
+            break;
+          }  // case RTLOP_LOAD_ARG
+
           case RTLOP_LABEL:
             ASSERT(insn->label > 0);
             ASSERT(insn->label < unit->next_label);
@@ -1026,7 +1055,9 @@ bool host_x86_translate(binrec_t *handle, struct RTLUnit *unit)
         goto error_return;
     }
 
-    host_x86_allocate_registers(&ctx);
+    if (!host_x86_allocate_registers(&ctx)) {
+        goto error_destroy_context;
+    }
 
     if (!translate_unit(&ctx)) {
         goto error_destroy_context;

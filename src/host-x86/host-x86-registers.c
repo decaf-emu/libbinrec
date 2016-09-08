@@ -100,8 +100,10 @@ static void allocate_register(HostX86Context *ctx, int reg_index)
  * [Parameters]
  *     ctx: Translation context.
  *     insn_index: Index of instruction in ctx->unit->insns[].
+ * [Return value]
+ *     True on success, false on error.
  */
-static void allocate_regs_for_insn(HostX86Context *ctx, int insn_index)
+static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index)
 {
     ASSERT(ctx);
     ASSERT(ctx->unit);
@@ -182,10 +184,13 @@ static void allocate_regs_for_insn(HostX86Context *ctx, int insn_index)
          * argument is passed in. */
         // FIXME: only appropriate if no native calls
         if (insn->opcode == RTLOP_LOAD_ARG) {
-            // FIXME: deal with not-in-register arguments more cleanly
-            const X86Register target_reg =
+            const int target_reg =
                 host_x86_int_arg_register(ctx, insn->arg_index);
-            if (!ctx->reg_map[target_reg]) {
+            if (target_reg < 0) {
+                log_error(ctx->handle, "LOAD_ARG %d not supported (argument"
+                          " is not in a register)", insn->arg_index);
+                return false;
+            } else if (!ctx->reg_map[target_reg]) {
                 dest_info->host_allocated = true;
                 dest_info->host_reg = target_reg;
                 ctx->reg_map[target_reg] = dest;
@@ -247,6 +252,8 @@ static void allocate_regs_for_insn(HostX86Context *ctx, int insn_index)
             ctx->reg_map[dest_info->host_reg] = 0;
         }
     }
+
+    return true;
 }
 
 /*-----------------------------------------------------------------------*/
@@ -258,8 +265,10 @@ static void allocate_regs_for_insn(HostX86Context *ctx, int insn_index)
  * [Parameters]
  *     ctx: Translation context.
  *     block_index: Index of basic block in ctx->unit->blocks[].
+ * [Return value]
+ *     True on success, false on error.
  */
-static void allocate_regs_for_block(HostX86Context *ctx, int block_index)
+static bool allocate_regs_for_block(HostX86Context *ctx, int block_index)
 {
     ASSERT(ctx);
     ASSERT(ctx->unit);
@@ -276,15 +285,19 @@ static void allocate_regs_for_block(HostX86Context *ctx, int block_index)
     for (int insn_index = block->first_insn; insn_index <= block->last_insn;
          insn_index++)
     {
-        allocate_regs_for_insn(ctx, insn_index);
+        if (!allocate_regs_for_insn(ctx, insn_index)) {
+            return false;
+        }
     }
+
+    return true;
 }
 
 /*************************************************************************/
 /********************** Internal interface routines **********************/
 /*************************************************************************/
 
-void host_x86_allocate_registers(HostX86Context *ctx)
+bool host_x86_allocate_registers(HostX86Context *ctx)
 {
     ASSERT(ctx);
     ASSERT(ctx->unit);
@@ -313,29 +326,39 @@ void host_x86_allocate_registers(HostX86Context *ctx)
     for (int block_index = 0; block_index >= 0;
          block_index = unit->blocks[block_index].next_block)
     {
-        allocate_regs_for_block(ctx, block_index);
+        if (!allocate_regs_for_block(ctx, block_index)) {
+            return false;
+        }
     }
+
+    return true;
 }
 
 /*-----------------------------------------------------------------------*/
 
-X86Register host_x86_int_arg_register(HostX86Context *ctx, int index)
+int host_x86_int_arg_register(HostX86Context *ctx, int index)
 {
     ASSERT(ctx);
     ASSERT(ctx->handle);
     ASSERT(index >= 0);
 
     if (ctx->handle->setup.host == BINREC_ARCH_X86_64_SYSV) {
-        ASSERT(index < 6);
         static const uint8_t regs[6] =
             {X86_DI, X86_SI, X86_DX, X86_CX, X86_R8, X86_R9};
-        return regs[index];
+        if (index < lenof(regs)) {
+            return regs[index];
+        } else {
+            return -1;
+        }
     } else {
         ASSERT(ctx->handle->setup.host == BINREC_ARCH_X86_64_WINDOWS
             || ctx->handle->setup.host == BINREC_ARCH_X86_64_WINDOWS_SEH);
-        ASSERT(index < 4);
-        static const uint8_t regs[6] = {X86_CX, X86_DX, X86_R8, X86_R9};
-        return regs[index];
+        static const uint8_t regs[4] = {X86_CX, X86_DX, X86_R8, X86_R9};
+        if (index < lenof(regs)) {
+            return regs[index];
+        } else {
+            return -1;
+        }
     }
 }
 

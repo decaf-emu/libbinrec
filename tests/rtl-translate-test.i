@@ -27,6 +27,7 @@
  *
  * - static const uint8_t expected_code[]
  *      Define this to a buffer containing the expected translation output.
+ *      If empty, the test will expect translation to fail.
  *
  * - static const char expected_log[]
  *      Define this to a buffer containing the expected log messages, if any.
@@ -61,21 +62,25 @@ int main(void)
 
     EXPECT(rtl_finalize_unit(unit));
 
-    handle->code_buffer_size = sizeof(expected_code);
+    handle->code_buffer_size = max(sizeof(expected_code), 1);
     handle->code_alignment = 16;
     EXPECT(handle->code_buffer = binrec_code_malloc(
                handle, handle->code_buffer_size, handle->code_alignment));
-    EXPECT(host_x86_translate(handle, unit));
-    uint8_t *code = handle->code_buffer;
-    long code_len = handle->code_len;
-    handle->code_buffer = NULL;
-    EXPECT_MEMEQ(code, expected_code, sizeof(expected_code));
-    EXPECT_EQ(code_len, sizeof(expected_code));
+
+    if (sizeof(expected_code) > 0) {
+        EXPECT(host_x86_translate(handle, unit));
+        EXPECT_MEMEQ(handle->code_buffer, expected_code,
+                     sizeof(expected_code));
+        EXPECT_EQ(handle->code_len, sizeof(expected_code));
+    } else {
+        EXPECT_FALSE(host_x86_translate(handle, unit));
+    }
 
     const char *log_messages = get_log_messages();
     EXPECT_STREQ(log_messages, *expected_log ? expected_log : NULL);
 
-    binrec_code_free(handle, code);
+    binrec_code_free(handle, handle->code_buffer);
+    handle->code_buffer = NULL;
     rtl_destroy_unit(unit);
     binrec_destroy_handle(handle);
     return EXIT_SUCCESS;
