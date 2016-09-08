@@ -211,6 +211,8 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index)
             dest_info->host_allocated = true;
             dest_info->host_reg = src1_info->host_reg;
             ctx->reg_map[dest_info->host_reg] = dest;
+            ASSERT(ctx->regs_free & (1 << dest_info->host_reg));
+            ctx->regs_free ^= 1 << dest_info->host_reg;
         }
         if (!dest_info->host_allocated
          && src2 && src2_reg->death == insn_index) {
@@ -235,6 +237,8 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index)
                 dest_info->host_allocated = true;
                 dest_info->host_reg = src2_info->host_reg;
                 ctx->reg_map[dest_info->host_reg] = dest;
+                ASSERT(ctx->regs_free & (1 << dest_info->host_reg));
+                ctx->regs_free ^= 1 << dest_info->host_reg;
             }
         }
 

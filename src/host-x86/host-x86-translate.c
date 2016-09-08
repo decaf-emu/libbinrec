@@ -386,6 +386,52 @@ static bool translate_block(HostX86Context *ctx, int block_index)
             break;
           }  // case RTLOP_SELECT
 
+          case RTLOP_SCAST:
+          case RTLOP_ZCAST: {
+            const RTLDataType type_dest = unit->regs[dest].type;
+            const RTLDataType type_src1 = unit->regs[src1].type;
+            const X86Register host_dest = ctx->regs[dest].host_reg;
+            const X86Register host_src1 = ctx->regs[src1].host_reg;
+            uint8_t rex = 0;
+            if (host_dest & 8) {
+                rex |= X86_REX_R;
+            }
+            if (host_src1 & 8) {
+                rex |= X86_REX_B;
+            }
+
+            if (type_dest == RTLTYPE_ADDRESS) {
+                if (type_src1 == RTLTYPE_ADDRESS) {
+                    if (host_dest == host_src1) {
+                        break;
+                    }
+                    append_rex_opcode(&code, rex | X86_REX_W, X86OP_MOV_Gv_Ev);
+                } else {
+                    if (insn->opcode == RTLOP_SCAST) {
+                        append_rex_opcode(&code, rex | X86_REX_W,
+                                          X86OP_MOVSXD_Gv_Ev);
+                    } else {
+                        if (rex) {
+                            append_rex_opcode(&code, rex, X86OP_MOV_Gv_Ev);
+                        } else {
+                            append_opcode(&code, X86OP_MOV_Gv_Ev);
+                        }
+                    }
+                }
+            } else {
+                if (host_dest == host_src1) {
+                    break;
+                }
+                if (rex) {
+                    append_rex_opcode(&code, rex, X86OP_MOV_Gv_Ev);
+                } else {
+                    append_opcode(&code, X86OP_MOV_Gv_Ev);
+                }
+            }
+            append_ModRM(&code, X86MOD_REG, host_dest & 7, host_src1 & 7);
+            break;
+          }  // case RTLOP_SCAST, RTLOP_ZCAST
+
           case RTLOP_LOAD_IMM: {
             const uint64_t imm = insn->src_imm;
             const X86Register host_dest = ctx->regs[dest].host_reg;
