@@ -16,6 +16,22 @@
 #include "src/rtl-internal.h"
 
 /*************************************************************************/
+/******************* Local data structure definitions ********************/
+/*************************************************************************/
+
+/**
+ * CodeBuffer:  Structure encapsulating an output code buffer and its
+ * allocated size and current length.  Used to help optimization by
+ * letting the compiler know it doesn't have to write size data back to
+ * the handle every few bytes.
+ */
+typedef struct CodeBuffer {
+    uint8_t * restrict buffer;
+    long buffer_size;
+    long len;
+} CodeBuffer;
+
+/*************************************************************************/
 /*************** Utility routines for adding instructions ****************/
 /*************************************************************************/
 
@@ -23,28 +39,28 @@
  * append_opcode:  Append an x86 opcode to the current code stream.  The
  * code buffer is assumed to have enough space for the instruction.
  */
-static ALWAYS_INLINE void append_opcode(binrec_t *handle, X86Opcode opcode)
+static ALWAYS_INLINE void append_opcode(CodeBuffer *code, X86Opcode opcode)
 {
-    uint8_t *ptr = handle->code_buffer + handle->code_len;
+    uint8_t *ptr = code->buffer + code->len;
 
     if (opcode <= 0xFF) {
-        ASSERT(handle->code_len + 1 <= handle->code_buffer_size);
-        handle->code_len += 1;
+        ASSERT(code->len + 1 <= code->buffer_size);
+        code->len += 1;
         *ptr++ = opcode;
     } else if (opcode <= 0xFFFF) {
-        ASSERT(handle->code_len + 2 <= handle->code_buffer_size);
-        handle->code_len += 2;
+        ASSERT(code->len + 2 <= code->buffer_size);
+        code->len += 2;
         *ptr++ = opcode >> 8;
         *ptr++ = opcode;
     } else if (opcode <= 0xFFFFFF) {
-        ASSERT(handle->code_len + 3 <= handle->code_buffer_size);
-        handle->code_len += 3;
+        ASSERT(code->len + 3 <= code->buffer_size);
+        code->len += 3;
         *ptr++ = opcode >> 16;
         *ptr++ = opcode >> 8;
         *ptr++ = opcode;
     } else {
-        ASSERT(handle->code_len + 4 <= handle->code_buffer_size);
-        handle->code_len += 4;
+        ASSERT(code->len + 4 <= code->buffer_size);
+        code->len += 4;
         *ptr++ = opcode >> 24;
         *ptr++ = opcode >> 16;
         *ptr++ = opcode >> 8;
@@ -64,26 +80,26 @@ static ALWAYS_INLINE void append_opcode(binrec_t *handle, X86Opcode opcode)
  *     rex: REX flags (bitwise OR of X86_REX_* or X86OP_REX_*).
  *     opcode: Opcode to append.
  */
-static ALWAYS_INLINE void append_rex_opcode(binrec_t *handle, uint8_t rex,
+static ALWAYS_INLINE void append_rex_opcode(CodeBuffer *code, uint8_t rex,
                                             X86Opcode opcode)
 {
-    uint8_t *ptr = handle->code_buffer + handle->code_len;
+    uint8_t *ptr = code->buffer + code->len;
     rex |= X86OP_REX;
 
     if (opcode <= 0xFF) {
-        ASSERT(handle->code_len + 2 <= handle->code_buffer_size);
-        handle->code_len += 2;
+        ASSERT(code->len + 2 <= code->buffer_size);
+        code->len += 2;
         *ptr++ = rex;
         *ptr++ = opcode;
     } else if (opcode <= 0xFFFF) {
-        ASSERT(handle->code_len + 3 <= handle->code_buffer_size);
-        handle->code_len += 3;
+        ASSERT(code->len + 3 <= code->buffer_size);
+        code->len += 3;
         *ptr++ = rex;
         *ptr++ = opcode >> 8;
         *ptr++ = opcode;
     } else if (opcode <= 0xFFFFFF) {
-        ASSERT(handle->code_len + 4 <= handle->code_buffer_size);
-        handle->code_len += 4;
+        ASSERT(code->len + 4 <= code->buffer_size);
+        code->len += 4;
         if (opcode>>16 == 0x66 || opcode>>16 == 0xF2 || opcode>>16 == 0xF3) {
             *ptr++ = opcode >> 16;
             *ptr++ = rex;
@@ -94,8 +110,8 @@ static ALWAYS_INLINE void append_rex_opcode(binrec_t *handle, uint8_t rex,
         *ptr++ = opcode >> 8;
         *ptr++ = opcode;
     } else {
-        ASSERT(handle->code_len + 5 <= handle->code_buffer_size);
-        handle->code_len += 5;
+        ASSERT(code->len + 5 <= code->buffer_size);
+        code->len += 5;
         if (opcode>>24 == 0x66 || opcode>>24 == 0xF2 || opcode>>24 == 0xF3) {
             *ptr++ = opcode >> 24;
             *ptr++ = rex;
@@ -115,12 +131,12 @@ static ALWAYS_INLINE void append_rex_opcode(binrec_t *handle, uint8_t rex,
  * append_imm8:  Append an 8-bit immediate value to the current code stream.
  * The code buffer is assumed to have enough space.
  */
-static ALWAYS_INLINE void append_imm8(binrec_t *handle, uint8_t value)
+static ALWAYS_INLINE void append_imm8(CodeBuffer *code, uint8_t value)
 {
-    uint8_t *ptr = handle->code_buffer + handle->code_len;
+    uint8_t *ptr = code->buffer + code->len;
 
-    ASSERT(handle->code_len + 1 <= handle->code_buffer_size);
-    handle->code_len += 1;
+    ASSERT(code->len + 1 <= code->buffer_size);
+    code->len += 1;
     *ptr++ = value;
 }
 
@@ -130,12 +146,12 @@ static ALWAYS_INLINE void append_imm8(binrec_t *handle, uint8_t value)
  * append_imm32:  Append a 32-bit immediate value to the current code stream.
  * The code buffer is assumed to have enough space.
  */
-static ALWAYS_INLINE void append_imm32(binrec_t *handle, uint32_t value)
+static ALWAYS_INLINE void append_imm32(CodeBuffer *code, uint32_t value)
 {
-    uint8_t *ptr = handle->code_buffer + handle->code_len;
+    uint8_t *ptr = code->buffer + code->len;
 
-    ASSERT(handle->code_len + 4 <= handle->code_buffer_size);
-    handle->code_len += 4;
+    ASSERT(code->len + 4 <= code->buffer_size);
+    code->len += 4;
     *ptr++ = (uint8_t)(value >>  0);
     *ptr++ = (uint8_t)(value >>  8);
     *ptr++ = (uint8_t)(value >> 16);
@@ -148,13 +164,13 @@ static ALWAYS_INLINE void append_imm32(binrec_t *handle, uint32_t value)
  * append_ModRM:  Append a ModR/M byte to the current code stream.
  * The code buffer is assumed to have enough space.
  */
-static ALWAYS_INLINE void append_ModRM(binrec_t *handle, X86Mod mod,
+static ALWAYS_INLINE void append_ModRM(CodeBuffer *code, X86Mod mod,
                                        int reg_opcode, int r_m)
 {
-    uint8_t *ptr = handle->code_buffer + handle->code_len;
+    uint8_t *ptr = code->buffer + code->len;
 
-    ASSERT(handle->code_len + 1 <= handle->code_buffer_size);
-    handle->code_len += 1;
+    ASSERT(code->len + 1 <= code->buffer_size);
+    code->len += 1;
     *ptr++ = x86_ModRM(mod, reg_opcode, r_m);
 }
 
@@ -165,13 +181,13 @@ static ALWAYS_INLINE void append_ModRM(binrec_t *handle, X86Mod mod,
  * stream.  The code buffer is assumed to have enough space.
  */
 static ALWAYS_INLINE void append_ModRM_SIB(
-    binrec_t *handle, X86Mod mod, int reg_opcode, int scale, int index,
+    CodeBuffer *code, X86Mod mod, int reg_opcode, int scale, int index,
     int base)
 {
-    uint8_t *ptr = handle->code_buffer + handle->code_len;
+    uint8_t *ptr = code->buffer + code->len;
 
-    ASSERT(handle->code_len + 2 <= handle->code_buffer_size);
-    handle->code_len += 2;
+    ASSERT(code->len + 2 <= code->buffer_size);
+    code->len += 2;
     *ptr++ = x86_ModRM(mod, reg_opcode, X86MODRM_SIB);
     *ptr++ = x86_SIB(scale, index, base);
 }
@@ -182,7 +198,8 @@ static ALWAYS_INLINE void append_ModRM_SIB(
  * append_test_reg:  Append an instruction to test the value of the given
  * RTL register.
  */
-static inline void append_test_reg(HostX86Context *ctx, uint32_t reg)
+static inline void append_test_reg(HostX86Context *ctx, CodeBuffer *code,
+                                   uint32_t reg)
 {
     if ((ctx->handle->host_opt & BINREC_OPT_H_X86_CONDITION_CODES)
      && ctx->cc_reg == reg) {
@@ -198,11 +215,11 @@ static inline void append_test_reg(HostX86Context *ctx, uint32_t reg)
         rex |= X86_REX_R | X86_REX_B;
     }
     if (rex) {
-        append_rex_opcode(ctx->handle, rex, X86OP_TEST_Ev_Gv);
+        append_rex_opcode(code, rex, X86OP_TEST_Ev_Gv);
     } else {
-        append_opcode(ctx->handle, X86OP_TEST_Ev_Gv);
+        append_opcode(code, X86OP_TEST_Ev_Gv);
     }
-    append_ModRM(ctx->handle, X86MOD_REG, host_reg & 7, host_reg & 7);
+    append_ModRM(code, X86MOD_REG, host_reg & 7, host_reg & 7);
 
     ctx->cc_reg = reg;
 }
@@ -233,6 +250,10 @@ static bool translate_block(HostX86Context *ctx, int block_index)
     const RTLBlock * const block = &unit->blocks[block_index];
     HostX86BlockInfo * const block_info = &ctx->blocks[block_index];
 
+    CodeBuffer code = {.buffer = handle->code_buffer,
+                       .buffer_size = handle->code_buffer_size,
+                       .len = handle->code_len};
+
     STATIC_ASSERT(sizeof(block_info->initial_reg_map) == sizeof(ctx->reg_map),
                   "Mismatched reg_map sizes");
     memcpy(ctx->reg_map, block_info->initial_reg_map, sizeof(ctx->reg_map));
@@ -250,22 +271,27 @@ static bool translate_block(HostX86Context *ctx, int block_index)
         const uint32_t src2 = insn->src2;
 
         /* No instruction translations need more than 16 bytes. */
-        if (UNLIKELY(!binrec_ensure_code_space(handle, 16))) {
-            return false;
+        if (UNLIKELY(code.len + 16 > code.buffer_size)) {
+            handle->code_len = code.len;
+            if (UNLIKELY(!binrec_ensure_code_space(handle, 16))) {
+                return false;
+            }
+            code.buffer = handle->code_buffer;
+            code.buffer_size = handle->code_buffer_size;
         }
 
         switch (insn->opcode) {
 
           case RTLOP_NOP:
             if (insn->src_imm != 0) {
-                append_opcode(handle, X86OP_NOP_Ev);
-                append_ModRM(handle, X86MOD_DISP0, 0, X86MODRM_RIP_REL);
-                append_imm32(handle, (uint32_t)insn->src_imm);
+                append_opcode(&code, X86OP_NOP_Ev);
+                append_ModRM(&code, X86MOD_DISP0, 0, X86MODRM_RIP_REL);
+                append_imm32(&code, (uint32_t)insn->src_imm);
                 if (insn->src_imm >> 32) {
-                    append_opcode(handle, X86OP_NOP_Ev);
-                    append_ModRM_SIB(handle, X86MOD_DISP32, 0,
+                    append_opcode(&code, X86OP_NOP_Ev);
+                    append_ModRM_SIB(&code, X86MOD_DISP32, 0,
                                      0, X86SIB_NOINDEX, X86_SP);
-                    append_imm32(handle, (uint32_t)(insn->src_imm >> 32));
+                    append_imm32(&code, (uint32_t)(insn->src_imm >> 32));
                 }
             }
             break;
@@ -288,11 +314,11 @@ static bool translate_block(HostX86Context *ctx, int block_index)
                 rex |= X86_REX_B;
             }
             if (rex) {
-                append_rex_opcode(handle, rex, X86OP_MOV_Gv_Ev);
+                append_rex_opcode(&code, rex, X86OP_MOV_Gv_Ev);
             } else {
-                append_opcode(handle, X86OP_MOV_Gv_Ev);
+                append_opcode(&code, X86OP_MOV_Gv_Ev);
             }
-            append_ModRM(handle, X86MOD_REG, host_dest & 7,
+            append_ModRM(&code, X86MOD_REG, host_dest & 7,
                          host_src1 & 7);
             break;
           }  // case RTLOP_MOVE
@@ -312,7 +338,7 @@ static bool translate_block(HostX86Context *ctx, int block_index)
             }
 
             /* Set the condition codes based on the condition register. */
-            append_test_reg(ctx, insn->cond);
+            append_test_reg(ctx, &code, insn->cond);
 
             /* Put one of the source values in the destination register, if
              * necessary.  Note that MOV does not alter flags. */
@@ -328,11 +354,11 @@ static bool translate_block(HostX86Context *ctx, int block_index)
                     src1_rex |= X86_REX_B;
                 }
                 if (src1_rex) {
-                    append_rex_opcode(handle, src1_rex, X86OP_MOV_Gv_Ev);
+                    append_rex_opcode(&code, src1_rex, X86OP_MOV_Gv_Ev);
                 } else {
-                    append_opcode(handle, X86OP_MOV_Gv_Ev);
+                    append_opcode(&code, X86OP_MOV_Gv_Ev);
                 }
-                append_ModRM(handle, X86MOD_REG, host_dest & 7, host_src1 & 7);
+                append_ModRM(&code, X86MOD_REG, host_dest & 7, host_src1 & 7);
             }
 
             /* Conditionally move the other value into the register. */
@@ -341,21 +367,21 @@ static bool translate_block(HostX86Context *ctx, int block_index)
                     rex |= X86_REX_B;
                 }
                 if (rex) {
-                    append_rex_opcode(handle, rex, X86OP_CMOVZ);
+                    append_rex_opcode(&code, rex, X86OP_CMOVZ);
                 } else {
-                    append_opcode(handle, X86OP_CMOVZ);
+                    append_opcode(&code, X86OP_CMOVZ);
                 }
-                append_ModRM(handle, X86MOD_REG, host_dest & 7, host_src2 & 7);
+                append_ModRM(&code, X86MOD_REG, host_dest & 7, host_src2 & 7);
             } else {
                 if (host_src1 & 8) {
                     rex |= X86_REX_B;
                 }
                 if (rex) {
-                    append_rex_opcode(handle, rex, X86OP_CMOVNZ);
+                    append_rex_opcode(&code, rex, X86OP_CMOVNZ);
                 } else {
-                    append_opcode(handle, X86OP_CMOVNZ);
+                    append_opcode(&code, X86OP_CMOVNZ);
                 }
-                append_ModRM(handle, X86MOD_REG, host_dest & 7, host_src1 & 7);
+                append_ModRM(&code, X86MOD_REG, host_dest & 7, host_src1 & 7);
             }
             break;
           }  // case RTLOP_SELECT
@@ -368,40 +394,40 @@ static bool translate_block(HostX86Context *ctx, int block_index)
               case RTLTYPE_ADDRESS:
                 if (imm == 0) {
                     if (host_dest & 8) {
-                        append_rex_opcode(handle, X86_REX_R | X86_REX_B,
+                        append_rex_opcode(&code, X86_REX_R | X86_REX_B,
                                           X86OP_XOR_Gv_Ev);
                     } else {
-                        append_opcode(handle, X86OP_XOR_Gv_Ev);
+                        append_opcode(&code, X86OP_XOR_Gv_Ev);
                     }
-                    append_ModRM(handle, X86MOD_REG, host_dest & 7,
+                    append_ModRM(&code, X86MOD_REG, host_dest & 7,
                                  host_dest & 7);
                     ctx->cc_reg = dest;
                 } else if (imm <= UINT64_C(0xFFFFFFFF)) {
                     if (host_dest & 8) {
-                        append_rex_opcode(handle, X86_REX_B,
+                        append_rex_opcode(&code, X86_REX_B,
                                           X86OP_MOV_rAX_Iv | (host_dest & 7));
                     } else {
-                        append_opcode(handle,
+                        append_opcode(&code,
                                       X86OP_MOV_rAX_Iv | (host_dest & 7));
                     }
-                    append_imm32(handle, (uint32_t)imm);
+                    append_imm32(&code, (uint32_t)imm);
                 } else if (imm >= UINT64_C(0xFFFFFFFF80000000)) {
                     uint8_t rex = X86_REX_W;
                     if (host_dest & 8) {
                         rex |= X86_REX_B;
                     }
-                    append_rex_opcode(handle, rex, X86OP_MOV_Ev_Iz);
-                    append_ModRM(handle, X86MOD_REG, 0, host_dest & 7);
-                    append_imm32(handle, (uint32_t)imm);
+                    append_rex_opcode(&code, rex, X86OP_MOV_Ev_Iz);
+                    append_ModRM(&code, X86MOD_REG, 0, host_dest & 7);
+                    append_imm32(&code, (uint32_t)imm);
                 } else {
                     uint8_t rex = X86_REX_W;
                     if (host_dest & 8) {
                         rex |= X86_REX_B;
                     }
-                    append_rex_opcode(handle, rex,
+                    append_rex_opcode(&code, rex,
                                       X86OP_MOV_rAX_Iv | (host_dest & 7));
-                    append_imm32(handle, (uint32_t)imm);
-                    append_imm32(handle, (uint32_t)(imm >> 32));
+                    append_imm32(&code, (uint32_t)imm);
+                    append_imm32(&code, (uint32_t)(imm >> 32));
                 }
                 break;
               default:
@@ -415,7 +441,7 @@ static bool translate_block(HostX86Context *ctx, int block_index)
             ASSERT(insn->label > 0);
             ASSERT(insn->label < unit->next_label);
             ASSERT(ctx->label_offsets[insn->label] == -1);
-            ctx->label_offsets[insn->label] = handle->code_len;
+            ctx->label_offsets[insn->label] = code.len;
             break;
 
           case RTLOP_GOTO:
@@ -423,24 +449,23 @@ static bool translate_block(HostX86Context *ctx, int block_index)
             ASSERT(insn->label < unit->next_label);
             ASSERT(block_info->unresolved_branch_offset == -1);
             if (ctx->label_offsets[insn->label] >= 0) {
-                const long offset =
-                    ctx->label_offsets[insn->label] - handle->code_len;
+                const long offset = ctx->label_offsets[insn->label] - code.len;
                 ASSERT(offset < 0);
                 /* Jump distances count from the end of the instruction,
                  * so we have to take that into account here -- a 1-byte
                  * displacement will be a 2-byte instruction, for example. */
                 if (offset - 2 >= -128) {
-                    append_opcode(handle, X86OP_JMP_Jb);
-                    append_imm8(handle, offset - 2);
+                    append_opcode(&code, X86OP_JMP_Jb);
+                    append_imm8(&code, offset - 2);
                 } else {
-                    append_opcode(handle, X86OP_JMP_Jz);
-                    append_imm32(handle, offset - 5);
+                    append_opcode(&code, X86OP_JMP_Jz);
+                    append_imm32(&code, offset - 5);
                 }
             } else {
-                block_info->unresolved_branch_offset = handle->code_len;
+                block_info->unresolved_branch_offset = code.len;
                 block_info->unresolved_branch_target = insn->label;
-                append_opcode(handle, X86OP_JMP_Jz);
-                append_imm32(handle, 0);
+                append_opcode(&code, X86OP_JMP_Jz);
+                append_imm32(&code, 0);
             }
             break;
 
@@ -454,24 +479,23 @@ static bool translate_block(HostX86Context *ctx, int block_index)
             ASSERT(insn->label > 0);
             ASSERT(insn->label < unit->next_label);
             ASSERT(block_info->unresolved_branch_offset == -1);
-            append_test_reg(ctx, src1);
+            append_test_reg(ctx, &code, src1);
             if (ctx->label_offsets[insn->label] >= 0) {
-                const long offset =
-                    ctx->label_offsets[insn->label] - handle->code_len;
+                const long offset = ctx->label_offsets[insn->label] - code.len;
                 ASSERT(offset < 0);
                 if (offset - 2 >= -128) {
-                    append_opcode(handle, short_jump);
-                    append_imm8(handle, offset - 2);
+                    append_opcode(&code, short_jump);
+                    append_imm8(&code, offset - 2);
                 } else {
-                    append_opcode(handle, long_jump);
+                    append_opcode(&code, long_jump);
                     /* Long conditional jumps have 2-byte opcodes. */
-                    append_imm32(handle, offset - 6);
+                    append_imm32(&code, offset - 6);
                 }
             } else {
-                block_info->unresolved_branch_offset = handle->code_len;
+                block_info->unresolved_branch_offset = code.len;
                 block_info->unresolved_branch_target = insn->label;
-                append_opcode(handle, long_jump);
-                append_imm32(handle, 0);
+                append_opcode(&code, long_jump);
+                append_imm32(&code, 0);
             }
             break;
           }  // case RTLOP_GOTO_IF_Z, RTLOP_GOTO_IF_NZ
@@ -493,23 +517,23 @@ static bool translate_block(HostX86Context *ctx, int block_index)
                         rex |= X86_REX_B;
                     }
                     if (rex) {
-                        append_rex_opcode(handle, rex, X86OP_MOV_Gv_Ev);
+                        append_rex_opcode(&code, rex, X86OP_MOV_Gv_Ev);
                     } else {
-                        append_opcode(handle, X86OP_MOV_Gv_Ev);
+                        append_opcode(&code, X86OP_MOV_Gv_Ev);
                     }
-                    append_ModRM(handle, X86MOD_REG, X86_AX, host_src1 & 7);
+                    append_ModRM(&code, X86MOD_REG, X86_AX, host_src1 & 7);
                 }
             }
-            block_info->unresolved_branch_offset = handle->code_len;
+            block_info->unresolved_branch_offset = code.len;
             /* We use label 0 (normally invalid) to indicate a jump to the
              * function epilogue. */
             block_info->unresolved_branch_target = 0;
-            append_opcode(handle, X86OP_JMP_Jz);
-            append_imm32(handle, 0);
+            append_opcode(&code, X86OP_JMP_Jz);
+            append_imm32(&code, 0);
             break;
 
           case RTLOP_ILLEGAL:
-            append_opcode(handle, X86OP_UD2);
+            append_opcode(&code, X86OP_UD2);
             break;
 
           default: break; //FIXME: other insns not yet implemented
@@ -517,6 +541,7 @@ static bool translate_block(HostX86Context *ctx, int block_index)
         }
     }
 
+    handle->code_len = code.len;
     return true;
 }
 
@@ -692,50 +717,56 @@ static bool append_prologue(HostX86Context *ctx)
         return false;
     }
 
+    CodeBuffer code = {.buffer = handle->code_buffer,
+                       .buffer_size = handle->code_buffer_size,
+                       .len = handle->code_len};
+
     for (int reg = 0; reg < 16; reg++) {
         if (regs_to_save & (1 << reg)) {
             if (reg & 8) {
-                append_opcode(handle, X86OP_REX_B);
+                append_opcode(&code, X86OP_REX_B);
             }
-            append_opcode(handle, X86OP_PUSH_rAX | (reg & 7));
+            append_opcode(&code, X86OP_PUSH_rAX | (reg & 7));
         }
     }
 
     if (stack_alloc >= 128) {
-        append_opcode(handle, X86OP_REX_W);
-        append_opcode(handle, X86OP_IMM_Ev_Iz);
-        append_ModRM(handle, X86MOD_REG, X86OP_IMM_SUB, X86_SP);
-        append_imm32(handle, stack_alloc);
+        append_opcode(&code, X86OP_REX_W);
+        append_opcode(&code, X86OP_IMM_Ev_Iz);
+        append_ModRM(&code, X86MOD_REG, X86OP_IMM_SUB, X86_SP);
+        append_imm32(&code, stack_alloc);
     } else if (stack_alloc > 0) {
-        append_opcode(handle, X86OP_REX_W);
-        append_opcode(handle, X86OP_IMM_Ev_Ib);
-        append_ModRM(handle, X86MOD_REG, X86OP_IMM_SUB, X86_SP);
-        append_imm8(handle, stack_alloc);
+        append_opcode(&code, X86OP_REX_W);
+        append_opcode(&code, X86OP_IMM_Ev_Ib);
+        append_ModRM(&code, X86MOD_REG, X86OP_IMM_SUB, X86_SP);
+        append_imm8(&code, stack_alloc);
     }
 
     int sp_offset = ctx->frame_size;
     for (int reg = 16; reg < 32; reg++) {
         if (regs_to_save & (1 << reg)) {
             if (reg & 8) {
-                append_rex_opcode(handle, X86OP_REX_R, X86OP_MOVAPS_W_V);
+                append_rex_opcode(&code, X86OP_REX_R, X86OP_MOVAPS_W_V);
             } else {
-                append_opcode(handle, X86OP_MOVAPS_W_V);
+                append_opcode(&code, X86OP_MOVAPS_W_V);
             }
             if (sp_offset >= 128) {
-                append_ModRM_SIB(handle, X86MOD_DISP32, reg & 7,
+                append_ModRM_SIB(&code, X86MOD_DISP32, reg & 7,
                                  0, X86SIB_NOINDEX, X86_SP);
-                append_imm32(handle, sp_offset);
+                append_imm32(&code, sp_offset);
             } else if (sp_offset > 0) {
-                append_ModRM_SIB(handle, X86MOD_DISP8, reg & 7,
+                append_ModRM_SIB(&code, X86MOD_DISP8, reg & 7,
                                  0, X86SIB_NOINDEX, X86_SP);
-                append_imm8(handle, sp_offset);
+                append_imm8(&code, sp_offset);
             } else {
-                append_ModRM_SIB(handle, X86MOD_DISP0, reg & 7,
+                append_ModRM_SIB(&code, X86MOD_DISP0, reg & 7,
                                  0, X86SIB_NOINDEX, X86_SP);
             }
             sp_offset += 16;
         }
     }
+
+    handle->code_len = code.len;
 
     if (is_windows_seh) {
         /* Make sure the prologue is the same length we said it would be. */
@@ -775,52 +806,58 @@ static bool append_epilogue(HostX86Context *ctx)
         return false;
     }
 
+    CodeBuffer code = {.buffer = handle->code_buffer,
+                       .buffer_size = handle->code_buffer_size,
+                       .len = handle->code_len};
+
     int sp_offset = ctx->frame_size + 16 * popcnt32(regs_saved >> 16);
     for (int reg = 31; reg >= 16; reg--) {
         if (regs_saved & (1 << reg)) {
             sp_offset -= 16;
             if (reg & 8) {
-                append_rex_opcode(handle, X86OP_REX_R, X86OP_MOVAPS_V_W);
+                append_rex_opcode(&code, X86OP_REX_R, X86OP_MOVAPS_V_W);
             } else {
-                append_opcode(handle, X86OP_MOVAPS_V_W);
+                append_opcode(&code, X86OP_MOVAPS_V_W);
             }
             if (sp_offset >= 128) {
-                append_ModRM_SIB(handle, X86MOD_DISP32, reg & 7,
+                append_ModRM_SIB(&code, X86MOD_DISP32, reg & 7,
                                  0, X86SIB_NOINDEX, X86_SP);
-                append_imm32(handle, sp_offset);
+                append_imm32(&code, sp_offset);
             } else if (sp_offset > 0) {
-                append_ModRM_SIB(handle, X86MOD_DISP8, reg & 7,
+                append_ModRM_SIB(&code, X86MOD_DISP8, reg & 7,
                                  0, X86SIB_NOINDEX, X86_SP);
-                append_imm8(handle, sp_offset);
+                append_imm8(&code, sp_offset);
             } else {
-                append_ModRM_SIB(handle, X86MOD_DISP0, reg & 7,
+                append_ModRM_SIB(&code, X86MOD_DISP0, reg & 7,
                                  0, X86SIB_NOINDEX, X86_SP);
             }
         }
     }
 
     if (stack_alloc >= 128) {
-        append_opcode(handle, X86OP_REX_W);
-        append_opcode(handle, X86OP_IMM_Ev_Iz);
-        append_ModRM(handle, X86MOD_REG, X86OP_IMM_ADD, X86_SP);
-        append_imm32(handle, stack_alloc);
+        append_opcode(&code, X86OP_REX_W);
+        append_opcode(&code, X86OP_IMM_Ev_Iz);
+        append_ModRM(&code, X86MOD_REG, X86OP_IMM_ADD, X86_SP);
+        append_imm32(&code, stack_alloc);
     } else if (stack_alloc > 0) {
-        append_opcode(handle, X86OP_REX_W);
-        append_opcode(handle, X86OP_IMM_Ev_Ib);
-        append_ModRM(handle, X86MOD_REG, X86OP_IMM_ADD, X86_SP);
-        append_imm8(handle, stack_alloc);
+        append_opcode(&code, X86OP_REX_W);
+        append_opcode(&code, X86OP_IMM_Ev_Ib);
+        append_ModRM(&code, X86MOD_REG, X86OP_IMM_ADD, X86_SP);
+        append_imm8(&code, stack_alloc);
     }
 
     for (int reg = 15; reg >= 0; reg--) {
         if (regs_saved & (1 << reg)) {
             if (reg & 8) {
-                append_opcode(handle, X86OP_REX_B);
+                append_opcode(&code, X86OP_REX_B);
             }
-            append_opcode(handle, X86OP_POP_rAX | (reg & 7));
+            append_opcode(&code, X86OP_POP_rAX | (reg & 7));
         }
     }
 
-    append_opcode(handle, X86OP_RET);
+    append_opcode(&code, X86OP_RET);
+
+    handle->code_len = code.len;
 
     return true;
 }
