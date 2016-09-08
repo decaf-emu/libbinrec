@@ -7,12 +7,9 @@
  * NO WARRANTY is provided with this software.
  */
 
-#include "src/common.h"
-#include "src/host-x86.h"
 #include "src/memory.h"
-#include "src/rtl.h"
-#include "src/rtl-internal.h"
 #include "tests/common.h"
+#include "tests/host-x86/common.h"
 #include "tests/mem-wrappers.h"
 
 
@@ -42,20 +39,13 @@ int main(void)
     EXPECT(unit = rtl_create_unit(handle));
 
     /* Allocate enough RTL registers to use up all available GPRs. */
-    uint8_t reg_gpr[15];
-    for (int i = 0; i < lenof(reg_gpr); i++) {
-        EXPECT(reg_gpr[i] = rtl_alloc_register(unit, RTLTYPE_INT32));
-    }
+    alloc_dummy_registers(unit, 15, RTLTYPE_INT32);
 
-    /* Insert NOPs and rewrite their destination register fields as in
-     * the basic prologue/epilogue test. */
-    for (int i = 0; i < lenof(reg_gpr); i++) {
-        EXPECT(rtl_add_insn(unit, RTLOP_NOP, 0, 0, 0, i+1));
-        unit->insns[unit->num_insns-1].dest = reg_gpr[i];
-        unit->regs[reg_gpr[i]].birth = i;
-        unit->regs[reg_gpr[i]].death = lenof(reg_gpr);
+    /* Add some NOPs to pad the code stream, so the entire buffer doesn't
+     * fit in the space reserved for the prologue. */
+    for (int i = 1; i <= 15; i++) {
+        EXPECT(rtl_add_insn(unit, RTLOP_NOP, 0, 0, 0, i));
     }
-    EXPECT(rtl_add_insn(unit, RTLOP_NOP, 0, 0, 0, 255)); // Registers die here.
 
     EXPECT(rtl_finalize_unit(unit));
 
@@ -100,7 +90,6 @@ int main(void)
         0x0F,0x1F,0x05,0x0D,0x00,0x00,0x00, // nop 13(%rip)
         0x0F,0x1F,0x05,0x0E,0x00,0x00,0x00, // nop 14(%rip)
         0x0F,0x1F,0x05,0x0F,0x00,0x00,0x00, // nop 15(%rip)
-        0x0F,0x1F,0x05,0xFF,0x00,0x00,0x00, // nop 255(%rip)
         0x48,0x83,0xC4,0x08,            // add $8,%rsp
         0x41,0x5F,                      // pop %r15
         0x41,0x5E,                      // pop %r14

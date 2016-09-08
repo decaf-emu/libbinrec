@@ -473,7 +473,7 @@ static bool append_prologue(HostX86Context *ctx)
 
         enum {
             UWOP_PUSH_NONVOL = 0,
-            UWOP_ALLOC_LARGE = 2,
+            UWOP_ALLOC_LARGE = 1,
             UWOP_ALLOC_SMALL = 2,
             UWOP_SAVE_XMM128 = 8,
         };
@@ -536,19 +536,19 @@ static bool append_prologue(HostX86Context *ctx)
             }
         }
 
+        int sp_offset = ctx->frame_size;
         for (int reg = 16; reg < 32; reg++) {
-            int sp_offset = ctx->frame_size;
             if (regs_to_save & (1 << reg)) {
                 unwind_pos -= 4;
                 ASSERT(unwind_pos >= 4);
                 unwind_info[unwind_pos+0] = prologue_pos;
                 unwind_info[unwind_pos+1] = UWOP_SAVE_XMM128 | reg<<4;
-                unwind_info[unwind_pos+2] = (uint8_t)(sp_offset >> 0);
-                unwind_info[unwind_pos+3] = (uint8_t)(sp_offset >> 8);
-                if (reg < 8) {
-                    prologue_pos += 3;  // MOVAPS
+                unwind_info[unwind_pos+2] = (uint8_t)(sp_offset >> 4);
+                unwind_info[unwind_pos+3] = (uint8_t)(sp_offset >> 12);
+                if (reg & 8) {
+                    prologue_pos += 5;  // REX + MOVAPS + ModR/M + SIB
                 } else {
-                    prologue_pos += 4;  // REX MOVAPS
+                    prologue_pos += 4;  // MOVAPS + ModR/M + SIB
                 }
                 if (sp_offset >= 128) {
                     prologue_pos += 4;  // disp32
@@ -585,14 +585,15 @@ static bool append_prologue(HostX86Context *ctx)
         ctx->handle->code_len += code_offset;
     }
 
-    /* In the worst case, the prologue will require:
+    /* In the worst case (Windows ABI with all registers saved and a frame
+     * size of >=128 bytes), the prologue will require:
      *    1 * 4 low GPR saves
      *    2 * 4 high GPR saves
      *    7 * 1 stack adjustment
-     *    7 * 2 low XMM saves
-     *    8 * 8 high XMM saves
-     * for a total of 97 bytes. */
-    if (UNLIKELY(!binrec_ensure_code_space(ctx->handle, 97))) {
+     *    8 * 2 low XMM saves
+     *    9 * 8 high XMM saves
+     * for a total of 107 bytes. */
+    if (UNLIKELY(!binrec_ensure_code_space(ctx->handle, 107))) {
         return false;
     }
 
@@ -621,9 +622,10 @@ static bool append_prologue(HostX86Context *ctx)
     for (int reg = 16; reg < 32; reg++) {
         if (regs_to_save & (1 << reg)) {
             if (reg & 8) {
-                append_opcode(handle, X86OP_REX_R);
+                append_rex_opcode(handle, X86OP_REX_R, X86OP_MOVAPS_W_V);
+            } else {
+                append_opcode(handle, X86OP_MOVAPS_W_V);
             }
-            append_opcode(handle, X86OP_MOVAPS_W_V);
             if (sp_offset >= 128) {
                 append_ModRM_SIB(handle, X86MOD_DISP32, reg & 7,
                                  0, X86SIB_NOINDEX, X86_SP);
@@ -674,7 +676,7 @@ static bool append_epilogue(HostX86Context *ctx)
 
     /* The maximum size of the epilogue is the same as the maximum size of
      * the prologue, plus 1 for the RET instruction. */
-    if (UNLIKELY(!binrec_ensure_code_space(handle, 98))) {
+    if (UNLIKELY(!binrec_ensure_code_space(handle, 108))) {
         return false;
     }
 
@@ -683,9 +685,10 @@ static bool append_epilogue(HostX86Context *ctx)
         if (regs_saved & (1 << reg)) {
             sp_offset -= 16;
             if (reg & 8) {
-                append_opcode(handle, X86OP_REX_R);
+                append_rex_opcode(handle, X86OP_REX_R, X86OP_MOVAPS_V_W);
+            } else {
+                append_opcode(handle, X86OP_MOVAPS_V_W);
             }
-            append_opcode(handle, X86OP_MOVAPS_V_W);
             if (sp_offset >= 128) {
                 append_ModRM_SIB(handle, X86MOD_DISP32, reg & 7,
                                  0, X86SIB_NOINDEX, X86_SP);

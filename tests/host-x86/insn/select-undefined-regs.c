@@ -21,27 +21,28 @@ static int add_rtl(RTLUnit *unit)
 
     uint32_t reg1, reg2, reg3, reg4;
     EXPECT(reg1 = rtl_alloc_register(unit, RTLTYPE_INT32));
-    EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg1, 0, 0, 1));
     EXPECT(reg2 = rtl_alloc_register(unit, RTLTYPE_INT32));
-    EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg2, 0, 0, 2));
     EXPECT(reg3 = rtl_alloc_register(unit, RTLTYPE_INT32));
-    EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg3, 0, 0, 3));
     EXPECT(reg4 = rtl_alloc_register(unit, RTLTYPE_INT32));
-    EXPECT(rtl_add_insn(unit, RTLOP_SELECT, reg4, reg1, reg2, reg3));
-    EXPECT(rtl_add_insn(unit, RTLOP_NOP, 0, reg1, reg2, 0));
-    EXPECT(rtl_add_insn(unit, RTLOP_NOP, 0, reg3, 0, 0));
+
+    /* If operand sanity checks are enabled, we can't directly add an
+     * instruction with undefined inputs, so we add a LOAD_IMM (to set the
+     * live range on the destination register properly) and modify the
+     * instruction entry directly. */
+    EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg4, 0, 0, 0));
+    unit->insns[unit->num_insns-1].opcode = RTLOP_SELECT;
+    unit->insns[unit->num_insns-1].src1 = reg1;
+    unit->insns[unit->num_insns-1].src2 = reg2;
+    unit->insns[unit->num_insns-1].cond = reg3;
 
     return EXIT_SUCCESS;
 }
 
 static const uint8_t expected_code[] = {
     0x48,0x83,0xEC,0x08,                // sub $8,%rsp
-    0xB9,0x01,0x00,0x00,0x00,           // mov $1,%ecx
-    0xBA,0x02,0x00,0x00,0x00,           // mov $2,%edx
-    0xBE,0x03,0x00,0x00,0x00,           // mov $3,%esi
-    0x85,0xF6,                          // test %esi,%esi
-    0x8B,0xF9,                          // mov %ecx,%edi
-    0x0F,0x44,0xFA,                     // cmovz %edx,%edi
+    0x85,0xC0,                          // test %eax,%eax
+    0x8B,0xC8,                          // mov %eax,%ecx
+    0x0F,0x44,0xC8,                     // cmovz %eax,%ecx
     0x48,0x83,0xC4,0x08,                // add $8,%rsp
     0xC3,                               // ret
 };

@@ -7,12 +7,9 @@
  * NO WARRANTY is provided with this software.
  */
 
-#include "src/common.h"
-#include "src/host-x86.h"
 #include "src/memory.h"
-#include "src/rtl.h"
-#include "src/rtl-internal.h"
 #include "tests/common.h"
+#include "tests/host-x86/common.h"
 
 
 int main(void)
@@ -28,20 +25,7 @@ int main(void)
 
     /* Allocate enough RTL registers to force exactly one push, which will
      * align the stack properly. */
-    uint8_t reg_gpr[8];
-    for (int i = 0; i < lenof(reg_gpr); i++) {
-        EXPECT(reg_gpr[i] = rtl_alloc_register(unit, RTLTYPE_INT32));
-    }
-
-    /* Insert NOPs and rewrite their destination register fields as in
-     * the basic prologue/epilogue test. */
-    for (int i = 0; i < lenof(reg_gpr); i++) {
-        EXPECT(rtl_add_insn(unit, RTLOP_NOP, 0, 0, 0, 0));
-        unit->insns[unit->num_insns-1].dest = reg_gpr[i];
-        unit->regs[reg_gpr[i]].birth = i;
-        unit->regs[reg_gpr[i]].death = lenof(reg_gpr);
-    }
-    EXPECT(rtl_add_insn(unit, RTLOP_NOP, 0, 0, 0, 0));  // Registers die here.
+    alloc_dummy_registers(unit, 8, RTLTYPE_INT32);
 
     EXPECT(rtl_finalize_unit(unit));
 
@@ -55,7 +39,7 @@ int main(void)
         0x00,0x00,
         /* Actual code starts here, 16-byte aligned. */
         0x53,                           // push %rbx
-        // Prologue ends, epilogue begins.
+        /* Prologue ends, epilogue begins. */
         0x5B,                           // pop %rbx
         0xC3,                           // ret
     };

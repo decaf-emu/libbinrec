@@ -7,60 +7,44 @@
  * NO WARRANTY is provided with this software.
  */
 
-#include "src/common.h"
-#include "src/host-x86.h"
 #include "src/memory.h"
-#include "src/rtl.h"
-#include "src/rtl-internal.h"
 #include "tests/common.h"
+#include "tests/host-x86/common.h"
 
 
 int main(void)
 {
     binrec_setup_t setup;
     memset(&setup, 0, sizeof(setup));
-    setup.host = BINREC_ARCH_X86_64_WINDOWS;
+    setup.host = BINREC_ARCH_X86_64_WINDOWS_SEH;
     binrec_t *handle;
     EXPECT(handle = binrec_create_handle(&setup));
 
     RTLUnit *unit;
     EXPECT(unit = rtl_create_unit(handle));
 
-    /* Allocate enough RTL registers to use up all available GPRs. */
-    uint8_t reg_gpr[15];
-    for (int i = 0; i < lenof(reg_gpr); i++) {
-        EXPECT(reg_gpr[i] = rtl_alloc_register(unit, RTLTYPE_INT32));
-    }
-
-    /* Insert NOPs and rewrite their destination register fields as in
-     * the basic prologue/epilogue test. */
-    for (int i = 0; i < lenof(reg_gpr); i++) {
-        EXPECT(rtl_add_insn(unit, RTLOP_NOP, 0, 0, 0, 0));
-        unit->insns[unit->num_insns-1].dest = reg_gpr[i];
-        unit->regs[reg_gpr[i]].birth = i;
-        unit->regs[reg_gpr[i]].death = lenof(reg_gpr);
-    }
-    EXPECT(rtl_add_insn(unit, RTLOP_NOP, 0, 0, 0, 0));  // Registers die here.
+    /* Allocate enough RTL registers to force some pushes. */
+    alloc_dummy_registers(unit, 9, RTLTYPE_INT32);
 
     EXPECT(rtl_finalize_unit(unit));
 
     static const uint8_t expected_code[] = {
+        /* Offset to code. */
+        0x20,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
+        /* Unwind data starts here. */
+        0x01,0x06,0x03,0x00,            // UNWIND_INFO
+        0x02,0x02,                      // 0x0C: UWOP_ALLOC_SMALL 0
+        0x01,0x50,                      // 0x01: UWOP_PUSH_NONVOL rbp
+        0x00,0x30,                      // 0x00: UWOP_PUSH_NONVOL rbx
+        /* Padding to align the code. */
+        0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
+        /* Actual code starts here, 16-byte aligned. */
         0x53,                           // push %rbx
         0x55,                           // push %rbp
-        0x56,                           // push %rsi
-        0x57,                           // push %rdi
-        0x41,0x54,                      // push %r12
-        0x41,0x55,                      // push %r13
-        0x41,0x56,                      // push %r14
-        0x41,0x57,                      // push %r15
-        0x48,0x83,0xEC,0x08,            // sub $8,%rsp  # for stack alignment
+        /* The stack should be realigned to a 16-byte boundary here. */
+        0x48,0x83,0xEC,0x08,            // sub $8,%rsp
+        /* Prologue ends, epilogue begins. */
         0x48,0x83,0xC4,0x08,            // add $8,%rsp
-        0x41,0x5F,                      // pop %r15
-        0x41,0x5E,                      // pop %r14
-        0x41,0x5D,                      // pop %r13
-        0x41,0x5C,                      // pop %r12
-        0x5F,                           // pop %rdi
-        0x5E,                           // pop %rsi
         0x5D,                           // pop %rbp
         0x5B,                           // pop %rbx
         0xC3,                           // ret

@@ -7,7 +7,6 @@
  * NO WARRANTY is provided with this software.
  */
 
-#include "src/rtl-internal.h"
 #include "tests/common.h"
 #include "tests/host-x86/common.h"
 

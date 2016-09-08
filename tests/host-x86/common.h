@@ -10,6 +10,9 @@
 #ifndef TESTS_HOST_X86_COMMON_H
 #define TESTS_HOST_X86_COMMON_H
 
+#ifndef SRC_HOST_X86_H
+    #include "src/host-x86.h"
+#endif
 #ifndef SRC_RTL_INTERNAL_H
     #include "src/rtl-internal.h"
 #endif
@@ -25,21 +28,18 @@
  *     unit: RTL unit on which to operate.
  *     count: Number of registers to allocate.
  *     type: Register type (RTLTYPE_*).
- * [Return value]
- *     True on success, false on error.
  */
-static inline bool alloc_dummy_registers(RTLUnit *unit, int count,
+static inline void alloc_dummy_registers(RTLUnit *unit, int count,
                                          RTLDataType type)
 {
     for (int i = 0; i < count; i++) {
         uint32_t reg;
-        EXPECT(reg = rtl_alloc_register(unit, type));
-        EXPECT(rtl_add_insn(unit, RTLOP_NOP, reg, 0, 0, 0));
+        ASSERT(reg = rtl_alloc_register(unit, type));
+        ASSERT(rtl_add_insn(unit, RTLOP_NOP, reg, 0, 0, 0));
         /* Hide the register's death from the register allocator. */
         unit->regs[reg].death = unit->num_insns;
-        EXPECT(rtl_add_insn(unit, RTLOP_NOP, 0, 0, 0, 0));
+        ASSERT(rtl_add_insn(unit, RTLOP_NOP, 0, 0, 0, 0));
     }
-    return true;
 }
 
 /*************************************************************************/

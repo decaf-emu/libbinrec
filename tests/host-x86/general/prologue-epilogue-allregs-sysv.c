@@ -7,12 +7,9 @@
  * NO WARRANTY is provided with this software.
  */
 
-#include "src/common.h"
-#include "src/host-x86.h"
 #include "src/memory.h"
-#include "src/rtl.h"
-#include "src/rtl-internal.h"
 #include "tests/common.h"
+#include "tests/host-x86/common.h"
 
 
 int main(void)
@@ -26,33 +23,26 @@ int main(void)
     RTLUnit *unit;
     EXPECT(unit = rtl_create_unit(handle));
 
-    /* Allocate enough RTL registers to force some pushes. */
-    uint8_t reg_gpr[11];
-    for (int i = 0; i < lenof(reg_gpr); i++) {
-        EXPECT(reg_gpr[i] = rtl_alloc_register(unit, RTLTYPE_INT32));
-    }
-
-    /* Insert NOPs and rewrite their destination register fields to
-     * reference our registers.  This is technically invalid, but the
-     * translator won't notice.  Also force the register live ranges to
-     * overlap so they're all assigned different registers. */
-    for (int i = 0; i < lenof(reg_gpr); i++) {
-        EXPECT(rtl_add_insn(unit, RTLOP_NOP, 0, 0, 0, 0));
-        unit->insns[unit->num_insns-1].dest = reg_gpr[i];
-        unit->regs[reg_gpr[i]].birth = i;
-        unit->regs[reg_gpr[i]].death = lenof(reg_gpr);
-    }
-    EXPECT(rtl_add_insn(unit, RTLOP_NOP, 0, 0, 0, 0));  // Registers die here.
+    /* Allocate enough RTL registers to use up all available host registers. */
+    alloc_dummy_registers(unit, 15, RTLTYPE_INT32);
+    alloc_dummy_registers(unit, 16, RTLTYPE_FLOAT);
 
     EXPECT(rtl_finalize_unit(unit));
 
     static const uint8_t expected_code[] = {
         0x53,                           // push %rbx
         0x55,                           // push %rbp
-        // The stack should be realigned to a 16-byte boundary here.
-        0x48,0x83,0xEC,0x08,            // sub $8,%rsp
-        // Prologue ends, epilogue begins.
+        0x41,0x54,                      // push %r12
+        0x41,0x55,                      // push %r13
+        0x41,0x56,                      // push %r14
+        0x41,0x57,                      // push %r15
+        0x48,0x83,0xEC,0x08,            // sub $8,%rsp  # for stack alignment
+        /* All XMM registers are caller-saved in the SysV ABI. */
         0x48,0x83,0xC4,0x08,            // add $8,%rsp
+        0x41,0x5F,                      // pop %r15
+        0x41,0x5E,                      // pop %r14
+        0x41,0x5D,                      // pop %r13
+        0x41,0x5C,                      // pop %r12
         0x5D,                           // pop %rbp
         0x5B,                           // pop %rbx
         0xC3,                           // ret

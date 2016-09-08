@@ -7,7 +7,6 @@
  * NO WARRANTY is provided with this software.
  */
 
-#include "src/rtl-internal.h"
 #include "tests/common.h"
 #include "tests/host-x86/common.h"
 
@@ -18,7 +17,7 @@ static const binrec_setup_t setup = {
 
 static int add_rtl(RTLUnit *unit)
 {
-    EXPECT(alloc_dummy_registers(unit, 6, RTLTYPE_INT32));
+    alloc_dummy_registers(unit, 6, RTLTYPE_INT32);
 
     uint32_t reg1, reg2, reg3, reg4;
     EXPECT(reg1 = rtl_alloc_register(unit, RTLTYPE_ADDRESS));

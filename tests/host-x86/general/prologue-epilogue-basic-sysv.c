@@ -23,15 +23,19 @@ int main(void)
     RTLUnit *unit;
     EXPECT(unit = rtl_create_unit(handle));
 
-    /* Allocate enough RTL registers to force exactly one push, which will
-     * align the stack properly. */
-    alloc_dummy_registers(unit, 10, RTLTYPE_INT32);
+    /* Allocate enough RTL registers to force some pushes. */
+    alloc_dummy_registers(unit, 11, RTLTYPE_INT32);
 
     EXPECT(rtl_finalize_unit(unit));
 
     static const uint8_t expected_code[] = {
         0x53,                           // push %rbx
+        0x55,                           // push %rbp
+        /* The stack should be realigned to a 16-byte boundary here. */
+        0x48,0x83,0xEC,0x08,            // sub $8,%rsp
         /* Prologue ends, epilogue begins. */
+        0x48,0x83,0xC4,0x08,            // add $8,%rsp
+        0x5D,                           // pop %rbp
         0x5B,                           // pop %rbx
         0xC3,                           // ret
     };
