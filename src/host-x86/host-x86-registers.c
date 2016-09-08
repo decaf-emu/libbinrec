@@ -57,11 +57,28 @@ static void allocate_register(HostX86Context *ctx, int reg_index)
     ASSERT(reg_index > 0);
     ASSERT(reg_index < ctx->unit->next_reg);
 
+    const RTLRegister *reg = &ctx->unit->regs[reg_index];
     HostX86RegInfo *reg_info = &ctx->regs[reg_index];
     ASSERT(!reg_info->host_allocated);
 
-    const int host_reg = ctz32(ctx->regs_free);
-    if (host_reg < 16) {
+    uint32_t regs_free;
+    int reg_base;
+    if (reg->type == RTLTYPE_INT32 || reg->type == RTLTYPE_ADDRESS) {
+        regs_free = ctx->regs_free & 0xFFFF;
+        reg_base = 0;
+    } else {
+        regs_free = ctx->regs_free & 0xFFFF0000;
+        reg_base = 16;
+    }
+
+    /* Give preference to caller-saved registers, so we don't need to
+     * unnecessarily save and restore registers ourselves. */
+    // FIXME: will need adjustment when we have native calls (probably also want something like NATIVE_CALL_INTERNAL for pre/post insn callbacks that doesn't affect register allocation)
+    int host_reg = ctz32(regs_free & ~ctx->callee_saved_regs);
+    if (host_reg - reg_base >= 16) {
+        host_reg = ctz32(regs_free);
+    }
+    if (host_reg - reg_base < 16) {
         ASSERT(!ctx->reg_map[host_reg]);
         reg_info->host_allocated = true;
         reg_info->host_reg = host_reg;
@@ -276,6 +293,21 @@ bool host_x86_allocate_registers(HostX86Context *ctx)
 
     RTLUnit * const unit = ctx->unit;
 
+    if (ctx->handle->setup.host == BINREC_ARCH_X86_64_SYSV) {
+        ctx->callee_saved_regs =
+            1<<X86_BX | 1<<X86_BP | 1<<X86_R12 | 1<<X86_R13
+            | 1<<X86_R14 | 1<<X86_R15;
+    } else {
+        ASSERT(ctx->handle->setup.host == BINREC_ARCH_X86_64_WINDOWS
+            || ctx->handle->setup.host == BINREC_ARCH_X86_64_WINDOWS_SEH);
+        ctx->callee_saved_regs =
+            1<<X86_BX | 1<<X86_BP | 1<<X86_SI | 1<<X86_DI
+            | 1<<X86_R12 | 1<<X86_R13 | 1<<X86_R14 | 1<<X86_R15
+            | 1<<X86_XMM6 | 1<<X86_XMM7 | 1<<X86_XMM8 | 1<<X86_XMM9
+            | 1<<X86_XMM10 | 1<<X86_XMM11 | 1<<X86_XMM12 | 1<<X86_XMM13
+            | 1<<X86_XMM14 | 1<<X86_XMM15;
+    }
+
     memset(ctx->reg_map, 0, sizeof(ctx->reg_map));
     ctx->regs_free = ~UINT32_C(0) ^ 1<<X86_SP;  // Don't try to allocate SP!
     ctx->regs_touched = 0;
@@ -289,27 +321,6 @@ bool host_x86_allocate_registers(HostX86Context *ctx)
     }
 
     return true;
-}
-
-/*-----------------------------------------------------------------------*/
-
-uint32_t host_x86_callee_saved_registers(HostX86Context *ctx)
-{
-    ASSERT(ctx);
-    ASSERT(ctx->handle);
-
-    if (ctx->handle->setup.host == BINREC_ARCH_X86_64_SYSV) {
-        return 1<<X86_BX | 1<<X86_BP | 1<<X86_R12 | 1<<X86_R13
-             | 1<<X86_R14 | 1<<X86_R15;
-    } else {
-        ASSERT(ctx->handle->setup.host == BINREC_ARCH_X86_64_WINDOWS
-            || ctx->handle->setup.host == BINREC_ARCH_X86_64_WINDOWS_SEH);
-        return 1<<X86_BX | 1<<X86_BP | 1<<X86_SI | 1<<X86_DI
-             | 1<<X86_R12 | 1<<X86_R13 | 1<<X86_R14 | 1<<X86_R15
-             | 1<<X86_XMM6 | 1<<X86_XMM7 | 1<<X86_XMM8 | 1<<X86_XMM9
-             | 1<<X86_XMM10 | 1<<X86_XMM11 | 1<<X86_XMM12 | 1<<X86_XMM13
-             | 1<<X86_XMM14 | 1<<X86_XMM15;
-    }
 }
 
 /*-----------------------------------------------------------------------*/

@@ -444,8 +444,7 @@ static bool append_prologue(HostX86Context *ctx)
     ASSERT(ctx->frame_size % 16 == 0);
 
     binrec_t * const handle = ctx->handle;
-    const uint32_t regs_to_save =
-        ctx->regs_touched & host_x86_callee_saved_registers(ctx);
+    const uint32_t regs_to_save = ctx->regs_touched & ctx->callee_saved_regs;
     const bool is_windows_seh =
         (ctx->handle->setup.host == BINREC_ARCH_X86_64_WINDOWS_SEH);
 
@@ -668,8 +667,7 @@ static bool append_epilogue(HostX86Context *ctx)
     ASSERT(ctx->handle);
 
     binrec_t * const handle = ctx->handle;
-    const uint32_t regs_saved =
-        ctx->regs_touched & host_x86_callee_saved_registers(ctx);
+    const uint32_t regs_saved = ctx->regs_touched & ctx->callee_saved_regs;
     const int stack_alloc = ctx->stack_alloc;
 
     ctx->label_offsets[0] = handle->code_len;

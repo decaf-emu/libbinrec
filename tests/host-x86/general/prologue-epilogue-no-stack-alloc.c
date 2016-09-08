@@ -28,7 +28,7 @@ int main(void)
 
     /* Allocate enough RTL registers to force exactly one push, which will
      * align the stack properly. */
-    uint8_t reg_gpr[4];
+    uint8_t reg_gpr[10];
     for (int i = 0; i < lenof(reg_gpr); i++) {
         EXPECT(reg_gpr[i] = rtl_alloc_register(unit, RTLTYPE_INT32));
     }

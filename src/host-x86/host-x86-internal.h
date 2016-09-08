@@ -98,6 +98,9 @@ typedef struct HostX86Context {
     binrec_t *handle;
     RTLUnit *unit;
 
+    /* Bitmap of callee-saved registers for the selected ABI. */
+    uint32_t callee_saved_regs;
+
     /* Information for each basic block. */
     HostX86BlockInfo *blocks;
     /* Information for each RTL register. */
@@ -131,6 +134,9 @@ typedef struct HostX86Context {
  * host_x86_allocate_registers:  Allocate a host register for each RTL
  * register which needs one.
  *
+ * On return, ctx->callee_saved_regs will be set to the proper value for
+ * the selected ABI.
+ *
  * [Parameters]
  *     ctx: Translation context.
  * [Return value]
@@ -138,19 +144,6 @@ typedef struct HostX86Context {
  */
 #define host_x86_allocate_registers INTERNAL(host_x86_allocate_registers)
 extern bool host_x86_allocate_registers(HostX86Context *ctx);
-
-/**
- * host_x86_callee_saved_registers:  Return a bitmap of callee-saved
- * registers for the selected host ABI.
- *
- * [Parameters]
- *     ctx: Translation context.
- * [Return value]
- *     Callee-saved register bitmap.
- */
-#define host_x86_callee_saved_registers INTERNAL(host_x86_callee_saved_registers)
-extern PURE_FUNCTION uint32_t host_x86_callee_saved_registers(
-    HostX86Context *ctx);
 
 /**
  * host_x86_int_arg_register:  Return the register used for the given

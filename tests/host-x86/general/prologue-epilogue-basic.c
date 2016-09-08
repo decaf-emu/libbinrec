@@ -27,7 +27,7 @@ int main(void)
     EXPECT(unit = rtl_create_unit(handle));
 
     /* Allocate enough RTL registers to force some pushes. */
-    uint8_t reg_gpr[5];
+    uint8_t reg_gpr[11];
     for (int i = 0; i < lenof(reg_gpr); i++) {
         EXPECT(reg_gpr[i] = rtl_alloc_register(unit, RTLTYPE_INT32));
     }
