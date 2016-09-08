@@ -139,11 +139,9 @@ typedef struct HostX86Context {
  *
  * [Parameters]
  *     ctx: Translation context.
- * [Return value]
- *     True on success, false on error.
  */
 #define host_x86_allocate_registers INTERNAL(host_x86_allocate_registers)
-extern bool host_x86_allocate_registers(HostX86Context *ctx);
+extern void host_x86_allocate_registers(HostX86Context *ctx);
 
 /**
  * host_x86_int_arg_register:  Return the register used for the given

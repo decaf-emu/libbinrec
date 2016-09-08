@@ -100,10 +100,8 @@ static void allocate_register(HostX86Context *ctx, int reg_index)
  * [Parameters]
  *     ctx: Translation context.
  *     insn_index: Index of instruction in ctx->unit->insns[].
- * [Return value]
- *     True on success, false on error.
  */
-static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index)
+static void allocate_regs_for_insn(HostX86Context *ctx, int insn_index)
 {
     ASSERT(ctx);
     ASSERT(ctx->unit);
@@ -241,8 +239,6 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index)
             ctx->reg_map[dest_info->host_reg] = 0;
         }
     }
-
-    return true;
 }
 
 /*-----------------------------------------------------------------------*/
@@ -254,10 +250,8 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index)
  * [Parameters]
  *     ctx: Translation context.
  *     block_index: Index of basic block in ctx->unit->blocks[].
- * [Return value]
- *     True on success, false on error.
  */
-static bool allocate_regs_for_block(HostX86Context *ctx, int block_index)
+static void allocate_regs_for_block(HostX86Context *ctx, int block_index)
 {
     ASSERT(ctx);
     ASSERT(ctx->unit);
@@ -274,19 +268,15 @@ static bool allocate_regs_for_block(HostX86Context *ctx, int block_index)
     for (int insn_index = block->first_insn; insn_index <= block->last_insn;
          insn_index++)
     {
-        if (!allocate_regs_for_insn(ctx, insn_index)) {
-            return false;
-        }
+        allocate_regs_for_insn(ctx, insn_index);
     }
-
-    return true;
 }
 
 /*************************************************************************/
 /********************** Internal interface routines **********************/
 /*************************************************************************/
 
-bool host_x86_allocate_registers(HostX86Context *ctx)
+void host_x86_allocate_registers(HostX86Context *ctx)
 {
     ASSERT(ctx);
     ASSERT(ctx->unit);
@@ -315,12 +305,8 @@ bool host_x86_allocate_registers(HostX86Context *ctx)
     for (int block_index = 0; block_index >= 0;
          block_index = unit->blocks[block_index].next_block)
     {
-        if (!allocate_regs_for_block(ctx, block_index)) {
-            return false;
-        }
+        allocate_regs_for_block(ctx, block_index);
     }
-
-    return true;
 }
 
 /*-----------------------------------------------------------------------*/

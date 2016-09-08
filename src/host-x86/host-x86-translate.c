@@ -871,9 +871,7 @@ bool host_x86_translate(binrec_t *handle, struct RTLUnit *unit)
         goto error_return;
     }
 
-    if (!host_x86_allocate_registers(&ctx)) {
-        goto error_destroy_context;
-    }
+    host_x86_allocate_registers(&ctx);
 
     if (!translate_unit(&ctx)) {
         goto error_destroy_context;
