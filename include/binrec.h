@@ -288,9 +288,9 @@ typedef struct binrec_setup_t {
 #define BINREC_OPT_CALLEE_SAVED_REGS_UNSAFE  (1<<1)
 
 /**
- * BINREC_OPT_DECONDITION:  Convert conditional branches with constant
- * conditions to unconditional branches or NOPs.  This is most useful in
- * conjunction with constant folding.
+ * BINREC_OPT_DECONDITION:  Convert conditional branches and moves with
+ * constant conditions to unconditional instructions or NOPs.  This is
+ * most useful in conjunction with constant folding.
  */
 #define BINREC_OPT_DECONDITION  (1<<2)
 
@@ -427,6 +427,14 @@ typedef struct binrec_setup_t {
 /*------------ Host-architecture-specific optimization flags ------------*/
 
 /**
+ * BINREC_OPT_H_X86_CONDITION_CODES:  Track the state of the condition
+ * codes in the EFLAGS register, and avoid adding an explicit TEST
+ * instruction for a register if the condition codes already reflect the
+ * value of that register.
+ */
+#define BINREC_OPT_H_X86_CONDITION_CODES  (1<<0)
+
+/**
  * BINREC_OPT_H_X86_CONSTANT_OPERANDS:  When an instruction has a constant
  * operand, encode that constant directly into the instruction if possible
  * rather than first loading it into a register.
@@ -434,7 +442,16 @@ typedef struct binrec_setup_t {
  * If this optimization is disabled, all values (including constants) will
  * first be loaded into registers before operating on them.
  */
-#define BINREC_OPT_H_X86_CONSTANT_OPERANDS  (1<<0)
+#define BINREC_OPT_H_X86_CONSTANT_OPERANDS  (1<<1)
+
+/**
+ * BINREC_OPT_H_X86_FORWARD_CONDITIONS:  When a register used as the
+ * condition for a conditional branch or move is the boolean result of a
+ * comparison, forward the comparison condition to the branch or move
+ * instruction instead of storing the comparison result in a register and
+ * testing the zeroness of that register.
+ */
+#define BINREC_OPT_H_X86_FORWARD_CONDITIONS  (1<<2)
 
 /*************************************************************************/
 /**************** Interface: Library version information *****************/

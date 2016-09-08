@@ -32,13 +32,12 @@ static inline bool alloc_dummy_registers(RTLUnit *unit, int count,
                                          RTLDataType type)
 {
     for (int i = 0; i < count; i++) {
+        uint32_t reg;
+        EXPECT(reg = rtl_alloc_register(unit, type));
+        EXPECT(rtl_add_insn(unit, RTLOP_NOP, reg, 0, 0, 0));
+        /* Hide the register's death from the register allocator. */
+        unit->regs[reg].death = unit->num_insns;
         EXPECT(rtl_add_insn(unit, RTLOP_NOP, 0, 0, 0, 0));
-        EXPECT(unit->insns[unit->num_insns-1].dest =
-                   rtl_alloc_register(unit, type));
-        unit->regs[unit->insns[unit->num_insns-1].dest].birth =
-            unit->num_insns-1;
-        unit->regs[unit->insns[unit->num_insns-1].dest].death =
-            unit->num_insns;
     }
     return true;
 }

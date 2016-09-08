@@ -56,7 +56,9 @@ namespace Optimize {
     }
 
     namespace HostX86 {
+        const unsigned int CONDITION_CODES = BINREC_OPT_H_X86_CONDITION_CODES;
         const unsigned int CONSTANT_OPERANDS = BINREC_OPT_H_X86_CONSTANT_OPERANDS;
+        const unsigned int FORWARD_CONDITIONS = BINREC_OPT_H_X86_FORWARD_CONDITIONS;
     }
 }
 

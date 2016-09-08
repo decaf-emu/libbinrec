@@ -18,11 +18,18 @@ static const binrec_setup_t setup = {
 
 static int add_rtl(RTLUnit *unit)
 {
-    EXPECT(alloc_dummy_registers(unit, 9, RTLTYPE_INT32));
+    EXPECT(alloc_dummy_registers(unit, 8, RTLTYPE_INT32));
 
-    uint32_t reg;
-    EXPECT(reg = rtl_alloc_register(unit, RTLTYPE_INT32));
-    EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg, 0, 0, 0x7FFFFFFF));
+    uint32_t reg1, reg2, reg3, reg4;
+    EXPECT(reg1 = rtl_alloc_register(unit, RTLTYPE_ADDRESS));
+    EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg1, 0, 0, 1));
+    EXPECT(reg2 = rtl_alloc_register(unit, RTLTYPE_ADDRESS));
+    EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg2, 0, 0, 2));
+    EXPECT(reg3 = rtl_alloc_register(unit, RTLTYPE_ADDRESS));
+    EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg3, 0, 0, 3));
+    EXPECT(reg4 = rtl_alloc_register(unit, RTLTYPE_ADDRESS));
+    EXPECT(rtl_add_insn(unit, RTLOP_SELECT, reg4, reg1, reg2, reg3));
+    EXPECT(rtl_add_insn(unit, RTLOP_NOP, 0, reg1, 0, 0));
 
     return EXIT_SUCCESS;
 }
@@ -31,7 +38,11 @@ static const uint8_t expected_code[] = {
     0x53,                               // push %rbx
     0x55,                               // push %rbp
     0x48,0x83,0xEC,0x08,                // sub $8,%rsp
-    0x41,0xBA,0xFF,0xFF,0xFF,0x7F,      // mov %r10d,0x7FFFFFFF
+    0x41,0xB9,0x01,0x00,0x00,0x00,      // mov $1,%r9d
+    0x41,0xBA,0x02,0x00,0x00,0x00,      // mov $2,%r10d
+    0x41,0xBB,0x03,0x00,0x00,0x00,      // mov $3,%r11d
+    0x4D,0x85,0xDB,                     // test %r11,%r11
+    0x4D,0x0F,0x45,0xD1,                // cmovnz %r9,%r10
     0x48,0x83,0xC4,0x08,                // add $8,%rsp
     0x5D,                               // pop %rbp
     0x5B,                               // pop %rbx

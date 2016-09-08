@@ -23,7 +23,7 @@
  * - bool add_rtl(RTLUnit *unit)
  *      This function will be called to fill the RTL unit with
  *      instructions before calling the translation function.  It should
- *      return false if any errors occur.
+ *      return EXIT_SUCCESS on success, EXIT_FAILURE if any errors occur.
  *
  * - static const uint8_t expected_code[]
  *      Define this to a buffer containing the expected translation output.
@@ -50,7 +50,7 @@ int main(void)
     RTLUnit *unit;
     EXPECT(unit = rtl_create_unit(handle));
 
-    EXPECT(add_rtl(unit));
+    EXPECT(add_rtl(unit) == EXIT_SUCCESS);
 
     EXPECT(rtl_finalize_unit(unit));
 

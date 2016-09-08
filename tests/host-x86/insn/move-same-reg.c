@@ -20,17 +20,18 @@ static int add_rtl(RTLUnit *unit)
 {
     EXPECT(alloc_dummy_registers(unit, 1, RTLTYPE_INT32));
 
-    uint32_t reg;
-    EXPECT(reg = rtl_alloc_register(unit, RTLTYPE_ADDRESS));
-    EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg, 0, 0,
-                        UINT64_C(0xFFFFFFFF80000000)));
+    uint32_t reg1, reg2;
+    EXPECT(reg1 = rtl_alloc_register(unit, RTLTYPE_INT32));
+    EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg1, 0, 0, 0));
+    EXPECT(reg2 = rtl_alloc_register(unit, RTLTYPE_INT32));
+    EXPECT(rtl_add_insn(unit, RTLOP_MOVE, reg2, reg1, 0, 0));
 
     return EXIT_SUCCESS;
 }
 
 static const uint8_t expected_code[] = {
     0x48,0x83,0xEC,0x08,                // sub $8,%rsp
-    0x48,0xC7,0xC1,0x00,0x00,0x00,0x80, // mov $-0x80000000,%rcx
+    0x33,0xC9,                          // xor %ecx,%ecx
     0x48,0x83,0xC4,0x08,                // add $8,%rsp
     0xC3,                               // ret
 };

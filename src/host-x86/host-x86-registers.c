@@ -127,11 +127,25 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index)
             ASSERT(src2_info->host_allocated);
             // FIXME: try to move shift counts into CL
             if (src2_reg->death == insn_index) {
-                ctx->regs_free |= 1 << src1_info->host_reg;
+                ctx->regs_free |= 1 << src2_info->host_reg;
                 ctx->reg_map[src2_info->host_reg] = 0;
             }
         } else {
             ASSERT(!src2_info->host_allocated);
+        }
+    }
+
+    if (insn->opcode == RTLOP_SELECT && insn->cond) {
+        const RTLRegister * const cond_reg = &unit->regs[insn->cond];
+        const HostX86RegInfo * const cond_info = &ctx->regs[insn->cond];
+        if (LIKELY(cond_reg->source != RTLREG_UNDEFINED)) {
+            ASSERT(cond_info->host_allocated);
+            if (cond_reg->death == insn_index) {
+                ctx->regs_free |= 1 << cond_info->host_reg;
+                ctx->reg_map[cond_info->host_reg] = 0;
+            }
+        } else {
+            ASSERT(!cond_info->host_allocated);
         }
     }
 

@@ -16,10 +16,10 @@ static const binrec_setup_t setup = {
     .host = BINREC_ARCH_X86_64_SYSV,
 };
 
-static bool add_rtl(RTLUnit *unit)
+static int add_rtl(RTLUnit *unit)
 {
     EXPECT(rtl_add_insn(unit, RTLOP_NOP, 0, 0, 0, 0));
-    return true;
+    return EXIT_SUCCESS;
 }
 
 static const uint8_t expected_code[] = {

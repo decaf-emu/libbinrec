@@ -55,6 +55,14 @@ typedef enum X86Register {
     X86_XMM15 = 31,
 } X86Register;
 
+/* Constants for the 4 variable bits in a REX prefix. */
+enum {
+    X86_REX_W = 8,
+    X86_REX_R = 4,
+    X86_REX_X = 2,
+    X86_REX_B = 1,
+};
+
 /*-----------------------------------------------------------------------*/
 
 /* Data associated with each RTL register. */
@@ -105,6 +113,9 @@ typedef struct HostX86Context {
     /* Bitmap of registers which are used at least once (for saving and
      * restoring registers in the prologue/epilogue). */
     uint32_t regs_touched;
+    /* RTL register whose value was used to set the condition codes, or 0
+     * if the flags do not represent the value of a particular register. */
+    uint32_t cc_reg;
 
     /* Stack frame size.  Must be a multiple of 16. */
     int frame_size;

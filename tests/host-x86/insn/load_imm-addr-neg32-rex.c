@@ -16,7 +16,7 @@ static const binrec_setup_t setup = {
     .host = BINREC_ARCH_X86_64_SYSV,
 };
 
-static bool add_rtl(RTLUnit *unit)
+static int add_rtl(RTLUnit *unit)
 {
     EXPECT(alloc_dummy_registers(unit, 9, RTLTYPE_INT32));
 
@@ -25,7 +25,7 @@ static bool add_rtl(RTLUnit *unit)
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg, 0, 0,
                         UINT64_C(0xFFFFFFFF80000000)));
 
-    return true;
+    return EXIT_SUCCESS;
 }
 
 static const uint8_t expected_code[] = {
