@@ -354,7 +354,7 @@ test: $(TEST_BINS)
 	$(Q)ok=0 ng=0; \
 	    for test in $^; do \
 	        $(call if-true,V,echo "+ $${test}";) \
-	        if $${test}; then \
+	        if eval "$${test}"; then \
 	            ok=`expr $${ok} + 1`; \
 	        else \
 	            ng=`expr $${ng} + 1`; \
