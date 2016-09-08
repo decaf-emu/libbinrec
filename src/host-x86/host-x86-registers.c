@@ -110,13 +110,19 @@ static void allocate_regs_for_insn(HostX86Context *ctx, int insn_index)
 
     const RTLUnit * const unit = ctx->unit;
     const RTLInsn * const insn = &unit->insns[insn_index];
+
     const uint32_t dest = insn->dest;
+    ASSERT(dest < unit->next_reg);
     const RTLRegister * const dest_reg = &unit->regs[dest];
     HostX86RegInfo * const dest_info = &ctx->regs[dest];
+
     const uint32_t src1 = insn->src1;
+    ASSERT(src1 < unit->next_reg);
     const RTLRegister * const src1_reg = &unit->regs[src1];
     const HostX86RegInfo * const src1_info = &ctx->regs[src1];
+
     const uint32_t src2 = insn->src2;
+    ASSERT(src2 < unit->next_reg);
     const RTLRegister * const src2_reg = &unit->regs[src2];
     const HostX86RegInfo * const src2_info = &ctx->regs[src2];
 
@@ -127,6 +133,7 @@ static void allocate_regs_for_insn(HostX86Context *ctx, int insn_index)
          * (unless they're undefined). */
         if (LIKELY(src1_reg->source != RTLREG_UNDEFINED)) {
             ASSERT(src1_info->host_allocated);
+            // FIXME: try to move return values to rAX
             if (src1_reg->death == insn_index) {
                 ctx->regs_free |= 1 << src1_info->host_reg;
                 ctx->reg_map[src1_info->host_reg] = 0;
@@ -151,6 +158,7 @@ static void allocate_regs_for_insn(HostX86Context *ctx, int insn_index)
     }
 
     if (insn->opcode == RTLOP_SELECT && insn->cond) {
+        ASSERT(insn->cond < unit->next_reg);
         const RTLRegister * const cond_reg = &unit->regs[insn->cond];
         const HostX86RegInfo * const cond_info = &ctx->regs[insn->cond];
         if (LIKELY(cond_reg->source != RTLREG_UNDEFINED)) {

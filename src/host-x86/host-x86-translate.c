@@ -228,6 +228,7 @@ static bool translate_block(HostX86Context *ctx, int block_index)
     ASSERT(block_index >= 0);
     ASSERT(block_index < ctx->unit->num_blocks);
 
+    binrec_t * const handle = ctx->handle;
     const RTLUnit * const unit = ctx->unit;
     const RTLBlock * const block = &unit->blocks[block_index];
     HostX86BlockInfo * const block_info = &ctx->blocks[block_index];
@@ -245,11 +246,11 @@ static bool translate_block(HostX86Context *ctx, int block_index)
         ASSERT(insn->opcode >= RTLOP__FIRST);
         ASSERT(insn->opcode <= RTLOP__LAST);
         const uint32_t dest = insn->dest;
-        UNUSED const uint32_t src1 = insn->src1; //FIXME: not yet used
-        UNUSED const uint32_t src2 = insn->src2; //FIXME: not yet used
+        const uint32_t src1 = insn->src1;
+        const uint32_t src2 = insn->src2;
 
         /* No instruction translations need more than 16 bytes. */
-        if (UNLIKELY(!binrec_ensure_code_space(ctx->handle, 16))) {
+        if (UNLIKELY(!binrec_ensure_code_space(handle, 16))) {
             return false;
         }
 
@@ -257,14 +258,14 @@ static bool translate_block(HostX86Context *ctx, int block_index)
 
           case RTLOP_NOP:
             if (insn->src_imm != 0) {
-                append_opcode(ctx->handle, X86OP_NOP_Ev);
-                append_ModRM(ctx->handle, X86MOD_DISP0, 0, X86MODRM_RIP_REL);
-                append_imm32(ctx->handle, (uint32_t)insn->src_imm);
+                append_opcode(handle, X86OP_NOP_Ev);
+                append_ModRM(handle, X86MOD_DISP0, 0, X86MODRM_RIP_REL);
+                append_imm32(handle, (uint32_t)insn->src_imm);
                 if (insn->src_imm >> 32) {
-                    append_opcode(ctx->handle, X86OP_NOP_Ev);
-                    append_ModRM_SIB(ctx->handle, X86MOD_DISP32, 0,
+                    append_opcode(handle, X86OP_NOP_Ev);
+                    append_ModRM_SIB(handle, X86MOD_DISP32, 0,
                                      0, X86SIB_NOINDEX, X86_SP);
-                    append_imm32(ctx->handle, (uint32_t)(insn->src_imm >> 32));
+                    append_imm32(handle, (uint32_t)(insn->src_imm >> 32));
                 }
             }
             break;
@@ -287,11 +288,11 @@ static bool translate_block(HostX86Context *ctx, int block_index)
                 rex |= X86_REX_B;
             }
             if (rex) {
-                append_rex_opcode(ctx->handle, rex, X86OP_MOV_Gv_Ev);
+                append_rex_opcode(handle, rex, X86OP_MOV_Gv_Ev);
             } else {
-                append_opcode(ctx->handle, X86OP_MOV_Gv_Ev);
+                append_opcode(handle, X86OP_MOV_Gv_Ev);
             }
-            append_ModRM(ctx->handle, X86MOD_REG, host_dest & 7,
+            append_ModRM(handle, X86MOD_REG, host_dest & 7,
                          host_src1 & 7);
             break;
           }  // case RTLOP_MOVE
@@ -327,12 +328,11 @@ static bool translate_block(HostX86Context *ctx, int block_index)
                     src1_rex |= X86_REX_B;
                 }
                 if (src1_rex) {
-                    append_rex_opcode(ctx->handle, src1_rex, X86OP_MOV_Gv_Ev);
+                    append_rex_opcode(handle, src1_rex, X86OP_MOV_Gv_Ev);
                 } else {
-                    append_opcode(ctx->handle, X86OP_MOV_Gv_Ev);
+                    append_opcode(handle, X86OP_MOV_Gv_Ev);
                 }
-                append_ModRM(ctx->handle, X86MOD_REG, host_dest & 7,
-                             host_src1 & 7);
+                append_ModRM(handle, X86MOD_REG, host_dest & 7, host_src1 & 7);
             }
 
             /* Conditionally move the other value into the register. */
@@ -341,23 +341,21 @@ static bool translate_block(HostX86Context *ctx, int block_index)
                     rex |= X86_REX_B;
                 }
                 if (rex) {
-                    append_rex_opcode(ctx->handle, rex, X86OP_CMOVZ);
+                    append_rex_opcode(handle, rex, X86OP_CMOVZ);
                 } else {
-                    append_opcode(ctx->handle, X86OP_CMOVZ);
+                    append_opcode(handle, X86OP_CMOVZ);
                 }
-                append_ModRM(ctx->handle, X86MOD_REG, host_dest & 7,
-                             host_src2 & 7);
+                append_ModRM(handle, X86MOD_REG, host_dest & 7, host_src2 & 7);
             } else {
                 if (host_src1 & 8) {
                     rex |= X86_REX_B;
                 }
                 if (rex) {
-                    append_rex_opcode(ctx->handle, rex, X86OP_CMOVNZ);
+                    append_rex_opcode(handle, rex, X86OP_CMOVNZ);
                 } else {
-                    append_opcode(ctx->handle, X86OP_CMOVNZ);
+                    append_opcode(handle, X86OP_CMOVNZ);
                 }
-                append_ModRM(ctx->handle, X86MOD_REG, host_dest & 7,
-                             host_src1 & 7);
+                append_ModRM(handle, X86MOD_REG, host_dest & 7, host_src1 & 7);
             }
             break;
           }  // case RTLOP_SELECT
@@ -370,40 +368,40 @@ static bool translate_block(HostX86Context *ctx, int block_index)
               case RTLTYPE_ADDRESS:
                 if (imm == 0) {
                     if (host_dest & 8) {
-                        append_rex_opcode(ctx->handle, X86_REX_R | X86_REX_B,
+                        append_rex_opcode(handle, X86_REX_R | X86_REX_B,
                                           X86OP_XOR_Gv_Ev);
                     } else {
-                        append_opcode(ctx->handle, X86OP_XOR_Gv_Ev);
+                        append_opcode(handle, X86OP_XOR_Gv_Ev);
                     }
-                    append_ModRM(ctx->handle, X86MOD_REG, host_dest & 7,
+                    append_ModRM(handle, X86MOD_REG, host_dest & 7,
                                  host_dest & 7);
                     ctx->cc_reg = dest;
                 } else if (imm <= UINT64_C(0xFFFFFFFF)) {
                     if (host_dest & 8) {
-                        append_rex_opcode(ctx->handle, X86_REX_B,
+                        append_rex_opcode(handle, X86_REX_B,
                                           X86OP_MOV_rAX_Iv | (host_dest & 7));
                     } else {
-                        append_opcode(ctx->handle,
+                        append_opcode(handle,
                                       X86OP_MOV_rAX_Iv | (host_dest & 7));
                     }
-                    append_imm32(ctx->handle, (uint32_t)imm);
+                    append_imm32(handle, (uint32_t)imm);
                 } else if (imm >= UINT64_C(0xFFFFFFFF80000000)) {
                     uint8_t rex = X86_REX_W;
                     if (host_dest & 8) {
                         rex |= X86_REX_B;
                     }
-                    append_rex_opcode(ctx->handle, rex, X86OP_MOV_Ev_Iz);
-                    append_ModRM(ctx->handle, X86MOD_REG, 0, host_dest & 7);
-                    append_imm32(ctx->handle, (uint32_t)imm);
+                    append_rex_opcode(handle, rex, X86OP_MOV_Ev_Iz);
+                    append_ModRM(handle, X86MOD_REG, 0, host_dest & 7);
+                    append_imm32(handle, (uint32_t)imm);
                 } else {
                     uint8_t rex = X86_REX_W;
                     if (host_dest & 8) {
                         rex |= X86_REX_B;
                     }
-                    append_rex_opcode(ctx->handle, rex,
+                    append_rex_opcode(handle, rex,
                                       X86OP_MOV_rAX_Iv | (host_dest & 7));
-                    append_imm32(ctx->handle, (uint32_t)imm);
-                    append_imm32(ctx->handle, (uint32_t)(imm >> 32));
+                    append_imm32(handle, (uint32_t)imm);
+                    append_imm32(handle, (uint32_t)(imm >> 32));
                 }
                 break;
               default:
@@ -413,8 +411,105 @@ static bool translate_block(HostX86Context *ctx, int block_index)
             break;
           }  // case RTLOP_LOAD_IMM
 
+          case RTLOP_LABEL:
+            ASSERT(insn->label > 0);
+            ASSERT(insn->label < unit->next_label);
+            ASSERT(ctx->label_offsets[insn->label] == -1);
+            ctx->label_offsets[insn->label] = handle->code_len;
+            break;
+
+          case RTLOP_GOTO:
+            ASSERT(insn->label > 0);
+            ASSERT(insn->label < unit->next_label);
+            ASSERT(block_info->unresolved_branch_offset == -1);
+            if (ctx->label_offsets[insn->label] >= 0) {
+                const long offset =
+                    ctx->label_offsets[insn->label] - handle->code_len;
+                ASSERT(offset < 0);
+                /* Jump distances count from the end of the instruction,
+                 * so we have to take that into account here -- a 1-byte
+                 * displacement will be a 2-byte instruction, for example. */
+                if (offset - 2 >= -128) {
+                    append_opcode(handle, X86OP_JMP_Jb);
+                    append_imm8(handle, offset - 2);
+                } else {
+                    append_opcode(handle, X86OP_JMP_Jz);
+                    append_imm32(handle, offset - 5);
+                }
+            } else {
+                block_info->unresolved_branch_offset = handle->code_len;
+                block_info->unresolved_branch_target = insn->label;
+                append_opcode(handle, X86OP_JMP_Jz);
+                append_imm32(handle, 0);
+            }
+            break;
+
+          case RTLOP_GOTO_IF_Z:
+          case RTLOP_GOTO_IF_NZ: {
+            const X86Opcode short_jump =
+                (insn->opcode == RTLOP_GOTO_IF_Z ? X86OP_JZ_Jb : X86OP_JNZ_Jb);
+            const X86Opcode long_jump =
+                (insn->opcode == RTLOP_GOTO_IF_Z ? X86OP_JZ_Jz : X86OP_JNZ_Jz);
+
+            ASSERT(insn->label > 0);
+            ASSERT(insn->label < unit->next_label);
+            ASSERT(block_info->unresolved_branch_offset == -1);
+            append_test_reg(ctx, src1);
+            if (ctx->label_offsets[insn->label] >= 0) {
+                const long offset =
+                    ctx->label_offsets[insn->label] - handle->code_len;
+                ASSERT(offset < 0);
+                if (offset - 2 >= -128) {
+                    append_opcode(handle, short_jump);
+                    append_imm8(handle, offset - 2);
+                } else {
+                    append_opcode(handle, long_jump);
+                    /* Long conditional jumps have 2-byte opcodes. */
+                    append_imm32(handle, offset - 6);
+                }
+            } else {
+                block_info->unresolved_branch_offset = handle->code_len;
+                block_info->unresolved_branch_target = insn->label;
+                append_opcode(handle, long_jump);
+                append_imm32(handle, 0);
+            }
+            break;
+          }  // case RTLOP_GOTO_IF_Z, RTLOP_GOTO_IF_NZ
+
+          case RTLOP_RETURN:
+            ASSERT(block_info->unresolved_branch_offset == -1);
+            if (src1) {
+                const X86Register host_src1 = ctx->regs[src1].host_reg;
+                if (host_src1 != X86_AX) {
+                    const RTLRegister * const src1_reg = &unit->regs[src1];
+                    uint8_t rex;
+                    if (src1_reg->type == RTLTYPE_INT32) {
+                        rex = 0;
+                    } else {
+                        ASSERT(src1_reg->type == RTLTYPE_ADDRESS);
+                        rex = X86_REX_W;
+                    }
+                    if (src1 & 8) {
+                        rex |= X86_REX_B;
+                    }
+                    if (rex) {
+                        append_rex_opcode(handle, rex, X86OP_MOV_Gv_Ev);
+                    } else {
+                        append_opcode(handle, X86OP_MOV_Gv_Ev);
+                    }
+                    append_ModRM(handle, X86MOD_REG, X86_AX, host_src1 & 7);
+                }
+            }
+            block_info->unresolved_branch_offset = handle->code_len;
+            /* We use label 0 (normally invalid) to indicate a jump to the
+             * function epilogue. */
+            block_info->unresolved_branch_target = 0;
+            append_opcode(handle, X86OP_JMP_Jz);
+            append_imm32(handle, 0);
+            break;
+
           case RTLOP_ILLEGAL:
-            append_opcode(ctx->handle, X86OP_UD2);
+            append_opcode(handle, X86OP_UD2);
             break;
 
           default: break; //FIXME: other insns not yet implemented
@@ -453,7 +548,7 @@ static bool append_prologue(HostX86Context *ctx)
     const int push_size = 8 * popcnt32(regs_to_save & 0xFFFF);
     total_stack_use = push_size;
     /* We have to realign the stack at this specific point; if we're saving
-     * XMM registers then those have to be aligned, and in any case we
+     * XMM registers then those need to be aligned, and in any case we
      * maintain our local stack space multiples of 16 bytes.  Somewhat
      * confusingly, this means setting total_stack_use to an _un_aligned
      * value, since the stack pointer comes in unaligned due to the return
@@ -743,17 +838,36 @@ static bool append_epilogue(HostX86Context *ctx)
  *
  * [Parameters]
  *     ctx: Translation context.
- * [Return value]
- *     True on success, false on error.
  */
-static bool resolve_branches(HostX86Context *ctx)
+static void resolve_branches(HostX86Context *ctx)
 {
     ASSERT(ctx);
     ASSERT(ctx->handle);
 
-    // FIXME: not yet implemented
-
-    return true;
+    for (int i = 0; i >= 0; i = ctx->unit->blocks[i].next_block) {
+        HostX86BlockInfo *block_info = &ctx->blocks[i];
+        const long branch_offset = block_info->unresolved_branch_offset;
+        if (branch_offset != -1) {
+            const uint32_t label = block_info->unresolved_branch_target;
+            ASSERT(label < ctx->unit->next_label);
+            ASSERT(ctx->label_offsets[label] != -1);
+            long offset = ctx->label_offsets[label] - branch_offset;
+            ASSERT(offset > 0);  // Or else it would have been resolved.
+            ASSERT(offset < INT64_C(0x80000000));  // Sanity check.
+            uint8_t *ptr = &ctx->handle->code_buffer[branch_offset];
+            if (*ptr == 0x0F) {
+                ptr += 2;
+                offset -= 6;
+            } else {
+                ptr += 1;
+                offset -= 5;
+            }
+            ptr[0] = (uint8_t)(offset >>  0);
+            ptr[1] = (uint8_t)(offset >>  8);
+            ptr[2] = (uint8_t)(offset >> 16);
+            ptr[3] = (uint8_t)(offset >> 24);
+        }
+    }
 }
 
 /*-----------------------------------------------------------------------*/
@@ -790,9 +904,7 @@ static bool translate_unit(HostX86Context *ctx)
         return false;
     }
 
-    if (!resolve_branches(ctx)) {
-        return false;
-    }
+    resolve_branches(ctx);
 
     return true;
 }
@@ -848,8 +960,11 @@ static bool init_context(HostX86Context *ctx, binrec_t *handle, RTLUnit *unit)
     }
 
     memset(ctx->blocks, 0, sizeof(*ctx->blocks) * unit->num_blocks);
+    for (int i = 0; i < unit->num_blocks; i++) {
+        ctx->blocks[i].unresolved_branch_offset = -1;
+    }
     memset(ctx->regs, 0, sizeof(*ctx->regs) * unit->next_reg);
-    memset(ctx->label_offsets, 0,
+    memset(ctx->label_offsets, -1,
            sizeof(*ctx->label_offsets) * unit->next_label);
 
     return true;

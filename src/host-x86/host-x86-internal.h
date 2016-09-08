@@ -87,9 +87,13 @@ typedef struct HostX86BlockInfo {
      * block.  Set during register allocation and used to initialize the
      * current register map when starting to translate the block. */
     uint32_t initial_reg_map[32];
+
     /* Code buffer offset of an unresolved branch instruction at the end of
      * this block, or -1 if the block does not have an unresolved branch. */
     long unresolved_branch_offset;
+    /* Label targeted by the unresolved branch, or 0 if it targets the
+     * function epilogue. */
+    uint32_t unresolved_branch_target;
 } HostX86BlockInfo;
 
 /* Context block used to maintain translation state. */
@@ -106,7 +110,8 @@ typedef struct HostX86Context {
     /* Information for each RTL register. */
     HostX86RegInfo *regs;
     /* Generated code offsets for each label, and to the epilogue (which
-     * is handled internally as label 0). */
+     * is handled internally as label 0).  -1 indicates the label has not
+     * yet been seen. */
     long *label_offsets;
 
     /* Current mapping from x86 to RTL registers. */
