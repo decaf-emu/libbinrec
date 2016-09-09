@@ -432,6 +432,75 @@ static bool translate_block(HostX86Context *ctx, int block_index)
             break;
           }  // case RTLOP_SCAST, RTLOP_ZCAST
 
+          case RTLOP_NEG:
+          case RTLOP_NOT: {
+            const X86Register host_dest = ctx->regs[dest].host_reg;
+            const X86Register host_src1 = ctx->regs[src1].host_reg;
+            uint8_t rex = 0;
+            if (unit->regs[dest].type == RTLTYPE_ADDRESS) {
+                rex |= X86_REX_W;
+            }
+            if (host_dest & 8) {
+                rex |= X86_REX_B;
+            }
+
+            if (host_dest != host_src1) {
+                uint8_t move_rex = rex;
+                if (host_src1 & 8) {
+                    move_rex |= X86_REX_R;
+                }
+                if (move_rex) {
+                    append_rex_opcode(&code, move_rex, X86OP_MOV_Ev_Gv);
+                } else {
+                    append_opcode(&code, X86OP_MOV_Ev_Gv);
+                }
+                append_ModRM(&code, X86MOD_REG, host_src1 & 7, host_dest & 7);
+            }
+
+            if (rex) {
+                append_rex_opcode(&code, rex, X86OP_UNARY_Ev);
+            } else {
+                append_opcode(&code, X86OP_UNARY_Ev);
+            }
+            const X86UnaryOpcode opcode =
+                insn->opcode == RTLOP_NOT ? X86OP_UNARY_NOT : X86OP_UNARY_NEG;
+            append_ModRM(&code, X86MOD_REG, opcode, host_dest & 7);
+            break;
+          }  // case RTLOP_NEG, RTLOP_NOT
+
+          case RTLOP_BSWAP: {
+            const X86Register host_dest = ctx->regs[dest].host_reg;
+            const X86Register host_src1 = ctx->regs[src1].host_reg;
+            uint8_t rex = 0;
+            if (unit->regs[dest].type == RTLTYPE_ADDRESS) {
+                rex |= X86_REX_W;
+            }
+            if (host_dest & 8) {
+                rex |= X86_REX_B;
+            }
+
+            if (host_dest != host_src1) {
+                uint8_t move_rex = rex;
+                if (host_src1 & 8) {
+                    move_rex |= X86_REX_R;
+                }
+                if (move_rex) {
+                    append_rex_opcode(&code, move_rex, X86OP_MOV_Ev_Gv);
+                } else {
+                    append_opcode(&code, X86OP_MOV_Ev_Gv);
+                }
+                append_ModRM(&code, X86MOD_REG, host_src1 & 7, host_dest & 7);
+            }
+
+            const X86Opcode opcode = X86OP_BSWAP_rAX | (host_dest & 7);
+            if (rex) {
+                append_rex_opcode(&code, rex, opcode);
+            } else {
+                append_opcode(&code, opcode);
+            }
+            break;
+          }  // case RTLOP_BSWAP
+
           case RTLOP_LOAD_IMM: {
             const uint64_t imm = insn->src_imm;
             const X86Register host_dest = ctx->regs[dest].host_reg;

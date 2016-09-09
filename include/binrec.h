@@ -453,6 +453,26 @@ typedef struct binrec_setup_t {
  */
 #define BINREC_OPT_H_X86_FORWARD_CONDITIONS  (1<<2)
 
+/**
+ * BINREC_OPT_H_X86_MEMORY_OPERANDS:  Make use of register-memory forms of
+ * x86 instructions in the following cases:
+ *
+ * - When the second (non-overwritten) operand to a computational
+ *   instruction (ADD, SLT, etc.) is the result of a previous load
+ *   instruction in the same basic block, the associated register is not
+ *   live past the end of the basic block, and there are no store
+ *   instructions between the register's first and last use.
+ *
+ * - When the destination operand to a computational instruction is only
+ *   used as the source for a single subsequent store instruction in the
+ *   same basic block and there are no intervening load instructions.
+ *
+ * If this optimization is disabled, all computational instructions will
+ * be performed in registers, and loads and stores will be translated as
+ * separate instructions.
+ */
+#define BINREC_OPT_H_X86_MEMORY_OPERANDS  (1<<3)
+
 /*************************************************************************/
 /**************** Interface: Library version information *****************/
 /*************************************************************************/
