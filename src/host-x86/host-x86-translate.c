@@ -224,6 +224,64 @@ static inline void append_test_reg(HostX86Context *ctx, CodeBuffer *code,
     ctx->cc_reg = reg;
 }
 
+/*-----------------------------------------------------------------------*/
+
+/**
+ * append_insn_R:  Append an instruction which takes a single register
+ * operand encoded in the opcode itself (such as PUSH).
+ *
+ * [Parameters]
+ *     code: Output code buffer.
+ *     is64: True for 64-bit operands, false for 32-bit operands.
+ *     opcode: Instruction opcode.
+ *     reg: Register index.
+ */
+static ALWAYS_INLINE void append_insn_R(
+    CodeBuffer *code, bool is64, X86Opcode opcode, X86Register reg)
+{
+    uint8_t rex = is64 ? X86_REX_W : 0;
+    if (reg & 8) {
+        rex |= X86_REX_B;
+    }
+    if (rex) {
+        append_rex_opcode(code, rex, opcode | (reg & 7));
+    } else {
+        append_opcode(code, opcode | (reg & 7));
+    }
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
+ * append_insn_ModRM_reg:  Append an instruction which takes a ModR/M byte,
+ * encoding a register EA in the instruction.
+ *
+ * [Parameters]
+ *     code: Output code buffer.
+ *     is64: True for 64-bit operands, false for 32-bit operands.
+ *     opcode: Instruction opcode.
+ *     reg1: Register index (or sub-opcode) for ModR/M reg field.
+ *     reg2: Register index for ModR/M r/m field.
+ */
+static ALWAYS_INLINE void append_insn_ModRM_reg(
+    CodeBuffer *code, bool is64, X86Opcode opcode, X86Register reg1,
+    X86Register reg2)
+{
+    uint8_t rex = is64 ? X86_REX_W : 0;
+    if (reg1 & 8) {
+        rex |= X86_REX_R;
+    }
+    if (reg2 & 8) {
+        rex |= X86_REX_B;
+    }
+    if (rex) {
+        append_rex_opcode(code, rex, opcode);
+    } else {
+        append_opcode(code, opcode);
+    }
+    append_ModRM(code, X86MOD_REG, reg1 & 7, reg2 & 7);
+}
+
 /*************************************************************************/
 /*************************** Translation core ****************************/
 /*************************************************************************/
@@ -299,27 +357,11 @@ static bool translate_block(HostX86Context *ctx, int block_index)
           case RTLOP_MOVE: {
             const X86Register host_dest = ctx->regs[dest].host_reg;
             const X86Register host_src1 = ctx->regs[src1].host_reg;
-            if (host_dest == host_src1) {
-                break;  // Nothing to do!
+            if (host_dest != host_src1) {
+                const bool is64 = (unit->regs[dest].type == RTLTYPE_ADDRESS);
+                append_insn_ModRM_reg(&code, is64, X86OP_MOV_Gv_Ev,
+                                      host_dest, host_src1);
             }
-            uint8_t rex = 0;
-            if (unit->regs[dest].type == RTLTYPE_ADDRESS) {
-                ASSERT(unit->regs[src1].type == RTLTYPE_ADDRESS);
-                rex |= X86_REX_W;
-            }
-            if (host_dest & 8) {
-                rex |= X86_REX_R;
-            }
-            if (host_src1 & 8) {
-                rex |= X86_REX_B;
-            }
-            if (rex) {
-                append_rex_opcode(&code, rex, X86OP_MOV_Gv_Ev);
-            } else {
-                append_opcode(&code, X86OP_MOV_Gv_Ev);
-            }
-            append_ModRM(&code, X86MOD_REG, host_dest & 7,
-                         host_src1 & 7);
             break;
           }  // case RTLOP_MOVE
 
@@ -327,15 +369,7 @@ static bool translate_block(HostX86Context *ctx, int block_index)
             const X86Register host_dest = ctx->regs[dest].host_reg;
             const X86Register host_src1 = ctx->regs[src1].host_reg;
             const X86Register host_src2 = ctx->regs[src2].host_reg;
-            uint8_t rex = 0;
-            if (unit->regs[dest].type == RTLTYPE_ADDRESS) {
-                ASSERT(unit->regs[src1].type == RTLTYPE_ADDRESS);
-                ASSERT(unit->regs[src2].type == RTLTYPE_ADDRESS);
-                rex |= X86_REX_W;
-            }
-            if (host_dest & 8) {
-                rex |= X86_REX_R;
-            }
+            const bool is64 = (unit->regs[dest].type == RTLTYPE_ADDRESS);
 
             /* Set the condition codes based on the condition register. */
             append_test_reg(ctx, &code, insn->cond);
@@ -349,39 +383,17 @@ static bool translate_block(HostX86Context *ctx, int block_index)
                 dest_is_src1 = false;
             } else {
                 dest_is_src1 = true;
-                uint8_t src1_rex = rex;
-                if (host_src1 & 8) {
-                    src1_rex |= X86_REX_B;
-                }
-                if (src1_rex) {
-                    append_rex_opcode(&code, src1_rex, X86OP_MOV_Gv_Ev);
-                } else {
-                    append_opcode(&code, X86OP_MOV_Gv_Ev);
-                }
-                append_ModRM(&code, X86MOD_REG, host_dest & 7, host_src1 & 7);
+                append_insn_ModRM_reg(&code, is64, X86OP_MOV_Gv_Ev,
+                                      host_dest, host_src1);
             }
 
             /* Conditionally move the other value into the register. */
             if (dest_is_src1) {
-                if (host_src2 & 8) {
-                    rex |= X86_REX_B;
-                }
-                if (rex) {
-                    append_rex_opcode(&code, rex, X86OP_CMOVZ);
-                } else {
-                    append_opcode(&code, X86OP_CMOVZ);
-                }
-                append_ModRM(&code, X86MOD_REG, host_dest & 7, host_src2 & 7);
+                append_insn_ModRM_reg(&code, is64, X86OP_CMOVZ,
+                                      host_dest, host_src2);
             } else {
-                if (host_src1 & 8) {
-                    rex |= X86_REX_B;
-                }
-                if (rex) {
-                    append_rex_opcode(&code, rex, X86OP_CMOVNZ);
-                } else {
-                    append_opcode(&code, X86OP_CMOVNZ);
-                }
-                append_ModRM(&code, X86MOD_REG, host_dest & 7, host_src1 & 7);
+                append_insn_ModRM_reg(&code, is64, X86OP_CMOVNZ,
+                                      host_dest, host_src1);
             }
             break;
           }  // case RTLOP_SELECT
@@ -392,43 +404,27 @@ static bool translate_block(HostX86Context *ctx, int block_index)
             const RTLDataType type_src1 = unit->regs[src1].type;
             const X86Register host_dest = ctx->regs[dest].host_reg;
             const X86Register host_src1 = ctx->regs[src1].host_reg;
-            uint8_t rex = 0;
-            if (host_dest & 8) {
-                rex |= X86_REX_R;
-            }
-            if (host_src1 & 8) {
-                rex |= X86_REX_B;
-            }
-
             if (type_dest == RTLTYPE_ADDRESS) {
                 if (type_src1 == RTLTYPE_ADDRESS) {
-                    if (host_dest == host_src1) {
-                        break;
+                    if (host_dest != host_src1) {
+                        append_insn_ModRM_reg(&code, true, X86OP_MOV_Gv_Ev,
+                                              host_dest, host_src1);
                     }
-                    append_rex_opcode(&code, rex | X86_REX_W, X86OP_MOV_Gv_Ev);
                 } else {
                     if (insn->opcode == RTLOP_SCAST) {
-                        append_rex_opcode(&code, rex | X86_REX_W,
-                                          X86OP_MOVSXD_Gv_Ev);
+                        append_insn_ModRM_reg(&code, true, X86OP_MOVSXD_Gv_Ev,
+                                              host_dest, host_src1);
                     } else {
-                        if (rex) {
-                            append_rex_opcode(&code, rex, X86OP_MOV_Gv_Ev);
-                        } else {
-                            append_opcode(&code, X86OP_MOV_Gv_Ev);
-                        }
+                        append_insn_ModRM_reg(&code, false, X86OP_MOV_Gv_Ev,
+                                              host_dest, host_src1);
                     }
                 }
             } else {
-                if (host_dest == host_src1) {
-                    break;
-                }
-                if (rex) {
-                    append_rex_opcode(&code, rex, X86OP_MOV_Gv_Ev);
-                } else {
-                    append_opcode(&code, X86OP_MOV_Gv_Ev);
+                if (host_dest != host_src1) {
+                    append_insn_ModRM_reg(&code, false, X86OP_MOV_Gv_Ev,
+                                          host_dest, host_src1);
                 }
             }
-            append_ModRM(&code, X86MOD_REG, host_dest & 7, host_src1 & 7);
             break;
           }  // case RTLOP_SCAST, RTLOP_ZCAST
 
@@ -436,84 +432,33 @@ static bool translate_block(HostX86Context *ctx, int block_index)
           case RTLOP_NOT: {
             const X86Register host_dest = ctx->regs[dest].host_reg;
             const X86Register host_src1 = ctx->regs[src1].host_reg;
-            uint8_t rex = 0;
-            if (unit->regs[dest].type == RTLTYPE_ADDRESS) {
-                rex |= X86_REX_W;
-            }
-            if (host_dest & 8) {
-                rex |= X86_REX_B;
-            }
-
+            const bool is64 = (unit->regs[dest].type == RTLTYPE_ADDRESS);
             if (host_dest != host_src1) {
-                uint8_t move_rex = rex;
-                if (host_src1 & 8) {
-                    move_rex |= X86_REX_R;
-                }
-                if (move_rex) {
-                    append_rex_opcode(&code, move_rex, X86OP_MOV_Ev_Gv);
-                } else {
-                    append_opcode(&code, X86OP_MOV_Ev_Gv);
-                }
-                append_ModRM(&code, X86MOD_REG, host_src1 & 7, host_dest & 7);
-            }
-
-            if (rex) {
-                append_rex_opcode(&code, rex, X86OP_UNARY_Ev);
-            } else {
-                append_opcode(&code, X86OP_UNARY_Ev);
+                append_insn_ModRM_reg(&code, is64, X86OP_MOV_Ev_Gv,
+                                      host_src1, host_dest);
             }
             const X86UnaryOpcode opcode =
                 insn->opcode == RTLOP_NOT ? X86OP_UNARY_NOT : X86OP_UNARY_NEG;
-            append_ModRM(&code, X86MOD_REG, opcode, host_dest & 7);
+            append_insn_ModRM_reg(&code, is64, X86OP_UNARY_Ev,
+                                  opcode, host_dest);
             break;
           }  // case RTLOP_NEG, RTLOP_NOT
 
           case RTLOP_CLZ: {
             const X86Register host_dest = ctx->regs[dest].host_reg;
             const X86Register host_src1 = ctx->regs[src1].host_reg;
-            uint8_t rex = 0;
-            if (unit->regs[dest].type == RTLTYPE_ADDRESS) {
-                rex |= X86_REX_W;
-            }
-            if (host_dest & 8) {
-                rex |= X86_REX_R;
-            }
-            if (host_src1 & 8) {
-                rex |= X86_REX_B;
-            }
-
+            const bool is64 = (unit->regs[dest].type == RTLTYPE_ADDRESS);
             if (handle->setup.host_features & BINREC_FEATURE_X86_LZCNT) {
-                if (rex) {
-                    append_rex_opcode(&code, rex, X86OP_LZCNT);
-                } else {
-                    append_opcode(&code, X86OP_LZCNT);
-                }
-                append_ModRM(&code, X86MOD_REG, host_dest & 7, host_src1 & 7);
+                append_insn_ModRM_reg(&code, is64, X86OP_LZCNT,
+                                      host_dest, host_src1);
             } else {
-                if (rex) {
-                    append_rex_opcode(&code, rex, X86OP_BSR);
-                } else {
-                    append_opcode(&code, X86OP_BSR);
-                }
-                append_ModRM(&code, X86MOD_REG, host_dest & 7, host_src1 & 7);
-
                 const X86Register host_temp = ctx->regs[dest].host_temp;
-                const uint8_t temp_rex = (host_temp & 8) ? X86_REX_B : 0;
-                if (temp_rex) {
-                    append_rex_opcode(&code, temp_rex,
-                                      X86OP_MOV_rAX_Iv | (host_temp & 7));
-                } else {
-                    append_opcode(&code, X86OP_MOV_rAX_Iv | (host_temp & 7));
-                }
+                append_insn_ModRM_reg(&code, is64, X86OP_BSR,
+                                      host_dest, host_src1);
+                append_insn_R(&code, false, X86OP_MOV_rAX_Iv, host_temp);
                 append_imm32(&code, 32);
-
-                rex = (rex & ~X86_REX_B) | temp_rex;
-                if (rex) {
-                    append_rex_opcode(&code, rex, X86OP_CMOVZ);
-                } else {
-                    append_opcode(&code, X86OP_CMOVZ);
-                }
-                append_ModRM(&code, X86MOD_REG, host_dest & 7, host_temp & 7);
+                append_insn_ModRM_reg(&code, is64, X86OP_CMOVZ,
+                                      host_dest, host_temp);
             }
             break;
           }  // case RTLOP_CLZ
@@ -521,33 +466,12 @@ static bool translate_block(HostX86Context *ctx, int block_index)
           case RTLOP_BSWAP: {
             const X86Register host_dest = ctx->regs[dest].host_reg;
             const X86Register host_src1 = ctx->regs[src1].host_reg;
-            uint8_t rex = 0;
-            if (unit->regs[dest].type == RTLTYPE_ADDRESS) {
-                rex |= X86_REX_W;
-            }
-            if (host_dest & 8) {
-                rex |= X86_REX_B;
-            }
-
+            const bool is64 = (unit->regs[dest].type == RTLTYPE_ADDRESS);
             if (host_dest != host_src1) {
-                uint8_t move_rex = rex;
-                if (host_src1 & 8) {
-                    move_rex |= X86_REX_R;
-                }
-                if (move_rex) {
-                    append_rex_opcode(&code, move_rex, X86OP_MOV_Ev_Gv);
-                } else {
-                    append_opcode(&code, X86OP_MOV_Ev_Gv);
-                }
-                append_ModRM(&code, X86MOD_REG, host_src1 & 7, host_dest & 7);
+                append_insn_ModRM_reg(&code, is64, X86OP_MOV_Ev_Gv,
+                                      host_src1, host_dest);
             }
-
-            const X86Opcode opcode = X86OP_BSWAP_rAX | (host_dest & 7);
-            if (rex) {
-                append_rex_opcode(&code, rex, opcode);
-            } else {
-                append_opcode(&code, opcode);
-            }
+            append_insn_R(&code, is64, X86OP_BSWAP_rAX, host_dest);
             break;
           }  // case RTLOP_BSWAP
 
@@ -558,39 +482,18 @@ static bool translate_block(HostX86Context *ctx, int block_index)
               case RTLTYPE_INT32:
               case RTLTYPE_ADDRESS:
                 if (imm == 0) {
-                    if (host_dest & 8) {
-                        append_rex_opcode(&code, X86_REX_R | X86_REX_B,
-                                          X86OP_XOR_Gv_Ev);
-                    } else {
-                        append_opcode(&code, X86OP_XOR_Gv_Ev);
-                    }
-                    append_ModRM(&code, X86MOD_REG, host_dest & 7,
-                                 host_dest & 7);
+                    append_insn_ModRM_reg(&code, false, X86OP_XOR_Gv_Ev,
+                                          host_dest, host_dest);
                     ctx->cc_reg = dest;
                 } else if (imm <= UINT64_C(0xFFFFFFFF)) {
-                    if (host_dest & 8) {
-                        append_rex_opcode(&code, X86_REX_B,
-                                          X86OP_MOV_rAX_Iv | (host_dest & 7));
-                    } else {
-                        append_opcode(&code,
-                                      X86OP_MOV_rAX_Iv | (host_dest & 7));
-                    }
+                    append_insn_R(&code, false, X86OP_MOV_rAX_Iv, host_dest);
                     append_imm32(&code, (uint32_t)imm);
                 } else if (imm >= UINT64_C(0xFFFFFFFF80000000)) {
-                    uint8_t rex = X86_REX_W;
-                    if (host_dest & 8) {
-                        rex |= X86_REX_B;
-                    }
-                    append_rex_opcode(&code, rex, X86OP_MOV_Ev_Iz);
-                    append_ModRM(&code, X86MOD_REG, 0, host_dest & 7);
+                    append_insn_ModRM_reg(&code, true, X86OP_MOV_Ev_Iz,
+                                          0, host_dest);
                     append_imm32(&code, (uint32_t)imm);
                 } else {
-                    uint8_t rex = X86_REX_W;
-                    if (host_dest & 8) {
-                        rex |= X86_REX_B;
-                    }
-                    append_rex_opcode(&code, rex,
-                                      X86OP_MOV_rAX_Iv | (host_dest & 7));
+                    append_insn_R(&code, true, X86OP_MOV_rAX_Iv, host_dest);
                     append_imm32(&code, (uint32_t)imm);
                     append_imm32(&code, (uint32_t)(imm >> 32));
                 }
@@ -608,26 +511,11 @@ static bool translate_block(HostX86Context *ctx, int block_index)
                 host_x86_int_arg_register(ctx, insn->arg_index);
             ASSERT(host_src_i >= 0);  // Ensured by register allocation.
             const X86Register host_src = (X86Register)host_src_i;
-            if (host_dest == host_src) {
-                break;  // Nothing to do!
+            if (host_dest != host_src) {
+                const bool is64 = (unit->regs[dest].type == RTLTYPE_ADDRESS);
+                append_insn_ModRM_reg(&code, is64, X86OP_MOV_Gv_Ev,
+                                      host_dest, host_src);
             }
-            uint8_t rex = 0;
-            if (unit->regs[dest].type == RTLTYPE_ADDRESS) {
-                rex |= X86_REX_W;
-            }
-            if (host_dest & 8) {
-                rex |= X86_REX_R;
-            }
-            if (host_src & 8) {
-                rex |= X86_REX_B;
-            }
-            if (rex) {
-                append_rex_opcode(&code, rex, X86OP_MOV_Gv_Ev);
-            } else {
-                append_opcode(&code, X86OP_MOV_Gv_Ev);
-            }
-            append_ModRM(&code, X86MOD_REG, host_dest & 7,
-                         host_src & 7);
             break;
           }  // case RTLOP_LOAD_ARG
 
@@ -917,10 +805,7 @@ static bool append_prologue(HostX86Context *ctx)
 
     for (int reg = 0; reg < 16; reg++) {
         if (regs_to_save & (1 << reg)) {
-            if (reg & 8) {
-                append_opcode(&code, X86OP_REX_B);
-            }
-            append_opcode(&code, X86OP_PUSH_rAX | (reg & 7));
+            append_insn_R(&code, false, X86OP_PUSH_rAX, reg);
         }
     }
 
@@ -1042,10 +927,7 @@ static bool append_epilogue(HostX86Context *ctx)
 
     for (int reg = 15; reg >= 0; reg--) {
         if (regs_saved & (1 << reg)) {
-            if (reg & 8) {
-                append_opcode(&code, X86OP_REX_B);
-            }
-            append_opcode(&code, X86OP_POP_rAX | (reg & 7));
+            append_insn_R(&code, false, X86OP_POP_rAX, reg);
         }
     }
 
