@@ -53,9 +53,11 @@ typedef struct binrec_t binrec_t;
  * host; see the inline comments below.
  */
 typedef enum binrec_arch_t {
-    /* Zero is invalid. */
+    /* Constant used to indicate an unsupported architecture by
+     * binrec_native_arch(). */
+    BINREC_ARCH_INVALID = 0,
 
-    BINREC_ARCH_POWERPC_750CL = 1,      // Guest only.
+    BINREC_ARCH_POWERPC_750CL,          // Guest only.
     BINREC_ARCH_X86_64_SYSV,            // Host only.
     BINREC_ARCH_X86_64_WINDOWS,         // Host only.
 
@@ -87,6 +89,26 @@ typedef enum binrec_loglevel_t {
     BINREC_LOGLEVEL_ERROR,   // Messages indicating failure of some operation.
 } binrec_loglevel_t;
 
+/*--------------------- Architecture feature flags ----------------------*/
+
+/*
+ * These flags indicate the presence of specific features (such as optional
+ * instructions) within a particular architecture.  These are used in the
+ * "host_features" field of binrec_setup_t.
+ */
+
+/**
+ * BINREC_FEATURE_X86_*:  Feature flags for the x86 architecture.
+ */
+#define BINREC_FEATURE_X86_FMA      (1U << 0)
+#define BINREC_FEATURE_X86_MOVBE    (1U << 1)
+#define BINREC_FEATURE_X86_POPCNT   (1U << 2)
+#define BINREC_FEATURE_X86_AVX      (1U << 3)
+#define BINREC_FEATURE_X86_LZCNT    (1U << 4)  // a.k.a. ABM
+#define BINREC_FEATURE_X86_BMI1     (1U << 5)
+#define BINREC_FEATURE_X86_AVX2     (1U << 6)
+#define BINREC_FEATURE_X86_BMI2     (1U << 7)
+
 /*--------------------------- Setup structure ---------------------------*/
 
 /**
@@ -102,6 +124,13 @@ typedef struct binrec_setup_t {
      */
     binrec_arch_t guest;
     binrec_arch_t host;
+
+    /**
+     * host_features:  Bitwise-OR of feature flags for the selected host
+     * architecture, indicating which features should be assumed to be
+     * present for host code generation.
+     */
+    unsigned int host_features;
 
     /**
      * memory_base:  Pointer to a region of host memory reserved as the
@@ -474,7 +503,7 @@ typedef struct binrec_setup_t {
 #define BINREC_OPT_H_X86_MEMORY_OPERANDS  (1<<3)
 
 /*************************************************************************/
-/**************** Interface: Library version information *****************/
+/******** Interface: Library and runtime environment information *********/
 /*************************************************************************/
 
 /**
@@ -485,6 +514,32 @@ typedef struct binrec_setup_t {
  *     Library version number.
  */
 extern const char *binrec_version(void);
+
+/**
+ * binrec_native_arch:  Return a BINREC_ARCH_* constant representing the
+ * architecture of the runtime environment, or 0 (BINREC_ARCH_INVALID) if
+ * the runtime environment does not correspond to a supported host
+ * architecture.  (If a nonzero value is returned, it will always be valid
+ * as a host architecture for translation.)
+ *
+ * [Return value]
+ *     Runtime environment architecture (BINREC_ARCH_*), or 0 if unsupported.
+ */
+extern binrec_arch_t binrec_native_arch(void);
+
+/**
+ * binrec_native_features:  Return a bitmask of architecture features
+ * (BINREC_FEATURE_*) supported by the runtime environment, or 0 if the
+ * runtime environment does not correspond to a supported architecture.
+ *
+ * [Return value]
+ *     Runtime environment feature bitmap, or 0 if unsupported.
+ */
+extern unsigned int binrec_native_features(void);
+
+/*************************************************************************/
+/*************** Interface: Translation handle management ****************/
+/*************************************************************************/
 
 /**
  * binrec_create_handle:  Create a new translation handle.
@@ -650,6 +705,10 @@ extern int binrec_add_readonly_region(binrec_t *handle,
  *     handle: Handle to operate on.
  */
 extern void binrec_clear_readonly_regions(binrec_t *handle);
+
+/*************************************************************************/
+/********************** Interface: Code translation **********************/
+/*************************************************************************/
 
 /**
  * binrec_translate:  Translate a block of guest machine code into native

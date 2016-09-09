@@ -37,6 +37,22 @@ using Entry = ::binrec_entry_t;
 using LogLevel = ::binrec_loglevel_t;
 
 /**
+ * Feature:  Namespace wrapping architecture feature flags.
+ */
+namespace Feature {
+    namespace X86 {
+        const unsigned int FMA = BINREC_FEATURE_X86_FMA;
+        const unsigned int MOVBE = BINREC_FEATURE_X86_MOVBE;
+        const unsigned int POPCNT = BINREC_FEATURE_X86_POPCNT;
+        const unsigned int AVX = BINREC_FEATURE_X86_AVX;
+        const unsigned int LZCNT = BINREC_FEATURE_X86_LZCNT;
+        const unsigned int BMI1 = BINREC_FEATURE_X86_BMI1;
+        const unsigned int AVX2 = BINREC_FEATURE_X86_AVX2;
+        const unsigned int BMI2 = BINREC_FEATURE_X86_BMI2;
+    }
+}
+
+/**
  * Optimize:  Namespace wrapping optimization flags.
  */
 namespace Optimize {
@@ -162,6 +178,18 @@ class Handle {
  * Wraps binrec_version().
  */
 static inline const char *version() {return ::binrec_version();}
+
+/**
+ * native_arch:  Return the architecture of the runtime environment.
+ * Wraps binrec_native_arch().
+ */
+extern Arch native_arch() {return ::binrec_native_arch();}
+
+/**
+ * native_features:  Return a bitmask of architecture features available
+ * in the runtime environment.  Wraps binrec_native_features().
+ */
+extern unsigned int native_features() {return ::binrec_native_features();}
 
 /*************************************************************************/
 /*************************************************************************/

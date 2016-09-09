@@ -40,6 +40,8 @@ static const char *arch_name(binrec_arch_t arch)
         return "x86-64 (Windows ABI)";
       case BINREC_ARCH_X86_64_WINDOWS_SEH:
         return "x86-64 (Windows ABI with unwind data)";
+      case BINREC_ARCH_INVALID:  // Avoid a compiler warning.
+        break;
     }
     return "(invalid architecture)";
 }
@@ -105,6 +107,65 @@ static int add_partial_readonly_page(binrec_t *handle,
 const char *binrec_version(void)
 {
     return VERSION;
+}
+
+/*-----------------------------------------------------------------------*/
+
+binrec_arch_t binrec_native_arch(void)
+{
+    #if defined(_M_X64)
+        return BINREC_ARCH_X86_64_WINDOWS;
+    #elif defined(__amd64__) || defined(__x86_64__)
+        return BINREC_ARCH_X86_64_SYSV;
+    #else
+        return BINREC_ARCH_INVALID;
+    #endif
+}
+
+/*-----------------------------------------------------------------------*/
+
+binrec_arch_t binrec_native_features(void)
+{
+    #if defined(__amd64__) || defined(__x86_64__) || defined(_M_X64)
+
+        uint32_t ecx_1, ecx_80000001, ebx_7;
+
+        #if defined(_MSC_VER)
+            int output[4];
+            __cpuid(output, 1);
+            ecx_1 = output[2];
+            __cpuid(output, 0x80000001);
+            ecx_80000001 = output[2];
+            __cpuidex(output, 7, 0);
+            ebx_7 = output[1];
+        #elif defined(__GNUC__)
+            uint32_t dummy, dummy2;
+            __asm__("cpuid" : "=c" (ecx_1) : "a" (1) : "ebx", "edx");
+            __asm__("cpuid" : "=a" (dummy), "=c" (ecx_80000001)
+                            : "0" (0x80000001) : "ebx", "edx");
+            __asm__("cpuid" : "=a" (dummy), "=b" (ebx_7), "=c" (dummy2)
+                            : "0" (7), "2" (0) : "edx");
+        #else
+            #warning No method to call CPUID, will always return 0
+            ecx_1 = 0;
+            ecx_80000001 = 0;
+            ebx_7 = 0;
+        #endif
+
+        uint64_t features = 0;
+        if (ecx_1 & (1<<12)) features |= BINREC_FEATURE_X86_FMA;
+        if (ecx_1 & (1<<22)) features |= BINREC_FEATURE_X86_MOVBE;
+        if (ecx_1 & (1<<23)) features |= BINREC_FEATURE_X86_POPCNT;
+        if (ecx_1 & (1<<28)) features |= BINREC_FEATURE_X86_AVX;
+        if (ecx_80000001 & (1<<5)) features |= BINREC_FEATURE_X86_LZCNT;
+        if (ebx_7 & (1<<3)) features |= BINREC_FEATURE_X86_BMI1;
+        if (ebx_7 & (1<<5)) features |= BINREC_FEATURE_X86_AVX2;
+        if (ebx_7 & (1<<8)) features |= BINREC_FEATURE_X86_BMI2;
+        return features;
+
+    #else  // Unsupported architecture
+        return 0;
+    #endif
 }
 
 /*-----------------------------------------------------------------------*/

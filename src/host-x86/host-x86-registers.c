@@ -44,6 +44,49 @@
 /*************************************************************************/
 
 /**
+ * get_gpr:  Return the index (X86Register) of the next available GPR, or
+ * -1 if no GPRs are available.
+ *
+ * [Parameters]
+ *     ctx: Translation context.
+ * [Return value]
+ *     Next free GPR, or -1 if no GPRs are free.
+ */
+static inline int get_gpr(HostX86Context *ctx)
+{
+    const uint32_t regs_free = ctx->regs_free & 0xFFFF;
+
+    /* Give preference to caller-saved registers, so we don't need to
+     * unnecessarily save and restore registers ourselves. */
+    // FIXME: will need adjustment when we have native calls (probably also want something like NATIVE_CALL_INTERNAL for pre/post insn callbacks that doesn't affect register allocation)
+    int host_reg = ctz32(regs_free & ~ctx->callee_saved_regs);
+    if (host_reg < 16) {
+        return host_reg;
+    } else {
+        return regs_free ? ctz32(regs_free) : -1;
+    }
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
+ * get_xmm:  Return the index (X86Register) of the next available XMM
+ * register, or -1 if no XMM registers are available.
+ *
+ * [Parameters]
+ *     ctx: Translation context.
+ * [Return value]
+ *     Next free XMM register, or -1 if no XMM registers are free.
+ */
+static inline int get_xmm(HostX86Context *ctx)
+{
+    const uint32_t regs_free = ctx->regs_free & 0xFFFF0000;
+    return regs_free ? ctz32(regs_free) : -1;
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
  * allocate_register:  Allocate a host register for the given RTL register.
  *
  * [Parameters]
@@ -61,24 +104,13 @@ static void allocate_register(HostX86Context *ctx, int reg_index)
     HostX86RegInfo *reg_info = &ctx->regs[reg_index];
     ASSERT(!reg_info->host_allocated);
 
-    uint32_t regs_free;
-    int reg_base;
+    int host_reg;
     if (reg->type == RTLTYPE_INT32 || reg->type == RTLTYPE_ADDRESS) {
-        regs_free = ctx->regs_free & 0xFFFF;
-        reg_base = 0;
+        host_reg = get_gpr(ctx);
     } else {
-        regs_free = ctx->regs_free & 0xFFFF0000;
-        reg_base = 16;
+        host_reg = get_xmm(ctx);
     }
-
-    /* Give preference to caller-saved registers, so we don't need to
-     * unnecessarily save and restore registers ourselves. */
-    // FIXME: will need adjustment when we have native calls (probably also want something like NATIVE_CALL_INTERNAL for pre/post insn callbacks that doesn't affect register allocation)
-    int host_reg = ctz32(regs_free & ~ctx->callee_saved_regs);
-    if (host_reg - reg_base >= 16) {
-        host_reg = ctz32(regs_free);
-    }
-    if (host_reg - reg_base < 16) {
+    if (host_reg >= 0) {
         ASSERT(!ctx->reg_map[host_reg]);
         reg_info->host_allocated = true;
         reg_info->host_reg = host_reg;
@@ -245,6 +277,18 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index)
         /* If none of the special cases apply, allocate a register normally. */
         if (!dest_info->host_allocated) {
             allocate_register(ctx, dest);
+        }
+
+        if (insn->opcode == RTLOP_CLZ
+         && !(ctx->handle->setup.host_features & BINREC_FEATURE_X86_LZCNT)) {
+            /* Implementing CLZ correctly without the LZCNT instruction
+             * requires a spare register. */
+            int temp_reg = get_gpr(ctx);
+            if (temp_reg < 0) {
+                ASSERT(!"FIXME: spilling not yet implemented");
+            }
+            dest_info->host_temp = (uint8_t)temp_reg;
+            ctx->regs_touched |= 1 << temp_reg;
         }
 
         /* If the register isn't referenced again, immediately free it.

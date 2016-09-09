@@ -599,9 +599,9 @@ typedef enum X86Opcode {
     X86OP_UD1           = 0x0FB9,  // Takes a ModR/M byte (ignored).
     X86OP_BTx_Ev_Ib     = 0x0FBA,  // See X86BitTestOpcode for ModR/M opcode.
     X86OP_BTC_Ev_Gv     = 0x0FBB,
-    X86OP_BSF_Gv_Ev     = 0x0FBC,
+    X86OP_BSF           = 0x0FBC,
     X86OP_TZCNT         = 0xF30FBC,
-    X86OP_BSR_Gv_Ev     = 0x0FBD,
+    X86OP_BSR           = 0x0FBD,
     X86OP_LZCNT         = 0xF30FBD,
     X86OP_MOVSX_Gv_Eb   = 0x0FBE,
     X86OP_MOVSX_Gv_Ew   = 0x0FBF,
@@ -1037,10 +1037,10 @@ typedef enum X86PshiftOpcode {
  * opcode group (2-byte opcode 0x0F 0xBA).
  */
 typedef enum X86BitTestOpcode {
-    X86OP_PSHIFT_BT  = 4,
-    X86OP_PSHIFT_BTS = 4,
-    X86OP_PSHIFT_BTR = 4,
-    X86OP_PSHIFT_BTC = 4,
+    X86OP_BITTEST_BT  = 4,
+    X86OP_BITTEST_BTS = 5,
+    X86OP_BITTEST_BTR = 6,
+    X86OP_BITTEST_BTC = 7,
 } X86BitTestOpcode;
 
 /**

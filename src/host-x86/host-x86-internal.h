@@ -77,6 +77,9 @@ typedef struct HostX86RegInfo {
     uint8_t frame_slot;
     /* Byte offset (from SP) of the allocated stack frame. */
     int16_t stack_offset;
+    /* Host register (X86Register) to use for temporary values in the
+     * instruction that sets this register. */
+    uint8_t host_temp;
     /* Next register in the merge chain, or 0 if the end of the chain. */
     uint32_t next_merged;
 } HostX86RegInfo;
