@@ -328,8 +328,9 @@ static bool translate_block(HostX86Context *ctx, int block_index)
         const uint32_t src1 = insn->src1;
         const uint32_t src2 = insn->src2;
 
-        /* No instruction translations need more than 16 bytes. */
-        const int MAX_INSN_LEN = 16;
+        /* No instruction translations need more than 20 bytes.  (Worst
+         * case: BFEXT on differing src/dest registers with a 64-bit mask.) */
+        const int MAX_INSN_LEN = 20;
         if (UNLIKELY(code.len + MAX_INSN_LEN > code.buffer_size)) {
             handle->code_len = code.len;
             if (UNLIKELY(!binrec_ensure_code_space(handle, MAX_INSN_LEN))) {
@@ -455,6 +456,7 @@ static bool translate_block(HostX86Context *ctx, int block_index)
                 append_insn_ModRM_reg(&code, is64, X86OP_LZCNT,
                                       host_dest, host_src1);
             } else {
+                ASSERT(ctx->regs[dest].temp_allocated);
                 const X86Register host_temp = ctx->regs[dest].host_temp;
                 append_insn_ModRM_reg(&code, is64, X86OP_BSR,
                                       host_dest, host_src1);
@@ -477,6 +479,96 @@ static bool translate_block(HostX86Context *ctx, int block_index)
             append_insn_R(&code, is64, X86OP_BSWAP_rAX, host_dest);
             break;
           }  // case RTLOP_BSWAP
+
+          case RTLOP_BFEXT: {
+            const X86Register host_dest = ctx->regs[dest].host_reg;
+            const X86Register host_src1 = ctx->regs[src1].host_reg;
+            const bool is64 = (unit->regs[dest].type == RTLTYPE_ADDRESS);
+
+            /* BEXTR (from BMI2) is another option for implementing this
+             * instruction, but it takes the source and count from a GPR
+             * rather than encoding them in the instruction (presumably
+             * due to ISA limitations), so we need an extra instruction
+             * to load the shift/count and thus probably won't save any
+             * time on average.  If anything, BEXTR has higher latency
+             * than SHR and AND, so if we can omit one of the two (as when
+             * extracting from one end of the register) we can actually
+             * save time by not using BEXTR. */
+
+            X86Register host_shifted;
+            if (insn->bitfield.start != 0) {
+                /* We could use SHRD (which takes separate input and output
+                 * operands) to avoid the extra MOV, but SHRD has higher
+                 * latency than SHR on current x86 architecture
+                 * implementations, and simple inter-GPR moves are free
+                 * (zero latency) on at least current Intel CPUs, so the
+                 * only penalty is the time to decode the additional
+                 * instruction.  Since we need the shift result right away,
+                 * that decode penalty is probably less than the visible
+                 * latency we'd see from SHRD. */
+                if (host_src1 != host_dest) {
+                    append_insn_ModRM_reg(&code, is64, X86OP_MOV_Gv_Ev,
+                                          host_dest, host_src1);
+                }
+                append_insn_ModRM_reg(&code, is64, X86OP_SHIFT_Ev_Ib,
+                                      X86OP_SHIFT_SHR, host_dest);
+                append_imm8(&code, insn->bitfield.start);
+                host_shifted = host_dest;
+            } else {
+                host_shifted = host_src1;
+            }
+
+            const int operand_size = is64 ? 64 : 32;
+            if (insn->bitfield.start + insn->bitfield.count < operand_size) {
+                if (insn->bitfield.count < 8) {
+                    if (host_shifted != host_dest) {
+                        append_insn_ModRM_reg(&code, is64, X86OP_MOV_Gv_Ev,
+                                              host_dest, host_shifted);
+                    }
+                    append_insn_ModRM_reg(&code, false, X86OP_IMM_Ev_Ib,
+                                          X86OP_IMM_AND, host_dest);
+                    append_imm8(&code, (1U << insn->bitfield.count) - 1);
+                } else if (insn->bitfield.count == 8) {
+                    if (host_shifted >= X86_SP && host_shifted <= X86_DI) {
+                        /* These registers require an empty REX prefix to
+                         * access the low byte as a byte register. */
+                        append_opcode(&code, X86OP_REX);
+                    }
+                    append_insn_ModRM_reg(&code, is64, X86OP_MOVZX_Gv_Eb,
+                                          host_dest, host_shifted);
+                } else if (insn->bitfield.count == 16) {
+                    append_insn_ModRM_reg(&code, is64, X86OP_MOVZX_Gv_Ew,
+                                          host_dest, host_shifted);
+                } else if (insn->bitfield.count < 32) {
+                    if (host_shifted != host_dest) {
+                        append_insn_ModRM_reg(&code, is64, X86OP_MOV_Gv_Ev,
+                                              host_dest, host_shifted);
+                    }
+                    append_insn_ModRM_reg(&code, false, X86OP_IMM_Ev_Iz,
+                                          X86OP_IMM_AND, host_dest);
+                    append_imm32(&code, (1U << insn->bitfield.count) - 1);
+                } else if (insn->bitfield.count == 32) {
+                    append_insn_ModRM_reg(&code, false, X86OP_MOV_Gv_Ev,
+                                          host_dest, host_shifted);
+                } else {
+                    X86Register host_andsrc;
+                    if (host_shifted != host_dest) {
+                        host_andsrc = host_shifted;
+                        append_insn_R(&code, true, X86OP_MOV_rAX_Iv, host_dest);
+                    } else {
+                        ASSERT(ctx->regs[dest].temp_allocated);
+                        const X86Register host_temp = ctx->regs[dest].host_temp;
+                        host_andsrc = host_temp;
+                        append_insn_R(&code, true, X86OP_MOV_rAX_Iv, host_temp);
+                    }
+                    append_imm32(&code, -1);
+                    append_imm32(&code, (1U << (insn->bitfield.count-32)) - 1);
+                    append_insn_ModRM_reg(&code, is64, X86OP_AND_Gv_Ev,
+                                          host_dest, host_andsrc);
+                }
+            }
+            break;
+          }  // case RTLOP_BFEXT
 
           case RTLOP_LOAD_IMM: {
             const uint64_t imm = insn->src_imm;

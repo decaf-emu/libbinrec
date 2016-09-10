@@ -80,6 +80,8 @@ typedef struct HostX86RegInfo {
     /* Host register (X86Register) to use for temporary values in the
      * instruction that sets this register. */
     uint8_t host_temp;
+    /* Has a temporary host register been allocated? */
+    uint8_t temp_allocated;
     /* Next register in the merge chain, or 0 if the end of the chain. */
     uint32_t next_merged;
 } HostX86RegInfo;

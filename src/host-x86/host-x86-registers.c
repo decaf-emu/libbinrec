@@ -91,17 +91,17 @@ static inline int get_xmm(HostX86Context *ctx)
  *
  * [Parameters]
  *     ctx: Translation context.
- *     reg: RTL register number.
+ *     reg_index: RTL register number.
+ *     reg: RTLRegister structure for the register.
+ *     reg_info: HostX86RegInfo structure for the register.
  */
-static void allocate_register(HostX86Context *ctx, int reg_index)
+static void allocate_register(HostX86Context *ctx, int reg_index,
+                              const RTLRegister *reg, HostX86RegInfo *reg_info)
 {
     ASSERT(ctx);
     ASSERT(ctx->unit);
     ASSERT(reg_index > 0);
     ASSERT(reg_index < ctx->unit->next_reg);
-
-    const RTLRegister *reg = &ctx->unit->regs[reg_index];
-    HostX86RegInfo *reg_info = &ctx->regs[reg_index];
     ASSERT(!reg_info->host_allocated);
 
     int host_reg;
@@ -276,18 +276,22 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index)
 
         /* If none of the special cases apply, allocate a register normally. */
         if (!dest_info->host_allocated) {
-            allocate_register(ctx, dest);
+            allocate_register(ctx, dest, dest_reg, dest_info);
         }
 
-        if (insn->opcode == RTLOP_CLZ
-         && !(ctx->handle->setup.host_features & BINREC_FEATURE_X86_LZCNT)) {
-            /* Implementing CLZ correctly without the LZCNT instruction
-             * requires a spare register. */
+        /* Find a temporary register for instructions which need it. */
+        if ((insn->opcode == RTLOP_CLZ
+             && !(ctx->handle->setup.host_features & BINREC_FEATURE_X86_LZCNT))
+         || (insn->opcode == RTLOP_BFEXT && dest_reg->type == RTLTYPE_ADDRESS
+             && insn->bitfield.start + insn->bitfield.count < 64
+             && insn->bitfield.count > 32))
+        {
             int temp_reg = get_gpr(ctx);
             if (temp_reg < 0) {
                 ASSERT(!"FIXME: spilling not yet implemented");
             }
             dest_info->host_temp = (uint8_t)temp_reg;
+            dest_info->temp_allocated = 1;
             ctx->regs_touched |= 1 << temp_reg;
         }
 
