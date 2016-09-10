@@ -329,14 +329,17 @@ static bool translate_block(HostX86Context *ctx, int block_index)
         const uint32_t src2 = insn->src2;
 
         /* No instruction translations need more than 16 bytes. */
-        if (UNLIKELY(code.len + 16 > code.buffer_size)) {
+        const int MAX_INSN_LEN = 16;
+        if (UNLIKELY(code.len + MAX_INSN_LEN > code.buffer_size)) {
             handle->code_len = code.len;
-            if (UNLIKELY(!binrec_ensure_code_space(handle, 16))) {
+            if (UNLIKELY(!binrec_ensure_code_space(handle, MAX_INSN_LEN))) {
                 return false;
             }
             code.buffer = handle->code_buffer;
             code.buffer_size = handle->code_buffer_size;
         }
+
+        const long initial_len = code.len;
 
         switch (insn->opcode) {
 
@@ -621,6 +624,8 @@ static bool translate_block(HostX86Context *ctx, int block_index)
           default: break; //FIXME: other insns not yet implemented
 
         }
+
+        ASSERT(code.len - initial_len <= MAX_INSN_LEN);
     }
 
     handle->code_len = code.len;
