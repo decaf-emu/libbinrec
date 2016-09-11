@@ -464,6 +464,59 @@ static bool translate_block(HostX86Context *ctx, int block_index)
             break;
           }  // case RTLOP_NEG, RTLOP_NOT
 
+          case RTLOP_ADD:
+          case RTLOP_SUB:
+          case RTLOP_AND:
+          case RTLOP_OR:
+          case RTLOP_XOR: {
+            const X86Register host_dest = ctx->regs[dest].host_reg;
+            const X86Register host_src1 = ctx->regs[src1].host_reg;
+            const X86Register host_src2 = ctx->regs[src2].host_reg;
+            const bool is64 = (unit->regs[dest].type == RTLTYPE_ADDRESS);
+            const X86Opcode opcode = (
+                insn->opcode == RTLOP_ADD ? X86OP_ADD_Gv_Ev :
+                insn->opcode == RTLOP_SUB ? X86OP_SUB_Gv_Ev :
+                insn->opcode == RTLOP_AND ? X86OP_AND_Gv_Ev :
+                insn->opcode == RTLOP_OR ? X86OP_OR_Gv_Ev :
+                /* RTLOP_XOR */ X86OP_XOR_Gv_Ev);
+            if (host_dest == host_src2) {
+                append_insn_ModRM_reg(&code, is64, opcode,
+                                      host_dest, host_src1);
+            } else {
+                if (host_dest != host_src1) {
+                    append_insn_ModRM_reg(&code, is64, X86OP_MOV_Gv_Ev,
+                                          host_dest, host_src1);
+                }
+                append_insn_ModRM_reg(&code, is64, opcode,
+                                      host_dest, host_src2);
+            }
+            break;
+          }  // case RTLOP_{ADD,SUB,AND,OR,XOR}
+
+          case RTLOP_MUL: {
+            /* This case is identical to RTLOP_ADD (etc.), but it's
+             * separated out to aid optimization, since the x86 IMUL
+             * instruction is two bytes (0F AF) as opposed to the other
+             * ALU instructions which are one byte. */
+            const X86Register host_dest = ctx->regs[dest].host_reg;
+            const X86Register host_src1 = ctx->regs[src1].host_reg;
+            const X86Register host_src2 = ctx->regs[src2].host_reg;
+            const bool is64 = (unit->regs[dest].type == RTLTYPE_ADDRESS);
+            const X86Opcode opcode = X86OP_IMUL_Gv_Ev;
+            if (host_dest == host_src2) {
+                append_insn_ModRM_reg(&code, is64, opcode,
+                                      host_dest, host_src1);
+            } else {
+                if (host_dest != host_src1) {
+                    append_insn_ModRM_reg(&code, is64, X86OP_MOV_Gv_Ev,
+                                          host_dest, host_src1);
+                }
+                append_insn_ModRM_reg(&code, is64, opcode,
+                                      host_dest, host_src2);
+            }
+            break;
+          }  // case RTLOP_{ADD,SUB,AND,OR,XOR}
+
           case RTLOP_CLZ: {
             const X86Register host_dest = ctx->regs[dest].host_reg;
             const X86Register host_src1 = ctx->regs[src1].host_reg;
