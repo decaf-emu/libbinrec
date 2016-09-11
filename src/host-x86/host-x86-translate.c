@@ -504,8 +504,8 @@ static bool translate_block(HostX86Context *ctx, int block_index)
                  * (zero latency) on at least current Intel CPUs, so the
                  * only penalty is the time to decode the additional
                  * instruction.  Since we need the shift result right away,
-                 * that decode penalty is probably less than the visible
-                 * latency we'd see from SHRD. */
+                 * that decode penalty is probably less than the latency
+                 * we'd see from SHRD. */
                 if (host_src1 != host_dest) {
                     append_insn_ModRM_reg(&code, is64, X86OP_MOV_Gv_Ev,
                                           host_dest, host_src1);
@@ -566,6 +566,11 @@ static bool translate_block(HostX86Context *ctx, int block_index)
                     append_insn_ModRM_reg(&code, is64, X86OP_AND_Gv_Ev,
                                           host_dest, host_andsrc);
                 }
+            } else if (host_dest != host_shifted) {
+                /* This implies that the instruction is "extracting" the
+                 * entire register contents. */
+                append_insn_ModRM_reg(&code, is64, X86OP_MOV_Gv_Ev,
+                                      host_dest, host_shifted);
             }
             break;
           }  // case RTLOP_BFEXT
