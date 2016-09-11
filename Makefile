@@ -460,7 +460,7 @@ tests/coverage-tests.h: $(TEST_SOURCES)
 src/%_cov.o: BASE_CFLAGS += -O0
 src/%_cov.o: src/%.c
 	$(ECHO) 'Compiling $< -> $@'
-	$(Q)$(CC) $(ALL_CFLAGS) --coverage -MMD -MF '$(@:%.o=%.d.tmp)' -o '$@' -c '$<'
+	$(Q)$(CC) -DCOVERAGE $(ALL_CFLAGS) --coverage -MMD -MF '$(@:%.o=%.d.tmp)' -o '$@' -c '$<'
 	$(call filter-deps,$@,$(@:%.o=%.d))
 
 tests/%_cov.o: tests/%.c

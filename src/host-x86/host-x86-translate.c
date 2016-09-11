@@ -35,11 +35,27 @@ typedef struct CodeBuffer {
 /*************** Utility routines for adding instructions ****************/
 /*************************************************************************/
 
+/*
+ * For ordinary compilation, it's critical to have all these functions
+ * inlined so the compiler knows that local variables (including the
+ * CodeBuffer structure) are not clobbered by writes to the output code
+ * buffer; this can reduce instruction count in the translation loop by
+ * around 30% (observed with GCC 5.3) if the compiler would ordinarily
+ * choose not to inline the functions.  For coverage testing, however,
+ * it's more useful to see the branch coverage of the functions themselves
+ * rather than of every location they're used in the code.
+ */
+#ifdef COVERAGE
+    #define APPEND_INLINE  /*nothing*/
+#else
+    #define APPEND_INLINE  ALWAYS_INLINE
+#endif
+
 /**
  * append_opcode:  Append an x86 opcode to the current code stream.  The
  * code buffer is assumed to have enough space for the instruction.
  */
-static ALWAYS_INLINE void append_opcode(CodeBuffer *code, X86Opcode opcode)
+static APPEND_INLINE void append_opcode(CodeBuffer *code, X86Opcode opcode)
 {
     uint8_t *ptr = code->buffer + code->len;
 
@@ -80,7 +96,7 @@ static ALWAYS_INLINE void append_opcode(CodeBuffer *code, X86Opcode opcode)
  *     rex: REX flags (bitwise OR of X86_REX_* or X86OP_REX_*).
  *     opcode: Opcode to append.
  */
-static ALWAYS_INLINE void append_rex_opcode(CodeBuffer *code, uint8_t rex,
+static APPEND_INLINE void append_rex_opcode(CodeBuffer *code, uint8_t rex,
                                             X86Opcode opcode)
 {
     uint8_t *ptr = code->buffer + code->len;
@@ -131,7 +147,7 @@ static ALWAYS_INLINE void append_rex_opcode(CodeBuffer *code, uint8_t rex,
  * append_imm8:  Append an 8-bit immediate value to the current code stream.
  * The code buffer is assumed to have enough space.
  */
-static ALWAYS_INLINE void append_imm8(CodeBuffer *code, uint8_t value)
+static APPEND_INLINE void append_imm8(CodeBuffer *code, uint8_t value)
 {
     uint8_t *ptr = code->buffer + code->len;
 
@@ -146,7 +162,7 @@ static ALWAYS_INLINE void append_imm8(CodeBuffer *code, uint8_t value)
  * append_imm32:  Append a 32-bit immediate value to the current code stream.
  * The code buffer is assumed to have enough space.
  */
-static ALWAYS_INLINE void append_imm32(CodeBuffer *code, uint32_t value)
+static APPEND_INLINE void append_imm32(CodeBuffer *code, uint32_t value)
 {
     uint8_t *ptr = code->buffer + code->len;
 
@@ -164,7 +180,7 @@ static ALWAYS_INLINE void append_imm32(CodeBuffer *code, uint32_t value)
  * append_ModRM:  Append a ModR/M byte to the current code stream.
  * The code buffer is assumed to have enough space.
  */
-static ALWAYS_INLINE void append_ModRM(CodeBuffer *code, X86Mod mod,
+static APPEND_INLINE void append_ModRM(CodeBuffer *code, X86Mod mod,
                                        int reg_opcode, int r_m)
 {
     uint8_t *ptr = code->buffer + code->len;
@@ -180,7 +196,7 @@ static ALWAYS_INLINE void append_ModRM(CodeBuffer *code, X86Mod mod,
  * append_ModRM:  Append a ModR/M and SIB byte pair to the current code
  * stream.  The code buffer is assumed to have enough space.
  */
-static ALWAYS_INLINE void append_ModRM_SIB(
+static APPEND_INLINE void append_ModRM_SIB(
     CodeBuffer *code, X86Mod mod, int reg_opcode, int scale, int index,
     int base)
 {
@@ -236,7 +252,7 @@ static inline void append_test_reg(HostX86Context *ctx, CodeBuffer *code,
  *     opcode: Instruction opcode.
  *     reg: Register index.
  */
-static ALWAYS_INLINE void append_insn_R(
+static APPEND_INLINE void append_insn_R(
     CodeBuffer *code, bool is64, X86Opcode opcode, X86Register reg)
 {
     uint8_t rex = is64 ? X86_REX_W : 0;
@@ -263,7 +279,7 @@ static ALWAYS_INLINE void append_insn_R(
  *     reg1: Register index (or sub-opcode) for ModR/M reg field.
  *     reg2: Register index for ModR/M r/m field.
  */
-static ALWAYS_INLINE void append_insn_ModRM_reg(
+static APPEND_INLINE void append_insn_ModRM_reg(
     CodeBuffer *code, bool is64, X86Opcode opcode, X86Register reg1,
     X86Register reg2)
 {
