@@ -22,8 +22,8 @@
  * iterating over a live interval list because SSA implies that most
  * instructions create a new register, so the number of registers -- and
  * thus the number of live ranges -- is of roughly the same order as the
- * number of instructions, and by iterating over instructions we save the
- * expense of creating a separate list of live ranges.
+ * number of instructions; by iterating over instructions, we also save
+ * the expense of creating a separate list of live ranges.
  *
  * Since live intervals calculated by the RTL core do not take backward
  * branches into account, the register allocator checks each basic block
@@ -37,6 +37,7 @@
  * - When spilling registers, the register with the shortest (rather than
  *   longest) usage interval is spilled, in order to avoid spilling the
  *   guest processor state block pointer.
+ *   FIXME: instead add a high-priority flag to RTLRegister?
  */
 
 /*************************************************************************/
@@ -49,12 +50,13 @@
  *
  * [Parameters]
  *     ctx: Translation context.
+ *     avoid_regs: Bitmask of registers to not use even if free.
  * [Return value]
  *     Next free GPR, or -1 if no GPRs are free.
  */
-static inline int get_gpr(HostX86Context *ctx)
+static inline int get_gpr(HostX86Context *ctx, uint32_t avoid_regs)
 {
-    const uint32_t regs_free = ctx->regs_free & 0xFFFF;
+    const uint32_t regs_free = ctx->regs_free & 0xFFFF & ~avoid_regs;
 
     /* Give preference to caller-saved registers, so we don't need to
      * unnecessarily save and restore registers ourselves. */
@@ -75,12 +77,13 @@ static inline int get_gpr(HostX86Context *ctx)
  *
  * [Parameters]
  *     ctx: Translation context.
+ *     avoid_regs: Bitmask of registers to not use even if free.
  * [Return value]
  *     Next free XMM register, or -1 if no XMM registers are free.
  */
-static inline int get_xmm(HostX86Context *ctx)
+static inline int get_xmm(HostX86Context *ctx, uint32_t avoid_regs)
 {
-    const uint32_t regs_free = ctx->regs_free & 0xFFFF0000;
+    const uint32_t regs_free = ctx->regs_free & 0xFFFF0000 & ~avoid_regs;
     return regs_free ? ctz32(regs_free) : -1;
 }
 
@@ -94,9 +97,11 @@ static inline int get_xmm(HostX86Context *ctx)
  *     reg_index: RTL register number.
  *     reg: RTLRegister structure for the register.
  *     reg_info: HostX86RegInfo structure for the register.
+ *     avoid_regs: Bitmask of registers to not use even if free.
  */
 static void allocate_register(HostX86Context *ctx, int reg_index,
-                              const RTLRegister *reg, HostX86RegInfo *reg_info)
+                              const RTLRegister *reg, HostX86RegInfo *reg_info,
+                              uint32_t avoid_regs)
 {
     ASSERT(ctx);
     ASSERT(ctx->unit);
@@ -106,9 +111,9 @@ static void allocate_register(HostX86Context *ctx, int reg_index,
 
     int host_reg;
     if (reg->type == RTLTYPE_INT32 || reg->type == RTLTYPE_ADDRESS) {
-        host_reg = get_gpr(ctx);
+        host_reg = get_gpr(ctx, avoid_regs);
     } else {
-        host_reg = get_xmm(ctx);
+        host_reg = get_xmm(ctx, avoid_regs);
     }
     if (host_reg >= 0) {
         ASSERT(!ctx->reg_map[host_reg]);
@@ -212,6 +217,8 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index)
         ASSERT(dest_reg->birth == insn_index);
         ASSERT(!dest_info->host_allocated);
 
+        uint32_t avoid_regs = 0;
+
         /* Special case for LOAD_ARG: try to reuse the same register the
          * argument is passed in. */
         // FIXME: only appropriate if no native calls
@@ -238,13 +245,17 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index)
          * to avoid an unnecessary register move. */
         if (!dest_info->host_allocated
          && src1 && src1_reg->death == insn_index) {
-            /* The first operand's register can always be reused for the
-             * destination. */
-            dest_info->host_allocated = true;
-            dest_info->host_reg = src1_info->host_reg;
-            ctx->reg_map[dest_info->host_reg] = dest;
-            ASSERT(ctx->regs_free & (1 << dest_info->host_reg));
-            ctx->regs_free ^= 1 << dest_info->host_reg;
+            /* The first operand's register can (almost) always be reused
+             * for the destination.  The one exception is BFINS with
+             * src1==src2, since we need to write dest before reading src2. */
+            if (!(insn->opcode == RTLOP_BFINS
+                  && src1_info->host_reg == src2_info->host_reg)) {
+                dest_info->host_allocated = true;
+                dest_info->host_reg = src1_info->host_reg;
+                ctx->reg_map[dest_info->host_reg] = dest;
+                ASSERT(ctx->regs_free & (1 << dest_info->host_reg));
+                ctx->regs_free ^= 1 << dest_info->host_reg;
+            }
         }
         if (!dest_info->host_allocated
          && src2 && src2_reg->death == insn_index) {
@@ -265,7 +276,10 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index)
                 1U<<(RTLOP_BFINS-32),
             };
             ASSERT(insn->opcode >= RTLOP__FIRST && insn->opcode <= RTLOP__LAST);
-            if (!(non_commutative[insn->opcode/32] & (1<<(insn->opcode%32)))) {
+            if (non_commutative[insn->opcode/8] & (1 << (insn->opcode%8))) {
+                /* Make sure it's also not chosen by the regular allocator. */
+                avoid_regs |= 1 << src2_info->host_reg;
+            } else {
                 dest_info->host_allocated = true;
                 dest_info->host_reg = src2_info->host_reg;
                 ctx->reg_map[dest_info->host_reg] = dest;
@@ -276,17 +290,40 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index)
 
         /* If none of the special cases apply, allocate a register normally. */
         if (!dest_info->host_allocated) {
-            allocate_register(ctx, dest, dest_reg, dest_info);
+            allocate_register(ctx, dest, dest_reg, dest_info, avoid_regs);
         }
 
         /* Find a temporary register for instructions which need it. */
-        if ((insn->opcode == RTLOP_CLZ
-             && !(ctx->handle->setup.host_features & BINREC_FEATURE_X86_LZCNT))
-         || (insn->opcode == RTLOP_BFEXT && dest_reg->type == RTLTYPE_ADDRESS
-             && insn->bitfield.start + insn->bitfield.count < 64
-             && insn->bitfield.count > 32))
-        {
-            int temp_reg = get_gpr(ctx);
+        bool need_temp;
+        switch (insn->opcode) {
+          case RTLOP_CLZ:
+            /* Temporary needed if using BSR instead of LZCNT to count bits. */
+            need_temp = !(ctx->handle->setup.host_features
+                          & BINREC_FEATURE_X86_LZCNT);
+            break;
+          case RTLOP_BFEXT:
+            /* Temporary needed for mask if extracting from the high half
+             * of a 64-bit value (but not the very top, since that's
+             * implemented with a simple shift). */
+            need_temp = (dest_reg->type == RTLTYPE_ADDRESS
+                         && insn->bitfield.start + insn->bitfield.count < 64
+                         && insn->bitfield.count > 32);
+            break;
+          case RTLOP_BFINS:
+            /* Temporary needed if inserting into a 64-bit src1 whose
+             * register is reused as the destination (so we have somewhere
+             * to put the mask), or if src2 remains live past this
+             * instruction (so we can't mask and shift it in place). */
+            need_temp = ((dest_reg->type == RTLTYPE_ADDRESS
+                          && dest_info->host_reg == src1_info->host_reg)
+                         || src2_reg->death > insn_index);
+            break;
+          default:
+            need_temp = false;
+            break;
+        }
+        if (need_temp) {
+            int temp_reg = get_gpr(ctx, avoid_regs);
             if (temp_reg < 0) {
                 ASSERT(!"FIXME: spilling not yet implemented");
             }

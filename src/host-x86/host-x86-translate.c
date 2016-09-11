@@ -344,9 +344,9 @@ static bool translate_block(HostX86Context *ctx, int block_index)
         const uint32_t src1 = insn->src1;
         const uint32_t src2 = insn->src2;
 
-        /* No instruction translations need more than 20 bytes.  (Worst
-         * case: BFEXT on differing src/dest registers with a 64-bit mask.) */
-        const int MAX_INSN_LEN = 20;
+        /* No instruction translations need more than 28 bytes.  (Worst
+         * case: BFINS with 64-bit src1 and 32-bit src2 masks.) */
+        const int MAX_INSN_LEN = 28;
         if (UNLIKELY(code.len + MAX_INSN_LEN > code.buffer_size)) {
             handle->code_len = code.len;
             if (UNLIKELY(!binrec_ensure_code_space(handle, MAX_INSN_LEN))) {
@@ -593,6 +593,156 @@ static bool translate_block(HostX86Context *ctx, int block_index)
             }
             break;
           }  // case RTLOP_BFEXT
+
+          case RTLOP_BFINS: {
+            const X86Register host_dest = ctx->regs[dest].host_reg;
+            const X86Register host_src1 = ctx->regs[src1].host_reg;
+            const X86Register host_src2 = ctx->regs[src2].host_reg;
+            ASSERT(host_dest != host_src2);
+            const bool is64 = (unit->regs[dest].type == RTLTYPE_ADDRESS);
+            const int operand_size = is64 ? 64 : 32;
+
+            if (UNLIKELY(insn->bitfield.count == operand_size)) {
+                /* Handle this case specially not so much for optimization
+                 * purposes (since it should normally be optimized to a
+                 * simple move at the RTL level) but because handling it
+                 * correctly in the normal path takes extra effort. */
+                append_insn_ModRM_reg(&code, is64, X86OP_MOV_Gv_Ev,
+                                      host_dest, host_src2);
+                break;
+            }
+
+            /* Copy the first source into the destination, masking off the
+             * bits to be overwritten. */
+            if (is64 && insn->bitfield.start + insn->bitfield.count > 31) {
+                const uint64_t src2_mask =
+                    (UINT64_C(1) << insn->bitfield.count) - 1;
+                const uint64_t src1_mask = ~(src2_mask << insn->bitfield.start);
+                if (host_dest == host_src1) {
+                    ASSERT(ctx->regs[dest].temp_allocated);
+                    const X86Register host_temp = ctx->regs[dest].host_temp;
+                    ASSERT(host_temp != host_src2);
+                    append_insn_R(&code, true, X86OP_MOV_rAX_Iv, host_temp);
+                    append_imm32(&code, (uint32_t)src1_mask);
+                    append_imm32(&code, (uint32_t)(src1_mask >> 32));
+                    append_insn_ModRM_reg(&code, true, X86OP_AND_Gv_Ev,
+                                          host_dest, host_temp);
+                } else {
+                    append_insn_R(&code, true, X86OP_MOV_rAX_Iv, host_dest);
+                    append_imm32(&code, (uint32_t)src1_mask);
+                    append_imm32(&code, (uint32_t)(src1_mask >> 32));
+                    append_insn_ModRM_reg(&code, true, X86OP_AND_Gv_Ev,
+                                          host_dest, host_src1);
+                }
+            } else {
+                const uint32_t src2_mask = (1U << insn->bitfield.count) - 1;
+                const uint32_t src1_mask = ~(src2_mask << insn->bitfield.start);
+                if (src1_mask == 0x000000FF) {
+                    append_insn_ModRM_reg(&code, is64, X86OP_MOVZX_Gv_Eb,
+                                          host_dest, host_src1);
+                } else if (src1_mask == 0x0000FFFF) {
+                    append_insn_ModRM_reg(&code, is64, X86OP_MOVZX_Gv_Ew,
+                                          host_dest, host_src1);
+                } else {
+                    if (host_dest != host_src1) {
+                        append_insn_ModRM_reg(&code, is64, X86OP_MOV_Gv_Ev,
+                                              host_dest, host_src1);
+                    }
+                    if (src1_mask >= 0xFFFFFF80) {
+                        append_insn_ModRM_reg(&code, is64, X86OP_IMM_Ev_Ib,
+                                              X86OP_IMM_AND, host_dest);
+                        append_imm8(&code, (uint8_t)src1_mask);
+                    } else {
+                        append_insn_ModRM_reg(&code, is64, X86OP_IMM_Ev_Iz,
+                                              X86OP_IMM_AND, host_dest);
+                        append_imm32(&code, src1_mask);
+                    }
+                }
+            }
+
+            /* Copy the bits to be inserted to the temporary register,
+             * shifting them to the appropriate place.  But reuse src2 as
+             * the temporary register if it dies on this instruction. */
+            X86Register host_newbits;
+            if (unit->regs[src2].death == insn_index) {
+                host_newbits = host_src2;
+            } else {
+                ASSERT(ctx->regs[dest].temp_allocated);
+                const X86Register host_temp = ctx->regs[dest].host_temp;
+                ASSERT(host_temp != host_src2);
+                host_newbits = host_temp;
+            }
+            if (insn->bitfield.count > 32) {
+                /* We can't use a 64-bit immediate value with AND, so
+                 * shift the value left and (if necessary) right again. */
+                ASSERT(is64);
+                if (host_newbits != host_src2) {
+                    append_insn_ModRM_reg(&code, true, X86OP_MOV_Gv_Ev,
+                                          host_newbits, host_src2);
+                }
+                append_insn_ModRM_reg(&code, true, X86OP_SHIFT_Ev_Ib,
+                                      X86OP_SHIFT_SHL, host_newbits);
+                append_imm8(&code, 64 - insn->bitfield.count);
+                const int shr_count =
+                    64 - (insn->bitfield.start + insn->bitfield.count);
+                if (shr_count > 0) {
+                    append_insn_ModRM_reg(&code, true, X86OP_SHIFT_Ev_Ib,
+                                          X86OP_SHIFT_SHR, host_newbits);
+                    append_imm8(&code, shr_count);
+                }
+            } else {
+                if (insn->bitfield.start + insn->bitfield.count == operand_size) {
+                    if (host_newbits != host_src2) {
+                        append_insn_ModRM_reg(&code, is64, X86OP_MOV_Gv_Ev,
+                                              host_newbits, host_src2);
+                    }
+                } else if (insn->bitfield.count < 8) {
+                    if (host_newbits != host_src2) {
+                        append_insn_ModRM_reg(&code, false, X86OP_MOV_Gv_Ev,
+                                              host_newbits, host_src2);
+                    }
+                    append_insn_ModRM_reg(&code, false, X86OP_IMM_Ev_Ib,
+                                          X86OP_IMM_AND, host_newbits);
+                    append_imm8(&code, (1U << insn->bitfield.count) - 1);
+                } else if (insn->bitfield.count == 8) {
+                    /* Registers SP-DI require an empty REX prefix to
+                     * access the low byte as a byte register, but be
+                     * careful not to double REX if a prefix will already
+                     * be added. */
+                    if (host_src2 >= X86_SP && host_src2 <= X86_DI
+                     && host_newbits <= X86_DI) {
+                        append_opcode(&code, X86OP_REX);
+                    }
+                    append_insn_ModRM_reg(&code, false, X86OP_MOVZX_Gv_Eb,
+                                          host_newbits, host_src2);
+                } else if (insn->bitfield.count == 16) {
+                    append_insn_ModRM_reg(&code, false, X86OP_MOVZX_Gv_Ew,
+                                          host_newbits, host_src2);
+                } else if (insn->bitfield.count == 32) {
+                    append_insn_ModRM_reg(&code, false, X86OP_MOV_Gv_Ev,
+                                          host_newbits, host_src2);
+                } else {
+                    if (host_newbits != host_src2) {
+                        append_insn_ModRM_reg(&code, false, X86OP_MOV_Gv_Ev,
+                                              host_newbits, host_src2);
+                    }
+                    append_insn_ModRM_reg(&code, false, X86OP_IMM_Ev_Iz,
+                                          X86OP_IMM_AND, host_newbits);
+                    append_imm32(&code, (1U << insn->bitfield.count) - 1);
+                }
+                if (insn->bitfield.start > 0) {
+                    append_insn_ModRM_reg(&code, is64, X86OP_SHIFT_Ev_Ib,
+                                          X86OP_SHIFT_SHL, host_newbits);
+                    append_imm8(&code, insn->bitfield.start);
+                }
+            }
+
+            /* OR the new bits into the destination. */
+            append_insn_ModRM_reg(&code, is64, X86OP_OR_Gv_Ev,
+                                  host_dest, host_newbits);
+
+            break;
+          }  // case RTLOP_BFINS
 
           case RTLOP_LOAD_IMM: {
             const uint64_t imm = insn->src_imm;
