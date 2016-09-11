@@ -166,12 +166,17 @@ typedef enum RTLOpcode {
     RTLOP_ROR,          // dest = src1 ROR (src2 % #bits(src1))
                         //    [src2 may be any integer type]
     RTLOP_CLZ,          // dest = [number of leading zeros in src1]
-    RTLOP_SLTU,         // dest = (unsigned)src1 < (unsigned)src2 ? 1 : 0
-    RTLOP_SLTS,         // dest = (signed)src1 < (signed)src2 ? 1 : 0
-    RTLOP_SLEU,         // dest = (unsigned)src1 <= (unsigned)src2 ? 1 : 0
-    RTLOP_SLES,         // dest = (signed)src1 <= (signed)src2 ? 1 : 0
-    RTLOP_SEQ,          // dest = src1 == src2 ? 1 : 0
     RTLOP_BSWAP,        // dest = [reverse order of bytes in src1]
+    RTLOP_SEQ,          // dest = src1 == src2 ? 1 : 0
+                        //    [dest may be any integer type]
+    RTLOP_SLTU,         // dest = (unsigned)src1 < (unsigned)src2 ? 1 : 0
+                        //    [dest may be any integer type]
+    RTLOP_SLTS,         // dest = (signed)src1 < (signed)src2 ? 1 : 0
+                        //    [dest may be any integer type]
+    RTLOP_SLEU,         // dest = (unsigned)src1 <= (unsigned)src2 ? 1 : 0
+                        //    [dest may be any integer type]
+    RTLOP_SLES,         // dest = (signed)src1 <= (signed)src2 ? 1 : 0
+                        //    [dest may be any integer type]
 
     /* Integer bitfield operations ("start" and "count" are encoded in the
      * "other" parameter as: other = start | count<<8) */

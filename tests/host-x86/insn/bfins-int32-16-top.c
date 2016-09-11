@@ -35,7 +35,7 @@ static const uint8_t expected_code[] = {
     0x48,0x83,0xEC,0x08,                // sub $8,%rsp
     0x33,0xC9,                          // xor %ecx,%ecx
     0x33,0xD2,                          // xor %edx,%edx
-    0x0F,0xB7,0xF1,                     // movzwx %cx,%esi
+    0x0F,0xB7,0xF1,                     // movzwl %cx,%esi
     0x8B,0xFA,                          // mov %edx,%edi
     0xC1,0xE7,0x10,                     // shl $16,%edi
     0x0B,0xF7,                          // or %edi,%esi

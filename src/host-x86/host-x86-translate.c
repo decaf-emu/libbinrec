@@ -496,6 +496,37 @@ static bool translate_block(HostX86Context *ctx, int block_index)
             break;
           }  // case RTLOP_BSWAP
 
+          case RTLOP_SEQ:
+          case RTLOP_SLTU:
+          case RTLOP_SLTS:
+          case RTLOP_SLEU:
+          case RTLOP_SLES: {
+            const X86Register host_dest = ctx->regs[dest].host_reg;
+            const X86Register host_src1 = ctx->regs[src1].host_reg;
+            const X86Register host_src2 = ctx->regs[src2].host_reg;
+            const bool is64 = (unit->regs[src1].type == RTLTYPE_ADDRESS);
+            const X86Opcode set_opcode = (
+                insn->opcode == RTLOP_SLTU ? X86OP_SETB :
+                insn->opcode == RTLOP_SLTS ? X86OP_SETL :
+                insn->opcode == RTLOP_SLEU ? X86OP_SETBE :
+                insn->opcode == RTLOP_SLES ? X86OP_SETLE :
+                /* RTLOP_SEQ */ X86OP_SETZ);
+            append_insn_ModRM_reg(&code, is64, X86OP_CMP_Gv_Ev,
+                                  host_src1, host_src2);
+            /* Registers SP-DI require a REX prefix (even if empty) to
+             * access the low byte as a byte register. */
+            if (host_dest >= X86_SP && host_dest <= X86_DI) {
+                append_opcode(&code, X86OP_REX);
+            }
+            append_insn_ModRM_reg(&code, false, set_opcode, 0, host_dest);
+            if (host_dest >= X86_SP && host_dest <= X86_DI) {
+                append_opcode(&code, X86OP_REX);
+            }
+            append_insn_ModRM_reg(&code, false, X86OP_MOVZX_Gv_Eb,
+                                  host_dest, host_dest);
+            break;
+          }  // case RTLOP_{SEQ,SLTU,SLTS,SLEU,SLES}
+
           case RTLOP_BFEXT: {
             const X86Register host_dest = ctx->regs[dest].host_reg;
             const X86Register host_src1 = ctx->regs[src1].host_reg;

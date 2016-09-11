@@ -17,27 +17,27 @@ static const binrec_setup_t setup = {
 
 static int add_rtl(RTLUnit *unit)
 {
-    alloc_dummy_registers(unit, 1, RTLTYPE_INT32);
+    alloc_dummy_registers(unit, 5, RTLTYPE_INT32);
 
     uint32_t reg1, reg2, reg3;
-    EXPECT(reg1 = rtl_alloc_register(unit, RTLTYPE_INT32));
+    EXPECT(reg1 = rtl_alloc_register(unit, RTLTYPE_ADDRESS));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg1, 0, 0, 0));
-    EXPECT(reg2 = rtl_alloc_register(unit, RTLTYPE_INT32));
+    EXPECT(reg2 = rtl_alloc_register(unit, RTLTYPE_ADDRESS));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg2, 0, 0, 0));
-    EXPECT(reg3 = rtl_alloc_register(unit, RTLTYPE_INT32));
-    EXPECT(rtl_add_insn(unit, RTLOP_BFINS, reg3, reg1, reg2, 8 | 24<<8));
-    EXPECT(rtl_add_insn(unit, RTLOP_NOP, 0, reg1, 0, 0));
+    EXPECT(reg3 = rtl_alloc_register(unit, RTLTYPE_ADDRESS));
+    EXPECT(rtl_add_insn(unit, RTLOP_SEQ, reg3, reg1, reg2, 0));
+    EXPECT(rtl_add_insn(unit, RTLOP_NOP, 0, reg1, reg2, 0));
 
     return EXIT_SUCCESS;
 }
 
 static const uint8_t expected_code[] = {
     0x48,0x83,0xEC,0x08,                // sub $8,%rsp
-    0x33,0xC9,                          // xor %ecx,%ecx
-    0x33,0xD2,                          // xor %edx,%edx
-    0x0F,0xB6,0xF1,                     // movzbl %cl,%esi
-    0xC1,0xE2,0x08,                     // shl $8,%edx
-    0x0B,0xF2,                          // or %edx,%esi
+    0x45,0x33,0xC0,                     // xor %r8d,%r8d
+    0x45,0x33,0xC9,                     // xor %r9d,%r9d
+    0x4D,0x3B,0xC1,                     // cmp %r9,%r8
+    0x41,0x0F,0x94,0xC2,                // sete %r10b
+    0x45,0x0F,0xB6,0xD2,                // movzbl %r10b,%r10d
     0x48,0x83,0xC4,0x08,                // add $8,%rsp
     0xC3,                               // ret
 };

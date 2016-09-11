@@ -502,6 +502,13 @@ typedef struct binrec_setup_t {
  */
 #define BINREC_OPT_H_X86_MEMORY_OPERANDS  (1<<3)
 
+/**
+ * BINREC_OPT_H_X86_SETCC_ZX:  Detect when the only the low byte of the
+ * result of a comparison instruction is used, and suppress zero-extension
+ * of the result to the full operand size (32 or 64 bits).
+ */
+#define BINREC_OPT_H_X86_SETCC_ZX  (1<<4)
+
 /*************************************************************************/
 /******** Interface: Library and runtime environment information *********/
 /*************************************************************************/

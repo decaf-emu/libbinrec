@@ -385,6 +385,51 @@ static bool make_alu_2op(RTLUnit *unit, RTLInsn *insn, unsigned int dest,
 /*-----------------------------------------------------------------------*/
 
 /**
+ * make_cmp:  Encode a comparison instruction.
+ */
+static bool make_cmp(RTLUnit *unit, RTLInsn *insn, unsigned int dest,
+                     uint32_t src1, uint32_t src2, uint64_t other)
+{
+    ASSERT(unit != NULL);
+    ASSERT(unit->regs != NULL);
+    ASSERT(insn != NULL);
+    ASSERT(dest < unit->next_reg);
+    ASSERT(src1 < unit->next_reg);
+    ASSERT(src2 < unit->next_reg);
+
+#ifdef ENABLE_OPERAND_SANITY_CHECKS
+    OPERAND_ASSERT(dest != 0);
+    OPERAND_ASSERT(src1 != 0);
+    OPERAND_ASSERT(src2 != 0);
+    OPERAND_ASSERT(unit->regs[dest].source == RTLREG_UNDEFINED);
+    OPERAND_ASSERT(unit->regs[src1].source != RTLREG_UNDEFINED);
+    OPERAND_ASSERT(unit->regs[src2].source != RTLREG_UNDEFINED);
+    OPERAND_ASSERT(rtl_register_is_int(&unit->regs[dest]));
+    OPERAND_ASSERT(unit->regs[src2].type == unit->regs[src1].type);
+#endif
+
+    insn->dest = dest;
+    insn->src1 = src1;
+    insn->src2 = src2;
+
+    RTLRegister * const destreg = &unit->regs[dest];
+    RTLRegister * const src1reg = &unit->regs[src1];
+    RTLRegister * const src2reg = &unit->regs[src2];
+    const uint32_t insn_index = unit->num_insns;
+    destreg->source = RTLREG_RESULT;
+    destreg->result.opcode = insn->opcode;
+    destreg->result.src1 = src1;
+    destreg->result.src2 = src2;
+    mark_live(unit, insn_index, destreg, dest);
+    mark_live(unit, insn_index, src1reg, src1);
+    mark_live(unit, insn_index, src2reg, src2);
+
+    return true;
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
  * make_bitfield:  Encode a bitfield instruction.
  */
 static bool make_bitfield(RTLUnit *unit, RTLInsn *insn, unsigned int dest,
@@ -816,11 +861,11 @@ bool (* const makefunc_table[])(RTLUnit *, RTLInsn *, unsigned int,
     [RTLOP_SRA       ] = make_alu_2op,
     [RTLOP_ROR       ] = make_alu_2op,
     [RTLOP_CLZ       ] = make_alu_1op,
-    [RTLOP_SLTU      ] = make_alu_2op,
-    [RTLOP_SLTS      ] = make_alu_2op,
-    [RTLOP_SLEU      ] = make_alu_2op,
-    [RTLOP_SLES      ] = make_alu_2op,
-    [RTLOP_SEQ       ] = make_alu_2op,
+    [RTLOP_SLTU      ] = make_cmp,
+    [RTLOP_SLTS      ] = make_cmp,
+    [RTLOP_SLEU      ] = make_cmp,
+    [RTLOP_SLES      ] = make_cmp,
+    [RTLOP_SEQ       ] = make_cmp,
     [RTLOP_BSWAP     ] = make_alu_1op,
     [RTLOP_BFEXT     ] = make_bitfield,
     [RTLOP_BFINS     ] = make_bitfield,

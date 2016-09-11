@@ -76,6 +76,7 @@ namespace Optimize {
         const unsigned int CONSTANT_OPERANDS = BINREC_OPT_H_X86_CONSTANT_OPERANDS;
         const unsigned int FORWARD_CONDITIONS = BINREC_OPT_H_X86_FORWARD_CONDITIONS;
         const unsigned int MEMORY_OPERANDS = BINREC_OPT_H_X86_MEMORY_OPERANDS;
+        const unsigned int SETCC_ZX = BINREC_OPT_H_X86_SETCC_ZX;
     }
 }
 
