@@ -17,24 +17,23 @@ static const binrec_setup_t setup = {
 
 static int add_rtl(RTLUnit *unit)
 {
-    alloc_dummy_registers(unit, 5, RTLTYPE_INT32);
+    alloc_dummy_registers(unit, 3, RTLTYPE_INT32);
 
     uint32_t reg1, reg2;
     EXPECT(reg1 = rtl_alloc_register(unit, RTLTYPE_INT32));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg1, 0, 0, 0));
     EXPECT(reg2 = rtl_alloc_register(unit, RTLTYPE_INT32));
     EXPECT(rtl_add_insn(unit, RTLOP_BFEXT, reg2, reg1, 0, 2 | 8<<8));
-    EXPECT(rtl_add_insn(unit, RTLOP_NOP, 0, reg1, 0, 0));
 
     return EXIT_SUCCESS;
 }
 
 static const uint8_t expected_code[] = {
     0x48,0x83,0xEC,0x08,                // sub $8,%rsp
-    0x45,0x33,0xC0,                     // xor %r8d,%r8d
-    0x45,0x8B,0xC8,                     // mov %r8d,%r9d
-    0x41,0xC1,0xE9,0x02,                // shr $2,%r9d
-    0x45,0x0F,0xB6,0xC9,                // movzbl %r9b,%r9d
+    0x33,0xF6,                          // xor %esi,%esi
+    0xC1,0xEE,0x02,                     // shr $2,%esi
+    /* %sil requires an empty REX prefix. */
+    0x40,0x0F,0xB6,0xF6,                // movzbl %sil,%esi
     0x48,0x83,0xC4,0x08,                // add $8,%rsp
     0xC3,                               // ret
 };

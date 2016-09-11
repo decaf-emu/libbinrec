@@ -545,9 +545,12 @@ static bool translate_block(HostX86Context *ctx, int block_index)
                                           X86OP_IMM_AND, host_dest);
                     append_imm8(&code, (1U << insn->bitfield.count) - 1);
                 } else if (insn->bitfield.count == 8) {
-                    if (host_shifted >= X86_SP && host_shifted <= X86_DI) {
-                        /* These registers require an empty REX prefix to
-                         * access the low byte as a byte register. */
+                    /* Registers SP-DI require an empty REX prefix to
+                     * access the low byte as a byte register, but be
+                     * careful not to double REX if a prefix will already
+                     * be added. */
+                    if (host_shifted >= X86_SP && host_shifted <= X86_DI
+                     && host_dest <= X86_DI) {
                         append_opcode(&code, X86OP_REX);
                     }
                     append_insn_ModRM_reg(&code, is64, X86OP_MOVZX_Gv_Eb,
