@@ -20,12 +20,13 @@ static int add_rtl(RTLUnit *unit)
 {
     alloc_dummy_registers(unit, 1, RTLTYPE_INT32);
 
-    uint32_t reg1, reg2;
+    uint32_t reg1, reg2, reg3;
     EXPECT(reg1 = rtl_alloc_register(unit, RTLTYPE_ADDRESS));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg1, 0, 0, 0));
     EXPECT(reg2 = rtl_alloc_register(unit, RTLTYPE_ADDRESS));
-    EXPECT(rtl_add_insn(unit, RTLOP_ZCAST, reg2, reg1, 0, 0));
-    EXPECT(rtl_add_insn(unit, RTLOP_NOP, 0, reg1, 0, 0));
+    EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg2, 0, 0, 0));
+    EXPECT(reg3 = rtl_alloc_register(unit, RTLTYPE_ADDRESS));
+    EXPECT(rtl_add_insn(unit, RTLOP_BFINS, reg3, reg1, reg2, 2 | 48<<8));
 
     return EXIT_SUCCESS;
 }
@@ -33,7 +34,14 @@ static int add_rtl(RTLUnit *unit)
 static const uint8_t expected_code[] = {
     0x48,0x83,0xEC,0x08,                // sub $8,%rsp
     0x33,0xC9,                          // xor %ecx,%ecx
-    0x48,0x89,0xCA,                     // mov %rcx,%rdx
+    0x33,0xD2,                          // xor %edx,%edx
+    /* The temporary register should not overlap either input operand. */
+    0x48,0xBE,0x03,0x00,0x00,0x00,0x00, // mov $0xFFFC000000000003,%rsi
+      0x00,0xFC,0xFF,
+    0x48,0x23,0xCE,                     // and %rsi,%rcx
+    0x48,0xC1,0xE2,0x10,                // shl $16,%rdx
+    0x48,0xC1,0xEA,0x0E,                // shr $14,%rdx
+    0x48,0x0B,0xCA,                     // or %rdx,%rcx
     0x48,0x83,0xC4,0x08,                // add $8,%rsp
     0xC3,                               // ret
 };

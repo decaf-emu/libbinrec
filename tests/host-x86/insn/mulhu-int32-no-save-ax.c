@@ -18,22 +18,31 @@ static const unsigned int host_opt = 0;
 
 static int add_rtl(RTLUnit *unit)
 {
-    alloc_dummy_registers(unit, 1, RTLTYPE_INT32);
-
-    uint32_t reg1, reg2;
+    uint32_t reg1, reg2, reg3, reg4, reg5;
     EXPECT(reg1 = rtl_alloc_register(unit, RTLTYPE_INT32));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg1, 0, 0, 0));
-    EXPECT(reg2 = rtl_alloc_register(unit, RTLTYPE_ADDRESS));
-    EXPECT(rtl_add_insn(unit, RTLOP_ZCAST, reg2, reg1, 0, 0));
-    EXPECT(rtl_add_insn(unit, RTLOP_NOP, 0, reg1, 0, 0));
+    EXPECT(reg2 = rtl_alloc_register(unit, RTLTYPE_INT32));
+    EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg2, 0, 0, 0));
+    EXPECT(reg3 = rtl_alloc_register(unit, RTLTYPE_INT32));
+    EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg3, 0, 0, 0));
+    EXPECT(reg4 = rtl_alloc_register(unit, RTLTYPE_INT32));
+    EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg4, 0, 0, 0));
+    EXPECT(rtl_add_insn(unit, RTLOP_NOP, 0, reg1, reg3, 0));  // Free EAX/EDX.
+    EXPECT(reg5 = rtl_alloc_register(unit, RTLTYPE_INT32));
+    EXPECT(rtl_add_insn(unit, RTLOP_MULHU, reg5, reg2, reg4, 0));  // dest=EDX
+    EXPECT(rtl_add_insn(unit, RTLOP_NOP, 0, reg2, reg4, 0));
 
     return EXIT_SUCCESS;
 }
 
 static const uint8_t expected_code[] = {
     0x48,0x83,0xEC,0x08,                // sub $8,%rsp
+    0x33,0xC0,                          // xor %eax,%eax
     0x33,0xC9,                          // xor %ecx,%ecx
-    0x89,0xCA,                          // mov %ecx,%edx
+    0x33,0xD2,                          // xor %edx,%edx
+    0x33,0xF6,                          // xor %esi,%esi
+    0x8B,0xC1,                          // mov %ecx,%eax
+    0xF7,0xE6,                          // mul %esi
     0x48,0x83,0xC4,0x08,                // add $8,%rsp
     0xC3,                               // ret
 };

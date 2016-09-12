@@ -42,8 +42,8 @@ static int add_rtl(RTLUnit *unit)
 static const uint8_t expected_code[] = {
     0x53,                               // push %rbx
     0x33,0xFF,                          // xor %edi,%edi
-    0x44,0x8B,0xC7,                     // mov %edi,%r8d
-    0x41,0x8B,0xD8,                     // mov %r8d,%ebx
+    0x41,0x89,0xF8,                     // mov %edi,%r8d
+    0x44,0x89,0xC3,                     // mov %r8d,%ebx
     0x5B,                               // pop %rbx
     0xC3,                               // ret
 };

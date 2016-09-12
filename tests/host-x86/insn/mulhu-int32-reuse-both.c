@@ -14,44 +14,42 @@
 static const binrec_setup_t setup = {
     .host = BINREC_ARCH_X86_64_SYSV,
 };
-static const unsigned int host_opt = BINREC_OPT_H_X86_FIXED_REGS;
+static const unsigned int host_opt = 0;
 
 static int add_rtl(RTLUnit *unit)
 {
     alloc_dummy_registers(unit, 1, RTLTYPE_INT32);
 
-    uint32_t reg1, reg2, reg3, reg4, reg5, reg6;
+    uint32_t reg1, reg2, reg3, reg4;
     EXPECT(reg1 = rtl_alloc_register(unit, RTLTYPE_INT32));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg1, 0, 0, 0));
     EXPECT(reg2 = rtl_alloc_register(unit, RTLTYPE_INT32));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg2, 0, 0, 0));
     EXPECT(reg3 = rtl_alloc_register(unit, RTLTYPE_INT32));
-    EXPECT(rtl_add_insn(unit, RTLOP_SLL, reg3, reg1, reg2, 0));
-    EXPECT(rtl_add_insn(unit, RTLOP_NOP, 0, reg1, reg2, 0));
-
+    /* Both ECX and EDX become available here, but the allocator should
+     * prefer EDX (even without the FIXED_REGS optimization). */
+    EXPECT(rtl_add_insn(unit, RTLOP_MULHU, reg3, reg1, reg2, 0));
+    /* Add an extra move instruction to verify that the register was
+     * really assigned EDX and the code generator didn't just skip the
+     * MOV/XCHG instructions. */
     EXPECT(reg4 = rtl_alloc_register(unit, RTLTYPE_INT32));
-    EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg4, 0, 0, 0));
-    EXPECT(reg5 = rtl_alloc_register(unit, RTLTYPE_INT32));
-    EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg5, 0, 0, 0));
-    EXPECT(reg6 = rtl_alloc_register(unit, RTLTYPE_INT32));
-    EXPECT(rtl_add_insn(unit, RTLOP_SLL, reg6, reg4, reg5, 0));
-    EXPECT(rtl_add_insn(unit, RTLOP_NOP, 0, reg4, reg5, 0));
-
-    EXPECT(rtl_add_insn(unit, RTLOP_NOP, 0, reg3, reg6, 0));
+    EXPECT(rtl_add_insn(unit, RTLOP_MOVE, reg4, reg3, 0, 0));
+    EXPECT(rtl_add_insn(unit, RTLOP_NOP, 0, reg3, reg4, 0));
 
     return EXIT_SUCCESS;
 }
 
 static const uint8_t expected_code[] = {
     0x48,0x83,0xEC,0x08,                // sub $8,%rsp
-    0x33,0xD2,                          // xor %edx,%edx
     0x33,0xC9,                          // xor %ecx,%ecx
-    0x8B,0xF2,                          // mov %edx,%esi
-    0xD3,0xE6,                          // shl %cl,%esi
     0x33,0xD2,                          // xor %edx,%edx
-    0x33,0xC9,                          // xor %ecx,%ecx
-    0x8B,0xFA,                          // mov %edx,%edi
-    0xD3,0xE7,                          // shl %cl,%edi
+    /* The temporary should not get RCX even though it's free, since that's
+     * still in use as an input operand. */
+    0x48,0x8B,0xF0,                     // mov %rax,%rsi
+    0x8B,0xC1,                          // mov %ecx,%eax
+    0xF7,0xE2,                          // mul %edx
+    0x48,0x8B,0xC6,                     // mov %rsi,%rax
+    0x8B,0xCA,                          // mov %edx,%ecx
     0x48,0x83,0xC4,0x08,                // add $8,%rsp
     0xC3,                               // ret
 };

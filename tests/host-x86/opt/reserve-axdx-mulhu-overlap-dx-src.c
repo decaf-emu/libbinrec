@@ -20,38 +20,35 @@ static int add_rtl(RTLUnit *unit)
 {
     alloc_dummy_registers(unit, 1, RTLTYPE_INT32);
 
-    uint32_t reg1, reg2, reg3, reg4, reg5, reg6;
+    uint32_t reg1, reg2, reg3, reg4, reg5;
     EXPECT(reg1 = rtl_alloc_register(unit, RTLTYPE_INT32));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg1, 0, 0, 0));
     EXPECT(reg2 = rtl_alloc_register(unit, RTLTYPE_INT32));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg2, 0, 0, 0));
     EXPECT(reg3 = rtl_alloc_register(unit, RTLTYPE_INT32));
-    EXPECT(rtl_add_insn(unit, RTLOP_SLL, reg3, reg1, reg2, 0));
+    /* Allocates reg3 = DX, reg1 = AX (reg2 left unallocated). */
+    EXPECT(rtl_add_insn(unit, RTLOP_MULHU, reg3, reg1, reg2, 0));
     EXPECT(rtl_add_insn(unit, RTLOP_NOP, 0, reg1, reg2, 0));
-
     EXPECT(reg4 = rtl_alloc_register(unit, RTLTYPE_INT32));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg4, 0, 0, 0));
+    EXPECT(rtl_add_insn(unit, RTLOP_NOP, 0, reg3, 0, 0));
     EXPECT(reg5 = rtl_alloc_register(unit, RTLTYPE_INT32));
-    EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg5, 0, 0, 0));
-    EXPECT(reg6 = rtl_alloc_register(unit, RTLTYPE_INT32));
-    EXPECT(rtl_add_insn(unit, RTLOP_SLL, reg6, reg4, reg5, 0));
-    EXPECT(rtl_add_insn(unit, RTLOP_NOP, 0, reg4, reg5, 0));
-
-    EXPECT(rtl_add_insn(unit, RTLOP_NOP, 0, reg3, reg6, 0));
+    /* Allocates reg5 = DX, reg4 = AX.  Neither reg2 nor reg4 get DX due to
+     * live range collision. */
+    EXPECT(rtl_add_insn(unit, RTLOP_MULHU, reg5, reg2, reg4, 0));
 
     return EXIT_SUCCESS;
 }
 
 static const uint8_t expected_code[] = {
     0x48,0x83,0xEC,0x08,                // sub $8,%rsp
-    0x33,0xD2,                          // xor %edx,%edx
-    0x33,0xC9,                          // xor %ecx,%ecx
-    0x8B,0xF2,                          // mov %edx,%esi
-    0xD3,0xE6,                          // shl %cl,%esi
-    0x33,0xD2,                          // xor %edx,%edx
-    0x33,0xC9,                          // xor %ecx,%ecx
-    0x8B,0xFA,                          // mov %edx,%edi
-    0xD3,0xE7,                          // shl %cl,%edi
+    0x33,0xC0,                          // xor %eax,%eax
+    0x33,0xF6,                          // xor %esi,%esi
+    0x48,0x8B,0xF8,                     // mov %rax,%rdi
+    0xF7,0xE6,                          // mul %esi
+    0x48,0x8B,0xC7,                     // mov %rdi,%rax
+    0x33,0xC0,                          // xor %eax,%eax
+    0xF7,0xE6,                          // mul %esi
     0x48,0x83,0xC4,0x08,                // add $8,%rsp
     0xC3,                               // ret
 };

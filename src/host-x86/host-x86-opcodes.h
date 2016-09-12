@@ -980,13 +980,13 @@ typedef enum X86ShiftOpcode {
  * (1-byte opcodes 0xF6/0xF7).
  */
 typedef enum X86UnaryOpcode {
-    X86OP_UNARY_TEST    = 0,
-    X86OP_UNARY_NOT     = 2,
-    X86OP_UNARY_NEG     = 3,
-    X86OP_UNARY_MUL_AX  = 4,
-    X86OP_UNARY_IMUL_AX = 5,
-    X86OP_UNARY_DIV_AX  = 6,
-    X86OP_UNARY_IDIV_AX = 7,
+    X86OP_UNARY_TEST     = 0,
+    X86OP_UNARY_NOT      = 2,
+    X86OP_UNARY_NEG      = 3,
+    X86OP_UNARY_MUL_rAX  = 4,
+    X86OP_UNARY_IMUL_rAX = 5,
+    X86OP_UNARY_DIV_rAX  = 6,
+    X86OP_UNARY_IDIV_rAX = 7,
 } X86UnaryOpcode;
 
 /**

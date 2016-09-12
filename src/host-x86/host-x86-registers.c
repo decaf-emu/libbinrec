@@ -38,10 +38,10 @@
  *   preliminary pass over the RTL unit to allocate hardware registers for
  *   operands which must be in specific registers (such as shift counts,
  *   which must be in CL), followed by a second pass to link those
- *   into a list ordered by register birth.  The allocator is not strictly
- *   linear scan in this sense, but the extra passes only need to look at a
- *   few instructions, so it does not add a significant amount of time to
- *   the overall allocation process.
+ *   into a list ordered by register birth, before the normal allocation
+ *   pass.  The allocator is not strictly linear scan in this sense, but
+ *   the extra passes only need to look at a few instructions, so it does
+ *   not add a significant amount of time to the overall allocation process.
  *
  * - When spilling registers, the register with the shortest (rather than
  *   longest) usage interval is spilled, in order to avoid spilling the
@@ -279,6 +279,34 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index)
             }
         }
 
+        /* Special case for long multiply and divide: try to allocate rDX
+         * or rAX as appropriate.  We do this early in case both src1 and
+         * src2 die and src2 is in the preferred register; the normal
+         * register reuse logic would choose src1 instead. */
+        if (!host_allocated) {
+            if (insn->opcode == RTLOP_MULHU || insn->opcode == RTLOP_MULHS
+             || insn->opcode == RTLOP_MODU || insn->opcode == RTLOP_MODS) {
+                if (!ctx->reg_map[X86_DX]) {
+                    host_allocated = true;
+                    dest_info->host_reg = X86_DX;
+                    ctx->reg_map[X86_DX] = dest;
+                    ASSERT(ctx->regs_free & (1 << X86_DX));
+                    ctx->regs_free ^= 1 << X86_DX;
+                    ctx->regs_touched |= 1 << X86_DX;
+                }
+            } else if (insn->opcode == RTLOP_DIVU
+                    || insn->opcode == RTLOP_DIVS) {
+                if (!ctx->reg_map[X86_AX]) {
+                    host_allocated = true;
+                    dest_info->host_reg = X86_AX;
+                    ctx->reg_map[X86_AX] = dest;
+                    ASSERT(ctx->regs_free & (1 << X86_AX));
+                    ctx->regs_free ^= 1 << X86_AX;
+                    ctx->regs_touched |= 1 << X86_AX;
+                }
+            }
+        } 
+
         /* x86 doesn't have separate destination operands for most
          * instructions, so if one of the source operands (if any) dies at
          * this instruction, reuse its host register for the destination
@@ -332,9 +360,12 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index)
             }
         }
 
-        /* If none of the special cases apply, allocate a register normally,
-         * but be careful not to allocate a fixed register. */
+        /* If none of the special cases apply, allocate a register normally. */
         if (!host_allocated) {
+            /* Be careful not to allocate an unclobberable input register.
+             * (Effectively this just means RCX in shift/rotate instructions,
+             * since the fixed inputs RAX to MUL/IMUL and rDX:rAX to DIV/IDIV
+             * are also outputs.) */
             if (insn->opcode == RTLOP_SLL || insn->opcode == RTLOP_SRL
              || insn->opcode == RTLOP_SRA || insn->opcode == RTLOP_ROR) {
                 avoid_regs |= X86_CX;
@@ -345,9 +376,19 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index)
 
         /* Find a temporary register for instructions which need it. */
         bool need_temp;
+        uint32_t temp_avoid = avoid_regs;
         switch (insn->opcode) {
+          case RTLOP_MULHU:
+          case RTLOP_MULHS:
+            /* Temporary needed to save RAX if it's live across this insn. */
+            need_temp = (ctx->reg_map[X86_AX] != 0);
+            temp_avoid |= 1 << ctx->regs[src1].host_reg
+                        | 1 << ctx->regs[src2].host_reg;
+            break;
           case RTLOP_CLZ:
-            /* Temporary needed if using BSR instead of LZCNT to count bits. */
+            /* Temporary needed if using BSR instead of LZCNT to count bits.
+             * The temporary can never overlap the input for single-input
+             * instructions, so we don't need to explicitly avoid it. */
             need_temp = !(ctx->handle->setup.host_features
                           & BINREC_FEATURE_X86_LZCNT);
             break;
@@ -367,13 +408,15 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index)
             need_temp = ((dest_reg->type == RTLTYPE_ADDRESS
                           && dest_info->host_reg == src1_info->host_reg)
                          || src2_reg->death > insn_index);
+            temp_avoid |= 1 << ctx->regs[src1].host_reg
+                        | 1 << ctx->regs[src2].host_reg;
             break;
           default:
             need_temp = false;
             break;
         }
         if (need_temp) {
-            int temp_reg = get_gpr(ctx, avoid_regs);
+            int temp_reg = get_gpr(ctx, temp_avoid);
             if (temp_reg < 0) {
                 ASSERT(!"FIXME: spilling not yet implemented");
             }
@@ -390,7 +433,7 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index)
             ctx->regs_free |= 1 << dest_info->host_reg;
             ctx->reg_map[dest_info->host_reg] = 0;
         }
-    }
+    }  // if (dest)
 
     return true;
 }
@@ -457,24 +500,72 @@ static void allocate_fixed_regs_for_block(HostX86Context *ctx, int block_index)
     memcpy(ctx->blocks[block_index].initial_reg_map, ctx->reg_map,
            sizeof(ctx->reg_map));
 
-    int32_t last_cx_death = 0;
-
     for (int insn_index = block->first_insn; insn_index <= block->last_insn;
          insn_index++)
     {
         const RTLInsn * const insn = &unit->insns[insn_index];
 
         switch (insn->opcode) {
+          case RTLOP_MULHU:
+          case RTLOP_MULHS: {
+            /* MUL and IMUL read rAX and write rDX:rAX, so ideally we want
+             * one input operand in rAX, the other in rDX if it dies at this
+             * instruction, and the result in rDX since these instructions
+             * return the high word of the result. */
+
+            const RTLRegister *dest_reg = &unit->regs[insn->dest];
+            HostX86RegInfo *dest_info = &ctx->regs[insn->dest];
+            const RTLRegister *src1_reg = &unit->regs[insn->src1];
+            HostX86RegInfo *src1_info = &ctx->regs[insn->src1];
+            const RTLRegister *src2_reg = &unit->regs[insn->src2];
+            HostX86RegInfo *src2_info = &ctx->regs[insn->src2];
+
+            if (ctx->last_dx_death <= insn_index) {
+                ASSERT(dest_reg->birth == insn_index);
+                dest_info->host_allocated = true;
+                dest_info->host_reg = X86_DX;
+                /* If both src1 and src2 are candidates for getting DX,
+                 * choose the one which was born earlier, since the other
+                 * will have a better chance of getting AX below. */
+                const bool src1_ok = (!src1_info->host_allocated
+                                      && src1_reg->death == insn_index
+                                      && src1_reg->birth > ctx->last_dx_death);
+                const bool src2_ok = (!src2_info->host_allocated
+                                      && src2_reg->death == insn_index
+                                      && src2_reg->birth > ctx->last_dx_death);
+                if (src1_ok && (!src2_ok || src1_reg->birth < src2_reg->birth)) {
+                    src1_info->host_allocated = true;
+                    src1_info->host_reg = X86_DX;
+                } else if (src2_ok) {
+                    src2_info->host_allocated = true;
+                    src2_info->host_reg = X86_DX;
+                }
+                ctx->last_dx_death = dest_reg->death;
+            }
+
+            if (!src1_info->host_allocated && src1_reg->birth > ctx->last_ax_death) {
+                src1_info->host_allocated = true;
+                src1_info->host_reg = X86_AX;
+                ctx->last_ax_death = src1_reg->death;
+            } else if (!src2_info->host_allocated && src2_reg->birth > ctx->last_ax_death) {
+                src2_info->host_allocated = true;
+                src2_info->host_reg = X86_AX;
+                ctx->last_ax_death = src2_reg->death;
+            }
+
+            break;
+          }  // case RTLOP_MULH[US]
+
           case RTLOP_SLL:
           case RTLOP_SRL:
           case RTLOP_SRA:
           case RTLOP_ROR: {
             const RTLRegister *src2_reg = &unit->regs[insn->src2];
             HostX86RegInfo *src2_info = &ctx->regs[insn->src2];
-            if (!src2_info->host_allocated && src2_reg->birth > last_cx_death) {
+            if (!src2_info->host_allocated && src2_reg->birth > ctx->last_cx_death) {
                 src2_info->host_allocated = true;
                 src2_info->host_reg = X86_CX;
-                last_cx_death = src2_reg->death;
+                ctx->last_cx_death = src2_reg->death;
             }
             break;
           }  // case RTLOP_{SLL,SRL,SRA,ROR}
@@ -516,6 +607,10 @@ bool host_x86_allocate_registers(HostX86Context *ctx)
     ctx->regs_touched = 0;
 
     if (ctx->handle->host_opt & BINREC_OPT_H_X86_FIXED_REGS) {
+        ctx->last_ax_death = -1;
+        ctx->last_cx_death = -1;
+        ctx->last_dx_death = -1;
+
         for (int block_index = 0; block_index >= 0;
              block_index = unit->blocks[block_index].next_block)
         {

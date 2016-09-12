@@ -36,9 +36,8 @@ static inline void alloc_dummy_registers(RTLUnit *unit, int count,
         uint32_t reg;
         ASSERT(reg = rtl_alloc_register(unit, type));
         ASSERT(rtl_add_insn(unit, RTLOP_NOP, reg, 0, 0, 0));
-        /* Hide the register's death from the register allocator. */
-        unit->regs[reg].death = unit->num_insns;
-        ASSERT(rtl_add_insn(unit, RTLOP_NOP, 0, 0, 0, 0));
+        /* Prevent the register from dying. */
+        unit->regs[reg].death = 0x7FFFFFFF;
     }
 }
 

@@ -427,22 +427,22 @@ static bool translate_block(HostX86Context *ctx, int block_index)
             if (type_dest == RTLTYPE_ADDRESS) {
                 if (type_src1 == RTLTYPE_ADDRESS) {
                     if (host_dest != host_src1) {
-                        append_insn_ModRM_reg(&code, true, X86OP_MOV_Gv_Ev,
-                                              host_dest, host_src1);
+                        append_insn_ModRM_reg(&code, true, X86OP_MOV_Ev_Gv,
+                                              host_src1, host_dest);
                     }
                 } else {
                     if (insn->opcode == RTLOP_SCAST) {
                         append_insn_ModRM_reg(&code, true, X86OP_MOVSXD_Gv_Ev,
                                               host_dest, host_src1);
                     } else {
-                        append_insn_ModRM_reg(&code, false, X86OP_MOV_Gv_Ev,
-                                              host_dest, host_src1);
+                        append_insn_ModRM_reg(&code, false, X86OP_MOV_Ev_Gv,
+                                              host_src1, host_dest);
                     }
                 }
             } else {
                 if (host_dest != host_src1) {
-                    append_insn_ModRM_reg(&code, false, X86OP_MOV_Gv_Ev,
-                                          host_dest, host_src1);
+                    append_insn_ModRM_reg(&code, false, X86OP_MOV_Ev_Gv,
+                                          host_src1, host_dest);
                 }
             }
             break;
@@ -478,7 +478,7 @@ static bool translate_block(HostX86Context *ctx, int block_index)
                 insn->opcode == RTLOP_SUB ? X86OP_SUB_Gv_Ev :
                 insn->opcode == RTLOP_AND ? X86OP_AND_Gv_Ev :
                 insn->opcode == RTLOP_OR ? X86OP_OR_Gv_Ev :
-                /* RTLOP_XOR */ X86OP_XOR_Gv_Ev);
+                             /* RTLOP_XOR */ X86OP_XOR_Gv_Ev);
             if (host_dest == host_src2) {
                 append_insn_ModRM_reg(&code, is64, opcode,
                                       host_dest, host_src1);
@@ -515,7 +515,86 @@ static bool translate_block(HostX86Context *ctx, int block_index)
                                       host_dest, host_src2);
             }
             break;
-          }  // case RTLOP_{ADD,SUB,AND,OR,XOR}
+          }  // case RTLOP_MUL
+
+          case RTLOP_MULHU:
+          case RTLOP_MULHS: {
+            const X86Register host_dest = ctx->regs[dest].host_reg;
+            const X86Register host_src1 = ctx->regs[src1].host_reg;
+            const X86Register host_src2 = ctx->regs[src2].host_reg;
+            const bool is64 = (unit->regs[dest].type == RTLTYPE_ADDRESS);
+
+            /* The destination register will always get rDX if it's free,
+             * so if the destination is somewhere else, we need to save
+             * away the current value of RDX (all 64 bits, as usual). */
+            bool swapped_dx = false;
+            if (host_dest != X86_DX) {
+                /* If dest shares a hardware register with src1 or src2,
+                 * we need to preserve its value until the actual multiply;
+                 * otherwise, we can use a MOV for potentially less latency. */
+                if (host_dest == host_src1 || host_dest == host_src2) {
+                    swapped_dx = true;
+                    append_insn_ModRM_reg(&code, true, X86OP_XCHG_Ev_Gv,
+                                          host_dest, X86_DX);
+                } else {
+                    append_insn_ModRM_reg(&code, true, X86OP_MOV_Gv_Ev,
+                                          host_dest, X86_DX);
+                }
+            }
+            /* The register allocator gives us a temporary iff rAX is live
+             * across this instruction. */
+            if (ctx->regs[dest].temp_allocated) {
+                ASSERT(ctx->regs[dest].host_temp != X86_DX);
+                append_insn_ModRM_reg(&code, true, X86OP_MOV_Gv_Ev,
+                                      ctx->regs[dest].host_temp, X86_AX);
+            }
+
+            X86Register multiplier;
+            if (host_src2 == X86_AX) {
+                multiplier = host_src1;
+            } else {
+                if (host_src1 != X86_AX) {
+                    /* Watch out for the input operands being moved around
+                     * by XCHG! */
+                    X86Register multiplicand = host_src1;
+                    if (swapped_dx) {
+                        if (multiplicand == X86_DX) {
+                            multiplicand = host_dest;
+                        } else if (multiplicand == host_dest) {
+                            multiplicand = X86_DX;
+                        }
+                    }
+                    append_insn_ModRM_reg(&code, is64, X86OP_MOV_Gv_Ev,
+                                          X86_AX, multiplicand);
+                }
+                multiplier = host_src2;
+            }
+            if (swapped_dx) {
+                if (multiplier == X86_DX) {
+                    multiplier = host_dest;
+                } else if (multiplier == host_dest) {
+                    multiplier = X86_DX;
+                }
+            }
+
+            const X86UnaryOpcode opcode = (
+                insn->opcode == RTLOP_MULHU ? X86OP_UNARY_MUL_rAX:
+                             /* RTLOP_MULHS */ X86OP_UNARY_IMUL_rAX);
+            append_insn_ModRM_reg(&code, is64, X86OP_UNARY_Ev, opcode,
+                                  multiplier);
+
+            if (host_dest != X86_DX) {
+                /* This is always an XCHG, since both dest and the former
+                 * rDX now have live values. */
+                append_insn_ModRM_reg(&code, true, X86OP_XCHG_Ev_Gv,
+                                      X86_DX, host_dest);
+            }
+            if (ctx->regs[dest].temp_allocated) {
+                append_insn_ModRM_reg(&code, true, X86OP_MOV_Gv_Ev,
+                                      X86_AX, ctx->regs[dest].host_temp);
+            }
+            break;
+          }  // case RTLOP_MULH[US]
 
           case RTLOP_SLL:
           case RTLOP_SRL:

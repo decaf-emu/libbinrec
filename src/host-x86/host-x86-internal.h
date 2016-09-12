@@ -130,14 +130,19 @@ typedef struct HostX86Context {
      * restoring registers in the prologue/epilogue). */
     uint32_t regs_touched;
 
+    /* RTL register whose value was used to set the condition codes, or 0
+     * if the flags do not represent the value of a particular register. */
+    uint16_t cc_reg;
     /* List of registers which are allocated to specific hardware registers
      * due to instruction requirements (e.g. shift counts in CL).  The
      * first register in the list is stored here, and subsequent registers
      * (in birth order) can be found by following the next_fixed links. */
     uint16_t fixed_reg_list;
-    /* RTL register whose value was used to set the condition codes, or 0
-     * if the flags do not represent the value of a particular register. */
-    uint16_t cc_reg;
+    /* Instruction at which the register currently allocated to rAX/rCX/rDX
+     * dies.  Used by the register allocator in fixed-register optimization. */
+    int32_t last_ax_death;
+    int32_t last_cx_death;
+    int32_t last_dx_death;
 
     /* Stack frame size.  Must be a multiple of 16. */
     int frame_size;

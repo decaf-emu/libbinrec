@@ -129,9 +129,12 @@ typedef enum RTLOpcode {
     RTLOP_GET_ALIAS,    // dest = alias[other]
                         //    [other is an alias register index]
 
-    /* Integer operations */
+    /* Non-computational operations */
     RTLOP_MOVE,         // dest = src1
     RTLOP_SELECT,       // dest = other ? src1 : src2
+                        //    [other must be of integer type]
+
+    /* Integer operations */
     RTLOP_SCAST,        // dest = (typeof(dest))(signed)src1
     RTLOP_ZCAST,        // dest = (typeof(dest))(unsigned)src1
     RTLOP_ADD,          // dest = src1 + src2
