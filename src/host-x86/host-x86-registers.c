@@ -32,7 +32,16 @@
  * extend through the end of that block (the latest block in code stream
  * order if there is more than one).
  *
- * The basic algorithm is tweaked as follows:
+ * The basic algorithm is modified as follows:
+ *
+ * - If the FIXED_REGS optimization is enabled, the allocator performs a
+ *   preliminary pass over the RTL unit to allocate hardware registers for
+ *   operands which must be in specific registers (such as shift counts,
+ *   which must be in CL), followed by a second pass to link those
+ *   into a list ordered by register birth.  The allocator is not strictly
+ *   linear scan in this sense, but the extra passes only need to look at a
+ *   few instructions, so it does not add a significant amount of time to
+ *   the overall allocation process.
  *
  * - When spilling registers, the register with the shortest (rather than
  *   longest) usage interval is spilled, in order to avoid spilling the
@@ -91,23 +100,24 @@ static inline int get_xmm(HostX86Context *ctx, uint32_t avoid_regs)
 
 /**
  * allocate_register:  Allocate a host register for the given RTL register.
+ * The reg_info->host_allocated flag is not modified.
  *
  * [Parameters]
  *     ctx: Translation context.
  *     reg_index: RTL register number.
  *     reg: RTLRegister structure for the register.
- *     reg_info: HostX86RegInfo structure for the register.
  *     avoid_regs: Bitmask of registers to not use even if free.
+ * [Return value]
+ *     Allocated register index.
  */
-static void allocate_register(HostX86Context *ctx, int reg_index,
-                              const RTLRegister *reg, HostX86RegInfo *reg_info,
-                              uint32_t avoid_regs)
+static X86Register allocate_register(
+    HostX86Context *ctx, int reg_index, const RTLRegister *reg,
+    uint32_t avoid_regs)
 {
     ASSERT(ctx);
     ASSERT(ctx->unit);
     ASSERT(reg_index > 0);
     ASSERT(reg_index < ctx->unit->next_reg);
-    ASSERT(!reg_info->host_allocated);
 
     int host_reg;
     if (reg->type == RTLTYPE_INT32 || reg->type == RTLTYPE_ADDRESS) {
@@ -117,12 +127,10 @@ static void allocate_register(HostX86Context *ctx, int reg_index,
     }
     if (host_reg >= 0) {
         ASSERT(!ctx->reg_map[host_reg]);
-        reg_info->host_allocated = true;
-        reg_info->host_reg = host_reg;
         ctx->reg_map[host_reg] = reg_index;
         ctx->regs_free ^= 1 << host_reg;
         ctx->regs_touched |= 1 << host_reg;
-        return;
+        return host_reg;
     }
 
     ASSERT(!"FIXME: spilling not yet implemented");
@@ -186,7 +194,6 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index)
     if (src2) {
         if (LIKELY(src2_reg->source != RTLREG_UNDEFINED)) {
             ASSERT(src2_info->host_allocated);
-            // FIXME: try to move shift counts into CL
             if (src2_reg->death == insn_index) {
                 ctx->regs_free |= 1 << src2_info->host_reg;
                 ctx->reg_map[src2_info->host_reg] = 0;
@@ -212,25 +219,58 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index)
     }
 
     if (dest) {
-        /* SSA implies that destination registers should never have a host
-         * register allocated. */
+        /* SSA implies that destination registers should never have been
+         * seen before and should therefore never have a hardware register
+         * allocated.  However, we may have already allocated a GPR if the
+         * register is used in an instruction with fixed operands, so in
+         * that case just update the register map. */
         ASSERT(dest_reg->birth == insn_index);
-        ASSERT(!dest_info->host_allocated);
+
+        bool host_allocated = dest_info->host_allocated;
+        dest_info->host_allocated = true;  // We'll find one eventually.
 
         uint32_t avoid_regs = 0;
+
+        if (host_allocated) {
+            const X86Register host_reg = dest_info->host_reg;
+            ASSERT(!ctx->reg_map[host_reg]);
+            ctx->reg_map[host_reg] = dest;
+            ASSERT(ctx->regs_free & (1 << host_reg));
+            ctx->regs_free ^= 1 << host_reg;
+            ctx->regs_touched |= 1 << host_reg;
+
+            /* This must have been the first register on the fixed-regs
+             * list.  Advance the list pointer so we don't have to scan
+             * over this register again. */
+            ASSERT(ctx->fixed_reg_list == dest);
+            ctx->fixed_reg_list = dest_info->next_fixed;
+        } else {
+            /* Make sure not to collide with any registers that have
+             * already been allocated. */
+            for (uint32_t r = ctx->fixed_reg_list; r;
+                 r = ctx->regs[r].next_fixed)
+            {
+                if (unit->regs[r].birth >= dest_reg->death) {
+                    break;
+                }
+                ASSERT(ctx->regs[r].host_allocated);
+                avoid_regs |= 1 << ctx->regs[r].host_reg;
+            }
+        }
 
         /* Special case for LOAD_ARG: try to reuse the same register the
          * argument is passed in. */
         // FIXME: only appropriate if no native calls
-        if (insn->opcode == RTLOP_LOAD_ARG) {
+        if (!host_allocated && insn->opcode == RTLOP_LOAD_ARG) {
             const int target_reg =
                 host_x86_int_arg_register(ctx, insn->arg_index);
             if (target_reg < 0) {
                 log_error(ctx->handle, "LOAD_ARG %d not supported (argument"
                           " is not in a register)", insn->arg_index);
                 return false;
-            } else if (!ctx->reg_map[target_reg]) {
-                dest_info->host_allocated = true;
+            } else if (!ctx->reg_map[target_reg]
+                       && !(avoid_regs & (1 << target_reg))) {
+                host_allocated = true;
                 dest_info->host_reg = target_reg;
                 ctx->reg_map[target_reg] = dest;
                 ASSERT(ctx->regs_free & (1 << target_reg));
@@ -243,22 +283,26 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index)
          * instructions, so if one of the source operands (if any) dies at
          * this instruction, reuse its host register for the destination
          * to avoid an unnecessary register move. */
-        if (!dest_info->host_allocated
-         && src1 && src1_reg->death == insn_index) {
+        if (!host_allocated && src1 && src1_reg->death == insn_index) {
             /* The first operand's register can (almost) always be reused
-             * for the destination.  The one exception is BFINS with
-             * src1==src2, since we need to write dest before reading src2. */
-            if (!(insn->opcode == RTLOP_BFINS
-                  && src1_info->host_reg == src2_info->host_reg)) {
-                dest_info->host_allocated = true;
+             * for the destination.  The exceptions are shifts where src1
+             * is in rCX since we need CL for the count, and BFINS with
+             * src1==src2 since we need to write dest before reading src2. */
+            if ((insn->opcode == RTLOP_BFINS
+                 && src1_info->host_reg == src2_info->host_reg)
+                || ((insn->opcode == RTLOP_SLL || insn->opcode == RTLOP_SRL
+                     || insn->opcode == RTLOP_SRA || insn->opcode == RTLOP_ROR)
+                    && src1_info->host_reg == X86_CX)) {
+                /* Can't reuse src1. */
+            } else {
+                host_allocated = true;
                 dest_info->host_reg = src1_info->host_reg;
                 ctx->reg_map[dest_info->host_reg] = dest;
                 ASSERT(ctx->regs_free & (1 << dest_info->host_reg));
                 ctx->regs_free ^= 1 << dest_info->host_reg;
             }
         }
-        if (!dest_info->host_allocated
-         && src2 && src2_reg->death == insn_index) {
+        if (!host_allocated && src2 && src2_reg->death == insn_index) {
             /* The second operand's register can only be reused for
              * commutative operations. */
             static const uint8_t non_commutative[RTLOP__LAST / 8 + 1] = {
@@ -280,7 +324,7 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index)
                 /* Make sure it's also not chosen by the regular allocator. */
                 avoid_regs |= 1 << src2_info->host_reg;
             } else {
-                dest_info->host_allocated = true;
+                host_allocated = true;
                 dest_info->host_reg = src2_info->host_reg;
                 ctx->reg_map[dest_info->host_reg] = dest;
                 ASSERT(ctx->regs_free & (1 << dest_info->host_reg));
@@ -288,9 +332,15 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index)
             }
         }
 
-        /* If none of the special cases apply, allocate a register normally. */
-        if (!dest_info->host_allocated) {
-            allocate_register(ctx, dest, dest_reg, dest_info, avoid_regs);
+        /* If none of the special cases apply, allocate a register normally,
+         * but be careful not to allocate a fixed register. */
+        if (!host_allocated) {
+            if (insn->opcode == RTLOP_SLL || insn->opcode == RTLOP_SRL
+             || insn->opcode == RTLOP_SRA || insn->opcode == RTLOP_ROR) {
+                avoid_regs |= X86_CX;
+            }
+            dest_info->host_reg =
+                allocate_register(ctx, dest, dest_reg, avoid_regs);
         }
 
         /* Find a temporary register for instructions which need it. */
@@ -328,7 +378,7 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index)
                 ASSERT(!"FIXME: spilling not yet implemented");
             }
             dest_info->host_temp = (uint8_t)temp_reg;
-            dest_info->temp_allocated = 1;
+            dest_info->temp_allocated = true;
             ctx->regs_touched |= 1 << temp_reg;
         }
 
@@ -382,6 +432,59 @@ static bool allocate_regs_for_block(HostX86Context *ctx, int block_index)
     return true;
 }
 
+/*-----------------------------------------------------------------------*/
+
+/**
+ * allocate_fixed_regs_for_block:  Allocate host registers for RTL
+ * registers with allocation constraints in the given basic block.
+ *
+ * [Parameters]
+ *     ctx: Translation context.
+ *     block_index: Index of basic block in ctx->unit->blocks[].
+ */
+static void allocate_fixed_regs_for_block(HostX86Context *ctx, int block_index)
+{
+    ASSERT(ctx);
+    ASSERT(ctx->unit);
+    ASSERT(block_index >= 0);
+    ASSERT(block_index < ctx->unit->num_blocks);
+
+    const RTLUnit * const unit = ctx->unit;
+    const RTLBlock * const block = &unit->blocks[block_index];
+
+    STATIC_ASSERT(sizeof(ctx->blocks[block_index].initial_reg_map)
+                  == sizeof(ctx->reg_map), "Mismatched reg_map sizes");
+    memcpy(ctx->blocks[block_index].initial_reg_map, ctx->reg_map,
+           sizeof(ctx->reg_map));
+
+    int32_t last_cx_death = 0;
+
+    for (int insn_index = block->first_insn; insn_index <= block->last_insn;
+         insn_index++)
+    {
+        const RTLInsn * const insn = &unit->insns[insn_index];
+
+        switch (insn->opcode) {
+          case RTLOP_SLL:
+          case RTLOP_SRL:
+          case RTLOP_SRA:
+          case RTLOP_ROR: {
+            const RTLRegister *src2_reg = &unit->regs[insn->src2];
+            HostX86RegInfo *src2_info = &ctx->regs[insn->src2];
+            if (!src2_info->host_allocated && src2_reg->birth > last_cx_death) {
+                src2_info->host_allocated = true;
+                src2_info->host_reg = X86_CX;
+                last_cx_death = src2_reg->death;
+            }
+            break;
+          }  // case RTLOP_{SLL,SRL,SRA,ROR}
+
+          default:
+            break;  // Nothing to do in this pass.
+        }
+    }
+}
+
 /*************************************************************************/
 /********************** Internal interface routines **********************/
 /*************************************************************************/
@@ -411,6 +514,34 @@ bool host_x86_allocate_registers(HostX86Context *ctx)
     memset(ctx->reg_map, 0, sizeof(ctx->reg_map));
     ctx->regs_free = ~UINT32_C(0) ^ 1<<X86_SP;  // Don't try to allocate SP!
     ctx->regs_touched = 0;
+
+    if (ctx->handle->host_opt & BINREC_OPT_H_X86_FIXED_REGS) {
+        for (int block_index = 0; block_index >= 0;
+             block_index = unit->blocks[block_index].next_block)
+        {
+            allocate_fixed_regs_for_block(ctx, block_index);
+        }
+
+        int last_fixed_reg = 0;
+        for (int block_index = 0; block_index >= 0;
+             block_index = unit->blocks[block_index].next_block)
+        {
+            const RTLBlock * const block = &unit->blocks[block_index];
+            for (int insn_index = block->first_insn;
+                 insn_index <= block->last_insn; insn_index++)
+            {
+                const RTLInsn * const insn = &unit->insns[insn_index];
+                if (insn->dest && ctx->regs[insn->dest].host_allocated) {
+                    if (last_fixed_reg) {
+                        ctx->regs[last_fixed_reg].next_fixed = insn->dest;
+                    } else {
+                        ctx->fixed_reg_list = insn->dest;
+                    }
+                    last_fixed_reg = insn->dest;
+                }
+            }
+        }
+    }
 
     for (int block_index = 0; block_index >= 0;
          block_index = unit->blocks[block_index].next_block)

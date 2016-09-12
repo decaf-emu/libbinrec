@@ -14,6 +14,7 @@
 static const binrec_setup_t setup = {
     .host = BINREC_ARCH_X86_64_WINDOWS,
 };
+static const unsigned int host_opt = 0;
 
 static int add_rtl(RTLUnit *unit)
 {

@@ -474,13 +474,22 @@ typedef struct binrec_setup_t {
 #define BINREC_OPT_H_X86_CONSTANT_OPERANDS  (1<<1)
 
 /**
+ * BINREC_OPT_H_X86_FIXED_REGS:  When an instruction requires an operand to
+ * be in a specific hardware register (shift counts must be in CL, for
+ * example), try harder to allocate that hardware register for the operand.
+ * This requires an extra pass over the translated machine code during
+ * register allocation.
+ */
+#define BINREC_OPT_H_X86_FIXED_REGS  (1<<2)
+
+/**
  * BINREC_OPT_H_X86_FORWARD_CONDITIONS:  When a register used as the
  * condition for a conditional branch or move is the boolean result of a
  * comparison, forward the comparison condition to the branch or move
  * instruction instead of storing the comparison result in a register and
  * testing the zeroness of that register.
  */
-#define BINREC_OPT_H_X86_FORWARD_CONDITIONS  (1<<2)
+#define BINREC_OPT_H_X86_FORWARD_CONDITIONS  (1<<3)
 
 /**
  * BINREC_OPT_H_X86_MEMORY_OPERANDS:  Make use of register-memory forms of
@@ -500,14 +509,14 @@ typedef struct binrec_setup_t {
  * be performed in registers, and loads and stores will be translated as
  * separate instructions.
  */
-#define BINREC_OPT_H_X86_MEMORY_OPERANDS  (1<<3)
+#define BINREC_OPT_H_X86_MEMORY_OPERANDS  (1<<4)
 
 /**
  * BINREC_OPT_H_X86_SETCC_ZX:  Detect when the only the low byte of the
  * result of a comparison instruction is used, and suppress zero-extension
  * of the result to the full operand size (32 or 64 bits).
  */
-#define BINREC_OPT_H_X86_SETCC_ZX  (1<<4)
+#define BINREC_OPT_H_X86_SETCC_ZX  (1<<5)
 
 /*************************************************************************/
 /******** Interface: Library and runtime environment information *********/

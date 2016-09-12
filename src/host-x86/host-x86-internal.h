@@ -82,8 +82,11 @@ typedef struct HostX86RegInfo {
     uint8_t host_temp;
     /* Has a temporary host register been allocated? */
     uint8_t temp_allocated;
+    /* Next register in the fixed-allocation list, or 0 if the end of the
+     * list. */
+    uint16_t next_fixed;
     /* Next register in the merge chain, or 0 if the end of the chain. */
-    uint32_t next_merged;
+    uint16_t next_merged;
 } HostX86RegInfo;
 
 /* Data associated with each basic block. */
@@ -91,7 +94,7 @@ typedef struct HostX86BlockInfo {
     /* Map from host registers to RTL registers as of the beginning of the
      * block.  Set during register allocation and used to initialize the
      * current register map when starting to translate the block. */
-    uint32_t initial_reg_map[32];
+    uint16_t initial_reg_map[32];
 
     /* Code buffer offset of an unresolved branch instruction at the end of
      * this block, or -1 if the block does not have an unresolved branch. */
@@ -120,15 +123,21 @@ typedef struct HostX86Context {
     long *label_offsets;
 
     /* Current mapping from x86 to RTL registers. */
-    uint32_t reg_map[32];
+    uint16_t reg_map[32];
     /* Current bitmap of available registers. */
     uint32_t regs_free;
     /* Bitmap of registers which are used at least once (for saving and
      * restoring registers in the prologue/epilogue). */
     uint32_t regs_touched;
+
+    /* List of registers which are allocated to specific hardware registers
+     * due to instruction requirements (e.g. shift counts in CL).  The
+     * first register in the list is stored here, and subsequent registers
+     * (in birth order) can be found by following the next_fixed links. */
+    uint16_t fixed_reg_list;
     /* RTL register whose value was used to set the condition codes, or 0
      * if the flags do not represent the value of a particular register. */
-    uint32_t cc_reg;
+    uint16_t cc_reg;
 
     /* Stack frame size.  Must be a multiple of 16. */
     int frame_size;

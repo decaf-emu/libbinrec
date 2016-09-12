@@ -517,6 +517,60 @@ static bool translate_block(HostX86Context *ctx, int block_index)
             break;
           }  // case RTLOP_{ADD,SUB,AND,OR,XOR}
 
+          case RTLOP_SLL:
+          case RTLOP_SRL:
+          case RTLOP_SRA:
+          case RTLOP_ROR: {
+            const X86Register host_dest = ctx->regs[dest].host_reg;
+            const X86Register host_src1 = ctx->regs[src1].host_reg;
+            const X86Register host_src2 = ctx->regs[src2].host_reg;
+            ASSERT(host_src2 != host_dest);
+            const bool is64 = (unit->regs[dest].type == RTLTYPE_ADDRESS);
+            const X86Opcode opcode = (
+                insn->opcode == RTLOP_SLL ? X86OP_SHIFT_SHL :
+                insn->opcode == RTLOP_SRL ? X86OP_SHIFT_SHR :
+                insn->opcode == RTLOP_SRA ? X86OP_SHIFT_SAR :
+                /* RTLOP_ROR */ X86OP_SHIFT_ROR);
+
+            if (host_dest != host_src1) {
+                append_insn_ModRM_reg(&code, is64, X86OP_MOV_Gv_Ev,
+                                      host_dest, host_src1);
+            }
+
+            /* If we couldn't allocate rCX for the second operand, swap
+             * it with whatever's in there now.  We don't know what size
+             * the value in rCX is, so always exchange in 64-bit to be safe.
+             * This has to come after the src1->dest copy! */
+            if (host_src2 != X86_CX) {
+                append_insn_ModRM_reg(&code, true, X86OP_XCHG_Ev_Gv,
+                                      X86_CX, host_src2);
+            }
+
+            /* If dest was in rCX, it's now in src2, so be sure to shift
+             * the proper register. */
+            if (host_dest == X86_CX) {
+                append_insn_ModRM_reg(&code, is64, X86OP_SHIFT_Ev_CL,
+                                      opcode, host_src2);
+            } else {
+                append_insn_ModRM_reg(&code, is64, X86OP_SHIFT_Ev_CL,
+                                      opcode, host_dest);
+            }
+
+            /* If we had to swap rCX, restore the original register values.
+             * But prefer MOV (and discard src2) if src2 dies on this
+             * instruction, since MOV can be zero-latency. */
+            if (host_src2 != X86_CX) {
+                if (unit->regs[src2].death == insn_index) {
+                    append_insn_ModRM_reg(&code, true, X86OP_MOV_Gv_Ev,
+                                          X86_CX, host_src2);
+                } else {
+                    append_insn_ModRM_reg(&code, true, X86OP_XCHG_Ev_Gv,
+                                          X86_CX, host_src2);
+                }
+            }
+            break;
+          }  // case RTLOP_{SLL,SRL,SRA,ROR}
+
           case RTLOP_CLZ: {
             const X86Register host_dest = ctx->regs[dest].host_reg;
             const X86Register host_src1 = ctx->regs[src1].host_reg;
@@ -837,6 +891,7 @@ static bool translate_block(HostX86Context *ctx, int block_index)
                 if (imm == 0) {
                     append_insn_ModRM_reg(&code, false, X86OP_XOR_Gv_Ev,
                                           host_dest, host_dest);
+                    // FIXME: need to go back and fill these in all over
                     ctx->cc_reg = dest;
                 } else if (imm <= UINT64_C(0xFFFFFFFF)) {
                     append_insn_R(&code, false, X86OP_MOV_rAX_Iv, host_dest);

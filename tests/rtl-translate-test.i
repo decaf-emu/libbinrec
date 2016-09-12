@@ -20,6 +20,9 @@
  *      Define this to a setup structure which will be passed to
  *      binrec_create_handle().
  *
+ * - static const unsigned int host_opt
+ *      Define this to the set of host optimization flags to enable.
+ *
  * - bool add_rtl(RTLUnit *unit)
  *      This function will be called to fill the RTL unit with
  *      instructions before calling the translation function.  It should
@@ -47,6 +50,7 @@ int main(void)
     final_setup.log = log_capture;
     binrec_t *handle;
     EXPECT(handle = binrec_create_handle(&final_setup));
+    binrec_set_optimization_flags(handle, 0, 0, host_opt);
 
     RTLUnit *unit;
     EXPECT(unit = rtl_create_unit(handle));
