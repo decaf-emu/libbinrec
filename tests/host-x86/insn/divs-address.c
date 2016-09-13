@@ -21,13 +21,13 @@ static int add_rtl(RTLUnit *unit)
     alloc_dummy_registers(unit, 1, RTLTYPE_INT32);
 
     uint32_t reg1, reg2, reg3;
-    EXPECT(reg1 = rtl_alloc_register(unit, RTLTYPE_INT32));
+    EXPECT(reg1 = rtl_alloc_register(unit, RTLTYPE_ADDRESS));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg1, 0, 0, 0));
-    EXPECT(reg2 = rtl_alloc_register(unit, RTLTYPE_INT32));
+    EXPECT(reg2 = rtl_alloc_register(unit, RTLTYPE_ADDRESS));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg2, 0, 0, 0));
-    EXPECT(reg3 = rtl_alloc_register(unit, RTLTYPE_INT32));
-    EXPECT(rtl_add_insn(unit, RTLOP_SLL, reg3, reg1, reg2, 0));
-    EXPECT(rtl_add_insn(unit, RTLOP_NOP, 0, 0, reg2, 0));
+    EXPECT(reg3 = rtl_alloc_register(unit, RTLTYPE_ADDRESS));
+    EXPECT(rtl_add_insn(unit, RTLOP_DIVS, reg3, reg1, reg2, 0));
+    EXPECT(rtl_add_insn(unit, RTLOP_NOP, 0, reg1, reg2, 0));
 
     return EXIT_SUCCESS;
 }
@@ -36,10 +36,13 @@ static const uint8_t expected_code[] = {
     0x48,0x83,0xEC,0x08,                // sub $8,%rsp
     0x33,0xC9,                          // xor %ecx,%ecx
     0x33,0xD2,                          // xor %edx,%edx
-    0x48,0x87,0xCA,                     // xchg %rcx,%rdx
-    /* ECX was allocated to reg3, but it's been swapped with EDX here. */
-    0xD3,0xE2,                          // shl %cl,%edx
-    0x48,0x87,0xCA,                     // xchg %rcx,%rdx
+    0x48,0x8B,0xFA,                     // mov %rdx,%rdi
+    0x48,0x8B,0xF0,                     // mov %rax,%rsi
+    0x48,0x8B,0xC1,                     // mov %rcx,%rax
+    0x48,0x99,                          // cqo
+    0x48,0xF7,0xFF,                     // idiv %rdi
+    0x48,0x87,0xC6,                     // xchg %rax,%rsi
+    0x48,0x8B,0xD7,                     // mov %rdi,%rdx
     0x48,0x83,0xC4,0x08,                // add $8,%rsp
     0xC3,                               // ret
 };

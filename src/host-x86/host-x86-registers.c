@@ -352,7 +352,12 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index)
                       case RTLOP_SRL:
                       case RTLOP_SRA:
                       case RTLOP_ROR:
-                        src1_ok = (src1_info->host_reg != X86_CX);
+                        /* src1==src2 should normally never happen (unless
+                         * the input is doing something bizarre), but if it
+                         * does it'll confuse the translator, so avoid that
+                         * case as well. */
+                        src1_ok = (src1_info->host_reg != X86_CX
+                                   && src1 != src2);
                         break;
                       case RTLOP_BFINS:
                         src1_ok = (src1_info->host_reg != src2_info->host_reg);
@@ -412,7 +417,7 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index)
              * are also outputs.) */
             if (insn->opcode == RTLOP_SLL || insn->opcode == RTLOP_SRL
              || insn->opcode == RTLOP_SRA || insn->opcode == RTLOP_ROR) {
-                avoid_regs |= X86_CX;
+                avoid_regs |= 1 << X86_CX;
             }
             dest_info->host_reg =
                 allocate_register(ctx, dest, dest_reg, avoid_regs);
@@ -431,8 +436,10 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index)
             break;
           case RTLOP_DIVU:
           case RTLOP_DIVS:
-            /* Temporary needed to save RDX if it's live across this insn. */
-            need_temp = (ctx->reg_map[X86_DX] != 0);
+            /* Temporary needed to save RDX if it's live across this insn
+             * or if it's allocated to src2 (even if src2 dies here). */
+            need_temp = (ctx->reg_map[X86_DX] != 0
+                         || ctx->regs[src2].host_reg == X86_DX);
             temp_avoid |= 1 << ctx->regs[src1].host_reg
                         | 1 << ctx->regs[src2].host_reg;
             break;
@@ -626,17 +633,27 @@ static void allocate_fixed_regs_for_block(HostX86Context *ctx, int block_index)
             HostX86RegInfo *dest_info = &ctx->regs[insn->dest];
             if (ctx->last_ax_death <= insn_index) {
                 ASSERT(dest_reg->birth == insn_index);
-                dest_info->host_allocated = true;
-                dest_info->host_reg = X86_AX;
-                const RTLRegister *src1_reg = &unit->regs[insn->src1];
-                HostX86RegInfo *src1_info = &ctx->regs[insn->src1];
-                if (!src1_info->host_allocated
-                 && src1_reg->death == insn_index
-                 && src1_reg->birth > ctx->last_ax_death) {
-                    src1_info->host_allocated = true;
-                    src1_info->host_reg = X86_AX;
+                /* We require that dest and src2 not share the same
+                 * register, so if src2 is already in rAX, we can't assign
+                 * it to dest here. */
+                HostX86RegInfo *src2_info = &ctx->regs[insn->src2];
+                if (!(src2_info->host_allocated
+                      && src2_info->host_reg == X86_AX)) {
+                    dest_info->host_allocated = true;
+                    dest_info->host_reg = X86_AX;
+                    /* Make sure src2 doesn't get rAX in the main
+                     * allocation pass. */
+                    src2_info->avoid_regs |= 1 << X86_AX;
+                    const RTLRegister *src1_reg = &unit->regs[insn->src1];
+                    HostX86RegInfo *src1_info = &ctx->regs[insn->src1];
+                    if (!src1_info->host_allocated
+                     && src1_reg->death == insn_index
+                     && src1_reg->birth > ctx->last_ax_death) {
+                        src1_info->host_allocated = true;
+                        src1_info->host_reg = X86_AX;
+                    }
+                    ctx->last_ax_death = dest_reg->death;
                 }
-                ctx->last_ax_death = dest_reg->death;
             }
             break;
           }  // case RTLOP_DIV[US]
@@ -647,18 +664,13 @@ static void allocate_fixed_regs_for_block(HostX86Context *ctx, int block_index)
             HostX86RegInfo *dest_info = &ctx->regs[insn->dest];
             if (ctx->last_dx_death <= insn_index) {
                 ASSERT(dest_reg->birth == insn_index);
-                /* We require that dest and src2 not share the same
-                 * register, so if src2 is already in rDX, we can't assign
-                 * it to dest here. */
                 HostX86RegInfo *src2_info = &ctx->regs[insn->src2];
                 if (!(src2_info->host_allocated
                       && src2_info->host_reg == X86_DX)) {
                     dest_info->host_allocated = true;
                     dest_info->host_reg = X86_DX;
+                    src2_info->avoid_regs |= 1 << X86_DX;
                     ctx->last_dx_death = dest_reg->death;
-                    /* Make sure src2 doesn't get rDX in the main
-                     * allocation pass. */
-                    src2_info->avoid_regs = 1 << X86_DX;
                 }
             }
             const RTLRegister *src1_reg = &unit->regs[insn->src1];

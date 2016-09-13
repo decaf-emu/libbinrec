@@ -617,6 +617,81 @@ static bool translate_block(HostX86Context *ctx, int block_index)
             break;
           }  // case RTLOP_MULH[US]
 
+          case RTLOP_DIVU:
+          case RTLOP_DIVS: {
+            const X86Register host_dest = ctx->regs[dest].host_reg;
+            const X86Register host_src1 = ctx->regs[src1].host_reg;
+            const X86Register host_src2 = ctx->regs[src2].host_reg;
+            const bool is64 = (unit->regs[dest].type == RTLTYPE_ADDRESS);
+            ASSERT(host_dest != host_src2);
+            ASSERT(host_dest != X86_DX);
+
+            X86Register divisor = host_src2;
+
+            /* As with MULH*, the presence of a temporary register means
+             * we need to save the non-result output register.  For
+             * division, that means either the register is live across this
+             * instruction or it's assigned to src2 and we need to move
+             * src2 out of the way of the dividend registers (rDX:rAX). */
+            if (ctx->regs[dest].temp_allocated) {
+                ASSERT(ctx->regs[dest].host_temp != X86_AX);
+                append_insn_ModRM_reg(&code, true, X86OP_MOV_Gv_Ev,
+                                      ctx->regs[dest].host_temp, X86_DX);
+                if (divisor == X86_DX) {
+                    divisor = ctx->regs[dest].host_temp;
+                }
+            }
+            ASSERT(divisor != X86_DX);
+
+            /* As with MULH*, if dest is not in the result register then
+             * we need to save the result register's value.  For division,
+             * we never allocate dest and src2 in the same register, so we
+             * only need to check for host_dest == host_src1. */
+            X86Register dividend = host_src1;
+            if (host_dest != X86_AX) {
+                if (dividend == host_dest) {
+                    append_insn_ModRM_reg(&code, true, X86OP_XCHG_Ev_Gv,
+                                          host_dest, X86_AX);
+                    dividend = X86_AX;
+                } else {
+                    append_insn_ModRM_reg(&code, true, X86OP_MOV_Gv_Ev,
+                                          host_dest, X86_AX);
+                }
+                /* RAX will be destroyed before the divide instruction, so
+                 * make sure not to use it as the divisor in any case. */
+                if (divisor == X86_AX) {
+                    divisor = host_dest;
+                }
+            }
+            ASSERT(divisor != X86_AX);
+
+            if (dividend != X86_AX) {
+                append_insn_ModRM_reg(&code, is64, X86OP_MOV_Gv_Ev,
+                                      X86_AX, host_src1);
+            }
+
+            if (insn->opcode == RTLOP_DIVU) {
+                append_insn_ModRM_reg(&code, false, X86OP_XOR_Gv_Ev,
+                                      X86_DX, X86_DX);
+                append_insn_ModRM_reg(&code, is64, X86OP_UNARY_Ev,
+                                      X86OP_UNARY_DIV_rAX, divisor);
+            } else {
+                append_insn(&code, is64, X86OP_CWD);
+                append_insn_ModRM_reg(&code, is64, X86OP_UNARY_Ev,
+                                      X86OP_UNARY_IDIV_rAX, divisor);
+            }
+
+            if (host_dest != X86_AX) {
+                append_insn_ModRM_reg(&code, true, X86OP_XCHG_Ev_Gv,
+                                      X86_AX, host_dest);
+            }
+            if (ctx->regs[dest].temp_allocated) {
+                append_insn_ModRM_reg(&code, true, X86OP_MOV_Gv_Ev,
+                                      X86_DX, ctx->regs[dest].host_temp);
+            }
+            break;
+          }  // case RTLOP_DIV[US]
+
           case RTLOP_MODU:
           case RTLOP_MODS: {
             const X86Register host_dest = ctx->regs[dest].host_reg;
@@ -624,11 +699,10 @@ static bool translate_block(HostX86Context *ctx, int block_index)
             const X86Register host_src2 = ctx->regs[src2].host_reg;
             const bool is64 = (unit->regs[dest].type == RTLTYPE_ADDRESS);
             ASSERT(host_dest != host_src2);
+            ASSERT(host_dest != X86_AX);
 
             X86Register divisor = host_src2;
 
-            /* As with MULH*, the presence of a temporary register means
-             * we need to save the non-result output register. */
             if (ctx->regs[dest].temp_allocated) {
                 ASSERT(ctx->regs[dest].host_temp != X86_DX);
                 append_insn_ModRM_reg(&code, true, X86OP_MOV_Gv_Ev,
@@ -637,27 +711,25 @@ static bool translate_block(HostX86Context *ctx, int block_index)
                     divisor = ctx->regs[dest].host_temp;
                 }
             }
+            ASSERT(divisor != X86_AX);
 
             if (host_src1 != X86_AX) {
-                ASSERT(divisor != X86_AX);
                 append_insn_ModRM_reg(&code, is64, X86OP_MOV_Gv_Ev,
                                       X86_AX, host_src1);
             }
 
-            /* As with MULH*, if dest is not in the result register then
-             * we need to save the result register's value.  For division,
+            /* Save the result register's value if necesssary.  For modulo,
              * we take care of moving src1 to rAX first and we never
              * allocate dest and src2 in the same register, so this can
-             * just be a regular MOV. */
+             * always be a regular MOV. */
             if (host_dest != X86_DX) {
                 append_insn_ModRM_reg(&code, true, X86OP_MOV_Gv_Ev,
                                       host_dest, X86_DX);
-                /* RDX will be destroyed before the divide instruction, so
-                 * make sure not to use it as the divisor. */
                 if (divisor == X86_DX) {
                     divisor = host_dest;
                 }
             }
+            ASSERT(divisor != X86_DX);
 
             if (insn->opcode == RTLOP_MODU) {
                 append_insn_ModRM_reg(&code, false, X86OP_XOR_Gv_Ev,
@@ -688,6 +760,7 @@ static bool translate_block(HostX86Context *ctx, int block_index)
             const X86Register host_dest = ctx->regs[dest].host_reg;
             const X86Register host_src1 = ctx->regs[src1].host_reg;
             const X86Register host_src2 = ctx->regs[src2].host_reg;
+            ASSERT(host_dest != X86_CX);
             ASSERT(host_src2 != host_dest);
             const bool is64 = (unit->regs[dest].type == RTLTYPE_ADDRESS);
             const X86Opcode opcode = (
@@ -710,15 +783,8 @@ static bool translate_block(HostX86Context *ctx, int block_index)
                                       X86_CX, host_src2);
             }
 
-            /* If dest was in rCX, it's now in src2, so be sure to shift
-             * the proper register. */
-            if (host_dest == X86_CX) {
-                append_insn_ModRM_reg(&code, is64, X86OP_SHIFT_Ev_CL,
-                                      opcode, host_src2);
-            } else {
-                append_insn_ModRM_reg(&code, is64, X86OP_SHIFT_Ev_CL,
-                                      opcode, host_dest);
-            }
+            append_insn_ModRM_reg(&code, is64, X86OP_SHIFT_Ev_CL,
+                                  opcode, host_dest);
 
             /* If we had to swap rCX, restore the original register values.
              * But prefer MOV (and discard src2) if src2 dies on this
