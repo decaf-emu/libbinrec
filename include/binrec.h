@@ -283,6 +283,35 @@ typedef struct binrec_setup_t {
 
 /*--------------------- General optimization flags ----------------------*/
 
+/*
+ * Optimizations performed by the library can generally be classified into
+ * three types:
+ *
+ * - Behavior-safe: optimizations which purely affect the size or speed of
+ *   the generated code and have no effect on behavior.  Optimizations
+ *   such as constant folding and deconditioning fall into this category.
+ *
+ * - Specification-safe: optimizations which may change the behavior of
+ *   the generated code, but only within limits prescribed by the relevant
+ *   specification.  For example, the NATIVE_IEEE_TINY optimization may
+ *   change the results of certain floating-point operations relative to
+ *   the results returned by guest code running on its native hardware,
+ *   but the IEEE floating-point specification allows either of two
+ *   behaviors, so with respect to that specification, the optimizaed code
+ *   is no less correct than the original.  As long as the guest code was
+ *   written to follow the specifications rather than the precise behavior
+ *   of the guest hardware, it will still behave correctly under these
+ *   optimizations.
+ *
+ * - Unsafe: optimizations which can materially impact the behavior of the
+ *   generated code, such as stack frame optimization.  These optimizations
+ *   can benefit code which rigorously adhere to the relevant assumptions,
+ *   such as code produced by a high-level language compiler, but they can
+ *   cause nonconformant code to misbehave or even crash.  Constants for
+ *   these optimizations have an "_UNSAFE" suffix appended to indicate this
+ *   fact.
+ */
+
 /**
  * BINREC_OPT_BASIC:  Enable basic optimization of translated code.  This
  * includes the following transformations:
@@ -354,8 +383,8 @@ typedef struct binrec_setup_t {
  * functions by allowing larger parts of the function to be translated as
  * a single unit.
  *
- * While this optimization is "safe" in the sense that the translated code
- * will always behave correctly, code which uses call instructions in
+ * This optimization is behavior-safe in the narrow sense that it does not
+ * change the meaning of the code, but code which uses call instructions in
  * nonstandard ways (such as a call to the next instruction to obtain the
  * instruction's address) can potentially cause a host stack overflow if
  * executed too often without returning control to the client program.
