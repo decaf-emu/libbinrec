@@ -10,12 +10,14 @@
 #include "include/binrec.h"
 #include "src/common.h"
 #include "tests/common.h"
+#include "tests/log-capture.h"
 
 
 int main(void)
 {
     binrec_setup_t setup;
     memset(&setup, 0, sizeof(setup));
+    setup.log = log_capture;
     binrec_t *handle;
     EXPECT(handle = binrec_create_handle(&setup));
 
@@ -25,15 +27,24 @@ int main(void)
     binrec_set_max_inline_length(handle, 10);
     EXPECT_EQ(handle->max_inline_length, 10);
     EXPECT_EQ(handle->max_inline_depth, 1);
+    EXPECT_STREQ(get_log_messages(), NULL);
 
     binrec_set_max_inline_depth(handle, 2);
     EXPECT_EQ(handle->max_inline_length, 10);
     EXPECT_EQ(handle->max_inline_depth, 2);
+    EXPECT_STREQ(get_log_messages(), NULL);
 
     binrec_set_max_inline_length(handle, -1);  // Invalid.
-    binrec_set_max_inline_depth(handle, 0);  // Invalid.
     EXPECT_EQ(handle->max_inline_length, 10);
+    EXPECT_STREQ(get_log_messages(),
+                 "[error] Invalid maximum inline length -1\n");
+    clear_log_messages();
+
+    binrec_set_max_inline_depth(handle, 0);  // Invalid.
     EXPECT_EQ(handle->max_inline_depth, 2);
+    EXPECT_STREQ(get_log_messages(),
+                 "[error] Invalid maximum inline depth 0\n");
+    clear_log_messages();
 
     binrec_destroy_handle(handle);
     return EXIT_SUCCESS;

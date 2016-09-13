@@ -9,6 +9,7 @@
 
 #include "src/rtl-internal.h"
 #include "tests/common.h"
+#include "tests/log-capture.h"
 #include "tests/mem-wrappers.h"
 
 
@@ -29,6 +30,7 @@ int main(void)
 {
     binrec_setup_t setup;
     memset(&setup, 0, sizeof(setup));
+    setup.log = log_capture;
     binrec_t *handle;
 
     /* Check that the default handlers don't overwrite a set of supplied
@@ -49,6 +51,7 @@ int main(void)
     EXPECT_PTREQ(handle->setup.code_realloc, setup.code_realloc);
     EXPECT_PTREQ(handle->setup.code_free, setup.code_free);
     binrec_destroy_handle(handle);
+    EXPECT_STREQ(get_log_messages(), NULL);
 
     /* Check that if a set of supplied handlers is incomplete, all handlers
      * in that set are replaced with the default handlers. */
@@ -62,6 +65,11 @@ int main(void)
     EXPECT_PTREQ(handle->setup.code_realloc, setup.code_realloc);
     EXPECT_PTREQ(handle->setup.code_free, setup.code_free);
     binrec_destroy_handle(handle);
+    EXPECT_STREQ(get_log_messages(),
+                 "[warning] Some but not all memory allocation functions"
+                 " were defined.  Using system allocator instead.\n");
+    clear_log_messages();
+
     setup2 = setup;
     setup2.code_malloc = NULL;
     EXPECT(handle = binrec_create_handle(&setup2));
@@ -72,6 +80,11 @@ int main(void)
     EXPECT_PTREQ(handle->setup.code_realloc, NULL);
     EXPECT_PTREQ(handle->setup.code_free, NULL);
     binrec_destroy_handle(handle);
+    EXPECT_STREQ(get_log_messages(),
+                 "[warning] Some but not all output code memory allocation"
+                 " functions were defined.  Using default allocator"
+                 " instead.\n");
+    clear_log_messages();
 
     return EXIT_SUCCESS;
 }

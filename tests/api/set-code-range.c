@@ -10,12 +10,14 @@
 #include "include/binrec.h"
 #include "src/common.h"
 #include "tests/common.h"
+#include "tests/log-capture.h"
 
 
 int main(void)
 {
     binrec_setup_t setup;
     memset(&setup, 0, sizeof(setup));
+    setup.log = log_capture;
     binrec_t *handle;
     EXPECT(handle = binrec_create_handle(&setup));
 
@@ -27,22 +29,30 @@ int main(void)
     binrec_set_code_range(handle, 0x1000, 0x1FFF);
     EXPECT_EQ(handle->code_range_start, 0x1000);
     EXPECT_EQ(handle->code_range_end, 0x1FFF);
+    EXPECT_STREQ(get_log_messages(), NULL);
 
     /* Check that we can't set a 0-byte range, and that attempting to do so
      * signals an invalid state for binrec_translate(). */
     binrec_set_code_range(handle, 0x2000, 0x1FFF);
     EXPECT_EQ(handle->code_range_start, 1);
     EXPECT_EQ(handle->code_range_end, 0);
+    EXPECT_STREQ(get_log_messages(),
+                 "[error] Invalid code range 0x2000-0x1FFF\n");
+    clear_log_messages();
 
     /* Check that we can set a 1-byte range. */
     binrec_set_code_range(handle, 0x2000, 0x2000);
     EXPECT_EQ(handle->code_range_start, 0x2000);
     EXPECT_EQ(handle->code_range_end, 0x2000);
+    EXPECT_STREQ(get_log_messages(), NULL);
 
     /* Check that we can't set a wraparound range. */
     binrec_set_code_range(handle, -0x1000, 0x0FFF);
     EXPECT_EQ(handle->code_range_start, 1);
     EXPECT_EQ(handle->code_range_end, 0);
+    EXPECT_STREQ(get_log_messages(),
+                 "[error] Invalid code range 0xFFFFF000-0xFFF\n");
+    clear_log_messages();
 
     binrec_destroy_handle(handle);
     return EXIT_SUCCESS;

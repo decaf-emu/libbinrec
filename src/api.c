@@ -264,7 +264,7 @@ void binrec_set_code_range(binrec_t *handle, uint32_t start, uint32_t end)
     ASSERT(handle);
 
     if (UNLIKELY(end < start)) {
-        log_error(handle, "Invalid code range 0x%X-0x%X");
+        log_error(handle, "Invalid code range 0x%X-0x%X", start, end);
         /* Signal an invalid state to binrec_translate(). */
         handle->code_range_start = 1;
         handle->code_range_end = 0;
@@ -310,7 +310,7 @@ void binrec_set_max_inline_depth(binrec_t *handle, int depth)
     if (depth >= 1) {
         handle->max_inline_depth = depth;
     } else {
-        log_error(handle, "Invalid max inline depth %d", depth);
+        log_error(handle, "Invalid maximum inline depth %d", depth);
     }
 }
 

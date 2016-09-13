@@ -10,12 +10,14 @@
 #include "include/binrec.h"
 #include "src/common.h"
 #include "tests/common.h"
+#include "tests/log-capture.h"
 
 
 int main(void)
 {
     binrec_setup_t setup;
     memset(&setup, 0, sizeof(setup));
+    setup.log = log_capture;
     binrec_t *handle;
     EXPECT(handle = binrec_create_handle(&setup));
 
@@ -50,6 +52,7 @@ int main(void)
             FAIL("handle->partial_readonly_pages[%d] was not unused", i);
         }
     }
+    EXPECT_STREQ(get_log_messages(), NULL);
 
     /* Check marking multiple pages. */
     EXPECT(binrec_add_readonly_region(handle, READONLY_PAGE_SIZE * 7,
@@ -66,6 +69,7 @@ int main(void)
             FAIL("handle->partial_readonly_pages[%d] was not unused", i);
         }
     }
+    EXPECT_STREQ(get_log_messages(), NULL);
 
     /* Check marking a portion of a page. */
     EXPECT(binrec_add_readonly_region(handle, READONLY_PAGE_SIZE * 6 + 1,
@@ -91,6 +95,7 @@ int main(void)
             FAIL("handle->partial_readonly_pages[%d] was not unused", i);
         }
     }
+    EXPECT_STREQ(get_log_messages(), NULL);
 
     /* Check clearing marked regions. */
     binrec_clear_readonly_regions(handle);
@@ -104,6 +109,7 @@ int main(void)
             FAIL("handle->partial_readonly_pages[%d] was not unused", i);
         }
     }
+    EXPECT_STREQ(get_log_messages(), NULL);
 
     /* Check marking from the end of one page to the beginning of another. */
     EXPECT(binrec_add_readonly_region(handle, READONLY_PAGE_SIZE * 2 - 1,
@@ -135,6 +141,7 @@ int main(void)
             FAIL("handle->partial_readonly_pages[%d] was not unused", i);
         }
     }
+    EXPECT_STREQ(get_log_messages(), NULL);
 
     /* Check adding to an existing partial page. */
     EXPECT(binrec_add_readonly_region(handle, READONLY_PAGE_SIZE * 3 + 2, 1));
@@ -151,6 +158,7 @@ int main(void)
             FAIL("handle->partial_readonly_pages[%d] was not unused", i);
         }
     }
+    EXPECT_STREQ(get_log_messages(), NULL);
 
     /* Check failure on full partial page table (all page addresses less
      * than target page). */
@@ -159,12 +167,25 @@ int main(void)
     }
     EXPECT_FALSE(binrec_add_readonly_region(
                      handle, num_partial * READONLY_PAGE_SIZE, 1));
+    char expected_buf[1000];
+    snprintf(expected_buf, sizeof(expected_buf),
+             "[error] Failed to add read-only range [0x%X,0x%X]: no free"
+             " partial page entries\n", num_partial * READONLY_PAGE_SIZE,
+             num_partial * READONLY_PAGE_SIZE);
+    EXPECT_STREQ(get_log_messages(), expected_buf);
+    clear_log_messages();
 
     /* Check failure on full partial page table (some page addresses
      * greater than target page). */
     handle->partial_readonly_pages[0] = num_partial * READONLY_PAGE_SIZE;
     EXPECT_FALSE(binrec_add_readonly_region(
                      handle, READONLY_PAGE_SIZE - 1, 1));
+    snprintf(expected_buf, sizeof(expected_buf),
+             "[error] Failed to add read-only range [0x%X,0x%X]: no free"
+             " partial page entries\n", READONLY_PAGE_SIZE - 1,
+             READONLY_PAGE_SIZE - 1);
+    EXPECT_STREQ(get_log_messages(), expected_buf);
+    clear_log_messages();
 
     binrec_destroy_handle(handle);
     return EXIT_SUCCESS;
