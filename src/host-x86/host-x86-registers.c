@@ -40,7 +40,7 @@
  *   which must be in CL), followed by a second pass to link those
  *   into a list ordered by register birth, before the normal allocation
  *   pass.  The allocator is not strictly linear scan in this sense, but
- *   the extra passes only need to look at a few instructions, so it does
+ *   the extra passes only need to look at a few instructions, so they do
  *   not add a significant amount of time to the overall allocation process.
  *
  * - When spilling registers, the register with the shortest (rather than
@@ -229,7 +229,7 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index)
         bool host_allocated = dest_info->host_allocated;
         dest_info->host_allocated = true;  // We'll find one eventually.
 
-        uint32_t avoid_regs = 0;
+        uint32_t avoid_regs = dest_info->avoid_regs;
 
         if (host_allocated) {
             const X86Register host_reg = dest_info->host_reg;
@@ -289,14 +289,15 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index)
          * corresponding x86 instructions write to fixed output registers.
          * For those, try to allocate the fixed register if it's available,
          * and make sure to avoid the other (clobbered) output register in
-         * any case.
+         * any case, but don't try to reuse source registers since that
+         * gives no benefit.  In the case of division (DIV[US]/MOD[US]),
+         * we actually need to avoid reusing src2 because of all the fixed
+         * register clobbering.
          */
         if (!host_allocated) {
             switch (insn->opcode) {
               case RTLOP_MULHU:
               case RTLOP_MULHS:
-              case RTLOP_MODU:
-              case RTLOP_MODS:
                 if (!ctx->reg_map[X86_DX]) {
                     host_allocated = true;
                     dest_info->host_reg = X86_DX;
@@ -310,7 +311,7 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index)
                 break;
               case RTLOP_DIVU:
               case RTLOP_DIVS:
-                if (!ctx->reg_map[X86_AX]) {
+                if (!ctx->reg_map[X86_AX] && src2_info->host_reg != X86_AX) {
                     host_allocated = true;
                     dest_info->host_reg = X86_AX;
                     ctx->reg_map[X86_AX] = dest;
@@ -318,7 +319,24 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index)
                     ctx->regs_free ^= 1 << X86_AX;
                     ctx->regs_touched |= 1 << X86_AX;
                 } else {
-                    avoid_regs |= 1 << X86_DX;
+                    avoid_regs |= 1 << X86_AX
+                                | 1 << X86_DX
+                                | 1 << src2_info->host_reg;
+                }
+                break;
+              case RTLOP_MODU:
+              case RTLOP_MODS:
+                if (!ctx->reg_map[X86_DX] && src2_info->host_reg != X86_DX) {
+                    host_allocated = true;
+                    dest_info->host_reg = X86_DX;
+                    ctx->reg_map[X86_DX] = dest;
+                    ASSERT(ctx->regs_free & (1 << X86_DX));
+                    ctx->regs_free ^= 1 << X86_DX;
+                    ctx->regs_touched |= 1 << X86_DX;
+                } else {
+                    avoid_regs |= 1 << X86_AX
+                                | 1 << X86_DX
+                                | 1 << src2_info->host_reg;
                 }
                 break;
               default:
@@ -382,6 +400,7 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index)
                         ctx->regs_free ^= 1 << dest_info->host_reg;
                     }
                 }
+                break;
             }  // switch (insn->opcode)
         }   // if (!host_allocated)
 
@@ -407,6 +426,22 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index)
           case RTLOP_MULHS:
             /* Temporary needed to save RAX if it's live across this insn. */
             need_temp = (ctx->reg_map[X86_AX] != 0);
+            temp_avoid |= 1 << ctx->regs[src1].host_reg
+                        | 1 << ctx->regs[src2].host_reg;
+            break;
+          case RTLOP_DIVU:
+          case RTLOP_DIVS:
+            /* Temporary needed to save RDX if it's live across this insn. */
+            need_temp = (ctx->reg_map[X86_DX] != 0);
+            temp_avoid |= 1 << ctx->regs[src1].host_reg
+                        | 1 << ctx->regs[src2].host_reg;
+            break;
+          case RTLOP_MODU:
+          case RTLOP_MODS:
+            /* Temporary needed to save RAX if it's live across this insn
+             * or if it's allocated to src2 (even if src2 dies here). */
+            need_temp = (ctx->reg_map[X86_AX] != 0
+                         || ctx->regs[src2].host_reg == X86_AX);
             temp_avoid |= 1 << ctx->regs[src1].host_reg
                         | 1 << ctx->regs[src2].host_reg;
             break;
@@ -580,6 +615,61 @@ static void allocate_fixed_regs_for_block(HostX86Context *ctx, int block_index)
 
             break;
           }  // case RTLOP_MULH[US]
+
+          case RTLOP_DIVU:
+          case RTLOP_DIVS: {
+            /* For div/mod, we only care about putting the result in rAX or
+             * rDX (as appropriate) and the dividend in rAX.  Putting the
+             * divisor in either rAX or rDX will just force us to move it
+             * out of the way later. */
+            const RTLRegister *dest_reg = &unit->regs[insn->dest];
+            HostX86RegInfo *dest_info = &ctx->regs[insn->dest];
+            if (ctx->last_ax_death <= insn_index) {
+                ASSERT(dest_reg->birth == insn_index);
+                dest_info->host_allocated = true;
+                dest_info->host_reg = X86_AX;
+                const RTLRegister *src1_reg = &unit->regs[insn->src1];
+                HostX86RegInfo *src1_info = &ctx->regs[insn->src1];
+                if (!src1_info->host_allocated
+                 && src1_reg->death == insn_index
+                 && src1_reg->birth > ctx->last_ax_death) {
+                    src1_info->host_allocated = true;
+                    src1_info->host_reg = X86_AX;
+                }
+                ctx->last_ax_death = dest_reg->death;
+            }
+            break;
+          }  // case RTLOP_DIV[US]
+
+          case RTLOP_MODU:
+          case RTLOP_MODS: {
+            const RTLRegister *dest_reg = &unit->regs[insn->dest];
+            HostX86RegInfo *dest_info = &ctx->regs[insn->dest];
+            if (ctx->last_dx_death <= insn_index) {
+                ASSERT(dest_reg->birth == insn_index);
+                /* We require that dest and src2 not share the same
+                 * register, so if src2 is already in rDX, we can't assign
+                 * it to dest here. */
+                HostX86RegInfo *src2_info = &ctx->regs[insn->src2];
+                if (!(src2_info->host_allocated
+                      && src2_info->host_reg == X86_DX)) {
+                    dest_info->host_allocated = true;
+                    dest_info->host_reg = X86_DX;
+                    ctx->last_dx_death = dest_reg->death;
+                    /* Make sure src2 doesn't get rDX in the main
+                     * allocation pass. */
+                    src2_info->avoid_regs = 1 << X86_DX;
+                }
+            }
+            const RTLRegister *src1_reg = &unit->regs[insn->src1];
+            HostX86RegInfo *src1_info = &ctx->regs[insn->src1];
+            if (!src1_info->host_allocated && src1_reg->birth > ctx->last_ax_death) {
+                src1_info->host_allocated = true;
+                src1_info->host_reg = X86_AX;
+                ctx->last_ax_death = src1_reg->death;
+            }
+            break;
+          }  // case RTLOP_MOD[US]
 
           case RTLOP_SLL:
           case RTLOP_SRL:

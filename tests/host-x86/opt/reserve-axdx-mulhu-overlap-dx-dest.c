@@ -26,14 +26,14 @@ static int add_rtl(RTLUnit *unit)
     EXPECT(reg2 = rtl_alloc_register(unit, RTLTYPE_INT32));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg2, 0, 0, 0));
     EXPECT(reg3 = rtl_alloc_register(unit, RTLTYPE_INT32));
-    /* Allocates reg3 = DX, reg1 = AX (reg2 left unallocated). */
+    /* Allocates reg3 = EDX, reg1 = EAX (reg2 left unallocated). */
     EXPECT(rtl_add_insn(unit, RTLOP_MULHU, reg3, reg1, reg2, 0));
     EXPECT(rtl_add_insn(unit, RTLOP_NOP, 0, reg1, reg2, 0));
     EXPECT(reg4 = rtl_alloc_register(unit, RTLTYPE_INT32));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg4, 0, 0, 0));
     EXPECT(reg5 = rtl_alloc_register(unit, RTLTYPE_INT32));
-    /* Allocates reg4 = AX (reg2 doesn't get it due to live range collision),
-     * but leaves reg5 unallocated since DX is still live. */
+    /* Allocates reg4 = EAX (reg2 doesn't get it due to live range collision),
+     * but leaves reg5 unallocated since EDX is still live. */
     EXPECT(rtl_add_insn(unit, RTLOP_MULHU, reg5, reg2, reg4, 0));
     EXPECT(rtl_add_insn(unit, RTLOP_NOP, 0, reg2, reg4, 0));
     EXPECT(rtl_add_insn(unit, RTLOP_NOP, 0, reg3, 0, 0));

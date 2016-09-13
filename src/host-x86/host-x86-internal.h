@@ -71,17 +71,23 @@ typedef struct HostX86RegInfo {
     uint8_t host_allocated;
     /* Index of allocated register (X86Register). */
     uint8_t host_reg;
+
+    /* Host register (X86Register) to use for temporary values in the
+     * instruction that sets this register. */
+    uint8_t host_temp;
+    /* Has a temporary host register been allocated? */
+    uint8_t temp_allocated;
+
+    /* Bitmask of host registers not to allocate for this register. */
+    uint32_t avoid_regs;
+
     /* Has a stack frame slot been allocated to spill this register? */
     uint8_t frame_allocated;
     /* Index of the allocated stack frame. */
     uint8_t frame_slot;
     /* Byte offset (from SP) of the allocated stack frame. */
     int16_t stack_offset;
-    /* Host register (X86Register) to use for temporary values in the
-     * instruction that sets this register. */
-    uint8_t host_temp;
-    /* Has a temporary host register been allocated? */
-    uint8_t temp_allocated;
+
     /* Next register in the fixed-allocation list, or 0 if the end of the
      * list. */
     uint16_t next_fixed;

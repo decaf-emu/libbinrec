@@ -243,6 +243,26 @@ static inline void append_test_reg(HostX86Context *ctx, CodeBuffer *code,
 /*-----------------------------------------------------------------------*/
 
 /**
+ * append_insn:  Append an instruction which takes no operands.
+ *
+ * [Parameters]
+ *     code: Output code buffer.
+ *     is64: True for 64-bit operands, false for 32-bit operands.
+ *     opcode: Instruction opcode.
+ */
+static APPEND_INLINE void append_insn(
+    CodeBuffer *code, bool is64, X86Opcode opcode)
+{
+    if (is64) {
+        append_rex_opcode(code, X86_REX_W, opcode);
+    } else {
+        append_opcode(code, opcode);
+    }
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
  * append_insn_R:  Append an instruction which takes a single register
  * operand encoded in the opcode itself (such as PUSH).
  *
@@ -596,6 +616,70 @@ static bool translate_block(HostX86Context *ctx, int block_index)
             }
             break;
           }  // case RTLOP_MULH[US]
+
+          case RTLOP_MODU:
+          case RTLOP_MODS: {
+            const X86Register host_dest = ctx->regs[dest].host_reg;
+            const X86Register host_src1 = ctx->regs[src1].host_reg;
+            const X86Register host_src2 = ctx->regs[src2].host_reg;
+            const bool is64 = (unit->regs[dest].type == RTLTYPE_ADDRESS);
+            ASSERT(host_dest != host_src2);
+
+            X86Register divisor = host_src2;
+
+            /* As with MULH*, the presence of a temporary register means
+             * we need to save the non-result output register. */
+            if (ctx->regs[dest].temp_allocated) {
+                ASSERT(ctx->regs[dest].host_temp != X86_DX);
+                append_insn_ModRM_reg(&code, true, X86OP_MOV_Gv_Ev,
+                                      ctx->regs[dest].host_temp, X86_AX);
+                if (divisor == X86_AX) {
+                    divisor = ctx->regs[dest].host_temp;
+                }
+            }
+
+            if (host_src1 != X86_AX) {
+                ASSERT(divisor != X86_AX);
+                append_insn_ModRM_reg(&code, is64, X86OP_MOV_Gv_Ev,
+                                      X86_AX, host_src1);
+            }
+
+            /* As with MULH*, if dest is not in the result register then
+             * we need to save the result register's value.  For division,
+             * we take care of moving src1 to rAX first and we never
+             * allocate dest and src2 in the same register, so this can
+             * just be a regular MOV. */
+            if (host_dest != X86_DX) {
+                append_insn_ModRM_reg(&code, true, X86OP_MOV_Gv_Ev,
+                                      host_dest, X86_DX);
+                /* RDX will be destroyed before the divide instruction, so
+                 * make sure not to use it as the divisor. */
+                if (divisor == X86_DX) {
+                    divisor = host_dest;
+                }
+            }
+
+            if (insn->opcode == RTLOP_MODU) {
+                append_insn_ModRM_reg(&code, false, X86OP_XOR_Gv_Ev,
+                                      X86_DX, X86_DX);
+                append_insn_ModRM_reg(&code, is64, X86OP_UNARY_Ev,
+                                      X86OP_UNARY_DIV_rAX, divisor);
+            } else {
+                append_insn(&code, is64, X86OP_CWD);
+                append_insn_ModRM_reg(&code, is64, X86OP_UNARY_Ev,
+                                      X86OP_UNARY_IDIV_rAX, divisor);
+            }
+
+            if (host_dest != X86_DX) {
+                append_insn_ModRM_reg(&code, true, X86OP_XCHG_Ev_Gv,
+                                      X86_DX, host_dest);
+            }
+            if (ctx->regs[dest].temp_allocated) {
+                append_insn_ModRM_reg(&code, true, X86OP_MOV_Gv_Ev,
+                                      X86_AX, ctx->regs[dest].host_temp);
+            }
+            break;
+          }  // case RTLOP_MOD[US]
 
           case RTLOP_SLL:
           case RTLOP_SRL:

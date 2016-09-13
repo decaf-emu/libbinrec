@@ -28,12 +28,12 @@ static int add_rtl(RTLUnit *unit)
     EXPECT(reg3 = rtl_alloc_register(unit, RTLTYPE_INT32));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg3, 0, 0, 0));
     EXPECT(reg4 = rtl_alloc_register(unit, RTLTYPE_INT32));
-    /* Allocates reg4 = EDX, reg1 = EAX (reg2 left unallocated). */
-    EXPECT(rtl_add_insn(unit, RTLOP_MULHU, reg4, reg1, reg2, 0));
+    /* Allocates reg4 = EDX, reg1 = EAX. */
+    EXPECT(rtl_add_insn(unit, RTLOP_MODU, reg4, reg1, reg2, 0));
     EXPECT(reg5 = rtl_alloc_register(unit, RTLTYPE_INT32));
-    /* Allocates reg5 = EDX, but EAX is still live so neither reg2 nor reg3
-     * get allocated. */
-    EXPECT(rtl_add_insn(unit, RTLOP_MULHU, reg5, reg2, reg3, 0));
+    /* Allocates reg5 = EDX, but EAX is still live so reg2 doesn't get
+     * allocated. */
+    EXPECT(rtl_add_insn(unit, RTLOP_MODU, reg5, reg2, reg3, 0));
     EXPECT(rtl_add_insn(unit, RTLOP_NOP, 0, reg1, reg2, 0));
     EXPECT(rtl_add_insn(unit, RTLOP_NOP, 0, reg3, 0, 0));
 
@@ -46,11 +46,13 @@ static const uint8_t expected_code[] = {
     0x33,0xF6,                          // xor %esi,%esi
     0x33,0xFF,                          // xor %edi,%edi
     0x4C,0x8B,0xC0,                     // mov %rax,%r8
-    0xF7,0xE6,                          // mul %esi
+    0x33,0xD2,                          // xor %edx,%edx
+    0xF7,0xF6,                          // div %esi
     0x49,0x8B,0xC0,                     // mov %r8,%rax
     0x4C,0x8B,0xC0,                     // mov %rax,%r8
     0x8B,0xC6,                          // mov %esi,%eax
-    0xF7,0xE7,                          // mul %edi
+    0x33,0xD2,                          // xor %edx,%edx
+    0xF7,0xF7,                          // div %edi
     0x49,0x8B,0xC0,                     // mov %r8,%rax
     0x48,0x83,0xC4,0x08,                // add $8,%rsp
     0xC3,                               // ret
