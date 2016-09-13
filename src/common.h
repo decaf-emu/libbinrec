@@ -157,6 +157,23 @@ struct RTLUnit;
 #endif
 
 /**
+ * FORMAT:  Function attribute indicating that the function takes a
+ * printf()-type format string, allowing the compiler to typecheck the
+ * format arguments.  The "fmt" argument specifies the index of the
+ * function parameter containing the format string, while the "firstarg"
+ * argument specifies the index of the first format argument in the
+ * function parameter list (in other words, the index of the "...").
+ */
+#if defined(__MINGW32__)
+    /* The MinGW build of GCC spits out tons of bogus warnings, so disable. */
+    #define FORMAT(fmt, firstarg)  /*nothing*/
+#elif IS_GCC(2,95) || IS_CLANG(1,0)
+    #define FORMAT(fmt, firstarg)  __attribute__((format(printf,fmt,firstarg)))
+#else
+    #define FORMAT(fmt, firstarg)  /*nothing*/
+#endif
+
+/**
  * LIKELY, UNLIKELY:  Construct which indicates to the compiler that the
  * given expression is likely or unlikely to evaluate to true.
  */
@@ -328,11 +345,11 @@ struct binrec_t {
  *     ...: Format arguments.
  */
 #define log_info INTERNAL(log_info)
-extern void log_info(binrec_t *handle, const char *format, ...);
+extern void log_info(binrec_t *handle, const char *format, ...) FORMAT(2, 3);
 #define log_warning INTERNAL(log_warning)
-extern void log_warning(binrec_t *handle, const char *format, ...);
+extern void log_warning(binrec_t *handle, const char *format, ...) FORMAT(2, 3);
 #define log_error INTERNAL(log_error)
-extern void log_error(binrec_t *handle, const char *format, ...);
+extern void log_error(binrec_t *handle, const char *format, ...) FORMAT(2, 3);
 
 /**
  * log_ice:  Log an internal compiler error, including the source file and
