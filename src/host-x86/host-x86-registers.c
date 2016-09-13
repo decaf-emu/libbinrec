@@ -589,6 +589,14 @@ static void allocate_fixed_regs_for_block(HostX86Context *ctx, int block_index)
 
             if (ctx->last_dx_death <= insn_index) {
                 ASSERT(dest_reg->birth == insn_index);
+                /* Currently, all cases where we avoid rAX/rDX are for
+                 * registers born before the most recent death of that
+                 * host register, so we don't need to check avoid_regs
+                 * here (and we omit the check since there's no way to
+                 * test it).  We do keep assertions around to catch
+                 * problems in case future additions to the logic render
+                 * this assumption invalid. */
+                ASSERT(!(dest_info->avoid_regs & (1 << X86_DX)));
                 dest_info->host_allocated = true;
                 dest_info->host_reg = X86_DX;
                 /* If both src1 and src2 are candidates for getting DX,
@@ -596,25 +604,29 @@ static void allocate_fixed_regs_for_block(HostX86Context *ctx, int block_index)
                  * will have a better chance of getting AX below. */
                 const bool src1_ok = (!src1_info->host_allocated
                                       && src1_reg->death == insn_index
-                                      && src1_reg->birth > ctx->last_dx_death);
+                                      && src1_reg->birth >= ctx->last_dx_death);
                 const bool src2_ok = (!src2_info->host_allocated
                                       && src2_reg->death == insn_index
-                                      && src2_reg->birth > ctx->last_dx_death);
+                                      && src2_reg->birth >= ctx->last_dx_death);
                 if (src1_ok && (!src2_ok || src1_reg->birth < src2_reg->birth)) {
+                    ASSERT(!(src1_info->avoid_regs & (1 << X86_DX)));
                     src1_info->host_allocated = true;
                     src1_info->host_reg = X86_DX;
                 } else if (src2_ok) {
+                    ASSERT(!(src2_info->avoid_regs & (1 << X86_DX)));
                     src2_info->host_allocated = true;
                     src2_info->host_reg = X86_DX;
                 }
                 ctx->last_dx_death = dest_reg->death;
             }
 
-            if (!src1_info->host_allocated && src1_reg->birth > ctx->last_ax_death) {
+            if (!src1_info->host_allocated && src1_reg->birth >= ctx->last_ax_death) {
+                ASSERT(!(src1_info->avoid_regs & (1 << X86_AX)));
                 src1_info->host_allocated = true;
                 src1_info->host_reg = X86_AX;
                 ctx->last_ax_death = src1_reg->death;
-            } else if (!src2_info->host_allocated && src2_reg->birth > ctx->last_ax_death) {
+            } else if (!src2_info->host_allocated && src2_reg->birth >= ctx->last_ax_death) {
+                ASSERT(!(src2_info->avoid_regs & (1 << X86_AX)));
                 src2_info->host_allocated = true;
                 src2_info->host_reg = X86_AX;
                 ctx->last_ax_death = src2_reg->death;
@@ -639,6 +651,7 @@ static void allocate_fixed_regs_for_block(HostX86Context *ctx, int block_index)
                 HostX86RegInfo *src2_info = &ctx->regs[insn->src2];
                 if (!(src2_info->host_allocated
                       && src2_info->host_reg == X86_AX)) {
+                    ASSERT(!(dest_info->avoid_regs & (1 << X86_AX)));
                     dest_info->host_allocated = true;
                     dest_info->host_reg = X86_AX;
                     /* Make sure src2 doesn't get rAX in the main
@@ -648,7 +661,8 @@ static void allocate_fixed_regs_for_block(HostX86Context *ctx, int block_index)
                     HostX86RegInfo *src1_info = &ctx->regs[insn->src1];
                     if (!src1_info->host_allocated
                      && src1_reg->death == insn_index
-                     && src1_reg->birth > ctx->last_ax_death) {
+                     && src1_reg->birth >= ctx->last_ax_death) {
+                        ASSERT(!(src1_info->avoid_regs & (1 << X86_AX)));
                         src1_info->host_allocated = true;
                         src1_info->host_reg = X86_AX;
                     }
@@ -667,6 +681,7 @@ static void allocate_fixed_regs_for_block(HostX86Context *ctx, int block_index)
                 HostX86RegInfo *src2_info = &ctx->regs[insn->src2];
                 if (!(src2_info->host_allocated
                       && src2_info->host_reg == X86_DX)) {
+                    ASSERT(!(dest_info->avoid_regs & (1 << X86_DX)));
                     dest_info->host_allocated = true;
                     dest_info->host_reg = X86_DX;
                     src2_info->avoid_regs |= 1 << X86_DX;
@@ -676,6 +691,7 @@ static void allocate_fixed_regs_for_block(HostX86Context *ctx, int block_index)
             const RTLRegister *src1_reg = &unit->regs[insn->src1];
             HostX86RegInfo *src1_info = &ctx->regs[insn->src1];
             if (!src1_info->host_allocated && src1_reg->birth > ctx->last_ax_death) {
+                ASSERT(!(src1_info->avoid_regs & (1 << X86_AX)));
                 src1_info->host_allocated = true;
                 src1_info->host_reg = X86_AX;
                 ctx->last_ax_death = src1_reg->death;
@@ -689,11 +705,16 @@ static void allocate_fixed_regs_for_block(HostX86Context *ctx, int block_index)
           case RTLOP_ROR: {
             const RTLRegister *src2_reg = &unit->regs[insn->src2];
             HostX86RegInfo *src2_info = &ctx->regs[insn->src2];
-            if (!src2_info->host_allocated && src2_reg->birth > ctx->last_cx_death) {
+            if (!src2_info->host_allocated
+             && !(src2_info->avoid_regs & (1 << X86_CX))
+             && src2_reg->birth >= ctx->last_cx_death) {
                 src2_info->host_allocated = true;
                 src2_info->host_reg = X86_CX;
                 ctx->last_cx_death = src2_reg->death;
             }
+            /* Make sure rCX isn't allocated to this register later, since
+             * the translator doesn't support rCX as a shift destination. */
+            ctx->regs[insn->dest].avoid_regs |= 1 << X86_CX;
             break;
           }  // case RTLOP_{SLL,SRL,SRA,ROR}
 
