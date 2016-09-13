@@ -279,13 +279,24 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index)
             }
         }
 
-        /* Special case for long multiply and divide: try to allocate rDX
-         * or rAX as appropriate.  We do this early in case both src1 and
-         * src2 die and src2 is in the preferred register; the normal
-         * register reuse logic would choose src1 instead. */
+        /*
+         * x86 doesn't have separate destination operands for most
+         * instructions, so if one of the source operands (if any) dies at
+         * this instruction, reuse its host register for the destination
+         * to avoid an unnecessary register move.
+         *
+         * Long multiply and divide are special cases, since the
+         * corresponding x86 instructions write to fixed output registers.
+         * For those, try to allocate the fixed register if it's available,
+         * and make sure to avoid the other (clobbered) output register in
+         * any case.
+         */
         if (!host_allocated) {
-            if (insn->opcode == RTLOP_MULHU || insn->opcode == RTLOP_MULHS
-             || insn->opcode == RTLOP_MODU || insn->opcode == RTLOP_MODS) {
+            switch (insn->opcode) {
+              case RTLOP_MULHU:
+              case RTLOP_MULHS:
+              case RTLOP_MODU:
+              case RTLOP_MODS:
                 if (!ctx->reg_map[X86_DX]) {
                     host_allocated = true;
                     dest_info->host_reg = X86_DX;
@@ -293,9 +304,12 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index)
                     ASSERT(ctx->regs_free & (1 << X86_DX));
                     ctx->regs_free ^= 1 << X86_DX;
                     ctx->regs_touched |= 1 << X86_DX;
+                } else {
+                    avoid_regs |= 1 << X86_AX;
                 }
-            } else if (insn->opcode == RTLOP_DIVU
-                    || insn->opcode == RTLOP_DIVS) {
+                break;
+              case RTLOP_DIVU:
+              case RTLOP_DIVS:
                 if (!ctx->reg_map[X86_AX]) {
                     host_allocated = true;
                     dest_info->host_reg = X86_AX;
@@ -303,62 +317,73 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index)
                     ASSERT(ctx->regs_free & (1 << X86_AX));
                     ctx->regs_free ^= 1 << X86_AX;
                     ctx->regs_touched |= 1 << X86_AX;
+                } else {
+                    avoid_regs |= 1 << X86_DX;
                 }
-            }
-        } 
-
-        /* x86 doesn't have separate destination operands for most
-         * instructions, so if one of the source operands (if any) dies at
-         * this instruction, reuse its host register for the destination
-         * to avoid an unnecessary register move. */
-        if (!host_allocated && src1 && src1_reg->death == insn_index) {
-            /* The first operand's register can (almost) always be reused
-             * for the destination.  The exceptions are shifts where src1
-             * is in rCX since we need CL for the count, and BFINS with
-             * src1==src2 since we need to write dest before reading src2. */
-            if ((insn->opcode == RTLOP_BFINS
-                 && src1_info->host_reg == src2_info->host_reg)
-                || ((insn->opcode == RTLOP_SLL || insn->opcode == RTLOP_SRL
-                     || insn->opcode == RTLOP_SRA || insn->opcode == RTLOP_ROR)
-                    && src1_info->host_reg == X86_CX)) {
-                /* Can't reuse src1. */
-            } else {
-                host_allocated = true;
-                dest_info->host_reg = src1_info->host_reg;
-                ctx->reg_map[dest_info->host_reg] = dest;
-                ASSERT(ctx->regs_free & (1 << dest_info->host_reg));
-                ctx->regs_free ^= 1 << dest_info->host_reg;
-            }
-        }
-        if (!host_allocated && src2 && src2_reg->death == insn_index) {
-            /* The second operand's register can only be reused for
-             * commutative operations. */
-            static const uint8_t non_commutative[RTLOP__LAST / 8 + 1] = {
-                /* Note that opcodes will need to be shifted around here
-                 * if their numeric values are changed such that they move
-                 * to different bytes. */
-                0,
-                1U<<(RTLOP_SUB-8) | 1U<<(RTLOP_DIVU-8) | 1U<<(RTLOP_DIVS-8),
-                1U<<(RTLOP_MODU-16) | 1U<<(RTLOP_MODS-16)
-                    | 1U<<(RTLOP_SLL-16) | 1U<<(RTLOP_SRL-16),
-                1U<<(RTLOP_SRA-24) | 1U<<(RTLOP_ROR-24),
-                /* SLT/SLE are technically non-commutative, but since it's
-                 * a 2-instruction sequence (cmp/setCC) on x86 anyway, we
-                 * don't have to worry about operand order. */
-                1U<<(RTLOP_BFINS-32),
-            };
-            ASSERT(insn->opcode >= RTLOP__FIRST && insn->opcode <= RTLOP__LAST);
-            if (non_commutative[insn->opcode/8] & (1 << (insn->opcode%8))) {
-                /* Make sure it's also not chosen by the regular allocator. */
-                avoid_regs |= 1 << src2_info->host_reg;
-            } else {
-                host_allocated = true;
-                dest_info->host_reg = src2_info->host_reg;
-                ctx->reg_map[dest_info->host_reg] = dest;
-                ASSERT(ctx->regs_free & (1 << dest_info->host_reg));
-                ctx->regs_free ^= 1 << dest_info->host_reg;
-            }
-        }
+                break;
+              default:
+                if (src1 && src1_reg->death == insn_index) {
+                    /* The first operand's register can usually be reused
+                     * for the destination, except for shifts with src1 in
+                     * rCX (since we need CL for the count) and BFINS with
+                     * src1==src2 (since we need to write dest before
+                     * reading src2). */
+                    bool src1_ok;
+                    switch (insn->opcode) {
+                      case RTLOP_SLL:
+                      case RTLOP_SRL:
+                      case RTLOP_SRA:
+                      case RTLOP_ROR:
+                        src1_ok = (src1_info->host_reg != X86_CX);
+                        break;
+                      case RTLOP_BFINS:
+                        src1_ok = (src1_info->host_reg != src2_info->host_reg);
+                        break;
+                      default:
+                        src1_ok = true;
+                        break;
+                    }
+                    if (src1_ok) {
+                        host_allocated = true;
+                        dest_info->host_reg = src1_info->host_reg;
+                        ctx->reg_map[dest_info->host_reg] = dest;
+                        ASSERT(ctx->regs_free & (1 << dest_info->host_reg));
+                        ctx->regs_free ^= 1 << dest_info->host_reg;
+                    }
+                }
+                if (!host_allocated && src2 && src2_reg->death == insn_index) {
+                    /* The second operand's register can only be reused for
+                     * commutative operations.  However, RTL SLT/SLE
+                     * instructions translate to multiple x86 instructions,
+                     * so we can safely reuse src2 for those cases.  DIV/MOD
+                     * instructions aren't included here since they don't
+                     * reach this test. */
+                    static const uint8_t non_commutative[RTLOP__LAST/8 + 1] = {
+                        /* Note that opcodes will need to be shifted around
+                         * if their numeric values are changed such that
+                         * they move to different bytes. */
+                        0,
+                        1<<(RTLOP_SUB-8),
+                        1<<(RTLOP_SLL-16) | 1<<(RTLOP_SRL-16),
+                        1<<(RTLOP_SRA-24) | 1<<(RTLOP_ROR-24),
+                        1<<(RTLOP_BFINS-32),
+                    };
+                    ASSERT(insn->opcode >= RTLOP__FIRST
+                           && insn->opcode <= RTLOP__LAST);
+                    if (non_commutative[insn->opcode/8] & (1 << (insn->opcode%8))) {
+                        /* Make sure it's also not chosen by the regular
+                         * allocator. */
+                        avoid_regs |= 1 << src2_info->host_reg;
+                    } else {
+                        host_allocated = true;
+                        dest_info->host_reg = src2_info->host_reg;
+                        ctx->reg_map[dest_info->host_reg] = dest;
+                        ASSERT(ctx->regs_free & (1 << dest_info->host_reg));
+                        ctx->regs_free ^= 1 << dest_info->host_reg;
+                    }
+                }
+            }  // switch (insn->opcode)
+        }   // if (!host_allocated)
 
         /* If none of the special cases apply, allocate a register normally. */
         if (!host_allocated) {

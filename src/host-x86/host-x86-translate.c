@@ -523,6 +523,7 @@ static bool translate_block(HostX86Context *ctx, int block_index)
             const X86Register host_src1 = ctx->regs[src1].host_reg;
             const X86Register host_src2 = ctx->regs[src2].host_reg;
             const bool is64 = (unit->regs[dest].type == RTLTYPE_ADDRESS);
+            ASSERT(host_dest != X86_AX);
 
             /* The destination register will always get rDX if it's free,
              * so if the destination is somewhere else, we need to save
