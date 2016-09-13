@@ -26,14 +26,14 @@ int main(void)
 
     uint32_t reg1, reg2, reg3;
     EXPECT(reg1 = rtl_alloc_register(unit, RTLTYPE_ADDRESS));
-    EXPECT(reg2 = rtl_alloc_register(unit, RTLTYPE_ADDRESS));
-    EXPECT(reg3 = rtl_alloc_register(unit, RTLTYPE_ADDRESS));
+    EXPECT(reg2 = rtl_alloc_register(unit, RTLTYPE_INT32));
+    EXPECT(reg3 = rtl_alloc_register(unit, RTLTYPE_INT32));
 
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg1, 0, 0, 10));
-    EXPECT(rtl_add_insn(unit, RTLOP_LOAD_ADDR, reg2, reg1, 0, 32));
+    EXPECT(rtl_add_insn(unit, RTLOP_LOAD_S16_BR, reg2, reg1, 0, 32));
     EXPECT(rtl_add_insn(unit, RTLOP_MOVE, reg3, reg2, 0, 0));
     EXPECT_EQ(unit->num_insns, 3);
-    EXPECT_EQ(unit->insns[1].opcode, RTLOP_LOAD_ADDR);
+    EXPECT_EQ(unit->insns[1].opcode, RTLOP_LOAD_S16_BR);
     EXPECT_EQ(unit->insns[1].dest, reg2);
     EXPECT_EQ(unit->insns[1].src1, reg1);
     EXPECT_EQ(unit->insns[1].offset, 32);
@@ -43,10 +43,10 @@ int main(void)
 
     const char *disassembly =
         "    0: LOAD_IMM   r1, 0xA\n"
-        "    1: LOAD_ADDR  r2, 32(r1)\n"
+        "    1: LOAD_S16_BR r2, 32(r1)\n"
         "           r1: 0xA\n"
         "    2: MOVE       r3, r2\n"
-        "           r2: @32(r1).addr\n"
+        "           r2: @32(r1).s16.br\n"
         "\n"
         "Block    0: <none> --> [0,2] --> <none>\n"
         ;

@@ -34,7 +34,7 @@ int main(void)
     EXPECT_EQ(unit->num_insns, 1);
     EXPECT_FALSE(rtl_add_insn(unit, RTLOP_LOAD_U16, reg2, reg1, 0, 32));
     EXPECT_ICE("Operand constraint violated:"
-               " unit->regs[dest].type == insn_info[lookup_index].type");
+               " unit->regs[dest].type == RTLTYPE_INT32");
     EXPECT_EQ(unit->num_insns, 1);
 
     rtl_destroy_unit(unit);

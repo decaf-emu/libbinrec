@@ -171,10 +171,11 @@ struct RTLRegister {
         struct {
             uint16_t addr_reg;  // Register holding address for RTLREG_MEMORY
             int16_t offset;     // Access offset
-            uint8_t size;       // Access size in bytes if this is an INT32
-                                //    register (1, 2, or 4); otherwise unused
-            uint8_t is_signed;  // Nonzero if a signed load for INT32, zero
-                                //    if unsigned
+            uint8_t byterev;    // Nonzero if a byte-reversed access, else 0
+            uint8_t size;       // Access size in bytes (1 or 2) if this is a
+                                //    narrow integer load, else 0
+            uint8_t is_signed;  // Nonzero if a signed narrow integer load,
+                                //    else 0
         } memory;
         struct {
             uint16_t src;       // Source alias register

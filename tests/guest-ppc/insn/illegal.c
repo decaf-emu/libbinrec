@@ -23,7 +23,7 @@ static const char expected[] =
     "    4: SET_ALIAS  a1, r2\n"
     "    5: LABEL      L2\n"
     "    6: GET_ALIAS  r3, a1\n"
-    "    7: STORE_I32  956(r1), r3\n"
+    "    7: STORE      956(r1), r3\n"
     "    8: RETURN     r1\n"
     "\n"
     "Block    0: <none> --> [0,0] --> 1\n"

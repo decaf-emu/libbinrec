@@ -49,6 +49,25 @@ static const char *arch_name(binrec_arch_t arch)
 /*-----------------------------------------------------------------------*/
 
 /**
+ * arch_little_endian:  Return whether the given architecture is little-endian.
+ */
+static bool arch_is_little_endian(binrec_arch_t arch)
+{
+    switch (arch) {
+      case BINREC_ARCH_INVALID:  // Avoid a compiler warning.
+      case BINREC_ARCH_POWERPC_750CL:
+        return false;
+      case BINREC_ARCH_X86_64_SYSV:
+      case BINREC_ARCH_X86_64_WINDOWS:
+      case BINREC_ARCH_X86_64_WINDOWS_SEH:
+        return true;
+    }
+    return false;
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
  * add_partial_readonly_page:  Mark the given partial page as read-only.
  * Helper for binrec_add_readonly_region().
  */
@@ -190,6 +209,7 @@ binrec_t *binrec_create_handle(const binrec_setup_t *setup)
 
     memset(handle, 0, sizeof(*handle));
     handle->setup = *setup;
+    handle->host_little_endian = arch_is_little_endian(setup->host);
     handle->code_buffer = NULL;
 
     const int have_malloc = (setup->malloc != NULL);

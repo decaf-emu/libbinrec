@@ -27,14 +27,14 @@ int main(void)
     EXPECT(unit = rtl_create_unit(handle));
 
     uint32_t reg1, reg2;
-    EXPECT(reg1 = rtl_alloc_register(unit, RTLTYPE_ADDRESS));
-    EXPECT(reg2 = rtl_alloc_register(unit, RTLTYPE_ADDRESS));
+    EXPECT(reg1 = rtl_alloc_register(unit, RTLTYPE_INT32));
+    EXPECT(reg2 = rtl_alloc_register(unit, RTLTYPE_INT32));
 
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg1, 0, 0, 10));
     EXPECT_EQ(unit->num_insns, 1);
-    EXPECT_FALSE(rtl_add_insn(unit, RTLOP_LOAD_S8, reg2, reg1, 0, 32));
+    EXPECT_FALSE(rtl_add_insn(unit, RTLOP_LOAD, reg2, reg1, 0, 32));
     EXPECT_ICE("Operand constraint violated:"
-               " unit->regs[dest].type == RTLTYPE_INT32");
+               " unit->regs[src1].type == RTLTYPE_ADDRESS");
     EXPECT_EQ(unit->num_insns, 1);
 
     rtl_destroy_unit(unit);

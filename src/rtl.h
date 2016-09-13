@@ -194,20 +194,28 @@ typedef enum RTLOpcode {
                         //    [other is a function argument index; only
                         //     integer arguments are supported]
 
-    /* Memory load and store operations.  Note that for memory loads and
-     * stores, address operands must be of ADDRESS type, offsets must be
-     * in [-32768,+32767], and the value operand must match the load/store
-     * type (or INT32 tor 8/16-bit integer loads). */
+    /* Memory load and store operations.  Address operands must be of
+     * ADDRESS type, offsets must be in [-32768,+32767], and for 8/16-bit
+     * loads, the value operand must be of INT32 type. */
+    RTLOP_LOAD,         // dest = *(typeof(dest) *)(src1 + other)
     RTLOP_LOAD_U8,      // dest = *(uint8_t *)(src1 + other)
     RTLOP_LOAD_S8,      // dest = *(int8_t *)(src1 + other)
     RTLOP_LOAD_U16,     // dest = *(uint16_t *)(src1 + other)
     RTLOP_LOAD_S16,     // dest = *(int16_t *)(src1 + other)
-    RTLOP_LOAD_I32,     // dest = *(uint32_t *)(src1 + other)
-    RTLOP_LOAD_ADDR,    // dest = *(uintptr_t *)(src1 + other)
+    RTLOP_STORE,        // *(typeof(src2) *)(src1 + other) = src2
     RTLOP_STORE_I8,     // *(uint8_t *)(src1 + other) = src2
     RTLOP_STORE_I16,    // *(uint16_t *)(src1 + other) = src2
-    RTLOP_STORE_I32,    // *(uint32_t *)(src1 + other) = src2
-    RTLOP_STORE_ADDR,   // *(uintptr_t *)(src1 + other) = src2
+    /* These versions (_BR = "Byte-Reversed") swap the byte order of the
+     * value operand after loading or before storing.  Load/store byte
+     * order is interpreted with respect to the host architecture; the
+     * guest translator is responsible for choosing between the normal and
+     * byte-reversed instructions based on the host_little_endian flag in
+     * binrec_t. */
+    RTLOP_LOAD_BR,      // dest = bswap(*(typeof(dest) *)(src1 + other))
+    RTLOP_LOAD_U16_BR,  // dest = bswap16(*(uint16_t *)(src1 + other))
+    RTLOP_LOAD_S16_BR,  // dest = bswap16(*(int16_t *)(src1 + other))
+    RTLOP_STORE_BR,     // *(typeof(src2) *)(src1 + other) = bswap(src2)
+    RTLOP_STORE_I16_BR, // *(uint16_t *)(src1 + other) = bswap16(src2)
 
     /* Branch operations ("other" is a label number) */
     RTLOP_LABEL,        // LABEL(other):

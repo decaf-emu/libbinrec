@@ -249,7 +249,7 @@ static void rtl_describe_register(const RTLRegister *reg,
         const char *type = NULL;
         switch ((RTLDataType)reg->type) {
           case RTLTYPE_INT32:
-            type = (reg->memory.size == 4 ? "i32" :
+            type = (reg->memory.size == 0 ? "i32" :
                     reg->memory.size == 2
                         ? (reg->memory.is_signed ? "s16" : "u16")
                         : (reg->memory.is_signed ? "s8" : "u8"));
@@ -268,8 +268,9 @@ static void rtl_describe_register(const RTLRegister *reg,
             break;
         }
         ASSERT(type);
-        snprintf(buf, bufsize, "@%d(r%u).%s",
-                 reg->memory.offset, reg->memory.addr_reg, type);
+        snprintf(buf, bufsize, "@%d(r%u).%s%s",
+                 reg->memory.offset, reg->memory.addr_reg, type,
+                 reg->memory.byterev ? ".br" : "");
         return;
       }
 
@@ -442,16 +443,19 @@ static void rtl_decode_insn(const RTLUnit *unit, uint32_t index,
         [RTLOP_BFINS     ] = "BFINS",
         [RTLOP_LOAD_IMM  ] = "LOAD_IMM",
         [RTLOP_LOAD_ARG  ] = "LOAD_ARG",
-        [RTLOP_LOAD_S8   ] = "LOAD_S8",
+        [RTLOP_LOAD      ] = "LOAD",
         [RTLOP_LOAD_U8   ] = "LOAD_U8",
-        [RTLOP_LOAD_S16  ] = "LOAD_S16",
+        [RTLOP_LOAD_S8   ] = "LOAD_S8",
         [RTLOP_LOAD_U16  ] = "LOAD_U16",
-        [RTLOP_LOAD_I32  ] = "LOAD_I32",
-        [RTLOP_LOAD_ADDR ] = "LOAD_ADDR",
+        [RTLOP_LOAD_S16  ] = "LOAD_S16",
+        [RTLOP_STORE     ] = "STORE",
         [RTLOP_STORE_I8  ] = "STORE_I8",
         [RTLOP_STORE_I16 ] = "STORE_I16",
-        [RTLOP_STORE_I32 ] = "STORE_I32",
-        [RTLOP_STORE_ADDR] = "STORE_ADDR",
+        [RTLOP_LOAD_BR   ] = "LOAD_BR",
+        [RTLOP_LOAD_U16_BR] = "LOAD_U16_BR",
+        [RTLOP_LOAD_S16_BR] = "LOAD_S16_BR",
+        [RTLOP_STORE_BR  ] = "STORE_BR",
+        [RTLOP_STORE_I16_BR] = "STORE_I16_BR",
         [RTLOP_LABEL     ] = "LABEL",
         [RTLOP_GOTO      ] = "GOTO",
         [RTLOP_GOTO_IF_Z ] = "GOTO_IF_Z",
@@ -590,21 +594,24 @@ static void rtl_decode_insn(const RTLUnit *unit, uint32_t index,
                              name, dest, insn->arg_index);
         return;
 
+      case RTLOP_LOAD:
       case RTLOP_LOAD_U8:
       case RTLOP_LOAD_S8:
       case RTLOP_LOAD_U16:
       case RTLOP_LOAD_S16:
-      case RTLOP_LOAD_I32:
-      case RTLOP_LOAD_ADDR:
+      case RTLOP_LOAD_BR:
+      case RTLOP_LOAD_U16_BR:
+      case RTLOP_LOAD_S16_BR:
         s += snprintf_assert(s, top - s, "%-10s r%u, %d(r%u)\n",
                              name, dest, insn->offset, src1);
         APPEND_REG_DESC(src1);
         return;
 
+      case RTLOP_STORE:
       case RTLOP_STORE_I8:
       case RTLOP_STORE_I16:
-      case RTLOP_STORE_I32:
-      case RTLOP_STORE_ADDR:
+      case RTLOP_STORE_BR:
+      case RTLOP_STORE_I16_BR:
         s += snprintf_assert(s, top - s, "%-10s %d(r%u), r%u\n",
                              name, insn->offset, src1, src2);
         APPEND_REG_DESC(src1);

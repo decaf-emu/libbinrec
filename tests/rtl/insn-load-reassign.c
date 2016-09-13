@@ -28,14 +28,14 @@ int main(void)
 
     uint32_t reg1, reg2;
     EXPECT(reg1 = rtl_alloc_register(unit, RTLTYPE_ADDRESS));
-    EXPECT(reg2 = rtl_alloc_register(unit, RTLTYPE_ADDRESS));
+    EXPECT(reg2 = rtl_alloc_register(unit, RTLTYPE_INT32));
 
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg1, 0, 0, 10));
-    EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg2, 0, 0, 20));
+    EXPECT(rtl_add_insn(unit, RTLOP_LOAD, reg2, reg1, 0, 32));
     EXPECT_EQ(unit->num_insns, 2);
-    EXPECT_FALSE(rtl_add_insn(unit, RTLOP_STORE_I32, 0, reg1, reg2, 32));
+    EXPECT_FALSE(rtl_add_insn(unit, RTLOP_LOAD, reg2, reg1, 0, 32));
     EXPECT_ICE("Operand constraint violated:"
-               " unit->regs[src2].type == type_lookup[lookup_index]");
+               " unit->regs[dest].source == RTLREG_UNDEFINED");
     EXPECT_EQ(unit->num_insns, 2);
 
     rtl_destroy_unit(unit);

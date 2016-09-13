@@ -270,6 +270,9 @@ struct binrec_t {
     /* Handle configuration, as passed to binrec_create(). */
     binrec_setup_t setup;
 
+    /* Flag indicating host architecture's endianness. */
+    bool host_little_endian;
+
     /* Buffer for generated code. */
     uint8_t *code_buffer;
     /* Allocated size of the code buffer, in bytes. */

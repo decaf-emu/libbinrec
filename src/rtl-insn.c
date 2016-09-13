@@ -571,34 +571,10 @@ static bool make_load(RTLUnit *unit, RTLInsn *insn, unsigned int dest,
     ASSERT(dest < unit->next_reg);
     ASSERT(src1 < unit->next_reg);
 
-    /* Lookup tables for each instruction. */
-    static const struct {
-        uint8_t type;       // Required data type (for OPERAND_ASSERT)
-        uint8_t size;       // destreg->memory.size for this insn
-        uint8_t is_signed;  // destreg->memory.is_signed for this insn
-        uint8_t pad;        // 4-byte alignment for faster table indexing
-    } insn_info[] = {
-        [RTLOP_LOAD_U8   - RTLOP_LOAD_U8] = {
-            .type = RTLTYPE_INT32, .size = 1, .is_signed = 0},
-        [RTLOP_LOAD_S8   - RTLOP_LOAD_U8] = {
-            .type = RTLTYPE_INT32, .size = 1, .is_signed = 1},
-        [RTLOP_LOAD_U16  - RTLOP_LOAD_U8] = {
-            .type = RTLTYPE_INT32, .size = 2, .is_signed = 0},
-        [RTLOP_LOAD_S16  - RTLOP_LOAD_U8] = {
-            .type = RTLTYPE_INT32, .size = 2, .is_signed = 1},
-        [RTLOP_LOAD_I32  - RTLOP_LOAD_U8] = {
-            .type = RTLTYPE_INT32, .size = 4, .is_signed = 0},
-        [RTLOP_LOAD_ADDR - RTLOP_LOAD_U8] = {.type = RTLTYPE_ADDRESS},
-    };
-
-    const int lookup_index = insn->opcode - RTLOP_LOAD_U8;
-    ASSERT(lookup_index >= 0 && lookup_index < lenof(insn_info));
-
 #ifdef ENABLE_OPERAND_SANITY_CHECKS
     OPERAND_ASSERT(dest != 0);
     OPERAND_ASSERT(src1 != 0);
     OPERAND_ASSERT(unit->regs[dest].source == RTLREG_UNDEFINED);
-    OPERAND_ASSERT(unit->regs[dest].type == insn_info[lookup_index].type);
     OPERAND_ASSERT(unit->regs[src1].source != RTLREG_UNDEFINED);
     OPERAND_ASSERT(unit->regs[src1].type == RTLTYPE_ADDRESS);
     OPERAND_ASSERT(other <= 0x7FFF || other >= UINT64_C(-0x8000));
@@ -614,6 +590,66 @@ static bool make_load(RTLUnit *unit, RTLInsn *insn, unsigned int dest,
     destreg->source = RTLREG_MEMORY;
     destreg->memory.addr_reg = src1;
     destreg->memory.offset = (int16_t)other;
+    destreg->memory.byterev = (insn->opcode == RTLOP_LOAD_BR);
+    destreg->memory.size = 0;
+    mark_live(unit, insn_index, destreg, dest);
+    mark_live(unit, insn_index, src1reg, src1);
+
+    return true;
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
+ * make_load_narrow:  Encode a memory load instruction for a narrow integer.
+ */
+static bool make_load_narrow(RTLUnit *unit, RTLInsn *insn, unsigned int dest,
+                             uint32_t src1, uint32_t src2, uint64_t other)
+{
+    ASSERT(unit != NULL);
+    ASSERT(unit->regs != NULL);
+    ASSERT(insn != NULL);
+    ASSERT(dest < unit->next_reg);
+    ASSERT(src1 < unit->next_reg);
+
+    /* Lookup tables for each instruction. */
+    static const struct {
+        uint8_t size;       // destreg->memory.size for this insn
+        uint8_t is_signed;  // destreg->memory.is_signed for this insn
+    } insn_info[] = {
+        [RTLOP_LOAD_U8     - RTLOP_LOAD_U8] = {.size = 1, .is_signed = 0},
+        [RTLOP_LOAD_S8     - RTLOP_LOAD_U8] = {.size = 1, .is_signed = 1},
+        [RTLOP_LOAD_U16    - RTLOP_LOAD_U8] = {.size = 2, .is_signed = 0},
+        [RTLOP_LOAD_S16    - RTLOP_LOAD_U8] = {.size = 2, .is_signed = 1},
+        [RTLOP_LOAD_U16_BR - RTLOP_LOAD_U8] = {.size = 2, .is_signed = 0},
+        [RTLOP_LOAD_S16_BR - RTLOP_LOAD_U8] = {.size = 2, .is_signed = 1},
+    };
+
+    const int lookup_index = insn->opcode - RTLOP_LOAD_U8;
+    ASSERT(lookup_index >= 0 && lookup_index < lenof(insn_info));
+    ASSERT(insn_info[lookup_index].size > 0);
+
+#ifdef ENABLE_OPERAND_SANITY_CHECKS
+    OPERAND_ASSERT(dest != 0);
+    OPERAND_ASSERT(src1 != 0);
+    OPERAND_ASSERT(unit->regs[dest].source == RTLREG_UNDEFINED);
+    OPERAND_ASSERT(unit->regs[dest].type == RTLTYPE_INT32);
+    OPERAND_ASSERT(unit->regs[src1].source != RTLREG_UNDEFINED);
+    OPERAND_ASSERT(unit->regs[src1].type == RTLTYPE_ADDRESS);
+    OPERAND_ASSERT(other <= 0x7FFF || other >= UINT64_C(-0x8000));
+#endif
+
+    insn->dest = dest;
+    insn->src1 = src1;
+    insn->offset = (int16_t)other;
+
+    RTLRegister * const destreg = &unit->regs[dest];
+    RTLRegister * const src1reg = &unit->regs[src1];
+    const uint32_t insn_index = unit->num_insns;
+    destreg->source = RTLREG_MEMORY;
+    destreg->memory.addr_reg = src1;
+    destreg->memory.offset = (int16_t)other;
+    destreg->memory.byterev = (insn->opcode >= RTLOP_LOAD_U16_BR);
     destreg->memory.size = insn_info[lookup_index].size;
     destreg->memory.is_signed = insn_info[lookup_index].is_signed;
     mark_live(unit, insn_index, destreg, dest);
@@ -636,24 +672,49 @@ static bool make_store(RTLUnit *unit, RTLInsn *insn, unsigned int dest,
     ASSERT(src1 < unit->next_reg);
     ASSERT(src2 < unit->next_reg);
 
-    /* Required data types for each instruction. */
-    static const uint8_t type_lookup[] = {
-        [RTLOP_STORE_I8   - RTLOP_STORE_I8] = RTLTYPE_INT32,
-        [RTLOP_STORE_I16  - RTLOP_STORE_I8] = RTLTYPE_INT32,
-        [RTLOP_STORE_I32  - RTLOP_STORE_I8] = RTLTYPE_INT32,
-        [RTLOP_STORE_ADDR - RTLOP_STORE_I8] = RTLTYPE_ADDRESS,
-    };
-
 #ifdef ENABLE_OPERAND_SANITY_CHECKS
-    const int lookup_index = insn->opcode - RTLOP_STORE_I8;
-    ASSERT(lookup_index >= 0 && lookup_index < lenof(type_lookup));
-
     OPERAND_ASSERT(src1 != 0);
     OPERAND_ASSERT(src2 != 0);
     OPERAND_ASSERT(unit->regs[src1].source != RTLREG_UNDEFINED);
     OPERAND_ASSERT(unit->regs[src1].type == RTLTYPE_ADDRESS);
     OPERAND_ASSERT(unit->regs[src2].source != RTLREG_UNDEFINED);
-    OPERAND_ASSERT(unit->regs[src2].type == type_lookup[lookup_index]);
+    OPERAND_ASSERT(other <= 0x7FFF || other >= UINT64_C(-0x8000));
+#endif
+
+    insn->src1 = src1;
+    insn->src2 = src2;
+    insn->offset = (int16_t)other;
+
+    RTLRegister * const destreg = &unit->regs[dest];
+    RTLRegister * const src1reg = &unit->regs[src1];
+    const uint32_t insn_index = unit->num_insns;
+    mark_live(unit, insn_index, destreg, dest);
+    mark_live(unit, insn_index, src1reg, src1);
+
+    return true;
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
+ * make_store_narrow:  Encode a memory store instruction.
+ */
+static bool make_store_narrow(RTLUnit *unit, RTLInsn *insn, unsigned int dest,
+                              uint32_t src1, uint32_t src2, uint64_t other)
+{
+    ASSERT(unit != NULL);
+    ASSERT(unit->regs != NULL);
+    ASSERT(insn != NULL);
+    ASSERT(src1 < unit->next_reg);
+    ASSERT(src2 < unit->next_reg);
+
+#ifdef ENABLE_OPERAND_SANITY_CHECKS
+    OPERAND_ASSERT(src1 != 0);
+    OPERAND_ASSERT(src2 != 0);
+    OPERAND_ASSERT(unit->regs[src1].source != RTLREG_UNDEFINED);
+    OPERAND_ASSERT(unit->regs[src1].type == RTLTYPE_ADDRESS);
+    OPERAND_ASSERT(unit->regs[src2].source != RTLREG_UNDEFINED);
+    OPERAND_ASSERT(unit->regs[src2].type == RTLTYPE_INT32);
     OPERAND_ASSERT(other <= 0x7FFF || other >= UINT64_C(-0x8000));
 #endif
 
@@ -871,16 +932,19 @@ bool (* const makefunc_table[])(RTLUnit *, RTLInsn *, unsigned int,
     [RTLOP_BFINS     ] = make_bitfield,
     [RTLOP_LOAD_IMM  ] = make_load_imm,
     [RTLOP_LOAD_ARG  ] = make_load_arg,
-    [RTLOP_LOAD_U8   ] = make_load,
-    [RTLOP_LOAD_S8   ] = make_load,
-    [RTLOP_LOAD_U16  ] = make_load,
-    [RTLOP_LOAD_S16  ] = make_load,
-    [RTLOP_LOAD_I32  ] = make_load,
-    [RTLOP_LOAD_ADDR ] = make_load,
-    [RTLOP_STORE_I8  ] = make_store,
-    [RTLOP_STORE_I16 ] = make_store,
-    [RTLOP_STORE_I32 ] = make_store,
-    [RTLOP_STORE_ADDR] = make_store,
+    [RTLOP_LOAD      ] = make_load,
+    [RTLOP_LOAD_U8   ] = make_load_narrow,
+    [RTLOP_LOAD_S8   ] = make_load_narrow,
+    [RTLOP_LOAD_U16  ] = make_load_narrow,
+    [RTLOP_LOAD_S16  ] = make_load_narrow,
+    [RTLOP_STORE     ] = make_store,
+    [RTLOP_STORE_I8  ] = make_store_narrow,
+    [RTLOP_STORE_I16 ] = make_store_narrow,
+    [RTLOP_LOAD_BR   ] = make_load,
+    [RTLOP_LOAD_U16_BR] = make_load_narrow,
+    [RTLOP_LOAD_S16_BR] = make_load_narrow,
+    [RTLOP_STORE_BR  ] = make_store,
+    [RTLOP_STORE_I16_BR] = make_store_narrow,
     [RTLOP_LABEL     ] = make_label,
     [RTLOP_GOTO      ] = make_goto,
     [RTLOP_GOTO_IF_Z ] = make_goto_cond,
