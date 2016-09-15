@@ -128,13 +128,9 @@ static APPEND_INLINE void append_rex_opcode(CodeBuffer *code, uint8_t rex,
     } else {
         ASSERT(code->len + 5 <= code->buffer_size);
         code->len += 5;
-        if (opcode>>24 == 0x66 || opcode>>24 == 0xF2 || opcode>>24 == 0xF3) {
-            *ptr++ = opcode >> 24;
-            *ptr++ = rex;
-        } else {
-            *ptr++ = rex;
-            *ptr++ = opcode >> 24;
-        }
+        ASSERT(opcode>>24 == 0x66 || opcode>>24 == 0xF2 || opcode>>24 == 0xF3);
+        *ptr++ = opcode >> 24;
+        *ptr++ = rex;
         *ptr++ = opcode >> 16;
         *ptr++ = opcode >> 8;
         *ptr++ = opcode;
