@@ -196,6 +196,7 @@ typedef enum RTLOpcode {
      * generated (if OPERAND_SANITY_CHECKS is enabled) if the 64-bit value
      * of "other" is not in the range of a sign-extended 32-bit value. */
     RTLOP_ADDI,         // dest = src1 + IMMEDIATE(other)
+    RTLOP_MULI,         // dest = src1 * IMMEDIATE(other)
     RTLOP_ANDI,         // dest = src1 & IMMEDIATE(other)
     RTLOP_ORI,          // dest = src1 | IMMEDIATE(other)
     RTLOP_XORI,         // dest = src1 ^ IMMEDIATE(other)

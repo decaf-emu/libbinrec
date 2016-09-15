@@ -288,6 +288,7 @@ static void rtl_describe_register(const RTLRegister *reg,
             [RTLOP_SUB  ] = "-",
             [RTLOP_NEG  ] = "-",
             [RTLOP_MUL  ] = "*",
+            [RTLOP_MULI ] = "*",
             [RTLOP_DIVU ] = "/",
             [RTLOP_DIVS ] = "/",
             [RTLOP_MODU ] = "%",
@@ -373,6 +374,7 @@ static void rtl_describe_register(const RTLRegister *reg,
                      reg->result.src2);
             break;
           case RTLOP_ADDI:
+          case RTLOP_MULI:
           case RTLOP_ANDI:
           case RTLOP_ORI:
           case RTLOP_XORI:
@@ -471,6 +473,7 @@ static void rtl_decode_insn(const RTLUnit *unit, uint32_t index,
         [RTLOP_BFEXT     ] = "BFEXT",
         [RTLOP_BFINS     ] = "BFINS",
         [RTLOP_ADDI      ] = "ADDI",
+        [RTLOP_MULI      ] = "MULI",
         [RTLOP_ANDI      ] = "ANDI",
         [RTLOP_ORI       ] = "ORI",
         [RTLOP_XORI      ] = "XORI",
@@ -607,6 +610,7 @@ static void rtl_decode_insn(const RTLUnit *unit, uint32_t index,
         return;
 
       case RTLOP_ADDI:
+      case RTLOP_MULI:
       case RTLOP_ANDI:
       case RTLOP_ORI:
       case RTLOP_XORI:
