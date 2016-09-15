@@ -318,6 +318,66 @@ static APPEND_INLINE void append_insn_ModRM_reg(
     append_ModRM(code, X86MOD_REG, reg1 & 7, reg2 & 7);
 }
 
+/*-----------------------------------------------------------------------*/
+
+/**
+ * append_insn_ModRM_mem:  Append an instruction which takes a ModR/M byte,
+ * encoding a base-plus-offset memory EA in the instruction.
+ *
+ * [Parameters]
+ *     code: Output code buffer.
+ *     is64: True for 64-bit operands, false for 32-bit operands.
+ *     opcode: Instruction opcode.
+ *     reg: Register index (or sub-opcode) for ModR/M reg field.
+ *     base: Base register index for memory address.  Must not be X86_SP.
+ *     offset: Constant offset for memory address.
+ */
+static APPEND_INLINE void append_insn_ModRM_mem(
+    CodeBuffer *code, bool is64, X86Opcode opcode, X86Register reg,
+    X86Register base, int32_t offset)
+{
+    ASSERT(base != X86_SP);
+
+    uint8_t rex = is64 ? X86_REX_W : 0;
+    if (reg & 8) {
+        rex |= X86_REX_R;
+    }
+    if (base & 8) {
+        rex |= X86_REX_B;
+    }
+    if (rex) {
+        append_rex_opcode(code, rex, opcode);
+    } else {
+        append_opcode(code, opcode);
+    }
+
+    X86Mod mod;
+    if (offset == 0) {
+        /* The x86 ISA doesn't allow dereferencing rBP with no offset;
+         * a ModR/M byte with mod=0, r/m=5 (BP) is interpreted as an
+         * absolute address (RIP-relative in x86-64 mode).  Instead,
+         * we have to encode it as an 8-bit displacement of zero.
+         * This also applies to R13 in x86-64 mode, since the hardware
+         * does not check REX.B before invoking special handling for
+         * that ModR/M combination. */
+        if (base == X86_BP || base == X86_R13) {
+            mod = X86MOD_DISP8;
+        } else {
+            mod = X86MOD_DISP0;
+        }
+    } else if ((uint32_t)offset + 128 < 256) {  // [-128,+127]
+        mod = X86MOD_DISP8;
+    } else {
+        mod = X86MOD_DISP32;
+    }
+    append_ModRM(code, mod, reg & 7, base & 7);
+    if (mod == X86MOD_DISP8) {
+        append_imm8(code, (uint8_t)offset);
+    } else if (mod == X86MOD_DISP32) {
+        append_imm32(code, (uint32_t)offset);
+    }
+}
+
 /*************************************************************************/
 /*************************** Translation core ****************************/
 /*************************************************************************/
@@ -1147,7 +1207,7 @@ static bool translate_block(HostX86Context *ctx, int block_index)
             const X86Register host_dest = ctx->regs[dest].host_reg;
             const int host_src_i =
                 host_x86_int_arg_register(ctx, insn->arg_index);
-            ASSERT(host_src_i >= 0);  // Ensured by register allocation.
+            ASSERT(host_src_i >= 0);  // Checked during register allocation.
             const X86Register host_src = (X86Register)host_src_i;
             if (host_dest != host_src) {
                 const bool is64 = (unit->regs[dest].type == RTLTYPE_ADDRESS);
@@ -1156,6 +1216,221 @@ static bool translate_block(HostX86Context *ctx, int block_index)
             }
             break;
           }  // case RTLOP_LOAD_ARG
+
+          case RTLOP_LOAD: {
+            const X86Register host_dest = ctx->regs[dest].host_reg;
+            const X86Register host_src1 = ctx->regs[src1].host_reg;
+            switch (unit->regs[dest].type) {
+              case RTLTYPE_INT32:
+                append_insn_ModRM_mem(&code, false, X86OP_MOV_Gv_Ev,
+                                      host_dest, host_src1, insn->offset);
+                break;
+              case RTLTYPE_ADDRESS:
+                append_insn_ModRM_mem(&code, true, X86OP_MOV_Gv_Ev,
+                                      host_dest, host_src1, insn->offset);
+                break;
+              default:
+                // FIXME: handle FP registers when we support those
+                ASSERT(!"Invalid data type in LOAD");
+            }
+            break;
+          }  // case RTLOP_LOAD
+
+          case RTLOP_LOAD_U8:
+          case RTLOP_LOAD_S8: {
+            const X86Register host_dest = ctx->regs[dest].host_reg;
+            const X86Register host_src1 = ctx->regs[src1].host_reg;
+            const X86Opcode opcode = (insn->opcode == RTLOP_LOAD_U8
+                                      ? X86OP_MOVZX_Gv_Eb : X86OP_MOVSX_Gv_Eb);
+            append_insn_ModRM_mem(&code, false, opcode,
+                                  host_dest, host_src1, insn->offset);
+            break;
+          }  // case RTLOP_LOAD_U8, RTLOP_LOAD_S8
+
+          case RTLOP_LOAD_U16:
+          case RTLOP_LOAD_S16: {
+            const X86Register host_dest = ctx->regs[dest].host_reg;
+            const X86Register host_src1 = ctx->regs[src1].host_reg;
+            const X86Opcode opcode = (insn->opcode == RTLOP_LOAD_U16
+                                      ? X86OP_MOVZX_Gv_Ew : X86OP_MOVSX_Gv_Ew);
+            append_insn_ModRM_mem(&code, false, opcode,
+                                  host_dest, host_src1, insn->offset);
+            break;
+          }  // case RTLOP_LOAD_U16, RTLOP_LOAD_S16
+
+          case RTLOP_STORE: {
+            const X86Register host_src1 = ctx->regs[src1].host_reg;
+            const X86Register host_src2 = ctx->regs[src2].host_reg;
+            switch (unit->regs[src2].type) {
+              case RTLTYPE_INT32:
+                append_insn_ModRM_mem(&code, false, X86OP_MOV_Ev_Gv,
+                                      host_src2, host_src1, insn->offset);
+                break;
+              case RTLTYPE_ADDRESS:
+                append_insn_ModRM_mem(&code, true, X86OP_MOV_Ev_Gv,
+                                      host_src2, host_src1, insn->offset);
+                break;
+              default:
+                // FIXME: handle FP registers when we support those
+                ASSERT(!"Invalid data type in STORE");
+            }
+            break;
+          }  // case RTLOP_STORE
+
+          case RTLOP_STORE_I8: {
+            const X86Register host_src1 = ctx->regs[src1].host_reg;
+            const X86Register host_src2 = ctx->regs[src2].host_reg;
+            /* Handle mandatory REX prefix for low byte of SP/BP/SI/DI. */
+            if (host_src2 >= X86_SP && host_src2 <= X86_DI
+             && host_src1 <= X86_DI) {
+                append_opcode(&code, X86OP_REX);
+            }
+            append_insn_ModRM_mem(&code, false, X86OP_MOV_Eb_Gb,
+                                  host_src2, host_src1, insn->offset);
+            break;
+          }  // case RTLOP_STORE_I8
+
+          case RTLOP_STORE_I16: {
+            const X86Register host_src1 = ctx->regs[src1].host_reg;
+            const X86Register host_src2 = ctx->regs[src2].host_reg;
+            append_opcode(&code, X86OP_OPERAND_SIZE);
+            append_insn_ModRM_mem(&code, false, X86OP_MOV_Ev_Gv,
+                                  host_src2, host_src1, insn->offset);
+            break;
+          }  // case RTLOP_STORE_I16
+
+          case RTLOP_LOAD_BR: {
+            const X86Register host_dest = ctx->regs[dest].host_reg;
+            const X86Register host_src1 = ctx->regs[src1].host_reg;
+            switch (unit->regs[dest].type) {
+              case RTLTYPE_INT32:
+                if (handle->setup.host_features & BINREC_FEATURE_X86_MOVBE) {
+                    append_insn_ModRM_mem(&code, false, X86OP_MOVBE_Gy_My,
+                                          host_dest, host_src1, insn->offset);
+                } else {
+                    append_insn_ModRM_mem(&code, false, X86OP_MOV_Gv_Ev,
+                                          host_dest, host_src1, insn->offset);
+                    append_insn_R(&code, false, X86OP_BSWAP_rAX, host_dest);
+                }
+                break;
+              case RTLTYPE_ADDRESS:
+                if (handle->setup.host_features & BINREC_FEATURE_X86_MOVBE) {
+                    append_insn_ModRM_mem(&code, true, X86OP_MOVBE_Gy_My,
+                                          host_dest, host_src1, insn->offset);
+                } else {
+                    append_insn_ModRM_mem(&code, true, X86OP_MOV_Gv_Ev,
+                                          host_dest, host_src1, insn->offset);
+                    append_insn_R(&code, true, X86OP_BSWAP_rAX, host_dest);
+                }
+                break;
+              default:
+                // FIXME: handle FP registers when we support those
+                ASSERT(!"Invalid data type in LOAD_BR");
+            }
+            break;
+          }  // case RTLOP_LOAD_BR
+
+          case RTLOP_LOAD_U16_BR:
+          case RTLOP_LOAD_S16_BR: {
+            const X86Register host_dest = ctx->regs[dest].host_reg;
+            const X86Register host_src1 = ctx->regs[src1].host_reg;
+
+            if (handle->setup.host_features & BINREC_FEATURE_X86_MOVBE) {
+                append_insn_ModRM_mem(&code, false, X86OP_MOVBE_Gw_Mw,
+                                      host_dest, host_src1, insn->offset);
+            } else {
+                /* MOVZX instead of plain MOV (which would leave the high
+                 * bits of the destination register unchanged) to avoid a
+                 * false dependency on the previous value of the register. */
+                append_insn_ModRM_mem(&code, false, X86OP_MOVZX_Gv_Ew,
+                                      host_dest, host_src1, insn->offset);
+                /* rorw $8,%reg would be slightly more compact, but that
+                 * incurs both a rotate penalty and a partial register
+                 * stall when extending to 32 bits below.  The byte-XCHG
+                 * idiom (e.g. XCHG AH,AL) similarly seems likely to cause
+                 * a partial register stall, so we don't do that either.
+                 * Modern processors should all support MOVBE anyway. */
+                append_insn_R(&code, false, X86OP_BSWAP_rAX, host_dest);
+                append_insn_ModRM_reg(&code, false, X86OP_SHIFT_Ev_Ib,
+                                      X86OP_SHIFT_SHR, host_dest);
+                append_imm8(&code, 16);
+                if (insn->opcode == RTLOP_LOAD_U16_BR) {
+                    break;  // Already zero-extended.
+                }
+            }
+
+            const X86Opcode opcode = (insn->opcode == RTLOP_LOAD_U16_BR
+                                      ? X86OP_MOVZX_Gv_Ew : X86OP_MOVSX_Gv_Ew);
+            append_insn_ModRM_reg(&code, false, opcode, host_dest, host_dest);
+            break;
+          }  // case RTLOP_LOAD_U16_BR, RTLOP_LOAD_S16_BR
+
+          case RTLOP_STORE_BR: {
+            const X86Register host_src1 = ctx->regs[src1].host_reg;
+            const X86Register host_src2 = ctx->regs[src2].host_reg;
+            switch (unit->regs[src2].type) {
+              case RTLTYPE_INT32:
+                if (handle->setup.host_features & BINREC_FEATURE_X86_MOVBE) {
+                    append_insn_ModRM_mem(&code, false, X86OP_MOVBE_My_Gy,
+                                          host_src2, host_src1, insn->offset);
+                } else {
+                    append_insn_R(&code, false, X86OP_BSWAP_rAX, host_src2);
+                    append_insn_ModRM_mem(&code, false, X86OP_MOV_Ev_Gv,
+                                          host_src2, host_src1, insn->offset);
+                    if (unit->regs[src2].death > insn_index) {
+                        append_insn_R(&code, false, X86OP_BSWAP_rAX, host_src2);
+                    }
+                }
+                break;
+              case RTLTYPE_ADDRESS:
+                if (handle->setup.host_features & BINREC_FEATURE_X86_MOVBE) {
+                    append_insn_ModRM_mem(&code, true, X86OP_MOVBE_My_Gy,
+                                          host_src2, host_src1, insn->offset);
+                } else {
+                    append_insn_R(&code, true, X86OP_BSWAP_rAX, host_src2);
+                    append_insn_ModRM_mem(&code, true, X86OP_MOV_Ev_Gv,
+                                          host_src2, host_src1, insn->offset);
+                    if (unit->regs[src2].death > insn_index) {
+                        append_insn_R(&code, true, X86OP_BSWAP_rAX, host_src2);
+                    }
+                }
+                break;
+              default:
+                // FIXME: handle FP registers when we support those
+                ASSERT(!"Invalid data type in STORE_BR");
+            }
+            break;
+          }  // case RTLOP_STORE_BR
+
+          case RTLOP_STORE_I16_BR: {
+            const X86Register host_src1 = ctx->regs[src1].host_reg;
+            const X86Register host_src2 = ctx->regs[src2].host_reg;
+            if (handle->setup.host_features & BINREC_FEATURE_X86_MOVBE) {
+                append_insn_ModRM_mem(&code, false, X86OP_MOVBE_Mw_Gw,
+                                      host_src2, host_src1, insn->offset);
+            } else if (unit->regs[src2].death <= insn_index) {
+                append_insn_R(&code, false, X86OP_BSWAP_rAX, host_src2);
+                append_insn_ModRM_reg(&code, false, X86OP_SHIFT_Ev_Ib,
+                                      X86OP_SHIFT_SHR, host_src2);
+                append_imm8(&code, 16);
+                append_opcode(&code, X86OP_OPERAND_SIZE);
+                append_insn_ModRM_mem(&code, false, X86OP_MOV_Ev_Gv,
+                                      host_src2, host_src1, insn->offset);
+            } else {
+                append_opcode(&code, X86OP_OPERAND_SIZE);
+                append_insn_ModRM_reg(&code, false, X86OP_SHIFT_Ev_Ib,
+                                      X86OP_SHIFT_ROR, host_src2);
+                append_imm8(&code, 8);
+                append_opcode(&code, X86OP_OPERAND_SIZE);
+                append_insn_ModRM_mem(&code, false, X86OP_MOV_Ev_Gv,
+                                      host_src2, host_src1, insn->offset);
+                append_opcode(&code, X86OP_OPERAND_SIZE);
+                append_insn_ModRM_reg(&code, false, X86OP_SHIFT_Ev_Ib,
+                                      X86OP_SHIFT_ROR, host_src2);
+                append_imm8(&code, 8);
+            }
+            break;
+          }  // case RTLOP_STORE_I16_BR
 
           case RTLOP_LABEL:
             ASSERT(insn->label > 0);
