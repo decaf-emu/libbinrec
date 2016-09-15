@@ -188,6 +188,29 @@ typedef enum RTLOpcode {
                         //      | ((src2 & ((1<<count) - 1)) << start)
                         //    [conceptually, "insert src2 into src1"]
 
+    /* Integer-immediate operations.  For instructions other than
+     * shift/rotate operations, if src1 is wider than 32 bits, the
+     * immediate value is sign-extended, and an operand error will be
+     * generated (if OPERAND_SANITY_CHECKS is enabled) if the 64-bit value
+     * of "other" is not in the range of a sign-extended 32-bit value. */
+    RTLOP_ADDI,         // dest = src1 + IMMEDIATE(other)
+    RTLOP_ANDI,         // dest = src1 & IMMEDIATE(other)
+    RTLOP_ORI,          // dest = src1 | IMMEDIATE(other)
+    RTLOP_XORI,         // dest = src1 ^ IMMEDIATE(other)
+    RTLOP_SLLI,         // dest = src1 << IMMEDIATE(other)
+                        //    [result is undefined when other >= #bits(src1)]
+    RTLOP_SRLI,         // dest = (unsigned)src1 >> IMMEDIATE(other)
+                        //    [result is undefined when other >= #bits(src1)]
+    RTLOP_SRAI,         // dest = (signed)src1 >> IMMEDIATE(other)
+                        //    [result is undefined when other >= #bits(src1)]
+    RTLOP_RORI,         // dest = src1 ROR (IMMEDIATE(other) % #bits(src1))
+    RTLOP_SEQI,         // dest = src1 == src2 ? 1 : 0
+                        //    [dest may be any integer type]
+    RTLOP_SLTUI,        // dest = (unsigned)src1 < IMMEDIATE(other) ? 1 : 0
+                        //    [dest may be any integer type]
+    RTLOP_SLTSI,        // dest = (signed)src1 < IMMEDIATE(other) ? 1 : 0
+                        //    [dest may be any integer type]
+
     /* Non-memory load operations */
     RTLOP_LOAD_IMM,     // dest = IMMEDIATE(other)
     RTLOP_LOAD_ARG,     // dest = ARG(other)

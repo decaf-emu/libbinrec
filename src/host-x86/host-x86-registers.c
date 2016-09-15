@@ -173,8 +173,6 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index)
     const RTLRegister * const src2_reg = &unit->regs[src2];
     const HostX86RegInfo * const src2_info = &ctx->regs[src2];
 
-    // FIXME: implement CONSTANT_OPERANDS optimization
-
     if (src1) {
         /* Source registers must have already had a host register allocated
          * (unless they're undefined). */

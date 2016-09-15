@@ -385,6 +385,47 @@ static bool make_alu_2op(RTLUnit *unit, RTLInsn *insn, unsigned int dest,
 /*-----------------------------------------------------------------------*/
 
 /**
+ * make_alu_imm:  Encode a register-immediate ALU-type instruction.
+ */
+static bool make_alu_imm(RTLUnit *unit, RTLInsn *insn, unsigned int dest,
+                         uint32_t src1, uint32_t src2, uint64_t other)
+{
+    ASSERT(unit != NULL);
+    ASSERT(unit->regs != NULL);
+    ASSERT(insn != NULL);
+    ASSERT(dest < unit->next_reg);
+    ASSERT(src1 < unit->next_reg);
+
+#ifdef ENABLE_OPERAND_SANITY_CHECKS
+    OPERAND_ASSERT(dest != 0);
+    OPERAND_ASSERT(src1 != 0);
+    OPERAND_ASSERT(other + UINT64_C(0x80000000) < UINT64_C(0x100000000));
+    OPERAND_ASSERT(unit->regs[dest].source == RTLREG_UNDEFINED);
+    OPERAND_ASSERT(unit->regs[src1].source != RTLREG_UNDEFINED);
+    OPERAND_ASSERT(rtl_register_is_int(&unit->regs[dest]));
+    OPERAND_ASSERT(unit->regs[src1].type == unit->regs[dest].type);
+#endif
+
+    insn->dest = dest;
+    insn->src1 = src1;
+    insn->src_imm = other;
+
+    RTLRegister * const destreg = &unit->regs[dest];
+    RTLRegister * const src1reg = &unit->regs[src1];
+    const uint32_t insn_index = unit->num_insns;
+    destreg->source = RTLREG_RESULT;
+    destreg->result.opcode = insn->opcode;
+    destreg->result.src1 = src1;
+    destreg->result.src_imm = (int32_t)other;
+    mark_live(unit, insn_index, destreg, dest);
+    mark_live(unit, insn_index, src1reg, src1);
+
+    return true;
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
  * make_cmp:  Encode a comparison instruction.
  */
 static bool make_cmp(RTLUnit *unit, RTLInsn *insn, unsigned int dest,
@@ -423,6 +464,47 @@ static bool make_cmp(RTLUnit *unit, RTLInsn *insn, unsigned int dest,
     mark_live(unit, insn_index, destreg, dest);
     mark_live(unit, insn_index, src1reg, src1);
     mark_live(unit, insn_index, src2reg, src2);
+
+    return true;
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
+ * make_cmp_imm:  Encode a register-immediate comparison instruction.
+ */
+static bool make_cmp_imm(RTLUnit *unit, RTLInsn *insn, unsigned int dest,
+                         uint32_t src1, uint32_t src2, uint64_t other)
+{
+    ASSERT(unit != NULL);
+    ASSERT(unit->regs != NULL);
+    ASSERT(insn != NULL);
+    ASSERT(dest < unit->next_reg);
+    ASSERT(src1 < unit->next_reg);
+
+#ifdef ENABLE_OPERAND_SANITY_CHECKS
+    OPERAND_ASSERT(dest != 0);
+    OPERAND_ASSERT(src1 != 0);
+    OPERAND_ASSERT(other + UINT64_C(0x80000000) < UINT64_C(0x100000000));
+    OPERAND_ASSERT(unit->regs[dest].source == RTLREG_UNDEFINED);
+    OPERAND_ASSERT(unit->regs[src1].source != RTLREG_UNDEFINED);
+    OPERAND_ASSERT(rtl_register_is_int(&unit->regs[dest]));
+    OPERAND_ASSERT(rtl_register_is_int(&unit->regs[src1]));
+#endif
+
+    insn->dest = dest;
+    insn->src1 = src1;
+    insn->src_imm = other;
+
+    RTLRegister * const destreg = &unit->regs[dest];
+    RTLRegister * const src1reg = &unit->regs[src1];
+    const uint32_t insn_index = unit->num_insns;
+    destreg->source = RTLREG_RESULT;
+    destreg->result.opcode = insn->opcode;
+    destreg->result.src1 = src1;
+    destreg->result.src_imm = (int32_t)other;
+    mark_live(unit, insn_index, destreg, dest);
+    mark_live(unit, insn_index, src1reg, src1);
 
     return true;
 }
@@ -922,14 +1004,25 @@ bool (* const makefunc_table[])(RTLUnit *, RTLInsn *, unsigned int,
     [RTLOP_SRA       ] = make_alu_2op,
     [RTLOP_ROR       ] = make_alu_2op,
     [RTLOP_CLZ       ] = make_alu_1op,
+    [RTLOP_BSWAP     ] = make_alu_1op,
+    [RTLOP_SEQ       ] = make_cmp,
     [RTLOP_SLTU      ] = make_cmp,
     [RTLOP_SLTS      ] = make_cmp,
     [RTLOP_SLEU      ] = make_cmp,
     [RTLOP_SLES      ] = make_cmp,
-    [RTLOP_SEQ       ] = make_cmp,
-    [RTLOP_BSWAP     ] = make_alu_1op,
     [RTLOP_BFEXT     ] = make_bitfield,
     [RTLOP_BFINS     ] = make_bitfield,
+    [RTLOP_ADDI      ] = make_alu_imm,
+    [RTLOP_ANDI      ] = make_alu_imm,
+    [RTLOP_ORI       ] = make_alu_imm,
+    [RTLOP_XORI      ] = make_alu_imm,
+    [RTLOP_SLLI      ] = make_alu_imm,
+    [RTLOP_SRLI      ] = make_alu_imm,
+    [RTLOP_SRAI      ] = make_alu_imm,
+    [RTLOP_RORI      ] = make_alu_imm,
+    [RTLOP_SEQI      ] = make_cmp_imm,
+    [RTLOP_SLTUI     ] = make_cmp_imm,
+    [RTLOP_SLTSI     ] = make_cmp_imm,
     [RTLOP_LOAD_IMM  ] = make_load_imm,
     [RTLOP_LOAD_ARG  ] = make_load_arg,
     [RTLOP_LOAD      ] = make_load,

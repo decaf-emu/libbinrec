@@ -281,37 +281,50 @@ static void rtl_describe_register(const RTLRegister *reg,
       case RTLREG_RESULT:
       case RTLREG_RESULT_NOFOLD: {
         static const char * const operators[] = {
-            [RTLOP_SCAST ] = "scast",
-            [RTLOP_ZCAST ] = "zcast",
-            [RTLOP_ADD   ] = "+",
-            [RTLOP_SUB   ] = "-",
-            [RTLOP_NEG   ] = "-",
-            [RTLOP_MUL   ] = "*",
-            [RTLOP_DIVU  ] = "/",
-            [RTLOP_DIVS  ] = "/",
-            [RTLOP_MODU  ] = "%",
-            [RTLOP_MODS  ] = "%",
-            [RTLOP_AND   ] = "&",
-            [RTLOP_OR    ] = "|",
-            [RTLOP_XOR   ] = "^",
-            [RTLOP_NOT   ] = "~",
-            [RTLOP_SLL   ] = "<<",
-            [RTLOP_SRL   ] = ">>",
-            [RTLOP_SRA   ] = ">>",
-            [RTLOP_ROR   ] = "ror",
-            [RTLOP_CLZ   ] = "clz",
-            [RTLOP_SLTU  ] = "<",
-            [RTLOP_SLTS  ] = "<",
-            [RTLOP_SLEU  ] = "<=",
-            [RTLOP_SLES  ] = "<=",
-            [RTLOP_SEQ   ] = "==",
-            [RTLOP_BSWAP ] = "bswap",
+            [RTLOP_SCAST] = "scast",
+            [RTLOP_ZCAST] = "zcast",
+            [RTLOP_ADD  ] = "+",
+            [RTLOP_ADDI ] = "+",
+            [RTLOP_SUB  ] = "-",
+            [RTLOP_NEG  ] = "-",
+            [RTLOP_MUL  ] = "*",
+            [RTLOP_DIVU ] = "/",
+            [RTLOP_DIVS ] = "/",
+            [RTLOP_MODU ] = "%",
+            [RTLOP_MODS ] = "%",
+            [RTLOP_AND  ] = "&",
+            [RTLOP_ANDI ] = "&",
+            [RTLOP_OR   ] = "|",
+            [RTLOP_ORI  ] = "|",
+            [RTLOP_XOR  ] = "^",
+            [RTLOP_XORI ] = "^",
+            [RTLOP_NOT  ] = "~",
+            [RTLOP_SLL  ] = "<<",
+            [RTLOP_SLLI ] = "<<",
+            [RTLOP_SRL  ] = ">>",
+            [RTLOP_SRLI ] = ">>",
+            [RTLOP_SRA  ] = ">>",
+            [RTLOP_SRAI ] = ">>",
+            [RTLOP_ROR  ] = "ror",
+            [RTLOP_RORI ] = "ror",
+            [RTLOP_CLZ  ] = "clz",
+            [RTLOP_BSWAP] = "bswap",
+            [RTLOP_SEQ  ] = "==",
+            [RTLOP_SEQI ] = "==",
+            [RTLOP_SLTU ] = "<",
+            [RTLOP_SLTUI] = "<",
+            [RTLOP_SLTS ] = "<",
+            [RTLOP_SLTSI] = "<",
+            [RTLOP_SLEU ] = "<=",
+            [RTLOP_SLES ] = "<=",
         };
-        static const bool is_signed[] = {
+        static const bool is_signed[RTLOP__LAST + 1] = {
             [RTLOP_DIVS ] = true,
             [RTLOP_MODS ] = true,
             [RTLOP_SRA  ] = true,
+            [RTLOP_SRAI ] = true,
             [RTLOP_SLTS ] = true,
+            [RTLOP_SLTSI] = true,
             [RTLOP_SLES ] = true,
         };
 
@@ -349,15 +362,31 @@ static void rtl_describe_register(const RTLRegister *reg,
           case RTLOP_SRL:
           case RTLOP_SRA:
           case RTLOP_ROR:
+          case RTLOP_SEQ:
           case RTLOP_SLTU:
           case RTLOP_SLTS:
           case RTLOP_SLEU:
           case RTLOP_SLES:
-          case RTLOP_SEQ:
             snprintf(buf, bufsize, "%sr%u %s r%u",
                      is_signed[reg->result.opcode] ? "(signed) " : "",
                      reg->result.src1, operators[reg->result.opcode],
                      reg->result.src2);
+            break;
+          case RTLOP_ADDI:
+          case RTLOP_ANDI:
+          case RTLOP_ORI:
+          case RTLOP_XORI:
+          case RTLOP_SLLI:
+          case RTLOP_SRLI:
+          case RTLOP_SRAI:
+          case RTLOP_RORI:
+          case RTLOP_SEQI:
+          case RTLOP_SLTUI:
+          case RTLOP_SLTSI:
+            snprintf(buf, bufsize, "%sr%u %s %d",
+                     is_signed[reg->result.opcode] ? "(signed) " : "",
+                     reg->result.src1, operators[reg->result.opcode],
+                     reg->result.src_imm);
             break;
           case RTLOP_MULHU:
           case RTLOP_MULHS:
@@ -433,14 +462,25 @@ static void rtl_decode_insn(const RTLUnit *unit, uint32_t index,
         [RTLOP_SRA       ] = "SRA",
         [RTLOP_ROR       ] = "ROR",
         [RTLOP_CLZ       ] = "CLZ",
+        [RTLOP_BSWAP     ] = "BSWAP",
+        [RTLOP_SEQ       ] = "SEQ",
         [RTLOP_SLTU      ] = "SLTU",
         [RTLOP_SLTS      ] = "SLTS",
         [RTLOP_SLEU      ] = "SLEU",
         [RTLOP_SLES      ] = "SLES",
-        [RTLOP_SEQ       ] = "SEQ",
-        [RTLOP_BSWAP     ] = "BSWAP",
         [RTLOP_BFEXT     ] = "BFEXT",
         [RTLOP_BFINS     ] = "BFINS",
+        [RTLOP_ADDI      ] = "ADDI",
+        [RTLOP_ANDI      ] = "ANDI",
+        [RTLOP_ORI       ] = "ORI",
+        [RTLOP_XORI      ] = "XORI",
+        [RTLOP_SLLI      ] = "SLLI",
+        [RTLOP_SRLI      ] = "SRLI",
+        [RTLOP_SRAI      ] = "SRAI",
+        [RTLOP_RORI      ] = "RORI",
+        [RTLOP_SEQI      ] = "SEQI",
+        [RTLOP_SLTUI     ] = "SLTUI",
+        [RTLOP_SLTSI     ] = "SLTSI",
         [RTLOP_LOAD_IMM  ] = "LOAD_IMM",
         [RTLOP_LOAD_ARG  ] = "LOAD_ARG",
         [RTLOP_LOAD      ] = "LOAD",
@@ -540,11 +580,11 @@ static void rtl_decode_insn(const RTLUnit *unit, uint32_t index,
       case RTLOP_SRL:
       case RTLOP_SRA:
       case RTLOP_ROR:
+      case RTLOP_SEQ:
       case RTLOP_SLTU:
       case RTLOP_SLTS:
       case RTLOP_SLEU:
       case RTLOP_SLES:
-      case RTLOP_SEQ:
         s += snprintf_assert(s, top - s, "%-10s r%u, r%u, r%u\n",
                              name, dest, src1, src2);
         APPEND_REG_DESC(src1);
@@ -564,6 +604,22 @@ static void rtl_decode_insn(const RTLUnit *unit, uint32_t index,
                              insn->bitfield.count);
         APPEND_REG_DESC(src1);
         APPEND_REG_DESC(src2);
+        return;
+
+      case RTLOP_ADDI:
+      case RTLOP_ANDI:
+      case RTLOP_ORI:
+      case RTLOP_XORI:
+      case RTLOP_SLLI:
+      case RTLOP_SRLI:
+      case RTLOP_SRAI:
+      case RTLOP_RORI:
+      case RTLOP_SEQI:
+      case RTLOP_SLTUI:
+      case RTLOP_SLTSI:
+        s += snprintf_assert(s, top - s, "%-10s r%u, r%u, %d\n",
+                             name, dest, src1, (int32_t)insn->src_imm);
+        APPEND_REG_DESC(src1);
         return;
 
       case RTLOP_LOAD_IMM:

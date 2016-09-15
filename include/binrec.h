@@ -493,23 +493,13 @@ typedef struct binrec_setup_t {
 #define BINREC_OPT_H_X86_CONDITION_CODES  (1<<0)
 
 /**
- * BINREC_OPT_H_X86_CONSTANT_OPERANDS:  When an instruction has a constant
- * operand, encode that constant directly into the instruction if possible
- * rather than first loading it into a register.
- *
- * If this optimization is disabled, all values (including constants) will
- * first be loaded into registers before operating on them.
- */
-#define BINREC_OPT_H_X86_CONSTANT_OPERANDS  (1<<1)
-
-/**
  * BINREC_OPT_H_X86_FIXED_REGS:  When an instruction requires an operand to
  * be in a specific hardware register (shift counts must be in CL, for
  * example), try harder to allocate that hardware register for the operand.
  * This requires an extra pass over the translated machine code during
  * register allocation.
  */
-#define BINREC_OPT_H_X86_FIXED_REGS  (1<<2)
+#define BINREC_OPT_H_X86_FIXED_REGS  (1<<1)
 
 /**
  * BINREC_OPT_H_X86_FORWARD_CONDITIONS:  When a register used as the
@@ -518,7 +508,7 @@ typedef struct binrec_setup_t {
  * instruction instead of storing the comparison result in a register and
  * testing the zeroness of that register.
  */
-#define BINREC_OPT_H_X86_FORWARD_CONDITIONS  (1<<3)
+#define BINREC_OPT_H_X86_FORWARD_CONDITIONS  (1<<2)
 
 /**
  * BINREC_OPT_H_X86_MEMORY_OPERANDS:  Make use of register-memory forms of
@@ -538,14 +528,14 @@ typedef struct binrec_setup_t {
  * be performed in registers, and loads and stores will be translated as
  * separate instructions.
  */
-#define BINREC_OPT_H_X86_MEMORY_OPERANDS  (1<<4)
+#define BINREC_OPT_H_X86_MEMORY_OPERANDS  (1<<3)
 
 /**
  * BINREC_OPT_H_X86_SETCC_ZX:  Detect when the only the low byte of the
  * result of a comparison instruction is used, and suppress zero-extension
  * of the result to the full operand size (32 or 64 bits).
  */
-#define BINREC_OPT_H_X86_SETCC_ZX  (1<<5)
+#define BINREC_OPT_H_X86_SETCC_ZX  (1<<4)
 
 /*************************************************************************/
 /******** Interface: Library and runtime environment information *********/

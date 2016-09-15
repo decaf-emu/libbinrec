@@ -183,12 +183,17 @@ struct RTLRegister {
         struct {
             uint8_t opcode;     // Operation code for RTLREG_RESULT
             uint16_t src1;      // Operand 1
-            uint16_t src2;      // Operand 2
             union {
-                uint16_t cond;  // Condition register for SELECT
+                int32_t src_imm;    // Immediate operand
                 struct {
-                    uint8_t start;  // Start bit for bitfields
-                    uint8_t count;  // Bit count for bitfields
+                    uint16_t src2;  // Operand 2
+                    union {
+                        uint16_t cond;  // Condition register for SELECT
+                        struct {
+                            uint8_t start;  // Start bit for bitfields
+                            uint8_t count;  // Bit count for bitfields
+                        };
+                    };
                 };
             };
         } result;
