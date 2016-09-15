@@ -230,16 +230,14 @@ static bool add_epilogue(GuestPPCContext *ctx)
         if (ctx->cr_changed != 0xFF) {
             ADD_INSN(RTLOP_LOAD, cr, ctx->psb_reg, 0,
                      ctx->handle->setup.state_offset_cr);
-            uint32_t mask_val = 0;
+            uint32_t mask = 0;
             for (int i = 0; i < 8; i++) {
                 if (!(ctx->cr_changed & (1 << i))) {
-                    mask_val |= 0xF << ((7 - i) * 4);
+                    mask |= 0xF << ((7 - i) * 4);
                 }
             }
-            DECLARE_NEW_REGISTER(mask, RTLTYPE_INT32);
-            ADD_INSN(RTLOP_LOAD_IMM, mask, 0, 0, mask_val);
             DECLARE_NEW_REGISTER(new_cr, RTLTYPE_INT32);
-            ADD_INSN(RTLOP_AND, new_cr, cr, mask, 0);
+            ADD_INSN(RTLOP_ANDI, new_cr, cr, 0, (int32_t)mask);
             cr = new_cr;
         }
         for (int i = 0; i < 8; i++) {
@@ -250,10 +248,8 @@ static bool add_epilogue(GuestPPCContext *ctx)
                 if (i == 7) {
                     shifted_crN = crN;
                 } else {
-                    DECLARE_NEW_REGISTER(shift_count, RTLTYPE_INT32);
-                    ADD_INSN(RTLOP_LOAD_IMM, shift_count, 0, 0, (7 - i) * 4);
                     ALLOC_REGISTER(shifted_crN, RTLTYPE_INT32);
-                    ADD_INSN(RTLOP_SLL, shifted_crN, crN, shift_count, 0);
+                    ADD_INSN(RTLOP_SLLI, shifted_crN, crN, 0, (7 - i) * 4);
                 }
                 DECLARE_NEW_REGISTER(new_cr, RTLTYPE_INT32);
                 ADD_INSN(RTLOP_OR, new_cr, cr, shifted_crN, 0);

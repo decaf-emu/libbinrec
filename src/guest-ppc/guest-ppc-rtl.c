@@ -82,7 +82,7 @@ static bool update_cr0(
  *     block: Basic block being translated.
  *     address: Address of instruction being translated.
  *     insn: Instruction word.
- *     rtlop: RTL instruction to perform the operation.
+ *     rtlop: RTL register-immediate instruction to perform the operation.
  *     shift_imm: True if the immediate value should be shifted left 16 bits.
  *     set_ca: True if XER[CA] should be set according to the result.
  *     set_cr0: True if CR0 should be set according to the result.
@@ -98,29 +98,19 @@ static bool translate_arith_imm(
 
     DECLARE_NEW_REGISTER(rA, RTLTYPE_INT32);
     ADD_INSN(RTLOP_GET_ALIAS, rA, 0, 0, ctx->alias.gpr[get_rA(insn)]);
-    DECLARE_NEW_REGISTER(imm, RTLTYPE_INT32);
-    const uint32_t imm_val = get_SIMM(insn);
-    ADD_INSN(RTLOP_LOAD_IMM, imm, 0, 0, shift_imm ? imm_val<<16 : imm_val);
-
-    /* Use the immediate value as the first operand so subfic can be
-     * translated directly to RTLOP_SUB. */
+    const int32_t imm = shift_imm ? get_SIMM(insn)<<16 : get_SIMM(insn);
     DECLARE_NEW_REGISTER(result, RTLTYPE_INT32);
-    ADD_INSN(rtlop, result, imm, rA, 0);
-
+    ADD_INSN(rtlop, result, rA, 0, imm);
     ADD_INSN(RTLOP_SET_ALIAS, 0, result, 0, ctx->alias.gpr[get_rD(insn)]);
     ctx->live.gpr[get_rD(insn)] = result;
 
     uint32_t xer = 0;
     if (set_ca) {
+        ASSERT(rtlop == RTLOP_ADDI);
         ALLOC_REGISTER(xer, RTLTYPE_INT32);
         ADD_INSN(RTLOP_GET_ALIAS, xer, 0, 0, ctx->alias.xer);
         DECLARE_NEW_REGISTER(ca, RTLTYPE_INT32);
-        if (rtlop == RTLOP_ADD) {
-            ADD_INSN(RTLOP_SLTU, ca, result, imm, 0);
-        } else {
-            ASSERT(rtlop == RTLOP_SUB);
-            ADD_INSN(RTLOP_SLEU, ca, result, imm, 0);
-        }
+        ADD_INSN(RTLOP_SLTUI, ca, result, 0, imm);
         DECLARE_NEW_REGISTER(new_xer, RTLTYPE_INT32);
         ADD_INSN(RTLOP_BFINS, new_xer, xer, ca, 29 | 1<<8);
         ADD_INSN(RTLOP_SET_ALIAS, 0, new_xer, 0, ctx->alias.xer);
@@ -160,19 +150,36 @@ static inline bool translate_insn(
     switch (get_OPCD(insn)) {
       case OPCD_MULLI:
         return translate_arith_imm(ctx, block, address, insn,
-                                   RTLOP_MUL, false, false, false);
+                                   RTLOP_MULI, false, false, false);
 
-      case OPCD_SUBFIC:
-        return translate_arith_imm(ctx, block, address, insn,
-                                   RTLOP_SUB, false, true, false);
+      case OPCD_SUBFIC: {
+        DECLARE_NEW_REGISTER(rA, RTLTYPE_INT32);
+        ADD_INSN(RTLOP_GET_ALIAS, rA, 0, 0, ctx->alias.gpr[get_rA(insn)]);
+        DECLARE_NEW_REGISTER(imm, RTLTYPE_INT32);
+        ADD_INSN(RTLOP_LOAD_IMM, imm, 0, 0, (uint32_t)get_SIMM(insn));
+        DECLARE_NEW_REGISTER(result, RTLTYPE_INT32);
+        ADD_INSN(RTLOP_SUB, result, imm, rA, 0);
+        ADD_INSN(RTLOP_SET_ALIAS, 0, result, 0, ctx->alias.gpr[get_rD(insn)]);
+        ctx->live.gpr[get_rD(insn)] = result;
+
+        DECLARE_NEW_REGISTER(xer, RTLTYPE_INT32);
+        ADD_INSN(RTLOP_GET_ALIAS, xer, 0, 0, ctx->alias.xer);
+        DECLARE_NEW_REGISTER(ca, RTLTYPE_INT32);
+        ADD_INSN(RTLOP_SLEU, ca, result, imm, 0);
+        DECLARE_NEW_REGISTER(new_xer, RTLTYPE_INT32);
+        ADD_INSN(RTLOP_BFINS, new_xer, xer, ca, 29 | 1<<8);
+        ADD_INSN(RTLOP_SET_ALIAS, 0, new_xer, 0, ctx->alias.xer);
+
+        return true;
+      }
 
       case OPCD_ADDIC:
         return translate_arith_imm(ctx, block, address, insn,
-                                   RTLOP_ADD, false, true, false);
+                                   RTLOP_ADDI, false, true, false);
 
       case OPCD_ADDIC_:
         return translate_arith_imm(ctx, block, address, insn,
-                                   RTLOP_ADD, false, true, true);
+                                   RTLOP_ADDI, false, true, true);
 
       case OPCD_ADDI:
         if (get_rA(insn) == 0) {
@@ -184,12 +191,12 @@ static inline bool translate_insn(
             return true;
         } else {
             return translate_arith_imm(ctx, block, address, insn,
-                                       RTLOP_ADD, false, false, false);
+                                       RTLOP_ADDI, false, false, false);
         }
 
       case OPCD_ADDIS:
         return translate_arith_imm(ctx, block, address, insn,
-                                   RTLOP_ADD, true, false, false);
+                                   RTLOP_ADDI, true, false, false);
 
       default: return false;  // FIXME: not yet implemented
     }  // switch (get_OPCD(insn))
