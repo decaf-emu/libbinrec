@@ -24,35 +24,31 @@ int main(void)
     RTLUnit *unit;
     EXPECT(unit = rtl_create_unit(handle));
 
-    uint32_t reg1, reg2, reg3, reg4;
+    uint32_t reg1, reg2, reg3;
     EXPECT(reg1 = rtl_alloc_register(unit, RTLTYPE_INT32));
     EXPECT(reg2 = rtl_alloc_register(unit, RTLTYPE_INT32));
     EXPECT(reg3 = rtl_alloc_register(unit, RTLTYPE_INT32));
-    EXPECT(reg4 = rtl_alloc_register(unit, RTLTYPE_INT32));
 
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg1, 0, 0, 10));
-    EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg2, 0, 0, 20));
-    EXPECT(rtl_add_insn(unit, RTLOP_SLEU, reg3, reg1, reg2, 0));
-    EXPECT(rtl_add_insn(unit, RTLOP_MOVE, reg4, reg3, 0, 0));
-    EXPECT_EQ(unit->num_insns, 4);
-    EXPECT_EQ(unit->insns[2].opcode, RTLOP_SLEU);
-    EXPECT_EQ(unit->insns[2].dest, reg3);
-    EXPECT_EQ(unit->insns[2].src1, reg1);
-    EXPECT_EQ(unit->insns[2].src2, reg2);
+    EXPECT(rtl_add_insn(unit, RTLOP_SGTUI, reg2, reg1, 0, 20));
+    EXPECT(rtl_add_insn(unit, RTLOP_MOVE, reg3, reg2, 0, 0));
+    EXPECT_EQ(unit->num_insns, 3);
+    EXPECT_EQ(unit->insns[1].opcode, RTLOP_SGTUI);
+    EXPECT_EQ(unit->insns[1].dest, reg2);
+    EXPECT_EQ(unit->insns[1].src1, reg1);
+    EXPECT_EQ(unit->insns[1].src_imm, 20);
     EXPECT(unit->have_block);
 
     EXPECT(rtl_finalize_unit(unit));
 
     const char *disassembly =
         "    0: LOAD_IMM   r1, 10\n"
-        "    1: LOAD_IMM   r2, 20\n"
-        "    2: SLEU       r3, r1, r2\n"
+        "    1: SGTUI      r2, r1, 20\n"
         "           r1: 10\n"
-        "           r2: 20\n"
-        "    3: MOVE       r4, r3\n"
-        "           r3: r1 <= r2\n"
+        "    2: MOVE       r3, r2\n"
+        "           r2: r1 > 20\n"
         "\n"
-        "Block    0: <none> --> [0,3] --> <none>\n"
+        "Block    0: <none> --> [0,2] --> <none>\n"
         ;
     EXPECT_STREQ(rtl_disassemble_unit(unit, true), disassembly);
 

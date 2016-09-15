@@ -178,9 +178,9 @@ typedef enum RTLOpcode {
                         //    [dest may be any integer type]
     RTLOP_SLTS,         // dest = (signed)src1 < (signed)src2 ? 1 : 0
                         //    [dest may be any integer type]
-    RTLOP_SLEU,         // dest = (unsigned)src1 <= (unsigned)src2 ? 1 : 0
+    RTLOP_SGTU,         // dest = (unsigned)src1 > (unsigned)src2 ? 1 : 0
                         //    [dest may be any integer type]
-    RTLOP_SLES,         // dest = (signed)src1 <= (signed)src2 ? 1 : 0
+    RTLOP_SGTS,         // dest = (signed)src1 > (signed)src2 ? 1 : 0
                         //    [dest may be any integer type]
 
     /* Integer bitfield operations ("start" and "count" are encoded in the
@@ -212,6 +212,10 @@ typedef enum RTLOpcode {
     RTLOP_SLTUI,        // dest = (unsigned)src1 < IMMEDIATE(other) ? 1 : 0
                         //    [dest may be any integer type]
     RTLOP_SLTSI,        // dest = (signed)src1 < IMMEDIATE(other) ? 1 : 0
+                        //    [dest may be any integer type]
+    RTLOP_SGTUI,        // dest = (unsigned)src1 > IMMEDIATE(other) ? 1 : 0
+                        //    [dest may be any integer type]
+    RTLOP_SGTSI,        // dest = (signed)src1 > IMMEDIATE(other) ? 1 : 0
                         //    [dest may be any integer type]
 
     /* Non-memory load operations */

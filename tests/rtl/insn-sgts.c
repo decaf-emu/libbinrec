@@ -32,10 +32,10 @@ int main(void)
 
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg1, 0, 0, 10));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg2, 0, 0, 20));
-    EXPECT(rtl_add_insn(unit, RTLOP_SLES, reg3, reg1, reg2, 0));
+    EXPECT(rtl_add_insn(unit, RTLOP_SGTS, reg3, reg1, reg2, 0));
     EXPECT(rtl_add_insn(unit, RTLOP_MOVE, reg4, reg3, 0, 0));
     EXPECT_EQ(unit->num_insns, 4);
-    EXPECT_EQ(unit->insns[2].opcode, RTLOP_SLES);
+    EXPECT_EQ(unit->insns[2].opcode, RTLOP_SGTS);
     EXPECT_EQ(unit->insns[2].dest, reg3);
     EXPECT_EQ(unit->insns[2].src1, reg1);
     EXPECT_EQ(unit->insns[2].src2, reg2);
@@ -46,11 +46,11 @@ int main(void)
     const char *disassembly =
         "    0: LOAD_IMM   r1, 10\n"
         "    1: LOAD_IMM   r2, 20\n"
-        "    2: SLES       r3, r1, r2\n"
+        "    2: SGTS       r3, r1, r2\n"
         "           r1: 10\n"
         "           r2: 20\n"
         "    3: MOVE       r4, r3\n"
-        "           r3: (signed) r1 <= r2\n"
+        "           r3: (signed) r1 > r2\n"
         "\n"
         "Block    0: <none> --> [0,3] --> <none>\n"
         ;

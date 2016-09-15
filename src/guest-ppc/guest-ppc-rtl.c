@@ -44,19 +44,17 @@ static bool update_cr0(
 {
     RTLUnit * const unit = ctx->unit;
 
-    DECLARE_NEW_REGISTER(zero, RTLTYPE_INT32);
-    ADD_INSN(RTLOP_LOAD_IMM, zero, 0, 0, 0);
     if (!xer) {
         ALLOC_REGISTER(xer, RTLTYPE_INT32);
         ADD_INSN(RTLOP_GET_ALIAS, xer, 0, 0, ctx->alias.xer);
     }
 
     DECLARE_NEW_REGISTER(lt, RTLTYPE_INT32);
-    ADD_INSN(RTLOP_SLTS, lt, result, zero, 0);
+    ADD_INSN(RTLOP_SLTSI, lt, result, 0, 0);
     DECLARE_NEW_REGISTER(gt, RTLTYPE_INT32);
-    ADD_INSN(RTLOP_SLTS, gt, zero, result, 0);
+    ADD_INSN(RTLOP_SGTSI, gt, result, 0, 0);
     DECLARE_NEW_REGISTER(eq, RTLTYPE_INT32);
-    ADD_INSN(RTLOP_SEQ, eq, result, zero, 0);
+    ADD_INSN(RTLOP_SEQI, eq, result, 0, 0);
     DECLARE_NEW_REGISTER(so, RTLTYPE_INT32);
     ADD_INSN(RTLOP_BFEXT, so, xer, 0, 31 | 1<<8);
 
@@ -165,7 +163,7 @@ static inline bool translate_insn(
         DECLARE_NEW_REGISTER(xer, RTLTYPE_INT32);
         ADD_INSN(RTLOP_GET_ALIAS, xer, 0, 0, ctx->alias.xer);
         DECLARE_NEW_REGISTER(ca, RTLTYPE_INT32);
-        ADD_INSN(RTLOP_SLEU, ca, result, imm, 0);
+        ADD_INSN(RTLOP_SGTU, ca, imm, result, 0);
         DECLARE_NEW_REGISTER(new_xer, RTLTYPE_INT32);
         ADD_INSN(RTLOP_BFINS, new_xer, xer, ca, 29 | 1<<8);
         ADD_INSN(RTLOP_SET_ALIAS, 0, new_xer, 0, ctx->alias.xer);

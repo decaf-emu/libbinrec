@@ -316,8 +316,10 @@ static void rtl_describe_register(const RTLRegister *reg,
             [RTLOP_SLTUI] = "<",
             [RTLOP_SLTS ] = "<",
             [RTLOP_SLTSI] = "<",
-            [RTLOP_SLEU ] = "<=",
-            [RTLOP_SLES ] = "<=",
+            [RTLOP_SGTU ] = ">",
+            [RTLOP_SGTUI] = ">",
+            [RTLOP_SGTS ] = ">",
+            [RTLOP_SGTSI] = ">",
         };
         static const bool is_signed[RTLOP__LAST + 1] = {
             [RTLOP_DIVS ] = true,
@@ -326,7 +328,8 @@ static void rtl_describe_register(const RTLRegister *reg,
             [RTLOP_SRAI ] = true,
             [RTLOP_SLTS ] = true,
             [RTLOP_SLTSI] = true,
-            [RTLOP_SLES ] = true,
+            [RTLOP_SGTS ] = true,
+            [RTLOP_SGTSI] = true,
         };
 
         switch (reg->result.opcode) {
@@ -366,8 +369,8 @@ static void rtl_describe_register(const RTLRegister *reg,
           case RTLOP_SEQ:
           case RTLOP_SLTU:
           case RTLOP_SLTS:
-          case RTLOP_SLEU:
-          case RTLOP_SLES:
+          case RTLOP_SGTU:
+          case RTLOP_SGTS:
             snprintf(buf, bufsize, "%sr%u %s r%u",
                      is_signed[reg->result.opcode] ? "(signed) " : "",
                      reg->result.src1, operators[reg->result.opcode],
@@ -385,6 +388,8 @@ static void rtl_describe_register(const RTLRegister *reg,
           case RTLOP_SEQI:
           case RTLOP_SLTUI:
           case RTLOP_SLTSI:
+          case RTLOP_SGTUI:
+          case RTLOP_SGTSI:
             snprintf(buf, bufsize, "%sr%u %s %d",
                      is_signed[reg->result.opcode] ? "(signed) " : "",
                      reg->result.src1, operators[reg->result.opcode],
@@ -468,8 +473,8 @@ static void rtl_decode_insn(const RTLUnit *unit, uint32_t index,
         [RTLOP_SEQ       ] = "SEQ",
         [RTLOP_SLTU      ] = "SLTU",
         [RTLOP_SLTS      ] = "SLTS",
-        [RTLOP_SLEU      ] = "SLEU",
-        [RTLOP_SLES      ] = "SLES",
+        [RTLOP_SGTU      ] = "SGTU",
+        [RTLOP_SGTS      ] = "SGTS",
         [RTLOP_BFEXT     ] = "BFEXT",
         [RTLOP_BFINS     ] = "BFINS",
         [RTLOP_ADDI      ] = "ADDI",
@@ -484,6 +489,8 @@ static void rtl_decode_insn(const RTLUnit *unit, uint32_t index,
         [RTLOP_SEQI      ] = "SEQI",
         [RTLOP_SLTUI     ] = "SLTUI",
         [RTLOP_SLTSI     ] = "SLTSI",
+        [RTLOP_SGTUI     ] = "SGTUI",
+        [RTLOP_SGTSI     ] = "SGTSI",
         [RTLOP_LOAD_IMM  ] = "LOAD_IMM",
         [RTLOP_LOAD_ARG  ] = "LOAD_ARG",
         [RTLOP_LOAD      ] = "LOAD",
@@ -586,8 +593,8 @@ static void rtl_decode_insn(const RTLUnit *unit, uint32_t index,
       case RTLOP_SEQ:
       case RTLOP_SLTU:
       case RTLOP_SLTS:
-      case RTLOP_SLEU:
-      case RTLOP_SLES:
+      case RTLOP_SGTU:
+      case RTLOP_SGTS:
         s += snprintf_assert(s, top - s, "%-10s r%u, r%u, r%u\n",
                              name, dest, src1, src2);
         APPEND_REG_DESC(src1);
@@ -621,6 +628,8 @@ static void rtl_decode_insn(const RTLUnit *unit, uint32_t index,
       case RTLOP_SEQI:
       case RTLOP_SLTUI:
       case RTLOP_SLTSI:
+      case RTLOP_SGTUI:
+      case RTLOP_SGTSI:
         s += snprintf_assert(s, top - s, "%-10s r%u, r%u, %d\n",
                              name, dest, src1, (int32_t)insn->src_imm);
         APPEND_REG_DESC(src1);

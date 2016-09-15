@@ -823,7 +823,7 @@ static bool translate_block(HostX86Context *ctx, int block_index)
                 insn->opcode == RTLOP_SLL ? X86OP_SHIFT_SHL :
                 insn->opcode == RTLOP_SRL ? X86OP_SHIFT_SHR :
                 insn->opcode == RTLOP_SRA ? X86OP_SHIFT_SAR :
-                /* RTLOP_ROR */ X86OP_SHIFT_ROR);
+                             /* RTLOP_ROR */ X86OP_SHIFT_ROR);
 
             if (host_dest != host_src1) {
                 append_insn_ModRM_reg(&code, is64, X86OP_MOV_Gv_Ev,
@@ -892,8 +892,8 @@ static bool translate_block(HostX86Context *ctx, int block_index)
           case RTLOP_SEQ:
           case RTLOP_SLTU:
           case RTLOP_SLTS:
-          case RTLOP_SLEU:
-          case RTLOP_SLES: {
+          case RTLOP_SGTU:
+          case RTLOP_SGTS: {
             const X86Register host_dest = ctx->regs[dest].host_reg;
             const X86Register host_src1 = ctx->regs[src1].host_reg;
             const X86Register host_src2 = ctx->regs[src2].host_reg;
@@ -901,9 +901,9 @@ static bool translate_block(HostX86Context *ctx, int block_index)
             const X86Opcode set_opcode = (
                 insn->opcode == RTLOP_SLTU ? X86OP_SETB :
                 insn->opcode == RTLOP_SLTS ? X86OP_SETL :
-                insn->opcode == RTLOP_SLEU ? X86OP_SETBE :
-                insn->opcode == RTLOP_SLES ? X86OP_SETLE :
-                /* RTLOP_SEQ */ X86OP_SETZ);
+                insn->opcode == RTLOP_SGTU ? X86OP_SETA :
+                insn->opcode == RTLOP_SGTS ? X86OP_SETG :
+                             /* RTLOP_SEQ */ X86OP_SETZ);
             append_insn_ModRM_reg(&code, is64, X86OP_CMP_Gv_Ev,
                                   host_src1, host_src2);
             /* Registers SP-DI require a REX prefix (even if empty) to
