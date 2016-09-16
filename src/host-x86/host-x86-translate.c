@@ -918,7 +918,7 @@ static bool translate_block(HostX86Context *ctx, int block_index)
             append_insn_ModRM_reg(&code, false, X86OP_MOVZX_Gv_Eb,
                                   host_dest, host_dest);
             break;
-          }  // case RTLOP_{SEQ,SLTU,SLTS,SLEU,SLES}
+          }  // case RTLOP_{SEQ,SLTU,SLTS,SGTU,SGTS}
 
           case RTLOP_BFEXT: {
             const X86Register host_dest = ctx->regs[dest].host_reg;
@@ -1167,6 +1167,117 @@ static bool translate_block(HostX86Context *ctx, int block_index)
 
             break;
           }  // case RTLOP_BFINS
+
+          case RTLOP_ADDI:
+          case RTLOP_ANDI:
+          case RTLOP_ORI:
+          case RTLOP_XORI: {
+            const X86Register host_dest = ctx->regs[dest].host_reg;
+            const X86Register host_src1 = ctx->regs[src1].host_reg;
+            /* The immediate value is actually signed, but we treat it as
+             * unsigned here to simplify range testing. */
+            const uint32_t imm = (uint32_t)insn->src_imm;
+            const bool is64 = (unit->regs[dest].type == RTLTYPE_ADDRESS);
+            const X86Opcode opcode = (
+                insn->opcode == RTLOP_ADDI ? X86OP_IMM_ADD :
+                insn->opcode == RTLOP_ANDI ? X86OP_IMM_AND :
+                insn->opcode == RTLOP_ORI ? X86OP_IMM_OR :
+                             /* RTLOP_XORI */ X86OP_IMM_XOR);
+            if (host_dest != host_src1) {
+                append_insn_ModRM_reg(&code, is64, X86OP_MOV_Gv_Ev,
+                                      host_dest, host_src1);
+            }
+            if (imm + 128 < 256) {
+                append_insn_ModRM_reg(&code, is64, X86OP_IMM_Ev_Ib,
+                                      opcode, host_dest);
+                append_imm8(&code, (uint8_t)imm);
+            } else {
+                append_insn_ModRM_reg(&code, is64, X86OP_IMM_Ev_Iz,
+                                      opcode, host_dest);
+                append_imm32(&code, imm);
+            }
+            break;
+          }  // case RTLOP_{ADDI,ANDI,ORI,XORI}
+
+          case RTLOP_MULI: {
+            const X86Register host_dest = ctx->regs[dest].host_reg;
+            const X86Register host_src1 = ctx->regs[src1].host_reg;
+            const uint32_t imm = (uint32_t)insn->src_imm;  // As for ADDI etc.
+            const bool is64 = (unit->regs[dest].type == RTLTYPE_ADDRESS);
+            if (imm + 128 < 256) {
+                append_insn_ModRM_reg(&code, is64, X86OP_IMUL_Gv_Ev_Ib,
+                                      host_dest, host_src1);
+                append_imm8(&code, (uint8_t)imm);
+            } else {
+                append_insn_ModRM_reg(&code, is64, X86OP_IMUL_Gv_Ev_Iz,
+                                      host_dest, host_src1);
+                append_imm32(&code, imm);
+            }
+            break;
+          }  // case RTLOP_MULI
+
+          case RTLOP_SLLI:
+          case RTLOP_SRLI:
+          case RTLOP_SRAI:
+          case RTLOP_RORI: {
+            const X86Register host_dest = ctx->regs[dest].host_reg;
+            const X86Register host_src1 = ctx->regs[src1].host_reg;
+            const uint8_t shift_count = (uint8_t)insn->src_imm;
+            const bool is64 = (unit->regs[dest].type == RTLTYPE_ADDRESS);
+            const X86Opcode opcode = (
+                insn->opcode == RTLOP_SLLI ? X86OP_SHIFT_SHL :
+                insn->opcode == RTLOP_SRLI ? X86OP_SHIFT_SHR :
+                insn->opcode == RTLOP_SRAI ? X86OP_SHIFT_SAR :
+                             /* RTLOP_RORI */ X86OP_SHIFT_ROR);
+
+            if (host_dest != host_src1) {
+                append_insn_ModRM_reg(&code, is64, X86OP_MOV_Gv_Ev,
+                                      host_dest, host_src1);
+            }
+            append_insn_ModRM_reg(&code, is64, X86OP_SHIFT_Ev_Ib,
+                                  opcode, host_dest);
+            append_imm8(&code, shift_count);
+            break;
+          }  // case RTLOP_{SLLI,SRLI,SRAI,RORI}
+
+          case RTLOP_SEQI:
+          case RTLOP_SLTUI:
+          case RTLOP_SLTSI:
+          case RTLOP_SGTUI:
+          case RTLOP_SGTSI: {
+            const X86Register host_dest = ctx->regs[dest].host_reg;
+            const X86Register host_src1 = ctx->regs[src1].host_reg;
+            const uint32_t imm = (uint32_t)insn->src_imm;  // As for ADDI etc.
+            const bool is64 = (unit->regs[src1].type == RTLTYPE_ADDRESS);
+            const X86Opcode set_opcode = (
+                insn->opcode == RTLOP_SLTUI ? X86OP_SETB :
+                insn->opcode == RTLOP_SLTSI ? X86OP_SETL :
+                insn->opcode == RTLOP_SGTUI ? X86OP_SETA :
+                insn->opcode == RTLOP_SGTSI ? X86OP_SETG :
+                             /* RTLOP_SEQI */ X86OP_SETZ);
+
+            if (imm + 128 < 256) {
+                append_insn_ModRM_reg(&code, is64, X86OP_IMM_Ev_Ib,
+                                      X86OP_IMM_CMP, host_src1);
+                append_imm8(&code, (uint8_t)imm);
+            } else {
+                append_insn_ModRM_reg(&code, is64, X86OP_IMM_Ev_Iz,
+                                      X86OP_IMM_CMP, host_src1);
+                append_imm32(&code, imm);
+            }
+
+            /* Handle empty REX prefix for low byte of SP-DI. */
+            if (host_dest >= X86_SP && host_dest <= X86_DI) {
+                append_opcode(&code, X86OP_REX);
+            }
+            append_insn_ModRM_reg(&code, false, set_opcode, 0, host_dest);
+            if (host_dest >= X86_SP && host_dest <= X86_DI) {
+                append_opcode(&code, X86OP_REX);
+            }
+            append_insn_ModRM_reg(&code, false, X86OP_MOVZX_Gv_Eb,
+                                  host_dest, host_dest);
+            break;
+          }  // case RTLOP_{SEQI,SLTUI,SLTSI,SLEUI,SLESI}
 
           case RTLOP_LOAD_IMM: {
             const uint64_t imm = insn->src_imm;

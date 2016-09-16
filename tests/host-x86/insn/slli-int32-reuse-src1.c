@@ -20,14 +20,11 @@ static int add_rtl(RTLUnit *unit)
 {
     alloc_dummy_registers(unit, 1, RTLTYPE_INT32);
 
-    uint32_t reg1, reg2, reg3;
+    uint32_t reg1, reg2;
     EXPECT(reg1 = rtl_alloc_register(unit, RTLTYPE_INT32));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg1, 0, 0, 0));
     EXPECT(reg2 = rtl_alloc_register(unit, RTLTYPE_INT32));
-    EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg2, 0, 0, 0));
-    EXPECT(reg3 = rtl_alloc_register(unit, RTLTYPE_INT32));
-    EXPECT(rtl_add_insn(unit, RTLOP_SEQ, reg3, reg1, reg2, 0));
-    EXPECT(rtl_add_insn(unit, RTLOP_NOP, 0, reg1, reg2, 0));
+    EXPECT(rtl_add_insn(unit, RTLOP_SLLI, reg2, reg1, 0, 0));
 
     return EXIT_SUCCESS;
 }
@@ -35,11 +32,7 @@ static int add_rtl(RTLUnit *unit)
 static const uint8_t expected_code[] = {
     0x48,0x83,0xEC,0x08,                // sub $8,%rsp
     0x33,0xC9,                          // xor %ecx,%ecx
-    0x33,0xD2,                          // xor %edx,%edx
-    0x3B,0xCA,                          // cmp %edx,%ecx
-    /* Note empty REX prefix here, required to access low byte of ESI. */
-    0x40,0x0F,0x94,0xC6,                // sete %sil
-    0x40,0x0F,0xB6,0xF6,                // movzbl %sil,%esi
+    0xC1,0xE1,0x00,                     // shl $0,%ecx
     0x48,0x83,0xC4,0x08,                // add $8,%rsp
     0xC3,                               // ret
 };

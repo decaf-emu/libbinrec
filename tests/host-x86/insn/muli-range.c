@@ -20,14 +20,17 @@ static int add_rtl(RTLUnit *unit)
 {
     alloc_dummy_registers(unit, 1, RTLTYPE_INT32);
 
-    uint32_t reg1, reg2, reg3;
+    uint32_t reg1, reg2, reg3, reg4, reg5;
     EXPECT(reg1 = rtl_alloc_register(unit, RTLTYPE_INT32));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg1, 0, 0, 0));
     EXPECT(reg2 = rtl_alloc_register(unit, RTLTYPE_INT32));
-    EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg2, 0, 0, 0));
+    EXPECT(rtl_add_insn(unit, RTLOP_MULI, reg2, reg1, 0, -128));
     EXPECT(reg3 = rtl_alloc_register(unit, RTLTYPE_INT32));
-    EXPECT(rtl_add_insn(unit, RTLOP_SEQ, reg3, reg1, reg2, 0));
-    EXPECT(rtl_add_insn(unit, RTLOP_NOP, 0, reg1, reg2, 0));
+    EXPECT(rtl_add_insn(unit, RTLOP_MULI, reg3, reg1, 0, 127));
+    EXPECT(reg4 = rtl_alloc_register(unit, RTLTYPE_INT32));
+    EXPECT(rtl_add_insn(unit, RTLOP_MULI, reg4, reg1, 0, -129));
+    EXPECT(reg5 = rtl_alloc_register(unit, RTLTYPE_INT32));
+    EXPECT(rtl_add_insn(unit, RTLOP_MULI, reg5, reg1, 0, 128));
 
     return EXIT_SUCCESS;
 }
@@ -35,11 +38,10 @@ static int add_rtl(RTLUnit *unit)
 static const uint8_t expected_code[] = {
     0x48,0x83,0xEC,0x08,                // sub $8,%rsp
     0x33,0xC9,                          // xor %ecx,%ecx
-    0x33,0xD2,                          // xor %edx,%edx
-    0x3B,0xCA,                          // cmp %edx,%ecx
-    /* Note empty REX prefix here, required to access low byte of ESI. */
-    0x40,0x0F,0x94,0xC6,                // sete %sil
-    0x40,0x0F,0xB6,0xF6,                // movzbl %sil,%esi
+    0x6B,0xD1,0x80,                     // imul $-128,%ecx,%edx
+    0x6B,0xD1,0x7F,                     // imul $127,%ecx,%edx
+    0x69,0xD1,0x7F,0xFF,0xFF,0xFF,      // imul $-129,%ecx,%edx
+    0x69,0xC9,0x80,0x00,0x00,0x00,      // imul $128,%ecx,%ecx
     0x48,0x83,0xC4,0x08,                // add $8,%rsp
     0xC3,                               // ret
 };
