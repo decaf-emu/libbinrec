@@ -27,8 +27,7 @@ int main(void)
     EXPECT_STREQ(get_log_messages(), "[error] Invalid code range 0x1-0x0\n");
     clear_log_messages();
 
-    EXPECT_FALSE(binrec_translate(handle, 0,
-                                  (binrec_entry_t[1]){}, (long[1]){}));
+    EXPECT_FALSE(binrec_translate(handle, 0, (void *[1]){}, (long[1]){}));
     EXPECT_STREQ(get_log_messages(), "[error] Code range invalid\n");
 
     binrec_destroy_handle(handle);

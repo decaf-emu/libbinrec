@@ -39,11 +39,10 @@ C99) about the execution environment:
    - The exact-size integer types int8_t, int16_t, int32_t, and int64_t
      exist.
    - The "int" and "intptr_t" types are at least 32 bits wide.
-   - Pointers to objects and pointers to functions are interchangeable.
 There are currently no plans to support environments for which these do
 not all hold.
 
-The included tests also assume (for convenience) that a null pointer is
+The included tests assume for convenience that a null pointer is
 represented by an all-zero bit pattern.
 
 

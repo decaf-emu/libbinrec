@@ -27,11 +27,6 @@ namespace binrec {
 using Arch = ::binrec_arch_t;
 
 /**
- * Entry:  Function type of generated native code.  Wraps binrec_entry_t.
- */
-using Entry = ::binrec_entry_t;
-
-/**
  * LogLevel:  Enumeration of log message levels.  Wraps binrec_loglevel_t.
  */
 using LogLevel = ::binrec_loglevel_t;
@@ -166,7 +161,7 @@ class Handle {
      * translate:  Translate a block of guest machine code into native
      * machine code.  Wraps binrec_translate().
      */
-    bool translate(uint64_t address, Entry *code_ret, long *size_ret) {
+    bool translate(uint64_t address, void **code_ret, long *size_ret) {
         return bool(::binrec_translate(handle, address, code_ret, size_ret));
     }
 

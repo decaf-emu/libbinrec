@@ -23,8 +23,7 @@ int main(void)
 
     setup.host = BINREC_ARCH_INVALID;
     EXPECT(handle = binrec_create_handle(&setup));
-    EXPECT_FALSE(binrec_translate(handle, 0,
-                                  (binrec_entry_t[1]){}, (long[1]){}));
+    EXPECT_FALSE(binrec_translate(handle, 0, (void *[1]){}, (long[1]){}));
     EXPECT_STREQ(get_log_messages(),
                  "[error] Unsupported host architecture: (invalid"
                  " architecture)\n");
@@ -33,8 +32,7 @@ int main(void)
 
     setup.host = (binrec_arch_t)-1;
     EXPECT(handle = binrec_create_handle(&setup));
-    EXPECT_FALSE(binrec_translate(handle, 0,
-                                  (binrec_entry_t[1]){}, (long[1]){}));
+    EXPECT_FALSE(binrec_translate(handle, 0, (void *[1]){}, (long[1]){}));
     EXPECT_STREQ(get_log_messages(),
                  "[error] Unsupported host architecture: (invalid"
                  " architecture)\n");
@@ -43,8 +41,7 @@ int main(void)
 
     setup.host = BINREC_ARCH_POWERPC_750CL;
     EXPECT(handle = binrec_create_handle(&setup));
-    EXPECT_FALSE(binrec_translate(handle, 0,
-                                  (binrec_entry_t[1]){}, (long[1]){}));
+    EXPECT_FALSE(binrec_translate(handle, 0, (void *[1]){}, (long[1]){}));
     EXPECT_STREQ(get_log_messages(),
                  "[error] Unsupported host architecture: PowerPC 750CL\n");
     binrec_destroy_handle(handle);

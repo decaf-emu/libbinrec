@@ -89,14 +89,10 @@
 /*************************** Type declarations ***************************/
 /*************************************************************************/
 
-#undef mips  // Avoid namespace pollution from the compiler on MIPS machines
-
-/*-----------------------------------------------------------------------*/
-
 /**
- * RTLInsn:  A single platform-neutral (more or less) operation.  SH-2
+ * RTLInsn:  A single platform-neutral (more or less) operation.  Guest
  * instructions are translated into sequences of RTLInsns, which are then
- * optimized and retranslated into MIPS instructions.
+ * optimized and retranslated into host instructions.
  */
 typedef struct RTLInsn_ {
     uint8_t opcode;           // Operation code (RTLOpcode)

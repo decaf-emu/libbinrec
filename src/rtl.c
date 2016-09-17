@@ -78,7 +78,7 @@ static bool add_block_edges(RTLUnit * const unit)
  *
  * Worst-case execution time is O(n*m) in the number of blocks (n) and the
  * number of registers (m).  However, the register scan is only required
- * for blocks targeted by backward branches, and terminates at the first
+ * for blocks targeted by backward branches, and it terminates at the first
  * register born within or after the targeted block.
  *
  * [Parameters]

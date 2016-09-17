@@ -364,7 +364,7 @@ void binrec_clear_readonly_regions(binrec_t *handle)
 /*-----------------------------------------------------------------------*/
 
 int binrec_translate(binrec_t *handle, uint32_t address,
-                     binrec_entry_t *code_ret, long *size_ret)
+                     void **code_ret, long *size_ret)
 {
     ASSERT(handle);
     ASSERT(code_ret);
@@ -458,7 +458,7 @@ int binrec_translate(binrec_t *handle, uint32_t address,
         handle->code_buffer = shrunk_buffer;
     }
 
-    *code_ret = (binrec_entry_t)handle->code_buffer;
+    *code_ret = handle->code_buffer;
     *size_ret = handle->code_len;
     handle->code_buffer = NULL;
     return 1;
