@@ -49,8 +49,9 @@
  *
  * - Multiple loads (GET_ALIAS) and stores (SET_ALIAS) to the same alias
  *   within the same basic block are resolved during the first pass by
- *   converting load-after-store to MOVE.  Store-after-store is handled by
- *   ignoring the earlier (dead) store at code generation time.
+ *   converting load-after-load and load-after-store to MOVE.
+ *   Store-after-store is handled by ignoring the earlier (dead) store at
+ *   code generation time.
  *
  * - After the first pass, the source registers for all remaining alias
  *   stores have their live ranges extended to the end of the block
@@ -74,10 +75,14 @@
  *   containing the store (immediately before the branch instruction, if
  *   one is to be generated), the target host register is loaded with the
  *   proper value, so it will be valid on entry to the block containing
- *   the load.
+ *   the load.  ("Ignored" loads may still generate a MOV instruction if
+ *   the register used to carry the alias value between blocks can't be
+ *   reused in subsequent instructions due to operand constraints.)
  *
  * - All other loads and stores are replaced by memory load and store
- *   instructions referencing the alias's storage.
+ *   instructions referencing the alias's storage.  Merged stores are also
+ *   stored to memory if the successor block does not store the alias
+ *   itself.
  *   FIXME: note that this has implications for spilling due to live range extension -- if the register is live through the end of the block but ends up getting stored because merged alloc failed, and it also ends up getting spilled due to later code (after the SET_ALIAS) in the block, we can ignore the spill; this does however mean that we need to match spill location to alias storage, so if the register is used for something else later in the block, it's properly reloaded
  */
 
@@ -319,23 +324,17 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int32_t insn_index,
         if (insn->opcode == RTLOP_GET_ALIAS) {
             const int alias = insn->alias;
             ASSERT(ctx->blocks[block_index].alias_load[alias] == dest);
-
-            if (host_allocated
-             && !(ctx->block_regs_touched & (1 << dest_info->host_reg))) {
-                /* The register is available!  Claim it for our own. */
-                dest_info->merge_alias = true;
-                dest_info->host_merge = dest_info->host_reg;
-            }
+            bool have_preceding_store = false;
 
             /* First priority: register used by SET_ALIAS in previous block
              * (if any, and if it has an edge to this block). */
-            if (!dest_info->merge_alias
-             && block_index > 0
+            if (block_index > 0
              && (unit->blocks[block_index-1].exits[0] == block_index
               || unit->blocks[block_index-1].exits[1] == block_index)) {
                 const int store_reg =
                     ctx->blocks[block_index-1].alias_store[alias];
                 if (store_reg) {
+                    have_preceding_store = true;
                     const X86Register host_reg = ctx->regs[store_reg].host_reg;
                     if (!(ctx->block_regs_touched & (1 << host_reg))) {
                         dest_info->merge_alias = true;
@@ -351,10 +350,14 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int32_t insn_index,
                 for (int i = 0;
                      i < lenof(block->entries) && block->entries[i] >= 0; i++)
                 {
+                    if (block->entries[i] == block_index - 1) {
+                        continue;  // Already checked this block above.
+                    }
                     const HostX86BlockInfo *predecessor =
                         &ctx->blocks[block->entries[i]];
                     const int store_reg = predecessor->alias_store[alias];
                     if (store_reg) {
+                        have_preceding_store = true;
                         const X86Register host_reg =
                             ctx->regs[store_reg].host_reg;
                         if (!(ctx->block_regs_touched & (1 << host_reg))) {
@@ -365,11 +368,26 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int32_t insn_index,
                 }
             }
 
-            /* Lowest priority: any register not yet used in this block. */
-            if (!dest_info->merge_alias) {
+            /* Zeroth priority: If we already have a register allocated
+             * (from optimization) and that register is free back to the
+             * beginning of the block, use it.  We delay this check until
+             * now since we need to know whether to allocate a register in
+             * the first place (i.e. have_preceding_store). */
+            if (have_preceding_store && host_allocated
+             && !(ctx->block_regs_touched & (1 << dest_info->host_reg))) {
+                /* The register is available!  Claim it for our own. */
+                dest_info->merge_alias = true;
+                dest_info->host_merge = dest_info->host_reg;
+            }
+
+            /* Lowest priority: any register not yet used in this block.
+             * But if there are no predecessor blocks which set this alias,
+             * there's nothing to merge, so don't even try to allocate a
+             * register. */
+            if (!dest_info->merge_alias && have_preceding_store) {
                 const RTLDataType type = dest_reg->type;
                 const uint32_t saved_free = ctx->regs_free;
-                ctx->regs_free = ctx->block_regs_touched;
+                ctx->regs_free = ~ctx->block_regs_touched;
                 int host_reg;
                 if (type == RTLTYPE_INT32 || type == RTLTYPE_ADDRESS) {
                     host_reg = get_gpr(ctx, avoid_regs);
@@ -739,11 +757,12 @@ static void first_pass_for_block(HostX86Context *ctx, int block_index)
     /* If this block has exactly one entering edge and that edge comes from
      * a block we've already seen, carry alias-store data over from that
      * block to try and keep the alias values in host registers. */
-    if (block->entries[0] >= 0 && block->entries[0] < block_index
-     && block->entries[1] < 0) {
-        memcpy(block_info->alias_store,
-               ctx->blocks[block->entries[0]].alias_store,
-               2 * num_aliases);
+    const bool forward_alias_store = (
+        block->entries[0] >= 0 && block->entries[0] < block_index
+        && block->entries[1] < 0);
+    const uint16_t *predecessor_store = NULL;
+    if (forward_alias_store) {
+        predecessor_store = ctx->blocks[block->entries[0]].alias_store;
     }
 
     for (int insn_index = block->first_insn; insn_index <= block->last_insn;
@@ -754,15 +773,27 @@ static void first_pass_for_block(HostX86Context *ctx, int block_index)
         switch (insn->opcode) {
           case RTLOP_GET_ALIAS:
             if (UNLIKELY(block_info->alias_load[insn->alias])) {
-                /* We already stored the alias in this block!  Just reuse
-                 * the existing register. */
+                /* We already loaded the alias once!  Probably a lazy guest
+                 * translator.  Just reuse the register. */
                 insn->src1 = block_info->alias_load[insn->alias];
+                insn->opcode = RTLOP_MOVE;
+                if (unit->regs[insn->src1].death < insn_index) {
+                    unit->regs[insn->src1].death = insn_index;
+                }
+            } else if (UNLIKELY(block_info->alias_store[insn->alias])) {
+                /* We already stored the alias in this block!  Reuse the
+                 * register. */
+                insn->src1 = block_info->alias_store[insn->alias];
                 insn->opcode = RTLOP_MOVE;
                 if (unit->regs[insn->src1].death < insn_index) {
                     unit->regs[insn->src1].death = insn_index;
                 }
             } else {
                 block_info->alias_load[insn->alias] = insn->dest;
+                /* We don't convert forwarded stores to MOVE in order to
+                 * give the register allocator leeway to use a different
+                 * register between the beginning of the block and this
+                 * instruction. */
             }
             break;
 
@@ -930,6 +961,18 @@ static void first_pass_for_block(HostX86Context *ctx, int block_index)
 
           default:
             break;  // Nothing to do in this pass.
+        }
+    }
+
+    /* Forward alias store data if appropriate.  Aliases which were loaded
+     * but not stored in this block are _not_ forwarded, so the code
+     * generator knows that it needs to generate a memory store at the
+     * earlier SET_ALIAS instruction. */
+    if (forward_alias_store) {
+        for (int i = 1; i < unit->next_alias; i++) {
+            if (!block_info->alias_load[i] && !block_info->alias_store[i]) {
+                block_info->alias_store[i] = predecessor_store[i];
+            }
         }
     }
 }

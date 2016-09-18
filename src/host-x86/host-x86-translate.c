@@ -332,8 +332,6 @@ static APPEND_INLINE void append_insn_ModRM_mem(
     CodeBuffer *code, bool is64, X86Opcode opcode, X86Register reg,
     X86Register base, int32_t offset)
 {
-    ASSERT(base != X86_SP);
-
     uint8_t rex = is64 ? X86_REX_W : 0;
     if (reg & 8) {
         rex |= X86_REX_R;
@@ -379,6 +377,102 @@ static APPEND_INLINE void append_insn_ModRM_mem(
         append_imm8(code, (uint8_t)offset);
     } else if (mod == X86MOD_DISP32) {
         append_imm32(code, (uint32_t)offset);
+    }
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
+ * append_move:  Append an instruction to copy (MOV) one register to another.
+ *
+ * [Parameters]
+ *     code: Output code buffer.
+ *     type: Register type (RTLTYPE_*).
+ *     host_dest: Destination host register.
+ *     host_src: Source host register.
+ */
+static APPEND_INLINE void append_move(
+    CodeBuffer *code, RTLDataType type, X86Register host_dest,
+    X86Register host_src)
+{
+    switch (type) {
+      case RTLTYPE_INT32:
+        append_insn_ModRM_reg(code, false, X86OP_MOV_Gv_Ev,
+                              host_dest, host_src);
+        break;
+      case RTLTYPE_ADDRESS:
+        append_insn_ModRM_reg(code, true, X86OP_MOV_Gv_Ev,
+                              host_dest, host_src);
+        break;
+      default:
+        // FIXME: handle FP registers when we support those
+        ASSERT(!"Invalid data type for register move");
+    }
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
+ * append_load_alias:  Append an instruction to load the given alias from
+ * its storage location.
+ *
+ * [Parameters]
+ *     code: Output code buffer.
+ *     ctx: Translation context.
+ *     alias: Alias register to load.
+ *     host_dest: Host register into which to load alias register value.
+ */
+static APPEND_INLINE void append_load_alias(
+    CodeBuffer *code, const HostX86Context *ctx, const RTLAlias *alias,
+    X86Register host_dest)
+{
+    const X86Register host_base =
+        alias->base ? ctx->regs[alias->base].host_reg : X86_SP;
+    switch (alias->type) {
+      case RTLTYPE_INT32:
+        append_insn_ModRM_mem(code, false, X86OP_MOV_Gv_Ev,
+                              host_dest, host_base, alias->offset);
+        break;
+      case RTLTYPE_ADDRESS:
+        append_insn_ModRM_mem(code, true, X86OP_MOV_Gv_Ev,
+                              host_dest, host_base, alias->offset);
+        break;
+      default:
+        // FIXME: handle FP registers when we support those
+        ASSERT(!"Invalid data type for alias store");
+    }
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
+ * append_store_alias:  Append an instruction to store the given alias to
+ * its storage location.
+ *
+ * [Parameters]
+ *     code: Output code buffer.
+ *     ctx: Translation context.
+ *     alias: Alias to store.
+ *     host_src: Host register containing data to store.
+ */
+static APPEND_INLINE void append_store_alias(
+    CodeBuffer *code, const HostX86Context *ctx, const RTLAlias *alias,
+    X86Register host_src)
+{
+    const X86Register host_base =
+        alias->base ? ctx->regs[alias->base].host_reg : X86_SP;
+    switch (alias->type) {
+      case RTLTYPE_INT32:
+        append_insn_ModRM_mem(code, false, X86OP_MOV_Ev_Gv,
+                              host_src, host_base, alias->offset);
+        break;
+      case RTLTYPE_ADDRESS:
+        append_insn_ModRM_mem(code, true, X86OP_MOV_Ev_Gv,
+                              host_src, host_base, alias->offset);
+        break;
+      default:
+        // FIXME: handle FP registers when we support those
+        ASSERT(!"Invalid data type for alias store");
     }
 }
 
@@ -462,36 +556,22 @@ static bool translate_block(HostX86Context *ctx, int block_index)
             if (src1 != block_info->alias_store[insn->alias]) {
                 break;  // This is a dead store.
             }
-
             /* We need to store to memory if (1) this is a terminal block
-             * or (2) at least one successor block doesn't have a mergeable
-             * GET_ALIAS. */
+             * or (2) at least one successor block doesn't both (a) have a
+             * mergeable GET_ALIAS and (b) SET_ALIAS the same alias. */
             bool need_store = (block->exits[0] < 0);
             for (int i = 0; !need_store && i < lenof(block->exits); i++) {
                 const int successor = block->exits[i];
                 const int reg = ctx->blocks[successor].alias_load[insn->alias];
-                if (!reg || !ctx->regs[reg].merge_alias) {
+                if (!reg
+                 || !ctx->regs[reg].merge_alias
+                 || !ctx->blocks[successor].alias_store[insn->alias]) {
                     need_store = true;
                 }
             }
             if (need_store) {
-                const X86Register host_src1 = ctx->regs[src1].host_reg;
-                const RTLAlias *alias = &unit->aliases[insn->alias];
-                const X86Register host_base =
-                    alias->base ? ctx->regs[alias->base].host_reg : X86_SP;
-                switch (unit->regs[src1].type) {
-                  case RTLTYPE_INT32:
-                    append_insn_ModRM_mem(&code, false, X86OP_MOV_Ev_Gv,
-                                          host_src1, host_base, alias->offset);
-                    break;
-                  case RTLTYPE_ADDRESS:
-                    append_insn_ModRM_mem(&code, false, X86OP_MOV_Ev_Gv,
-                                          host_src1, host_base, alias->offset);
-                    break;
-                  default:
-                    // FIXME: handle FP registers when we support those
-                    ASSERT(!"Invalid data type in SET_ALIAS");
-                }
+                append_store_alias(&code, ctx, &unit->aliases[insn->alias],
+                                   ctx->regs[src1].host_reg);
             }
             break;
           }  // case RTLOP_SET_ALIAS
@@ -500,36 +580,24 @@ static bool translate_block(HostX86Context *ctx, int block_index)
             /* Register allocation informs us whether we need to load
              * from memory. */
             if (!ctx->regs[dest].merge_alias) {
-                const X86Register host_dest = ctx->regs[dest].host_reg;
-                const RTLAlias *alias = &unit->aliases[insn->alias];
-                const X86Register host_base =
-                    alias->base ? ctx->regs[alias->base].host_reg : X86_SP;
-                switch (unit->regs[src1].type) {
-                  case RTLTYPE_INT32:
-                    append_insn_ModRM_mem(&code, false, X86OP_MOV_Gv_Ev,
-                                          host_dest, host_base, alias->offset);
-                    break;
-                  case RTLTYPE_ADDRESS:
-                    append_insn_ModRM_mem(&code, false, X86OP_MOV_Gv_Ev,
-                                          host_dest, host_base, alias->offset);
-                    break;
-                  default:
-                    // FIXME: handle FP registers when we support those
-                    ASSERT(!"Invalid data type in GET_ALIAS");
-                }
+                append_load_alias(&code, ctx, &unit->aliases[insn->alias],
+                                  ctx->regs[dest].host_reg);
+            } else if (ctx->regs[dest].host_merge != ctx->regs[dest].host_reg) {
+                /* The value is already loaded, but we need to move it to
+                 * a different register. */
+                append_move(&code, unit->regs[dest].type,
+                            ctx->regs[dest].host_reg,
+                            ctx->regs[src1].host_merge);
             }
             break;
 
-          case RTLOP_MOVE: {
-            const X86Register host_dest = ctx->regs[dest].host_reg;
-            const X86Register host_src1 = ctx->regs[src1].host_reg;
-            if (host_dest != host_src1) {
-                const bool is64 = (unit->regs[dest].type == RTLTYPE_ADDRESS);
-                append_insn_ModRM_reg(&code, is64, X86OP_MOV_Gv_Ev,
-                                      host_dest, host_src1);
+          case RTLOP_MOVE:
+            if (ctx->regs[dest].host_reg != ctx->regs[src1].host_reg) {
+                append_move(&code, unit->regs[dest].type,
+                            ctx->regs[dest].host_reg,
+                            ctx->regs[src1].host_reg);
             }
             break;
-          }  // case RTLOP_MOVE
 
           case RTLOP_SELECT: {
             const X86Register host_dest = ctx->regs[dest].host_reg;
