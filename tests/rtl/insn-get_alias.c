@@ -45,6 +45,8 @@ int main(void)
         "    1: MOVE       r1, r2\n"
         "           r2: a1\n"
         "\n"
+        "Alias 1: int32, no bound storage\n"
+        "\n"
         "Block    0: <none> --> [0,1] --> <none>\n"
         ;
     EXPECT_STREQ(rtl_disassemble_unit(unit, true), disassembly);

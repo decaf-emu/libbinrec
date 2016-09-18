@@ -325,7 +325,7 @@ static APPEND_INLINE void append_insn_ModRM_reg(
  *     is64: True for 64-bit operands, false for 32-bit operands.
  *     opcode: Instruction opcode.
  *     reg: Register index (or sub-opcode) for ModR/M reg field.
- *     base: Base register index for memory address.  Must not be X86_SP.
+ *     base: Base register index for memory address.
  *     offset: Constant offset for memory address.
  */
 static APPEND_INLINE void append_insn_ModRM_mem(
@@ -366,7 +366,15 @@ static APPEND_INLINE void append_insn_ModRM_mem(
     } else {
         mod = X86MOD_DISP32;
     }
-    append_ModRM(code, mod, reg & 7, base & 7);
+    if (base == X86_SP || base == X86_R12) {
+        /* SP (4) in the r/m field is used to indicate the presence of a
+         * SIB byte, so we have to encode SP references using SIB.  This
+         * also applies to R12, for the same reason as R13 with respect
+         * to BP (see above). */
+        append_ModRM_SIB(code, mod, reg & 7, 0, X86SIB_NOINDEX, X86_SP);
+    } else {
+        append_ModRM(code, mod, reg & 7, base & 7);
+    }
     if (mod == X86MOD_DISP8) {
         append_imm8(code, (uint8_t)offset);
     } else if (mod == X86MOD_DISP32) {
@@ -434,7 +442,7 @@ static bool translate_block(HostX86Context *ctx, int block_index)
 
         const long initial_len = code.len;
 
-        switch (insn->opcode) {
+        switch ((RTLOpcode)insn->opcode) {
 
           case RTLOP_NOP:
             if (insn->src_imm != 0) {
@@ -446,6 +454,68 @@ static bool translate_block(HostX86Context *ctx, int block_index)
                     append_ModRM_SIB(&code, X86MOD_DISP32, 0,
                                      0, X86SIB_NOINDEX, X86_SP);
                     append_imm32(&code, (uint32_t)(insn->src_imm >> 32));
+                }
+            }
+            break;
+
+          case RTLOP_SET_ALIAS: {
+            if (src1 != block_info->alias_store[insn->alias]) {
+                break;  // This is a dead store.
+            }
+
+            /* We need to store to memory if (1) this is a terminal block
+             * or (2) at least one successor block doesn't have a mergeable
+             * GET_ALIAS. */
+            bool need_store = (block->exits[0] < 0);
+            for (int i = 0; !need_store && i < lenof(block->exits); i++) {
+                const int successor = block->exits[i];
+                const int reg = ctx->blocks[successor].alias_load[insn->alias];
+                if (!reg || !ctx->regs[reg].merge_alias) {
+                    need_store = true;
+                }
+            }
+            if (need_store) {
+                const X86Register host_src1 = ctx->regs[src1].host_reg;
+                const RTLAlias *alias = &unit->aliases[insn->alias];
+                const X86Register host_base =
+                    alias->base ? ctx->regs[alias->base].host_reg : X86_SP;
+                switch (unit->regs[src1].type) {
+                  case RTLTYPE_INT32:
+                    append_insn_ModRM_mem(&code, false, X86OP_MOV_Ev_Gv,
+                                          host_src1, host_base, alias->offset);
+                    break;
+                  case RTLTYPE_ADDRESS:
+                    append_insn_ModRM_mem(&code, false, X86OP_MOV_Ev_Gv,
+                                          host_src1, host_base, alias->offset);
+                    break;
+                  default:
+                    // FIXME: handle FP registers when we support those
+                    ASSERT(!"Invalid data type in SET_ALIAS");
+                }
+            }
+            break;
+          }  // case RTLOP_SET_ALIAS
+
+          case RTLOP_GET_ALIAS:
+            /* Register allocation informs us whether we need to load
+             * from memory. */
+            if (!ctx->regs[dest].merge_alias) {
+                const X86Register host_dest = ctx->regs[dest].host_reg;
+                const RTLAlias *alias = &unit->aliases[insn->alias];
+                const X86Register host_base =
+                    alias->base ? ctx->regs[alias->base].host_reg : X86_SP;
+                switch (unit->regs[src1].type) {
+                  case RTLTYPE_INT32:
+                    append_insn_ModRM_mem(&code, false, X86OP_MOV_Gv_Ev,
+                                          host_dest, host_base, alias->offset);
+                    break;
+                  case RTLTYPE_ADDRESS:
+                    append_insn_ModRM_mem(&code, false, X86OP_MOV_Gv_Ev,
+                                          host_dest, host_base, alias->offset);
+                    break;
+                  default:
+                    // FIXME: handle FP registers when we support those
+                    ASSERT(!"Invalid data type in GET_ALIAS");
                 }
             }
             break;
@@ -1638,8 +1708,6 @@ static bool translate_block(HostX86Context *ctx, int block_index)
             append_opcode(&code, X86OP_UD2);
             break;
 
-          default: break; //FIXME: other insns not yet implemented
-
         }
 
         ASSERT(code.len - initial_len <= MAX_INSN_LEN);
@@ -2061,6 +2129,7 @@ static void destroy_context(HostX86Context *ctx)
     binrec_free(ctx->handle, ctx->blocks);
     binrec_free(ctx->handle, ctx->regs);
     binrec_free(ctx->handle, ctx->label_offsets);
+    binrec_free(ctx->handle, ctx->alias_buffer);
 }
 
 /*-----------------------------------------------------------------------*/
@@ -2088,7 +2157,10 @@ static bool init_context(HostX86Context *ctx, binrec_t *handle, RTLUnit *unit)
     ctx->regs = binrec_malloc(handle, sizeof(*ctx->regs) * unit->next_reg);
     ctx->label_offsets = binrec_malloc(
         handle, sizeof(*ctx->label_offsets) * unit->next_label);
-    if (!ctx->blocks || !ctx->regs || !ctx->label_offsets) {
+    ctx->alias_buffer = binrec_malloc(
+        handle, ((4 * unit->next_alias) * unit->num_blocks));
+    if (!ctx->blocks || !ctx->regs || !ctx->label_offsets
+     || !ctx->alias_buffer) {
         log_error(handle, "No memory for output translation context");
         destroy_context(ctx);
         return false;
@@ -2101,6 +2173,7 @@ static bool init_context(HostX86Context *ctx, binrec_t *handle, RTLUnit *unit)
     memset(ctx->regs, 0, sizeof(*ctx->regs) * unit->next_reg);
     memset(ctx->label_offsets, -1,
            sizeof(*ctx->label_offsets) * unit->next_label);
+    memset(ctx->alias_buffer, 0, ((4 * unit->next_alias) * unit->num_blocks));
 
     return true;
 }

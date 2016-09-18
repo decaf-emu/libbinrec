@@ -126,7 +126,7 @@ static bool make_set_alias(RTLUnit *unit, RTLInsn *insn, unsigned int dest,
     OPERAND_ASSERT(src1 != 0);
     OPERAND_ASSERT(other != 0);
     OPERAND_ASSERT(unit->regs[src1].source != RTLREG_UNDEFINED);
-    OPERAND_ASSERT(unit->regs[src1].type == unit->alias_types[other]);
+    OPERAND_ASSERT(unit->regs[src1].type == unit->aliases[other].type);
 #endif
 
     insn->src1 = src1;
@@ -157,7 +157,7 @@ static bool make_get_alias(RTLUnit *unit, RTLInsn *insn, unsigned int dest,
     OPERAND_ASSERT(dest != 0);
     OPERAND_ASSERT(other != 0);
     OPERAND_ASSERT(unit->regs[dest].source == RTLREG_UNDEFINED);
-    OPERAND_ASSERT(unit->regs[dest].type == unit->alias_types[other]);
+    OPERAND_ASSERT(unit->regs[dest].type == unit->aliases[other].type);
 #endif
 
     insn->dest = dest;

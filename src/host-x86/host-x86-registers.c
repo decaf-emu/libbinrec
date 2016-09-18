@@ -25,6 +25,8 @@
  * number of instructions; by iterating over instructions, we also save
  * the expense of creating a separate list of live ranges.
  *
+ * FIXME: figure out spilling rules ("latest death" would spill the PSB pointer, which would not be great, but we do want to spill longer-lived regs in general, esp. because of alias stuff)
+ *
  * Since live intervals calculated by the RTL core do not take backward
  * branches into account, the register allocator checks each basic block
  * for entering edges from later blocks in the code stream, and if such a
@@ -32,21 +34,51 @@
  * extend through the end of that block (the latest block in code stream
  * order if there is more than one).
  *
- * The basic algorithm is modified as follows:
+ * Before the register allocation pass itself, we scan through the code
+ * stream once to record which RTL registers are stored in which aliases
+ * at the end of each block; this information is used to try and allocate
+ * the same hardware register to RTL registers linked to the same alias.
+ * If the FIXED_REGS optimization is enabled, then during the alias scan,
+ * we also allocate hardware registers for operands which must be in
+ * specific registers (such as shift counts, which must be in CL); we do
+ * this as part of the same pass to avoid the cost of looping over the
+ * entire unit an additional time.
  *
- * - If the FIXED_REGS optimization is enabled, the allocator performs a
- *   preliminary pass over the RTL unit to allocate hardware registers for
- *   operands which must be in specific registers (such as shift counts,
- *   which must be in CL), followed by a second pass to link those
- *   into a list ordered by register birth, before the normal allocation
- *   pass.  The allocator is not strictly linear scan in this sense, but
- *   the extra passes only need to look at a few instructions, so they do
- *   not add a significant amount of time to the overall allocation process.
+ * Resolution of alias references occurs in several stages, depending on
+ * the nature of the reference:
  *
- * - When spilling registers, the register with the shortest (rather than
- *   longest) usage interval is spilled, in order to avoid spilling the
- *   guest processor state block pointer.
- *   FIXME: instead add a high-priority flag to RTLRegister?
+ * - Multiple loads (GET_ALIAS) and stores (SET_ALIAS) to the same alias
+ *   within the same basic block are resolved during the first pass by
+ *   converting load-after-store to MOVE.  Store-after-store is handled by
+ *   ignoring the earlier (dead) store at code generation time.
+ *
+ * - After the first pass, the source registers for all remaining alias
+ *   stores have their live ranges extended to the end of the block
+ *   containing the store if a successor block loads the same alias (see
+ *   update_alias_live_ranges()).
+ *
+ * - For loads not rewritten in the first pass, if at least one predecessor
+ *   block (that is, a block with a flow graph edge entering the current
+ *   block) stores to the alias, the register allocator will attempt to
+ *   allocate a host register which has not yet been used in the current
+ *   block, giving preference to the register used to store to the alias
+ *   in the predecessor block.  (If this applies to multiple predecessor
+ *   blocks, first preference is given to the immediately previous block
+ *   in code stream order if that block is a predecessor block.)  If this
+ *   is successful, the corresponding RTL register is marked as valid for
+ *   alias merging during code generation.  Otherwise, a host register is
+ *   allocated at the point of the load as usual.
+ *
+ * - At code generation time, stores and loads of aliases marked as valid
+ *   for merging are ignored.  Instead, at the exit point of the block
+ *   containing the store (immediately before the branch instruction, if
+ *   one is to be generated), the target host register is loaded with the
+ *   proper value, so it will be valid on entry to the block containing
+ *   the load.
+ *
+ * - All other loads and stores are replaced by memory load and store
+ *   instructions referencing the alias's storage.
+ *   FIXME: note that this has implications for spilling due to live range extension -- if the register is live through the end of the block but ends up getting stored because merged alloc failed, and it also ends up getting spilled due to later code (after the SET_ALIAS) in the block, we can ignore the spill; this does however mean that we need to match spill location to alias storage, so if the register is used for something else later in the block, it's properly reloaded
  */
 
 /*************************************************************************/
@@ -69,7 +101,7 @@ static inline int get_gpr(HostX86Context *ctx, uint32_t avoid_regs)
 
     /* Give preference to caller-saved registers, so we don't need to
      * unnecessarily save and restore registers ourselves. */
-    // FIXME: will need adjustment when we have native calls (probably also want something like NATIVE_CALL_INTERNAL for pre/post insn callbacks that doesn't affect register allocation)
+    // FIXME: will need adjustment when we have native calls (probably also want something like NATIVE_CALL_INTERNAL for pre/post insn callbacks that shouldn't affect register allocation)
     int host_reg = ctz32(regs_free & ~ctx->callee_saved_regs);
     if (host_reg < 16) {
         return host_reg;
@@ -94,6 +126,32 @@ static inline int get_xmm(HostX86Context *ctx, uint32_t avoid_regs)
 {
     const uint32_t regs_free = ctx->regs_free & 0xFFFF0000 & ~avoid_regs;
     return regs_free ? ctz32(regs_free) : -1;
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
+ * assign_register:  Assign the given host register to the given RTL
+ * register.  Updates ctx->reg_map, ctx->regs_free, and
+ * ctx->block_regs_touched, but does not update HostX86RegInfo.host_reg.
+ *
+ * [Parameters]
+ *     ctx: Translation context.
+ *     reg_index: RTL register number.
+ *     host_reg: Host register to assign.
+ * [Return value]
+ *     Allocated register index.
+ */
+static void assign_register(HostX86Context *ctx, int reg_index,
+                            X86Register host_reg)
+{
+    ASSERT(ctx);
+
+    ASSERT(!ctx->reg_map[host_reg]);
+    ctx->reg_map[host_reg] = reg_index;
+    ASSERT(ctx->regs_free & (1 << host_reg));
+    ctx->regs_free ^= 1 << host_reg;
+    ctx->block_regs_touched |= 1 << host_reg;
 }
 
 /*-----------------------------------------------------------------------*/
@@ -126,10 +184,7 @@ static X86Register allocate_register(
         host_reg = get_xmm(ctx, avoid_regs);
     }
     if (host_reg >= 0) {
-        ASSERT(!ctx->reg_map[host_reg]);
-        ctx->reg_map[host_reg] = reg_index;
-        ctx->regs_free ^= 1 << host_reg;
-        ctx->regs_touched |= 1 << host_reg;
+        assign_register(ctx, reg_index, host_reg);
         return host_reg;
     }
 
@@ -145,15 +200,19 @@ static X86Register allocate_register(
  * [Parameters]
  *     ctx: Translation context.
  *     insn_index: Index of instruction in ctx->unit->insns[].
+ *     block_index: Index of basic block containing instruction.
  * [Return value]
  *     True on success, false on error.
  */
-static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index)
+static bool allocate_regs_for_insn(HostX86Context *ctx, int32_t insn_index,
+                                   int block_index)
 {
     ASSERT(ctx);
     ASSERT(ctx->unit);
     ASSERT(insn_index >= 0);
     ASSERT((uint32_t)insn_index < ctx->unit->num_insns);
+    ASSERT(block_index >= 0);
+    ASSERT((unsigned int)block_index < ctx->unit->num_blocks);
 
     const RTLUnit * const unit = ctx->unit;
     const RTLInsn * const insn = &unit->insns[insn_index];
@@ -231,12 +290,7 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index)
 
         if (host_allocated) {
             const X86Register host_reg = dest_info->host_reg;
-            ASSERT(!ctx->reg_map[host_reg]);
-            ctx->reg_map[host_reg] = dest;
-            ASSERT(ctx->regs_free & (1 << host_reg));
-            ctx->regs_free ^= 1 << host_reg;
-            ctx->regs_touched |= 1 << host_reg;
-
+            assign_register(ctx, dest, host_reg);
             /* This must have been the first register on the fixed-regs
              * list.  Advance the list pointer so we don't have to scan
              * over this register again. */
@@ -256,9 +310,111 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index)
             }
         }
 
-        /* Special case for LOAD_ARG: try to reuse the same register the
-         * argument is passed in. */
+        /* If loading from an alias which was written by a predecessor
+         * block, try to keep the value live in a host register.  We check
+         * for this even if a host register was allocated for dest during
+         * optimization, since we may still be able to reserve that
+         * register as a block input or find another register to serve as
+         * an intermediary to avoid the memory store/load. */
+        if (insn->opcode == RTLOP_GET_ALIAS) {
+            const int alias = insn->alias;
+            ASSERT(ctx->blocks[block_index].alias_load[alias] == dest);
+
+            if (host_allocated
+             && !(ctx->block_regs_touched & (1 << dest_info->host_reg))) {
+                /* The register is available!  Claim it for our own. */
+                dest_info->merge_alias = true;
+                dest_info->host_merge = dest_info->host_reg;
+            }
+
+            /* First priority: register used by SET_ALIAS in previous block
+             * (if any, and if it has an edge to this block). */
+            if (!dest_info->merge_alias
+             && block_index > 0
+             && (unit->blocks[block_index-1].exits[0] == block_index
+              || unit->blocks[block_index-1].exits[1] == block_index)) {
+                const int store_reg =
+                    ctx->blocks[block_index-1].alias_store[alias];
+                if (store_reg) {
+                    const X86Register host_reg = ctx->regs[store_reg].host_reg;
+                    if (!(ctx->block_regs_touched & (1 << host_reg))) {
+                        dest_info->merge_alias = true;
+                        dest_info->host_merge = dest_info->host_reg;
+                    }
+                }
+            }
+
+            /* Second priority: register used by SET_ALIAS in any
+             * predecessor block. */
+            if (!dest_info->merge_alias) {
+                RTLBlock *block = &unit->blocks[block_index];
+                for (int i = 0;
+                     i < lenof(block->entries) && block->entries[i] >= 0; i++)
+                {
+                    const HostX86BlockInfo *predecessor =
+                        &ctx->blocks[block->entries[i]];
+                    const int store_reg = predecessor->alias_store[alias];
+                    if (store_reg) {
+                        const X86Register host_reg =
+                            ctx->regs[store_reg].host_reg;
+                        if (!(ctx->block_regs_touched & (1 << host_reg))) {
+                            dest_info->merge_alias = true;
+                            dest_info->host_merge = dest_info->host_reg;
+                        }
+                    }
+                }
+            }
+
+            /* Lowest priority: any register not yet used in this block. */
+            if (!dest_info->merge_alias) {
+                const RTLDataType type = dest_reg->type;
+                const uint32_t saved_free = ctx->regs_free;
+                ctx->regs_free = ctx->block_regs_touched;
+                int host_reg;
+                if (type == RTLTYPE_INT32 || type == RTLTYPE_ADDRESS) {
+                    host_reg = get_gpr(ctx, avoid_regs);
+                } else {
+                    host_reg = get_xmm(ctx, avoid_regs);
+                }
+                if (host_reg < 0 && avoid_regs != 0) {
+                    /* Try again without excluding any registers.  We won't
+                     * be able to keep the value in this register, but we
+                     * can at least avoid a round trip to memory. */
+                    if (type == RTLTYPE_INT32 || type == RTLTYPE_ADDRESS) {
+                        host_reg = get_gpr(ctx, 0);
+                    } else {
+                        host_reg = get_xmm(ctx, 0);
+                    }
+                }
+                ctx->regs_free = saved_free;
+                if (host_reg >= 0) {
+                    dest_info->merge_alias = true;
+                    dest_info->host_merge = host_reg;
+                }
+            }
+
+            /* If we found a usable register, assign it to dest.  But if
+             * dest already had a register (from optimization) or if the
+             * chosen register is masked out by avoid_regs, just mark the
+             * register as touched so subsequent alias loads don't also try
+             * to use it; the code generator will construct a MOV to get
+             * the value to its proper location. */
+            if (dest_info->merge_alias) {
+                const X86Register host_merge = dest_info->host_merge;
+                if (host_allocated || (avoid_regs & (1 << host_merge))) {
+                    ctx->block_regs_touched |= 1 << host_merge;
+                } else {
+                    host_allocated = true;
+                    dest_info->host_reg = host_merge;
+                    assign_register(ctx, dest, host_merge);
+                }
+            }
+        }  // if (insn->opcode == RTLOP_GET_ALIAS)
+
+        /* If loading a function argument, try to reuse the same register
+         * the argument is passed in. */
         // FIXME: only appropriate if no native calls
+        // FIXME: need more robustness wrt overwriting input regs
         if (!host_allocated && insn->opcode == RTLOP_LOAD_ARG) {
             const int target_reg =
                 host_x86_int_arg_register(ctx, insn->arg_index);
@@ -270,10 +426,7 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index)
                        && !(avoid_regs & (1 << target_reg))) {
                 host_allocated = true;
                 dest_info->host_reg = target_reg;
-                ctx->reg_map[target_reg] = dest;
-                ASSERT(ctx->regs_free & (1 << target_reg));
-                ctx->regs_free ^= 1 << target_reg;
-                ctx->regs_touched |= 1 << target_reg;
+                assign_register(ctx, dest, target_reg);
             }
         }
 
@@ -299,10 +452,7 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index)
                 if (!ctx->reg_map[X86_DX]) {
                     host_allocated = true;
                     dest_info->host_reg = X86_DX;
-                    ctx->reg_map[X86_DX] = dest;
-                    ASSERT(ctx->regs_free & (1 << X86_DX));
-                    ctx->regs_free ^= 1 << X86_DX;
-                    ctx->regs_touched |= 1 << X86_DX;
+                    assign_register(ctx, dest, X86_DX);
                 } else {
                     avoid_regs |= 1 << X86_AX;
                 }
@@ -312,10 +462,7 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index)
                 if (!ctx->reg_map[X86_AX] && src2_info->host_reg != X86_AX) {
                     host_allocated = true;
                     dest_info->host_reg = X86_AX;
-                    ctx->reg_map[X86_AX] = dest;
-                    ASSERT(ctx->regs_free & (1 << X86_AX));
-                    ctx->regs_free ^= 1 << X86_AX;
-                    ctx->regs_touched |= 1 << X86_AX;
+                    assign_register(ctx, dest, X86_AX);
                 } else {
                     avoid_regs |= 1 << X86_AX
                                 | 1 << X86_DX
@@ -327,10 +474,7 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index)
                 if (!ctx->reg_map[X86_DX] && src2_info->host_reg != X86_DX) {
                     host_allocated = true;
                     dest_info->host_reg = X86_DX;
-                    ctx->reg_map[X86_DX] = dest;
-                    ASSERT(ctx->regs_free & (1 << X86_DX));
-                    ctx->regs_free ^= 1 << X86_DX;
-                    ctx->regs_touched |= 1 << X86_DX;
+                    assign_register(ctx, dest, X86_DX);
                 } else {
                     avoid_regs |= 1 << X86_AX
                                 | 1 << X86_DX
@@ -487,7 +631,7 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index)
             }
             dest_info->host_temp = (uint8_t)temp_reg;
             dest_info->temp_allocated = true;
-            ctx->regs_touched |= 1 << temp_reg;
+            ctx->block_regs_touched |= 1 << temp_reg;
         }
 
         /* If the register isn't referenced again, immediately free it.
@@ -522,35 +666,57 @@ static bool allocate_regs_for_block(HostX86Context *ctx, int block_index)
     ASSERT(block_index >= 0);
     ASSERT(block_index < ctx->unit->num_blocks);
 
-    const RTLBlock * const block = &ctx->unit->blocks[block_index];
+    const RTLUnit * const unit = ctx->unit;
+    const RTLBlock * const block = &unit->blocks[block_index];
 
     STATIC_ASSERT(sizeof(ctx->blocks[block_index].initial_reg_map)
                   == sizeof(ctx->reg_map), "Mismatched reg_map sizes");
     memcpy(ctx->blocks[block_index].initial_reg_map, ctx->reg_map,
            sizeof(ctx->reg_map));
+    ctx->block_regs_touched = 0;
 
     for (int insn_index = block->first_insn; insn_index <= block->last_insn;
          insn_index++)
     {
-        if (!allocate_regs_for_insn(ctx, insn_index)) {
+        if (!allocate_regs_for_insn(ctx, insn_index, block_index)) {
             return false;
         }
     }
 
+    /* Registers used in SET_ALIAS instructions may have had their live
+     * ranges extended past the last instruction that referenced them.
+     * Make sure to properly free their host registers. */
+    const int32_t last_insn = block->last_insn;
+    const HostX86BlockInfo *block_info = &ctx->blocks[block_index];
+    for (int alias = 1; alias < unit->next_alias; alias++) {
+        const int reg = block_info->alias_store[alias];
+        if (reg && unit->regs[reg].death == last_insn) {
+            const HostX86RegInfo *reg_info = &ctx->regs[reg];
+            ASSERT(reg_info->host_allocated);
+            const X86Register host_reg = reg_info->host_reg;
+            if (ctx->reg_map[host_reg] == reg) {
+                ctx->reg_map[host_reg] = 0;
+                ctx->regs_free |= 1 << host_reg;
+            }
+        }
+    }
+
+    ctx->regs_touched |= ctx->block_regs_touched;
     return true;
 }
 
 /*-----------------------------------------------------------------------*/
 
 /**
- * allocate_fixed_regs_for_block:  Allocate host registers for RTL
- * registers with allocation constraints in the given basic block.
+ * first_pass_for_block:  Collect data for aliases referenced by the given
+ * basic block, and allocate host registers for RTL registers with
+ * allocation constraints if the corresponding optimization is enabled.
  *
  * [Parameters]
  *     ctx: Translation context.
  *     block_index: Index of basic block in ctx->unit->blocks[].
  */
-static void allocate_fixed_regs_for_block(HostX86Context *ctx, int block_index)
+static void first_pass_for_block(HostX86Context *ctx, int block_index)
 {
     ASSERT(ctx);
     ASSERT(ctx->unit);
@@ -559,20 +725,57 @@ static void allocate_fixed_regs_for_block(HostX86Context *ctx, int block_index)
 
     const RTLUnit * const unit = ctx->unit;
     const RTLBlock * const block = &unit->blocks[block_index];
+    HostX86BlockInfo * const block_info = &ctx->blocks[block_index];
+    const bool do_fixed_regs =
+        (ctx->handle->host_opt & BINREC_OPT_H_X86_FIXED_REGS) != 0;
 
-    STATIC_ASSERT(sizeof(ctx->blocks[block_index].initial_reg_map)
-                  == sizeof(ctx->reg_map), "Mismatched reg_map sizes");
-    memcpy(ctx->blocks[block_index].initial_reg_map, ctx->reg_map,
-           sizeof(ctx->reg_map));
+    const int num_aliases = unit->next_alias;
+    block_info->alias_load =
+        (uint16_t *)&ctx->alias_buffer[block_index * (4 * num_aliases)];
+    block_info->alias_store =
+        (uint16_t *)&ctx->alias_buffer[block_index * (4 * num_aliases)
+                                       + (2 * num_aliases)];
+
+    /* If this block has exactly one entering edge and that edge comes from
+     * a block we've already seen, carry alias-store data over from that
+     * block to try and keep the alias values in host registers. */
+    if (block->entries[0] >= 0 && block->entries[0] < block_index
+     && block->entries[1] < 0) {
+        memcpy(block_info->alias_store,
+               ctx->blocks[block->entries[0]].alias_store,
+               2 * num_aliases);
+    }
 
     for (int insn_index = block->first_insn; insn_index <= block->last_insn;
          insn_index++)
     {
-        const RTLInsn * const insn = &unit->insns[insn_index];
+        RTLInsn * const insn = &unit->insns[insn_index];
 
         switch (insn->opcode) {
+          case RTLOP_GET_ALIAS:
+            if (UNLIKELY(block_info->alias_load[insn->alias])) {
+                /* We already stored the alias in this block!  Just reuse
+                 * the existing register. */
+                insn->src1 = block_info->alias_load[insn->alias];
+                insn->opcode = RTLOP_MOVE;
+                if (unit->regs[insn->src1].death < insn_index) {
+                    unit->regs[insn->src1].death = insn_index;
+                }
+            } else {
+                block_info->alias_load[insn->alias] = insn->dest;
+            }
+            break;
+
+          case RTLOP_SET_ALIAS:
+            block_info->alias_store[insn->alias] = insn->src1;
+            break;
+
           case RTLOP_MULHU:
           case RTLOP_MULHS: {
+            if (!do_fixed_regs) {
+                break;
+            }
+
             /* MUL and IMUL read rAX and write rDX:rAX, so ideally we want
              * one input operand in rAX, the other in rDX if it dies at this
              * instruction, and the result in rDX since these instructions
@@ -635,6 +838,9 @@ static void allocate_fixed_regs_for_block(HostX86Context *ctx, int block_index)
 
           case RTLOP_DIVU:
           case RTLOP_DIVS: {
+            if (!do_fixed_regs) {
+                break;
+            }
             /* For div/mod, we only care about putting the result in rAX or
              * rDX (as appropriate) and the dividend in rAX.  Putting the
              * divisor in either rAX or rDX will just force us to move it
@@ -672,6 +878,9 @@ static void allocate_fixed_regs_for_block(HostX86Context *ctx, int block_index)
 
           case RTLOP_MODU:
           case RTLOP_MODS: {
+            if (!do_fixed_regs) {
+                break;
+            }
             const RTLRegister *dest_reg = &unit->regs[insn->dest];
             HostX86RegInfo *dest_info = &ctx->regs[insn->dest];
             if (ctx->last_dx_death <= insn_index) {
@@ -701,6 +910,9 @@ static void allocate_fixed_regs_for_block(HostX86Context *ctx, int block_index)
           case RTLOP_SRL:
           case RTLOP_SRA:
           case RTLOP_ROR: {
+            if (!do_fixed_regs) {
+                break;
+            }
             const RTLRegister *src2_reg = &unit->regs[insn->src2];
             HostX86RegInfo *src2_info = &ctx->regs[insn->src2];
             if (!src2_info->host_allocated
@@ -718,6 +930,53 @@ static void allocate_fixed_regs_for_block(HostX86Context *ctx, int block_index)
 
           default:
             break;  // Nothing to do in this pass.
+        }
+    }
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
+ * update_alias_live_ranges:  Extend live ranges of registers associated
+ * with aliases read by the given basic block so they are live when
+ * entering this block.
+ *
+ * [Parameters]
+ *     ctx: Translation context.
+ *     block_index: Index of basic block in ctx->unit->blocks[].
+ */
+static void update_alias_live_ranges(HostX86Context *ctx, int block_index)
+{
+    ASSERT(ctx);
+    ASSERT(ctx->unit);
+    ASSERT(block_index >= 0);
+    ASSERT(block_index < ctx->unit->num_blocks);
+
+    const RTLUnit * const unit = ctx->unit;
+    const int num_aliases = unit->next_alias;
+    const RTLBlock * const block = &unit->blocks[block_index];
+    HostX86BlockInfo * const block_info = &ctx->blocks[block_index];
+
+    if (block->entries[0] < 0) {
+        return;  // Nothing to do for the initial block.
+    }
+
+    for (int alias = 1; alias < num_aliases; alias++) {
+        if (!block_info->alias_load[alias]) {
+            continue;
+        }
+
+        for (int i = 0;
+             i < lenof(block->entries) && block->entries[i] >= 0; i++)
+        {
+            const int predecessor = block->entries[i];
+            const int reg = ctx->blocks[predecessor].alias_store[alias];
+            if (reg) {
+                const int32_t last_insn = unit->blocks[predecessor].last_insn;
+                if (unit->regs[reg].death < last_insn) {
+                    unit->regs[reg].death = last_insn;
+                }
+            }
         }
     }
 }
@@ -748,21 +1007,43 @@ bool host_x86_allocate_registers(HostX86Context *ctx)
             | 1<<X86_XMM14 | 1<<X86_XMM15;
     }
 
-    memset(ctx->reg_map, 0, sizeof(ctx->reg_map));
-    ctx->regs_free = ~UINT32_C(0) ^ 1<<X86_SP;  // Don't try to allocate SP!
-    ctx->regs_touched = 0;
+    /* Reserve stack space for any aliases without bound storage. */
+    for (int i = 1; i < unit->next_alias; i++) {
+        RTLAlias *alias = &unit->aliases[i];
+        if (!alias->base) {
+            int size = 0;
+            switch (alias->type) {
+                case RTLTYPE_INT32:     size =  4; break;
+                case RTLTYPE_ADDRESS:   size =  8; break;
+                case RTLTYPE_FLOAT:     size =  4; break;
+                case RTLTYPE_DOUBLE:    size =  8; break;
+                case RTLTYPE_V2_DOUBLE: size = 16; break;
+            }
+            ASSERT(size > 0);
+            ctx->frame_size = align_up(ctx->frame_size, size);
+            alias->offset = ctx->frame_size;
+            ctx->frame_size += size;
+        }
+    }
 
+    /* First pass: record alias info, and allocate fixed regs if enabled. */
     if (ctx->handle->host_opt & BINREC_OPT_H_X86_FIXED_REGS) {
         ctx->last_ax_death = -1;
         ctx->last_cx_death = -1;
         ctx->last_dx_death = -1;
+    }
+    for (int block_index = 0; block_index >= 0;
+         block_index = unit->blocks[block_index].next_block)
+    {
+        first_pass_for_block(ctx, block_index);
+    }
 
-        for (int block_index = 0; block_index >= 0;
-             block_index = unit->blocks[block_index].next_block)
-        {
-            allocate_fixed_regs_for_block(ctx, block_index);
-        }
-
+    /* Generate sorted list of registers allocated by fixed-regs allocation.
+     * We do this in a separate pass since it can be done in linear time,
+     * as opposed to ordered insertion during allocation (which won't
+     * always be appending to the end of the list because we allocate some
+     * registers at point of use rather than definition). */
+    if (ctx->handle->host_opt & BINREC_OPT_H_X86_FIXED_REGS) {
         int last_fixed_reg = 0;
         for (int block_index = 0; block_index >= 0;
              block_index = unit->blocks[block_index].next_block)
@@ -784,6 +1065,18 @@ bool host_x86_allocate_registers(HostX86Context *ctx)
         }
     }
 
+    /* Extend live ranges for registers linked through aliases. */
+    for (int block_index = 0; block_index >= 0;
+         block_index = unit->blocks[block_index].next_block)
+    {
+        update_alias_live_ranges(ctx, block_index);
+    }
+
+    /* Second pass: allocate hardware registers to all (remaining) RTL
+     * registers. */
+    memset(ctx->reg_map, 0, sizeof(ctx->reg_map));
+    ctx->regs_free = ~UINT32_C(0) ^ 1<<X86_SP;  // Don't try to allocate SP!
+    ctx->regs_touched = 0;
     for (int block_index = 0; block_index >= 0;
          block_index = unit->blocks[block_index].next_block)
     {
@@ -791,6 +1084,11 @@ bool host_x86_allocate_registers(HostX86Context *ctx)
             return false;
         }
     }
+
+    /* x86-64 requires a 16-byte-aligned stack, and the code generator
+     * expects us to give it a properly aligned frame size in order to
+     * keep the stack aligned after saving registers. */
+    ctx->frame_size = align_up(ctx->frame_size, 16);
 
     return true;
 }

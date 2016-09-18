@@ -181,7 +181,7 @@ static NOINLINE bool rtl_add_insn_with_new_block(
 /**
  * snprintf_assert:  Wrapper for snprintf() which ASSERT()s that the
  * written string fits within the supplied buffer.  Helper for
- * rtl_decode_insn() and rtl_describe_block().
+ * rtl_decode_insn(), rtl_describe_alias(), and rtl_describe_block().
  */
 static int snprintf_assert(char *buf, size_t size, const char *format, ...)
 {
@@ -722,6 +722,50 @@ static void rtl_decode_insn(const RTLUnit *unit, uint32_t index,
 /*-----------------------------------------------------------------------*/
 
 /**
+ * rtl_describe_alias:  Generate a string describing the given alias register.
+ *
+ * [Parameters]
+ *     unit: RTLUnit containing basic block to describe.
+ *     index: Alias register number.
+ *     buf: Buffer into which to store result text.
+ *     bufsize: Size of buffer (should be at least 200).
+ */
+static void rtl_describe_alias(const RTLUnit *unit, int index,
+                               char *buf, int bufsize)
+{
+    ASSERT(unit != NULL);
+    ASSERT(unit->blocks != NULL);
+    ASSERT(index > 0);
+    ASSERT(index < unit->next_alias);
+    ASSERT(buf != NULL);
+
+    const RTLAlias * const alias = &unit->aliases[index];
+    char *s = buf;
+    char * const top = buf + bufsize;
+
+    static const char *type_names[] = {
+        [RTLTYPE_INT32    ] = "int32",
+        [RTLTYPE_ADDRESS  ] = "address",
+        [RTLTYPE_FLOAT    ] = "float",
+        [RTLTYPE_DOUBLE   ] = "double",
+        [RTLTYPE_V2_DOUBLE] = "double[2]",
+    };
+    ASSERT(alias->type > 0 && alias->type < lenof(type_names));
+
+    s += snprintf_assert(s, top - s, "Alias %u: %s",
+                         index, type_names[alias->type]);
+    if (alias->base) {
+        s += snprintf_assert(s, top - s, " @ %d(r%u)",
+                             alias->offset, alias->base);
+    } else {
+        s += snprintf_assert(s, top - s, ", no bound storage");
+    }
+    s += snprintf_assert(s, top - s, "\n");
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
  * rtl_describe_block:  Generate a string describing the given basic block.
  *
  * [Parameters]
@@ -806,7 +850,7 @@ RTLUnit *rtl_create_unit(binrec_t *handle)
     unit->first_live_reg = 0;
     unit->last_live_reg = 0;
 
-    unit->alias_types = NULL;
+    unit->aliases = NULL;
     unit->aliases_size = REGS_EXPAND_SIZE;
     unit->next_alias = 1;
 
@@ -840,13 +884,13 @@ RTLUnit *rtl_create_unit(binrec_t *handle)
     }
     memset(&unit->regs[0], 0, sizeof(*unit->regs));
 
-    unit->alias_types =
-        rtl_malloc(unit, sizeof(*unit->alias_types) * unit->aliases_size);
-    if (!unit->alias_types) {
+    unit->aliases =
+        rtl_malloc(unit, sizeof(*unit->aliases) * unit->aliases_size);
+    if (!unit->aliases) {
         log_error(handle, "No memory for %u alias registers", unit->regs_size);
         goto fail;
     }
-    unit->alias_types[0] = 0;
+    unit->aliases[0].type = 0;
 
     unit->label_blockmap =
         rtl_malloc(unit, sizeof(*unit->label_blockmap) * unit->labels_size);
@@ -862,7 +906,7 @@ RTLUnit *rtl_create_unit(binrec_t *handle)
     rtl_free(unit, unit->insns);
     rtl_free(unit, unit->blocks);
     rtl_free(unit, unit->regs);
-    rtl_free(unit, unit->alias_types);
+    rtl_free(unit, unit->aliases);
     rtl_free(unit, unit->label_blockmap);
     rtl_free(unit, unit);
     return NULL;
@@ -983,7 +1027,7 @@ uint32_t rtl_alloc_alias_register(RTLUnit *unit, RTLDataType type)
 {
     ASSERT(unit != NULL);
     ASSERT(!unit->finalized);
-    ASSERT(unit->alias_types != NULL);
+    ASSERT(unit->aliases != NULL);
 
     if (UNLIKELY(unit->next_alias >= unit->aliases_size)) {
         if (unit->aliases_size >= ALIASES_LIMIT) {
@@ -997,21 +1041,38 @@ uint32_t rtl_alloc_alias_register(RTLUnit *unit, RTLDataType type)
         } else {
             new_aliases_size = unit->next_alias + ALIASES_EXPAND_SIZE;
         }
-        RTLDataType * const new_alias_types =
-            rtl_realloc(unit, unit->alias_types,
-                        sizeof(*unit->alias_types) * new_aliases_size);
-        if (UNLIKELY(!new_alias_types)) {
+        RTLAlias * const new_aliases = rtl_realloc(
+            unit, unit->aliases, sizeof(*unit->aliases) * new_aliases_size);
+        if (UNLIKELY(!new_aliases)) {
             log_error(unit->handle, "No memory to expand unit to %u alias"
                       " registers", new_aliases_size);
             return 0;
         }
-        unit->alias_types = new_alias_types;
+        unit->aliases = new_aliases;
         unit->aliases_size = new_aliases_size;
     }
 
     const unsigned int alias_index = unit->next_alias++;
-    unit->alias_types[alias_index] = type;
+    unit->aliases[alias_index].type = type;
+    unit->aliases[alias_index].base = 0;
     return alias_index;
+}
+
+/*-----------------------------------------------------------------------*/
+
+void rtl_set_alias_storage(RTLUnit *unit, uint32_t alias,
+                           uint32_t base, int16_t offset)
+{
+    ASSERT(unit != NULL);
+    ASSERT(!unit->finalized);
+    ASSERT(unit->regs != NULL);
+    ASSERT(unit->aliases != NULL);
+    ASSERT(alias > 0 && alias < unit->next_alias);
+    ASSERT(base > 0 && base < unit->next_reg);
+    ASSERT(unit->regs[base].type == RTLTYPE_ADDRESS);
+
+    unit->aliases[alias].base = base;
+    unit->aliases[alias].offset = offset;
 }
 
 /*-----------------------------------------------------------------------*/
@@ -1159,6 +1220,32 @@ const char *rtl_disassemble_unit(RTLUnit *unit, bool verbose)
     ASSERT(buflen < bufsize);
     buf[buflen] = '\0';
 
+    if (unit->next_alias > 1) {
+        for (unsigned int index = 1; index < unit->next_alias; index++) {
+            char text[200];
+            rtl_describe_alias(unit, index, text, sizeof(text));
+            const int text_len = strlen(text);
+            /* +2 instead of +1 for the following newline, as above. */
+            if (buflen + text_len + 2 > bufsize) {
+                const int newsize = buflen + text_len + 2 + 10000;
+                char *newbuf = rtl_realloc(unit, buf, newsize);
+                if (UNLIKELY(!newbuf)) {
+                    log_error(unit->handle, "Out of memory disassembling unit");
+                    rtl_free(unit, buf);
+                    return NULL;
+                }
+                buf = newbuf;
+                bufsize = newsize;
+            }
+            buflen += snprintf(&buf[buflen], bufsize - buflen, "%s", text);
+            ASSERT(buflen + 1 <= bufsize);
+        }
+
+        buf[buflen++] = '\n';
+        ASSERT(buflen < bufsize);
+        buf[buflen] = '\0';
+    }
+
     for (unsigned int index = 0; index < unit->num_blocks; index++) {
         char text[200];
         rtl_describe_block(unit, index, text, sizeof(text));
@@ -1190,7 +1277,7 @@ void rtl_destroy_unit(RTLUnit *unit)
         rtl_free(unit, unit->insns);
         rtl_free(unit, unit->blocks);
         rtl_free(unit, unit->regs);
-        rtl_free(unit, unit->alias_types);
+        rtl_free(unit, unit->aliases);
         rtl_free(unit, unit->label_blockmap);
         rtl_free(unit, unit->disassembly);
         rtl_free(unit, unit);

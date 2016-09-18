@@ -71,6 +71,18 @@
  * namespace from ordinary registers, so alias register numbers will not be
  * unique with respect to ordinary register numbers.
  *
+ * At a low level, alias registers are effectively aliases for specific
+ * memory locations.  These can be specified explicitly by calling
+ * rtl_set_alias_storage(), or they can be left to the host translator,
+ * which will typically allocate a stack frame slot for the alias.  In the
+ * latter case, the guest translator is responsible for setting an initial
+ * value with a SET_ALIAS instruction, or subsequent GET_ALIAS instructions
+ * will read undefined data.  From the guest translator's point of view,
+ * GET_ALIAS and SET_ALIAS instructions can be thought of as equivalent to
+ * LOAD and STORE, but the host translator can make use of the data flow
+ * information implied by the use of alias registers to omit some of those
+ * loads and stores by keeping the value in a hardware register.
+ *
  * Within this library, a "unit" or "translation unit" refers to a sequence
  * of guest instructions translated together into a single host code block;
  * the RTLUnit structure encapsulates the state associated with a
@@ -122,7 +134,8 @@ typedef enum RTLOpcode {
      * Registers can also be given in the dest, src1, and src2 fields;
      * these have no effect on code behavior, but they do extend the live
      * range of the registers, which can be useful in forcing certain
-     * registers to remain live in tests. */
+     * registers to remain live in tests or as a base register for alias
+     * storage. */
     RTLOP_NOP = 1,
 
     /* Alias register operations */
@@ -359,6 +372,42 @@ extern void rtl_make_unique_pointer(RTLUnit *unit, uint32_t reg);
  */
 #define rtl_alloc_alias_register INTERNAL(rtl_alloc_alias_register)
 extern uint32_t rtl_alloc_alias_register(RTLUnit *unit, RTLDataType type);
+
+/**
+ * rtl_set_alias_storage:  Define the storage location for an alias register.
+ *
+ * Binding a memory location to an alias register with this function has
+ * the following implications:
+ *
+ * - Reading the alias with a GET_ALIAS instruction will implicitly load
+ *   the value stored at that memory location if no preceding SET_ALIAS
+ *   instruction has set the alias's value.
+ *
+ * - Writing the alias with a SET_ALIAS instruction will cause the value to
+ *   be stored to that memory location at some point before control leaves
+ *   the generated code, though the store may be omitted if a subsequent
+ *   SET_ALIAS instruction also modifies the same alias.
+ *
+ * If a memory location is not bound to an alias register, reading the
+ * alias before storing a value in it returns undefined data, and any value
+ * stored in the alias when the generated code returns to its caller is
+ * discarded.
+ *
+ * The caller is responsible for ensuring that the register remains live at
+ * all references to the alias, such as by using it as a return value at
+ * the end of the unit or appending a final NOP with that register as a
+ * source.
+ *
+ * [Parameters]
+ *     unit: RTLUnit to operate on.
+ *     alias: Alias register to define the storage location for.
+ *     base: RTL register containing base address for memory access (must be
+ *         nonzero).
+ *     offset: Byte offset for memory access (must be within [-32768,+32767]).
+ */
+#define rtl_set_alias_storage INTERNAL(rtl_set_alias_storage)
+extern void rtl_set_alias_storage(RTLUnit *unit, uint32_t alias,
+                                  uint32_t base, int16_t offset);
 
 /**
  * rtl_alloc_label:  Allocate a new label for use in the given unit.

@@ -258,6 +258,12 @@ struct RTLUnit;
  */
 #define lenof(array)  ((int)(sizeof((array)) / sizeof(*(array))))
 
+/**
+ * align_up:  Align the given value (x) up to a multiple of "align" bytes.
+ */
+static CONST_FUNCTION inline uintptr_t align_up(uintptr_t x, unsigned int align)
+    {return (x + (align-1)) / align * align;}
+
 /*-----------------------------------------------------------------------*/
 
 /**

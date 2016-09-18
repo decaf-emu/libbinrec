@@ -15,8 +15,6 @@
 
 int main(void)
 {
-#ifdef ENABLE_OPERAND_SANITY_CHECKS
-
     binrec_setup_t setup;
     memset(&setup, 0, sizeof(setup));
     setup.log = log_capture;
@@ -26,21 +24,23 @@ int main(void)
     RTLUnit *unit;
     EXPECT(unit = rtl_create_unit(handle));
 
-    uint32_t reg, alias;
-    EXPECT(reg = rtl_alloc_register(unit, RTLTYPE_INT32));
-    EXPECT(alias = rtl_alloc_alias_register(unit, RTLTYPE_ADDRESS));
+    EXPECT_EQ(rtl_alloc_alias_register(unit, RTLTYPE_INT32), 1);
+    EXPECT_EQ(unit->next_alias, 2);
+    EXPECT_EQ(unit->aliases[1].type, RTLTYPE_INT32);
+    EXPECT_EQ(unit->aliases[1].base, 0);
 
-    EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg, 0, 0, 10));
-    EXPECT_EQ(unit->num_insns, 1);
-    EXPECT_FALSE(rtl_add_insn(unit, RTLOP_SET_ALIAS, 0, reg, 0, alias));
-    EXPECT_ICE("Operand constraint violated:"
-               " unit->regs[src1].type == unit->aliases[other].type");
-    EXPECT_EQ(unit->num_insns, 1);
+    EXPECT_EQ(rtl_alloc_register(unit, RTLTYPE_INT32), 1);
+    EXPECT_EQ(rtl_alloc_register(unit, RTLTYPE_ADDRESS), 2);
+
+    rtl_set_alias_storage(unit, 1, 2, 0x1234);
+    EXPECT_EQ(unit->next_alias, 2);  // No new alias allocated.
+    EXPECT_EQ(unit->aliases[1].type, RTLTYPE_INT32);  // Type unchanged.
+    EXPECT_EQ(unit->aliases[1].base, 2);
+    EXPECT_EQ(unit->aliases[1].offset, 0x1234);
+
+    EXPECT_STREQ(get_log_messages(), NULL);
 
     rtl_destroy_unit(unit);
     binrec_destroy_handle(handle);
-
-#endif  // ENABLE_OPERAND_SANITY_CHECKS
-
     return EXIT_SUCCESS;
 }

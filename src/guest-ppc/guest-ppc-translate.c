@@ -45,6 +45,8 @@ static bool init_unit(GuestPPCContext *ctx)
 
     /* Allocate an alias register for the output NIA. */
     ALLOC_ALIAS(ctx->alias.nia, RTLTYPE_INT32);
+    rtl_set_alias_storage(unit, ctx->alias.nia, ctx->psb_reg,
+                          ctx->handle->setup.state_offset_nia);
 
     /* Check which guest CPU registers are referenced in the unit, to avoid
      * creating unnecessary RTL alias registers below.  We accumulate the
@@ -93,27 +95,19 @@ static bool init_unit(GuestPPCContext *ctx)
     ctx->xer_changed = xer_changed;
     ctx->fpscr_changed = fpscr_changed;
 
-    /* Allocate alias registers for all required guest registers, and load
-     * registers whose initial values are needed.  We don't perform data
-     * flow analysis here to match changed registers in one block with used
-     * registers in a later block, so we may load more registers than
-     * necessary, but RTL optimization can get rid of what's not needed. */
+    /* Allocate alias registers for all required guest registers. */
+
     for (int i = 0; i < 32; i++) {
         if ((gpr_used | gpr_changed) & (1 << i)) {
             ALLOC_ALIAS(ctx->alias.gpr[i], RTLTYPE_INT32);
-            if (gpr_used & (1 << i)) {
-                DECLARE_NEW_REGISTER(reg, RTLTYPE_INT32);
-                ADD_INSN(RTLOP_LOAD, reg, ctx->psb_reg, 0,
-                         ctx->handle->setup.state_offset_gpr + i*4);
-                ADD_INSN(RTLOP_SET_ALIAS, 0, reg, 0, ctx->alias.gpr[i]);
-            }
+            rtl_set_alias_storage(unit, ctx->alias.gpr[i], ctx->psb_reg,
+                                  ctx->handle->setup.state_offset_gpr + i*4);
         }
 
         if ((fpr_used | fpr_changed) & (1 << i)) {
             ALLOC_ALIAS(ctx->alias.fpr[i], RTLTYPE_V2_DOUBLE);
-            if (fpr_used & (1 << i)) {
-                // FIXME: load value
-            }
+            rtl_set_alias_storage(unit, ctx->alias.fpr[i], ctx->psb_reg,
+                                  ctx->handle->setup.state_offset_fpr + i*16);
         }
     }
 
@@ -129,63 +123,45 @@ static bool init_unit(GuestPPCContext *ctx)
                 }
                 DECLARE_NEW_REGISTER(crN, RTLTYPE_INT32);
                 ADD_INSN(RTLOP_BFEXT, crN, cr, 0, ((7 - i) * 4) | 4<<8);
+                ADD_INSN(RTLOP_SET_ALIAS, 0, crN, 0, ctx->alias.cr[i]);
             }
         }
     }
 
     if (lr_used || lr_changed) {
         ALLOC_ALIAS(ctx->alias.lr, RTLTYPE_INT32);
-        if (lr_used) {
-            DECLARE_NEW_REGISTER(reg, RTLTYPE_INT32);
-            ADD_INSN(RTLOP_LOAD, reg, ctx->psb_reg, 0,
-                     ctx->handle->setup.state_offset_lr);
-            ADD_INSN(RTLOP_SET_ALIAS, 0, reg, 0, ctx->alias.lr);
-        }
+        rtl_set_alias_storage(unit, ctx->alias.lr, ctx->psb_reg,
+                              ctx->handle->setup.state_offset_lr);
     }
 
     if (ctr_used || ctr_changed) {
         ALLOC_ALIAS(ctx->alias.ctr, RTLTYPE_INT32);
-        if (ctr_used) {
-            DECLARE_NEW_REGISTER(reg, RTLTYPE_INT32);
-            ADD_INSN(RTLOP_LOAD, reg, ctx->psb_reg, 0,
-                     ctx->handle->setup.state_offset_ctr);
-            ADD_INSN(RTLOP_SET_ALIAS, 0, reg, 0, ctx->alias.ctr);
-        }
+        rtl_set_alias_storage(unit, ctx->alias.ctr, ctx->psb_reg,
+                              ctx->handle->setup.state_offset_ctr);
     }
 
     if (xer_used || xer_changed) {
         ALLOC_ALIAS(ctx->alias.xer, RTLTYPE_INT32);
-        if (xer_used) {
-            DECLARE_NEW_REGISTER(reg, RTLTYPE_INT32);
-            ADD_INSN(RTLOP_LOAD, reg, ctx->psb_reg, 0,
-                     ctx->handle->setup.state_offset_xer);
-            ADD_INSN(RTLOP_SET_ALIAS, 0, reg, 0, ctx->alias.xer);
-        }
+        rtl_set_alias_storage(unit, ctx->alias.xer, ctx->psb_reg,
+                              ctx->handle->setup.state_offset_xer);
     }
 
     if (fpscr_used || fpscr_changed) {
         ALLOC_ALIAS(ctx->alias.fpscr, RTLTYPE_INT32);
-        if (fpscr_used) {
-            DECLARE_NEW_REGISTER(reg, RTLTYPE_INT32);
-            ADD_INSN(RTLOP_LOAD, reg, ctx->psb_reg, 0,
-                     ctx->handle->setup.state_offset_fpscr);
-            ADD_INSN(RTLOP_SET_ALIAS, 0, reg, 0, ctx->alias.fpscr);
-        }
+        rtl_set_alias_storage(unit, ctx->alias.fpscr, ctx->psb_reg,
+                              ctx->handle->setup.state_offset_fpscr);
     }
 
     if (reserve_used || reserve_changed) {
         ALLOC_ALIAS(ctx->alias.reserve_flag, RTLTYPE_INT32);
         ALLOC_ALIAS(ctx->alias.reserve_address, RTLTYPE_INT32);
+        rtl_set_alias_storage(unit, ctx->alias.reserve_address, ctx->psb_reg,
+                              ctx->handle->setup.state_offset_reserve_address);
         if (reserve_used) {
             DECLARE_NEW_REGISTER(flag, RTLTYPE_INT32);
             ADD_INSN(RTLOP_LOAD_U8, flag, ctx->psb_reg, 0,
                      ctx->handle->setup.state_offset_reserve_flag);
             ADD_INSN(RTLOP_SET_ALIAS, 0, flag, 0, ctx->alias.reserve_flag);
-            DECLARE_NEW_REGISTER(address, RTLTYPE_INT32);
-            ADD_INSN(RTLOP_LOAD, address, ctx->psb_reg, 0,
-                     ctx->handle->setup.state_offset_reserve_address);
-            ADD_INSN(RTLOP_SET_ALIAS, 0, address, 0,
-                     ctx->alias.reserve_address);
         }
     }
 
@@ -200,8 +176,8 @@ static bool init_unit(GuestPPCContext *ctx)
 /**
  * add_epilogue:  Adds the unit epilogue to the context's RTLUnit,
  * consisting of stores to write modified guest registers back to the
- * processor state block and a final return instruction to return to the
- * unit's caller.
+ * processor state block (for cases not automatically handled by RTL alias
+ * writeback) and a final return instruction to return to the unit's caller.
  *
  * Returns true on success, false on error.
  */
@@ -210,19 +186,6 @@ static bool add_epilogue(GuestPPCContext *ctx)
     RTLUnit * const unit = ctx->unit;
 
     ADD_INSN(RTLOP_LABEL, 0, 0, 0, ctx->epilogue_label);
-
-    for (int i = 0; i < 32; i++) {
-        if (ctx->gpr_changed & (1 << i)) {
-            DECLARE_NEW_REGISTER(reg, RTLTYPE_INT32);
-            ADD_INSN(RTLOP_GET_ALIAS, reg, 0, 0, ctx->alias.gpr[i]);
-            ADD_INSN(RTLOP_STORE, 0, ctx->psb_reg, reg,
-                     ctx->handle->setup.state_offset_gpr + i*4);
-        }
-
-        if (ctx->fpr_changed & (1 << i)) {
-            // FIXME: store value
-        }
-    }
 
     if (ctx->cr_changed) {
         uint32_t cr;
@@ -260,49 +223,13 @@ static bool add_epilogue(GuestPPCContext *ctx)
                  ctx->handle->setup.state_offset_cr);
     }
 
-    if (ctx->lr_changed) {
-        DECLARE_NEW_REGISTER(reg, RTLTYPE_INT32);
-        ADD_INSN(RTLOP_GET_ALIAS, reg, 0, 0, ctx->alias.lr);
-        ADD_INSN(RTLOP_STORE, 0, ctx->psb_reg, reg,
-                 ctx->handle->setup.state_offset_lr);
-    }
-
-    if (ctx->ctr_changed) {
-        DECLARE_NEW_REGISTER(reg, RTLTYPE_INT32);
-        ADD_INSN(RTLOP_GET_ALIAS, reg, 0, 0, ctx->alias.ctr);
-        ADD_INSN(RTLOP_STORE, 0, ctx->psb_reg, reg,
-                 ctx->handle->setup.state_offset_ctr);
-    }
-
-    if (ctx->xer_changed) {
-        DECLARE_NEW_REGISTER(reg, RTLTYPE_INT32);
-        ADD_INSN(RTLOP_GET_ALIAS, reg, 0, 0, ctx->alias.xer);
-        ADD_INSN(RTLOP_STORE, 0, ctx->psb_reg, reg,
-                 ctx->handle->setup.state_offset_xer);
-    }
-
-    if (ctx->fpscr_changed) {
-        DECLARE_NEW_REGISTER(reg, RTLTYPE_INT32);
-        ADD_INSN(RTLOP_GET_ALIAS, reg, 0, 0, ctx->alias.fpscr);
-        ADD_INSN(RTLOP_STORE, 0, ctx->psb_reg, reg,
-                 ctx->handle->setup.state_offset_fpscr);
-    }
-
     if (ctx->reserve_changed) {
         DECLARE_NEW_REGISTER(flag, RTLTYPE_INT32);
         ADD_INSN(RTLOP_GET_ALIAS, flag, 0, 0, ctx->alias.reserve_flag);
         ADD_INSN(RTLOP_STORE_I8, 0, ctx->psb_reg, flag,
                  ctx->handle->setup.state_offset_reserve_flag);
-        DECLARE_NEW_REGISTER(address, RTLTYPE_INT32);
-        ADD_INSN(RTLOP_GET_ALIAS, address, 0, 0, ctx->alias.reserve_address);
-        ADD_INSN(RTLOP_STORE, 0, ctx->psb_reg, address,
-                 ctx->handle->setup.state_offset_reserve_address);
     }
 
-    DECLARE_NEW_REGISTER(nia_reg, RTLTYPE_INT32);
-    ADD_INSN(RTLOP_GET_ALIAS, nia_reg, 0, 0, ctx->alias.nia);
-    ADD_INSN(RTLOP_STORE, 0, ctx->psb_reg, nia_reg,
-             ctx->handle->setup.state_offset_nia);
     ADD_INSN(RTLOP_RETURN, 0, ctx->psb_reg, 0, 0);
 
     return true;

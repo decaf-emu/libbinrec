@@ -30,14 +30,16 @@ int main(void)
 
     EXPECT_EQ(rtl_alloc_alias_register(unit, RTLTYPE_INT32), 1);
     EXPECT_EQ(unit->next_alias, 2);
-    EXPECT_EQ(unit->alias_types[1], RTLTYPE_INT32);
+    EXPECT_EQ(unit->aliases[1].type, RTLTYPE_INT32);
+    EXPECT_EQ(unit->aliases[1].base, 0);
 
     unit->aliases_size = 2;
     mem_wrap_fail_after(0);
     EXPECT_FALSE(rtl_alloc_alias_register(unit, RTLTYPE_ADDRESS));
     EXPECT_EQ(unit->aliases_size, 2);
     EXPECT_EQ(unit->next_alias, 2);
-    EXPECT_EQ(unit->alias_types[1], RTLTYPE_INT32);
+    EXPECT_EQ(unit->aliases[1].type, RTLTYPE_INT32);
+    EXPECT_EQ(unit->aliases[1].base, 0);
 
     char expected_log[100];
     snprintf(expected_log, sizeof(expected_log),

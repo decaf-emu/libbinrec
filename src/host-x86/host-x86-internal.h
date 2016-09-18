@@ -88,11 +88,16 @@ typedef struct HostX86RegInfo {
     /* Byte offset (from SP) of the allocated stack frame. */
     int16_t stack_offset;
 
+    /* Should predecessor blocks load this register with its alias's value
+     * on block exit? (see RTLRegister.alias for the alias number) */
+    uint8_t merge_alias;
+    /* Target host register for alias loads.  This may not be the same as
+     * host_reg! */
+    uint8_t host_merge;
+
     /* Next register in the fixed-allocation list, or 0 if the end of the
      * list. */
     uint16_t next_fixed;
-    /* Next register in the merge chain, or 0 if the end of the chain. */
-    uint16_t next_merged;
 } HostX86RegInfo;
 
 /* Data associated with each basic block. */
@@ -101,6 +106,13 @@ typedef struct HostX86BlockInfo {
      * block.  Set during register allocation and used to initialize the
      * current register map when starting to translate the block. */
     uint16_t initial_reg_map[32];
+
+    /* Array of RTL registers into which each alias register is first
+     * loaded in the block, or 0 if the alias is not read. */
+    uint16_t *alias_load;
+    /* Array of RTL registers stored to each alias register at the end of
+     * the block, or 0 if the alias is not written. */
+    uint16_t *alias_store;
 
     /* Code buffer offset of an unresolved branch instruction at the end of
      * this block, or -1 if the block does not have an unresolved branch. */
@@ -123,10 +135,12 @@ typedef struct HostX86Context {
     HostX86BlockInfo *blocks;
     /* Information for each RTL register. */
     HostX86RegInfo *regs;
-    /* Generated code offsets for each label, and to the epilogue (which
+    /* Generated code offsets for each label, and for the epilogue (which
      * is handled internally as label 0).  -1 indicates the label has not
      * yet been seen. */
     long *label_offsets;
+    /* Buffer for alias_* arrays for each block. */
+    uint8_t *alias_buffer;
 
     /* Current mapping from x86 to RTL registers. */
     uint16_t reg_map[32];
@@ -135,6 +149,8 @@ typedef struct HostX86Context {
     /* Bitmap of registers which are used at least once (for saving and
      * restoring registers in the prologue/epilogue). */
     uint32_t regs_touched;
+    /* Bitmap of registers which have been used in the current block. */
+    uint32_t block_regs_touched;
 
     /* RTL register whose value was used to set the condition codes, or 0
      * if the flags do not represent the value of a particular register. */

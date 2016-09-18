@@ -26,15 +26,18 @@ int main(void)
 
     EXPECT_EQ(rtl_alloc_alias_register(unit, RTLTYPE_INT32), 1);
     EXPECT_EQ(unit->next_alias, 2);
-    EXPECT_EQ(unit->alias_types[1], RTLTYPE_INT32);
+    EXPECT_EQ(unit->aliases[1].type, RTLTYPE_INT32);
+    EXPECT_EQ(unit->aliases[1].base, 0);
 
     /* Check behavior when the alias array needs to be expanded. */
     unit->aliases_size = 2;
     EXPECT_EQ(rtl_alloc_alias_register(unit, RTLTYPE_ADDRESS), 2);
     EXPECT_EQ(unit->aliases_size, 2 + ALIASES_EXPAND_SIZE);
     EXPECT_EQ(unit->next_alias, 3);
-    EXPECT_EQ(unit->alias_types[1], RTLTYPE_INT32);
-    EXPECT_EQ(unit->alias_types[2], RTLTYPE_ADDRESS);
+    EXPECT_EQ(unit->aliases[1].type, RTLTYPE_INT32);
+    EXPECT_EQ(unit->aliases[1].base, 0);
+    EXPECT_EQ(unit->aliases[2].type, RTLTYPE_ADDRESS);
+    EXPECT_EQ(unit->aliases[2].base, 0);
 
     EXPECT_STREQ(get_log_messages(), NULL);
 

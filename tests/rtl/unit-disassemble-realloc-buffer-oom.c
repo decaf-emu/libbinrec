@@ -28,6 +28,11 @@ int main(void)
     RTLUnit *unit;
     EXPECT(unit = rtl_create_unit(handle));
 
+    const int NUM_ALIASES = 1000;
+    for (int i = 0; i < NUM_ALIASES; i++) {
+        EXPECT_EQ(rtl_alloc_alias_register(unit, RTLTYPE_INT32), i+1);
+    }
+
     const int NUM_BLOCKS = 1000;
     for (int i = 0; i < NUM_BLOCKS; i++) {
         EXPECT_EQ(rtl_alloc_label(unit), i+1);
@@ -71,6 +76,19 @@ int main(void)
                         "%.*s", (int)(eol - s), s) < (int)sizeof(line));
         ASSERT(snprintf(expect, sizeof(expect),
                         "%5d: NOP\n", i*2+1) < (int)sizeof(expect));
+        EXPECT_STREQ(line, expect);
+        s = eol;
+    }
+
+    EXPECT(*s++ == '\n');
+
+    for (int i = 0; i < NUM_ALIASES; i++) {
+        char line[100], expect[100];
+        const char *eol = s + strcspn(s, "\n") + 1;
+        EXPECT(snprintf(line, sizeof(line),
+                        "%.*s", (int)(eol - s), s) < (int)sizeof(line));
+        ASSERT(snprintf(expect, sizeof(expect),
+                        "Alias %d: int32, no bound storage\n", i+1));
         EXPECT_STREQ(line, expect);
         s = eol;
     }

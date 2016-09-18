@@ -40,7 +40,7 @@ int main(void)
     EXPECT_EQ(unit->next_label, 1);
     EXPECT(unit->regs);
     EXPECT_EQ(unit->next_reg, 1);
-    EXPECT(unit->alias_types);
+    EXPECT(unit->aliases);
     EXPECT_EQ(unit->next_alias, 1);
     EXPECT_FALSE(unit->finalized);
 

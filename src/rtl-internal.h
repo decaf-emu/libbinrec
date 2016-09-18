@@ -130,7 +130,7 @@ typedef enum RTLRegType_ {
 } RTLRegType;
 
 /**
- * RTLRegister:  Data about registers used in an RTL unit.
+ * RTLRegister:  Data about a virtual register used in an RTL unit.
  */
 typedef struct RTLRegister RTLRegister;
 struct RTLRegister {
@@ -199,6 +199,18 @@ struct RTLRegister {
 /*----------------------------------*/
 
 /**
+ * RTLAlias:  Data about an alias register
+ */
+typedef struct RTLAlias_ {
+    RTLDataType type;   // Data type (RTLTYPE_*)
+    uint16_t base;      // Base register for loads and stores, or zero to
+                        //    allocate transient storage for the alias
+    int16_t offset;     // Access offset for loads/stores (ignored if base==0)
+} RTLAlias;
+
+/*----------------------------------*/
+
+/**
  * RTLBlock:  Information about an basic block of code (a sequence of
  * instructions with one entry point and one exit point).  Note that a block
  * can be empty, denoted by last_insn < first_insn, and that last_insn can
@@ -253,7 +265,7 @@ struct RTLUnit {
     uint16_t first_live_reg;    // First register in live range list
     uint16_t last_live_reg;     // Last register in live range list
 
-    RTLDataType *alias_types;   // Alias register data type array
+    RTLAlias *aliases;          // Alias register array
     uint16_t aliases_size;      // Size of alias register array (entries)
     uint16_t next_alias;        // Next alias register number to allocate
                                 //    (== number of allocated alias registers)
