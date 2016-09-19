@@ -105,7 +105,11 @@ typedef struct HostX86BlockInfo {
     /* Map from host registers to RTL registers as of the beginning of the
      * block.  Set during register allocation and used to initialize the
      * current register map when starting to translate the block. */
+    // FIXME: looks like we won't need this?
     uint16_t initial_reg_map[32];
+
+    /* Bitmap of host registers which are live at the end of the block. */
+    uint32_t end_live;
 
     /* Array of RTL registers into which each alias register is first
      * loaded in the block, or 0 if the alias is not read. */
@@ -114,8 +118,9 @@ typedef struct HostX86BlockInfo {
      * the block, or 0 if the alias is not written. */
     uint16_t *alias_store;
 
-    /* Code buffer offset of an unresolved branch instruction at the end of
-     * this block, or -1 if the block does not have an unresolved branch. */
+    /* Code buffer offset of the 32-bit displacement operand to an
+     * unresolved branch instruction at the end of this block, or -1 if
+     * the block does not have an unresolved branch. */
     long unresolved_branch_offset;
     /* Label targeted by the unresolved branch, or 0 if it targets the
      * function epilogue. */

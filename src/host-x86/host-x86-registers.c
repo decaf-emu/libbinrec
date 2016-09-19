@@ -154,9 +154,9 @@ static void assign_register(HostX86Context *ctx, int reg_index,
 
     ASSERT(!ctx->reg_map[host_reg]);
     ctx->reg_map[host_reg] = reg_index;
-    ASSERT(ctx->regs_free & (1 << host_reg));
-    ctx->regs_free ^= 1 << host_reg;
-    ctx->block_regs_touched |= 1 << host_reg;
+    ASSERT(ctx->regs_free & (1u << host_reg));
+    ctx->regs_free ^= 1u << host_reg;
+    ctx->block_regs_touched |= 1u << host_reg;
 }
 
 /*-----------------------------------------------------------------------*/
@@ -244,7 +244,7 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int32_t insn_index,
             ASSERT(src1_info->host_allocated);
             // FIXME: try to move return values to rAX
             if (src1_reg->death == insn_index) {
-                ctx->regs_free |= 1 << src1_info->host_reg;
+                ctx->regs_free |= 1u << src1_info->host_reg;
                 ctx->reg_map[src1_info->host_reg] = 0;
             }
         } else {
@@ -257,7 +257,7 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int32_t insn_index,
         if (LIKELY(src2_reg->source != RTLREG_UNDEFINED)) {
             ASSERT(src2_info->host_allocated);
             if (src2_reg->death == insn_index) {
-                ctx->regs_free |= 1 << src2_info->host_reg;
+                ctx->regs_free |= 1u << src2_info->host_reg;
                 ctx->reg_map[src2_info->host_reg] = 0;
             }
         } else {
@@ -272,7 +272,7 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int32_t insn_index,
         if (LIKELY(cond_reg->source != RTLREG_UNDEFINED)) {
             ASSERT(cond_info->host_allocated);
             if (cond_reg->death == insn_index) {
-                ctx->regs_free |= 1 << cond_info->host_reg;
+                ctx->regs_free |= 1u << cond_info->host_reg;
                 ctx->reg_map[cond_info->host_reg] = 0;
             }
         } else {
@@ -311,19 +311,23 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int32_t insn_index,
                     break;
                 }
                 ASSERT(ctx->regs[r].host_allocated);
-                avoid_regs |= 1 << ctx->regs[r].host_reg;
+                avoid_regs |= 1u << ctx->regs[r].host_reg;
             }
         }
 
-        /* If loading from an alias which was written by a predecessor
+        /*
+         * If loading from an alias which was written by a predecessor
          * block, try to keep the value live in a host register.  We check
          * for this even if a host register was allocated for dest during
          * optimization, since we may still be able to reserve that
          * register as a block input or find another register to serve as
-         * an intermediary to avoid the memory store/load. */
+         * an intermediary to avoid the memory store/load.
+         */
         if (insn->opcode == RTLOP_GET_ALIAS) {
             const int alias = insn->alias;
             ASSERT(ctx->blocks[block_index].alias_load[alias] == dest);
+            const uint32_t usable_regs =
+                ctx->regs_free & ~ctx->block_regs_touched;
             bool have_preceding_store = false;
 
             /* First priority: register used by SET_ALIAS in previous block
@@ -336,9 +340,9 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int32_t insn_index,
                 if (store_reg) {
                     have_preceding_store = true;
                     const X86Register host_reg = ctx->regs[store_reg].host_reg;
-                    if (!(ctx->block_regs_touched & (1 << host_reg))) {
+                    if (usable_regs & (1u << host_reg)) {
                         dest_info->merge_alias = true;
-                        dest_info->host_merge = dest_info->host_reg;
+                        dest_info->host_merge = host_reg;
                     }
                 }
             }
@@ -360,9 +364,9 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int32_t insn_index,
                         have_preceding_store = true;
                         const X86Register host_reg =
                             ctx->regs[store_reg].host_reg;
-                        if (!(ctx->block_regs_touched & (1 << host_reg))) {
+                        if (usable_regs & (1u << host_reg)) {
                             dest_info->merge_alias = true;
-                            dest_info->host_merge = dest_info->host_reg;
+                            dest_info->host_merge = host_reg;
                         }
                     }
                 }
@@ -374,7 +378,7 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int32_t insn_index,
              * now since we need to know whether to allocate a register in
              * the first place (i.e. have_preceding_store). */
             if (have_preceding_store && host_allocated
-             && !(ctx->block_regs_touched & (1 << dest_info->host_reg))) {
+             && usable_regs & (1u << dest_info->host_reg)) {
                 /* The register is available!  Claim it for our own. */
                 dest_info->merge_alias = true;
                 dest_info->host_merge = dest_info->host_reg;
@@ -387,7 +391,7 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int32_t insn_index,
             if (!dest_info->merge_alias && have_preceding_store) {
                 const RTLDataType type = dest_reg->type;
                 const uint32_t saved_free = ctx->regs_free;
-                ctx->regs_free = ~ctx->block_regs_touched;
+                ctx->regs_free = usable_regs;
                 int host_reg;
                 if (type == RTLTYPE_INT32 || type == RTLTYPE_ADDRESS) {
                     host_reg = get_gpr(ctx, avoid_regs);
@@ -419,8 +423,8 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int32_t insn_index,
              * the value to its proper location. */
             if (dest_info->merge_alias) {
                 const X86Register host_merge = dest_info->host_merge;
-                if (host_allocated || (avoid_regs & (1 << host_merge))) {
-                    ctx->block_regs_touched |= 1 << host_merge;
+                if (host_allocated || (avoid_regs & (1u << host_merge))) {
+                    ctx->block_regs_touched |= 1u << host_merge;
                 } else {
                     host_allocated = true;
                     dest_info->host_reg = host_merge;
@@ -429,8 +433,10 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int32_t insn_index,
             }
         }  // if (insn->opcode == RTLOP_GET_ALIAS)
 
-        /* If loading a function argument, try to reuse the same register
-         * the argument is passed in. */
+        /*
+         * If loading a function argument, try to reuse the same register
+         * the argument is passed in.
+         */
         // FIXME: only appropriate if no native calls
         // FIXME: need more robustness wrt overwriting input regs
         if (!host_allocated && insn->opcode == RTLOP_LOAD_ARG) {
@@ -441,7 +447,7 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int32_t insn_index,
                           " is not in a register)", insn->arg_index);
                 return false;
             } else if (!ctx->reg_map[target_reg]
-                       && !(avoid_regs & (1 << target_reg))) {
+                       && !(avoid_regs & (1u << target_reg))) {
                 host_allocated = true;
                 dest_info->host_reg = target_reg;
                 assign_register(ctx, dest, target_reg);
@@ -472,7 +478,7 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int32_t insn_index,
                     dest_info->host_reg = X86_DX;
                     assign_register(ctx, dest, X86_DX);
                 } else {
-                    avoid_regs |= 1 << X86_AX;
+                    avoid_regs |= 1u << X86_AX;
                 }
                 break;
               case RTLOP_DIVU:
@@ -482,9 +488,9 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int32_t insn_index,
                     dest_info->host_reg = X86_AX;
                     assign_register(ctx, dest, X86_AX);
                 } else {
-                    avoid_regs |= 1 << X86_AX
-                                | 1 << X86_DX
-                                | 1 << src2_info->host_reg;
+                    avoid_regs |= 1u << X86_AX
+                                | 1u << X86_DX
+                                | 1u << src2_info->host_reg;
                 }
                 break;
               case RTLOP_MODU:
@@ -494,9 +500,9 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int32_t insn_index,
                     dest_info->host_reg = X86_DX;
                     assign_register(ctx, dest, X86_DX);
                 } else {
-                    avoid_regs |= 1 << X86_AX
-                                | 1 << X86_DX
-                                | 1 << src2_info->host_reg;
+                    avoid_regs |= 1u << X86_AX
+                                | 1u << X86_DX
+                                | 1u << src2_info->host_reg;
                 }
                 break;
               default:
@@ -530,8 +536,8 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int32_t insn_index,
                         host_allocated = true;
                         dest_info->host_reg = src1_info->host_reg;
                         ctx->reg_map[dest_info->host_reg] = dest;
-                        ASSERT(ctx->regs_free & (1 << dest_info->host_reg));
-                        ctx->regs_free ^= 1 << dest_info->host_reg;
+                        ASSERT(ctx->regs_free & (1u << dest_info->host_reg));
+                        ctx->regs_free ^= 1u << dest_info->host_reg;
                     }
                 }
                 if (!host_allocated && src2 && src2_reg->death == insn_index) {
@@ -553,16 +559,16 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int32_t insn_index,
                     };
                     ASSERT(insn->opcode >= RTLOP__FIRST
                            && insn->opcode <= RTLOP__LAST);
-                    if (non_commutative[insn->opcode/8] & (1 << (insn->opcode%8))) {
+                    if (non_commutative[insn->opcode/8] & (1u << (insn->opcode%8))) {
                         /* Make sure it's also not chosen by the regular
                          * allocator. */
-                        avoid_regs |= 1 << src2_info->host_reg;
+                        avoid_regs |= 1u << src2_info->host_reg;
                     } else {
                         host_allocated = true;
                         dest_info->host_reg = src2_info->host_reg;
                         ctx->reg_map[dest_info->host_reg] = dest;
-                        ASSERT(ctx->regs_free & (1 << dest_info->host_reg));
-                        ctx->regs_free ^= 1 << dest_info->host_reg;
+                        ASSERT(ctx->regs_free & (1u << dest_info->host_reg));
+                        ctx->regs_free ^= 1u << dest_info->host_reg;
                     }
                 }
                 break;
@@ -577,7 +583,7 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int32_t insn_index,
              * are also outputs.) */
             if (insn->opcode == RTLOP_SLL || insn->opcode == RTLOP_SRL
              || insn->opcode == RTLOP_SRA || insn->opcode == RTLOP_ROR) {
-                avoid_regs |= 1 << X86_CX;
+                avoid_regs |= 1u << X86_CX;
             }
             dest_info->host_reg =
                 allocate_register(ctx, dest, dest_reg, avoid_regs);
@@ -591,8 +597,8 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int32_t insn_index,
           case RTLOP_MULHS:
             /* Temporary needed to save RAX if it's live across this insn. */
             need_temp = (ctx->reg_map[X86_AX] != 0);
-            temp_avoid |= 1 << ctx->regs[src1].host_reg
-                        | 1 << ctx->regs[src2].host_reg;
+            temp_avoid |= 1u << ctx->regs[src1].host_reg
+                        | 1u << ctx->regs[src2].host_reg;
             break;
           case RTLOP_DIVU:
           case RTLOP_DIVS:
@@ -600,8 +606,8 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int32_t insn_index,
              * or if it's allocated to src2 (even if src2 dies here). */
             need_temp = (ctx->reg_map[X86_DX] != 0
                          || ctx->regs[src2].host_reg == X86_DX);
-            temp_avoid |= 1 << ctx->regs[src1].host_reg
-                        | 1 << ctx->regs[src2].host_reg;
+            temp_avoid |= 1u << ctx->regs[src1].host_reg
+                        | 1u << ctx->regs[src2].host_reg;
             break;
           case RTLOP_MODU:
           case RTLOP_MODS:
@@ -609,8 +615,8 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int32_t insn_index,
              * or if it's allocated to src2 (even if src2 dies here). */
             need_temp = (ctx->reg_map[X86_AX] != 0
                          || ctx->regs[src2].host_reg == X86_AX);
-            temp_avoid |= 1 << ctx->regs[src1].host_reg
-                        | 1 << ctx->regs[src2].host_reg;
+            temp_avoid |= 1u << ctx->regs[src1].host_reg
+                        | 1u << ctx->regs[src2].host_reg;
             break;
           case RTLOP_CLZ:
             /* Temporary needed if using BSR instead of LZCNT to count bits.
@@ -635,8 +641,8 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int32_t insn_index,
             need_temp = ((dest_reg->type == RTLTYPE_ADDRESS
                           && dest_info->host_reg == src1_info->host_reg)
                          || src2_reg->death > insn_index);
-            temp_avoid |= 1 << ctx->regs[src1].host_reg
-                        | 1 << ctx->regs[src2].host_reg;
+            temp_avoid |= 1u << ctx->regs[src1].host_reg
+                        | 1u << ctx->regs[src2].host_reg;
             break;
           default:
             need_temp = false;
@@ -649,7 +655,7 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int32_t insn_index,
             }
             dest_info->host_temp = (uint8_t)temp_reg;
             dest_info->temp_allocated = true;
-            ctx->block_regs_touched |= 1 << temp_reg;
+            ctx->block_regs_touched |= 1u << temp_reg;
         }
 
         /* If the register isn't referenced again, immediately free it.
@@ -657,7 +663,7 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int32_t insn_index,
          * optimization is disabled, for example, we shouldn't leave the
          * register allocated forever. */
         if (UNLIKELY(dest_reg->death == insn_index)) {
-            ctx->regs_free |= 1 << dest_info->host_reg;
+            ctx->regs_free |= 1u << dest_info->host_reg;
             ctx->reg_map[dest_info->host_reg] = 0;
         }
     }  // if (dest)
@@ -705,7 +711,7 @@ static bool allocate_regs_for_block(HostX86Context *ctx, int block_index)
      * ranges extended past the last instruction that referenced them.
      * Make sure to properly free their host registers. */
     const int32_t last_insn = block->last_insn;
-    const HostX86BlockInfo *block_info = &ctx->blocks[block_index];
+    HostX86BlockInfo *block_info = &ctx->blocks[block_index];
     for (int alias = 1; alias < unit->next_alias; alias++) {
         const int reg = block_info->alias_store[alias];
         if (reg && unit->regs[reg].death == last_insn) {
@@ -714,11 +720,12 @@ static bool allocate_regs_for_block(HostX86Context *ctx, int block_index)
             const X86Register host_reg = reg_info->host_reg;
             if (ctx->reg_map[host_reg] == reg) {
                 ctx->reg_map[host_reg] = 0;
-                ctx->regs_free |= 1 << host_reg;
+                ctx->regs_free |= 1u << host_reg;
             }
         }
     }
 
+    block_info->end_live = ~ctx->regs_free;
     ctx->regs_touched |= ctx->block_regs_touched;
     return true;
 }
@@ -828,7 +835,7 @@ static void first_pass_for_block(HostX86Context *ctx, int block_index)
                  * test it).  We do keep assertions around to catch
                  * problems in case future additions to the logic render
                  * this assumption invalid. */
-                ASSERT(!(dest_info->avoid_regs & (1 << X86_DX)));
+                ASSERT(!(dest_info->avoid_regs & (1u << X86_DX)));
                 dest_info->host_allocated = true;
                 dest_info->host_reg = X86_DX;
                 /* If both src1 and src2 are candidates for getting DX,
@@ -841,11 +848,11 @@ static void first_pass_for_block(HostX86Context *ctx, int block_index)
                                       && src2_reg->death == insn_index
                                       && src2_reg->birth >= ctx->last_dx_death);
                 if (src1_ok && (!src2_ok || src1_reg->birth < src2_reg->birth)) {
-                    ASSERT(!(src1_info->avoid_regs & (1 << X86_DX)));
+                    ASSERT(!(src1_info->avoid_regs & (1u << X86_DX)));
                     src1_info->host_allocated = true;
                     src1_info->host_reg = X86_DX;
                 } else if (src2_ok) {
-                    ASSERT(!(src2_info->avoid_regs & (1 << X86_DX)));
+                    ASSERT(!(src2_info->avoid_regs & (1u << X86_DX)));
                     src2_info->host_allocated = true;
                     src2_info->host_reg = X86_DX;
                 }
@@ -853,12 +860,12 @@ static void first_pass_for_block(HostX86Context *ctx, int block_index)
             }
 
             if (!src1_info->host_allocated && src1_reg->birth >= ctx->last_ax_death) {
-                ASSERT(!(src1_info->avoid_regs & (1 << X86_AX)));
+                ASSERT(!(src1_info->avoid_regs & (1u << X86_AX)));
                 src1_info->host_allocated = true;
                 src1_info->host_reg = X86_AX;
                 ctx->last_ax_death = src1_reg->death;
             } else if (!src2_info->host_allocated && src2_reg->birth >= ctx->last_ax_death) {
-                ASSERT(!(src2_info->avoid_regs & (1 << X86_AX)));
+                ASSERT(!(src2_info->avoid_regs & (1u << X86_AX)));
                 src2_info->host_allocated = true;
                 src2_info->host_reg = X86_AX;
                 ctx->last_ax_death = src2_reg->death;
@@ -886,18 +893,18 @@ static void first_pass_for_block(HostX86Context *ctx, int block_index)
                 HostX86RegInfo *src2_info = &ctx->regs[insn->src2];
                 if (!(src2_info->host_allocated
                       && src2_info->host_reg == X86_AX)) {
-                    ASSERT(!(dest_info->avoid_regs & (1 << X86_AX)));
+                    ASSERT(!(dest_info->avoid_regs & (1u << X86_AX)));
                     dest_info->host_allocated = true;
                     dest_info->host_reg = X86_AX;
                     /* Make sure src2 doesn't get rAX in the main
                      * allocation pass. */
-                    src2_info->avoid_regs |= 1 << X86_AX;
+                    src2_info->avoid_regs |= 1u << X86_AX;
                     const RTLRegister *src1_reg = &unit->regs[insn->src1];
                     HostX86RegInfo *src1_info = &ctx->regs[insn->src1];
                     if (!src1_info->host_allocated
                      && src1_reg->death == insn_index
                      && src1_reg->birth >= ctx->last_ax_death) {
-                        ASSERT(!(src1_info->avoid_regs & (1 << X86_AX)));
+                        ASSERT(!(src1_info->avoid_regs & (1u << X86_AX)));
                         src1_info->host_allocated = true;
                         src1_info->host_reg = X86_AX;
                     }
@@ -919,17 +926,17 @@ static void first_pass_for_block(HostX86Context *ctx, int block_index)
                 HostX86RegInfo *src2_info = &ctx->regs[insn->src2];
                 if (!(src2_info->host_allocated
                       && src2_info->host_reg == X86_DX)) {
-                    ASSERT(!(dest_info->avoid_regs & (1 << X86_DX)));
+                    ASSERT(!(dest_info->avoid_regs & (1u << X86_DX)));
                     dest_info->host_allocated = true;
                     dest_info->host_reg = X86_DX;
-                    src2_info->avoid_regs |= 1 << X86_DX;
+                    src2_info->avoid_regs |= 1u << X86_DX;
                     ctx->last_dx_death = dest_reg->death;
                 }
             }
             const RTLRegister *src1_reg = &unit->regs[insn->src1];
             HostX86RegInfo *src1_info = &ctx->regs[insn->src1];
             if (!src1_info->host_allocated && src1_reg->birth > ctx->last_ax_death) {
-                ASSERT(!(src1_info->avoid_regs & (1 << X86_AX)));
+                ASSERT(!(src1_info->avoid_regs & (1u << X86_AX)));
                 src1_info->host_allocated = true;
                 src1_info->host_reg = X86_AX;
                 ctx->last_ax_death = src1_reg->death;
@@ -947,7 +954,7 @@ static void first_pass_for_block(HostX86Context *ctx, int block_index)
             const RTLRegister *src2_reg = &unit->regs[insn->src2];
             HostX86RegInfo *src2_info = &ctx->regs[insn->src2];
             if (!src2_info->host_allocated
-             && !(src2_info->avoid_regs & (1 << X86_CX))
+             && !(src2_info->avoid_regs & (1u << X86_CX))
              && src2_reg->birth >= ctx->last_cx_death) {
                 src2_info->host_allocated = true;
                 src2_info->host_reg = X86_CX;
@@ -955,7 +962,7 @@ static void first_pass_for_block(HostX86Context *ctx, int block_index)
             }
             /* Make sure rCX isn't allocated to this register later, since
              * the translator doesn't support rCX as a shift destination. */
-            ctx->regs[insn->dest].avoid_regs |= 1 << X86_CX;
+            ctx->regs[insn->dest].avoid_regs |= 1u << X86_CX;
             break;
           }  // case RTLOP_{SLL,SRL,SRA,ROR}
 

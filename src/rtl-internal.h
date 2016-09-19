@@ -460,9 +460,9 @@ extern int rtl_opt_drop_dead_branches(RTLUnit *unit);
 static inline bool rtl_register_is_int(const RTLRegister *reg)
 {
     const uint32_t int_types =
-        1U << RTLTYPE_INT32 |
-        1U << RTLTYPE_ADDRESS;
-    return (int_types & (1U << reg->type)) != 0;
+        1u << RTLTYPE_INT32 |
+        1u << RTLTYPE_ADDRESS;
+    return (int_types & (1u << reg->type)) != 0;
 }
 
 /**
@@ -472,10 +472,10 @@ static inline bool rtl_register_is_int(const RTLRegister *reg)
 static inline bool rtl_register_is_float(const RTLRegister *reg)
 {
     const uint32_t float_types =
-        1U << RTLTYPE_FLOAT |
-        1U << RTLTYPE_DOUBLE |
-        1U << RTLTYPE_V2_DOUBLE;
-    return (float_types & (1U << reg->type)) != 0;
+        1u << RTLTYPE_FLOAT |
+        1u << RTLTYPE_DOUBLE |
+        1u << RTLTYPE_V2_DOUBLE;
+    return (float_types & (1u << reg->type)) != 0;
 }
 
 /*************************************************************************/

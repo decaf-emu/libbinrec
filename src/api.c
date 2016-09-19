@@ -92,7 +92,7 @@ static int add_partial_readonly_page(binrec_t *handle,
     }
 
     if (page != handle->partial_readonly_pages[index]) {
-        if (handle->partial_readonly_pages[MAX_PARTIAL_READONLY - 1] != ~0U) {
+        if (handle->partial_readonly_pages[MAX_PARTIAL_READONLY - 1] != ~0u) {
             log_error(handle, "Failed to add read-only range [0x%X,0x%X]: no"
                       " free partial page entries", start, end-1);
             return 0;

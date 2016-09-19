@@ -283,7 +283,7 @@ static CONST_FUNCTION inline uintptr_t align_up(uintptr_t x, unsigned int align)
 /*************************************************************************/
 
 /* Convenience constants for read-only page management. */
-#define READONLY_PAGE_SIZE  (1U << READONLY_PAGE_BITS)
+#define READONLY_PAGE_SIZE  (1u << READONLY_PAGE_BITS)
 #define READONLY_PAGE_MASK  (READONLY_PAGE_SIZE - 1)
 
 /*-----------------------------------------------------------------------*/

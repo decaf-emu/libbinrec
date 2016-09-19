@@ -73,9 +73,17 @@ int main(void)
 
     if (sizeof(expected_code) > 0) {
         EXPECT(host_x86_translate(handle, unit));
-        EXPECT_MEMEQ(handle->code_buffer, expected_code,
-                     sizeof(expected_code));
-        EXPECT_EQ(handle->code_len, sizeof(expected_code));
+        if (!(handle->code_len == sizeof(expected_code)
+              && memcmp(handle->code_buffer, expected_code,
+                        sizeof(expected_code)) == 0)) {
+            const char *log_messages = get_log_messages();
+            if (log_messages) {
+                fputs(log_messages, stdout);
+            }
+            EXPECT_MEMEQ(handle->code_buffer, expected_code,
+                         sizeof(expected_code));
+            EXPECT_EQ(handle->code_len, sizeof(expected_code));
+        }
     } else {
         EXPECT_FALSE(host_x86_translate(handle, unit));
     }
