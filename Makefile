@@ -83,6 +83,15 @@ ENABLE_OPERAND_SANITY_CHECKS = 1
 INSTALL_PKGCONFIG = 0
 
 
+# TESTS:  If this variable is not empty, it gives a list of tests to be
+# executed for "make test" or "make coverage".  Tests should be specified
+# by the pathname to the test source file without the ".c" extension; for
+# example, "tests/api/log" to run the test defined in tests/api/log.c.
+# The default is empty (all tests will be executed).
+
+TESTS =
+
+
 # WARNINGS_AS_ERRORS:  If this variable is set to 1, the build will abort
 # if the compiler emits any warnings.
 #
@@ -146,10 +155,16 @@ VERSION_MAJOR = $(firstword $(subst ., ,$(VERSION)))
 SHARED_LIB = lib$(PACKAGE).$(if $(filter darwin%,$(OSTYPE)),dylib,$(if $(filter mingw%,$(ARCH)),dll,so))
 STATIC_LIB = lib$(PACKAGE).a
 
+# Test source list, with optional overriding.
+TEST_SOURCES := $(sort $(wildcard tests/*/*.c tests/*/*/*.c))
+ifneq ($(TESTS),)
+    TESTS := $(foreach i,$(TESTS),$(or $(filter $i.c,$(TEST_SOURCES)),$(error Test $i not found)))
+    TEST_SOURCES := $(TESTS:%=%.c)
+endif
+
 # Source and object filenames:
 LIBRARY_SOURCES := $(sort $(wildcard src/*.c src/*/*.c))
 LIBRARY_OBJECTS := $(LIBRARY_SOURCES:%.c=%.o)
-TEST_SOURCES := $(sort $(wildcard tests/*/*.c tests/*/*/*.c))
 TEST_OBJECTS := $(TEST_SOURCES:%.c=%.o)
 TEST_BINS := $(TEST_SOURCES:%.c=%)
 
