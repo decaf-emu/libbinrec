@@ -217,21 +217,27 @@ typedef struct RTLAlias_ {
  * be negative, if first_insn is 0 and the block is empty.
  */
 typedef struct RTLBlock {
-    int32_t first_insn;         // unit->insns[] index of first insn in block
-    int32_t last_insn;          // unit->insns[] index of last insn in block
-    int16_t next_block;         // unit->blocks[] index of next block in code
-                                //    stream (excluding dropped blocks);
-                                //    -1 indicates the end of the code stream.
-    int16_t prev_block;         // unit->blocks[] index of previous block in
-                                //    code stream, or -1 if the first block.
-    int16_t entries[8];         // unit->blocks[] indices of dominating blocks;
-                                //    -1 indicates an unused slot.  Holes in
-                                //    the list are not permitted.  For more
-                                //    than 8 slots, add a dummy block on top.
-                                //    (rtl_block_*() functions handle all this)
-    int16_t exits[2];           // unit->blocks[] indices of postdominating
-                                //    blocks.  A terminating insn can go at
-                                //    most two places (conditional GOTO).
+    /* unit->insns[] index of the first instruction in the block. */
+    int32_t first_insn;
+    /* unit->insns[] index of the last instruction in the block.
+     * last_insn < first_insn indicates an empty block. */
+    int32_t last_insn;
+    /* unit->blocks[] index of the next block in the code stream (excluding
+     * dropped blocks); -1 indicates the end of the code stream. */
+    int16_t next_block;
+    /* unit->blocks[] index of the previous block in the code stream, or
+     * -1 if this is the first block. */
+    int16_t prev_block;
+    /* unit->blocks[] indices of predecessor blocks in the flow graph; -1
+     * indicates an unused slot.  Holes in the list are not permitted.  For
+     * more than 8 slots, add a dummy block on top. (rtl_block_*() functions
+     * take care of all these details.) */
+    int16_t entries[8];
+    /* unit->blocks[] indices of successor blocks.  Note that a terminating
+     * insstruction can go at most two places (conditional GOTO: branch
+     * target and fall-through path).  exits[0] is always the fall-through
+     * edge if that edge exists. */
+    int16_t exits[2];
 } RTLBlock;
 
 /*----------------------------------*/

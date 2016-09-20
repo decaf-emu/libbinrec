@@ -7,42 +7,40 @@
  * NO WARRANTY is provided with this software.
  */
 
-/*
- * This source file implements a test which passes an instruction sequence
- * to an input translator and compares the disassembly of the resulting RTL
- * unit to an expected output string.  It is intended to be #included into
- * a source file which defines the parameters of the test.
- *
- * The test source file should define the following variables before
- * including this file:
- *
- * - static const binrec_setup_t setup
- *      Define this to a setup structure which will be passed to
- *      binrec_create_handle().
- *
- * - static const unsigned int host_opt
- *      Define this to the set of host optimization flags to enable.
- *
- * - bool add_rtl(RTLUnit *unit)
- *      This function will be called to fill the RTL unit with
- *      instructions before calling the translation function.  It should
- *      return EXIT_SUCCESS on success, EXIT_FAILURE if any errors occur.
- *
- * - static const uint8_t expected_code[]
- *      Define this to a buffer containing the expected translation output.
- *      If empty, the test will expect translation to fail.
- *
- * - static const char expected_log[]
- *      Define this to a buffer containing the expected log messages, if any.
- */
-
-#include "src/common.h"
-#include "src/host-x86.h"
-#include "src/memory.h"
-#include "src/rtl.h"
 #include "tests/common.h"
-#include "tests/log-capture.h"
+#include "tests/host-x86/common.h"
+#include "tests/mem-wrappers.h"
 
+
+static const binrec_setup_t setup = {
+    .host = BINREC_ARCH_X86_64_SYSV,
+    .code_malloc = mem_wrap_code_malloc,
+    .code_realloc = mem_wrap_code_realloc,
+    .code_free = mem_wrap_code_free,
+};
+static const unsigned int host_opt = 0;
+
+static int add_rtl(RTLUnit *unit)
+{
+    uint32_t label;
+    EXPECT(label = rtl_alloc_label(unit));
+
+    EXPECT(rtl_add_insn(unit, RTLOP_NOP, 0, 0, 0, 1));
+    EXPECT(rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, label));
+
+    return EXIT_SUCCESS;
+}
+
+static const uint8_t expected_code[] = {};
+
+static const char expected_log[] =
+    "[error] Out of memory while generating code\n";
+
+
+/* Tweaked version of tests/rtl-translate-test.i to trigger OOM. */
+
+#include "src/memory.h"
+#include "tests/log-capture.h"
 
 int main(void)
 {
@@ -64,18 +62,14 @@ int main(void)
         return EXIT_FAILURE;
     }
 
-    if (!rtl_finalize_unit(unit)) {
-        const char *log_messages = get_log_messages();
-        if (log_messages) {
-            fputs(log_messages, stdout);
-        }
-        FAIL("rtl_finalize_unit(unit) was not true as expected");
-    }
+    EXPECT(rtl_finalize_unit(unit));
 
-    handle->code_buffer_size = max(sizeof(expected_code), 1);
+    handle->code_buffer_size = 128;
     handle->code_alignment = 16;
     EXPECT(handle->code_buffer = binrec_code_malloc(
                handle, handle->code_buffer_size, handle->code_alignment));
+
+    mem_wrap_code_fail_after(0);
 
     if (sizeof(expected_code) > 0) {
         EXPECT(host_x86_translate(handle, unit));

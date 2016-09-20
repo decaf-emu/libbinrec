@@ -12,10 +12,15 @@
 #include "tests/mem-wrappers.h"
 #include <stdbool.h>
 
+/*************************************************************************/
+/*************************************************************************/
 
-/* Counter for remaining calls until a forced failure (1 = fail the next
+/* Counters for remaining calls until a forced failure (1 = fail the next
  * allocation call), or 0 if no forced failure is pending. */
 static int fail_counter = 0;
+static int code_fail_counter = 0;
+
+/*-----------------------------------------------------------------------*/
 
 void *mem_wrap_malloc(UNUSED void *userdata, size_t size)
 {
@@ -51,3 +56,46 @@ void mem_wrap_cancel_fail()
 {
     fail_counter = 0;
 }
+
+/*-----------------------------------------------------------------------*/
+
+void *mem_wrap_code_malloc(UNUSED void *userdata, size_t size,
+                           UNUSED size_t alignment)
+{
+    if (code_fail_counter > 0) {
+        if (--code_fail_counter == 0) {
+            return NULL;
+        }
+    }
+    return malloc(size);
+}
+
+void *mem_wrap_code_realloc(UNUSED void *userdata, void *ptr,
+                            UNUSED size_t old_size, size_t new_size,
+                            UNUSED size_t alignment)
+{
+    if (code_fail_counter > 0) {
+        if (--code_fail_counter == 0) {
+            return NULL;
+        }
+    }
+    return realloc(ptr, new_size);
+}
+
+void mem_wrap_code_free(UNUSED void *userdata, void *ptr)
+{
+    return free(ptr);
+}
+
+void mem_wrap_code_fail_after(int count)
+{
+    code_fail_counter = count + 1;
+}
+
+void mem_wrap_code_cancel_fail()
+{
+    code_fail_counter = 0;
+}
+
+/*************************************************************************/
+/*************************************************************************/

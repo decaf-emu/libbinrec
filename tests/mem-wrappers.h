@@ -44,6 +44,20 @@ extern void mem_wrap_fail_after(int count);
  */
 extern void mem_wrap_cancel_fail(void);
 
+
+/**
+ * mem_wrap_code_*:  Equivalents of the standard wrappers for the code
+ * allocation interface.  Note that these functions do not honor the
+ * alignment parameter.
+ */
+extern void *mem_wrap_code_malloc(void *userdata, size_t size,
+                                  size_t alignment);
+extern void *mem_wrap_code_realloc(void *userdata, void *ptr, size_t old_size,
+                                   size_t new_size, size_t alignment);
+extern void mem_wrap_code_free(void *userdata, void *ptr);
+extern void mem_wrap_code_fail_after(int count);
+extern void mem_wrap_code_cancel_fail(void);
+
 /*************************************************************************/
 /*************************************************************************/
 

@@ -293,6 +293,11 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int32_t insn_index,
 
         uint32_t avoid_regs = dest_info->avoid_regs;
 
+        /* For GET_ALIAS handling -- this has to be set before we allocate
+         * a preassigned register, or we'll undesirably avoid the register
+         * when choosing a merge target. */
+        uint32_t usable_regs = ctx->regs_free & ~ctx->block_regs_touched;
+
         if (host_allocated) {
             const X86Register host_reg = dest_info->host_reg;
             assign_register(ctx, dest, host_reg);
@@ -326,15 +331,15 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int32_t insn_index,
         if (insn->opcode == RTLOP_GET_ALIAS) {
             const int alias = insn->alias;
             ASSERT(ctx->blocks[block_index].alias_load[alias] == dest);
-            const uint32_t usable_regs =
-                ctx->regs_free & ~ctx->block_regs_touched;
             bool have_preceding_store = false;
 
             /* First priority: register used by SET_ALIAS in previous block
-             * (if any, and if it has an edge to this block). */
+             * (if any, and if it has an edge to this block).  We only need
+             * to check exits[0] because conditional branches (the only
+             * instructions that can generate multiple exit edges) always
+             * put the fall-through edge in exits[0]. */
             if (block_index > 0
-             && (unit->blocks[block_index-1].exits[0] == block_index
-              || unit->blocks[block_index-1].exits[1] == block_index)) {
+             && unit->blocks[block_index-1].exits[0] == block_index) {
                 const int store_reg =
                     ctx->blocks[block_index-1].alias_store[alias];
                 if (store_reg) {
@@ -362,6 +367,14 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int32_t insn_index,
                     const int store_reg = predecessor->alias_store[alias];
                     if (store_reg) {
                         have_preceding_store = true;
+                        /* If this block comes later in the code stream, we
+                         * won't have allocated any registers for it yet
+                         * (except possibly via fixed-regs).  But in that
+                         * case, ctx->regs[store_reg].host_reg will be 0,
+                         * i.e. rAX, which is the first register we'd choose
+                         * anyway if it's available.  So we don't bother
+                         * checking the host_allocated flag for store_reg
+                         * here. */
                         const X86Register host_reg =
                             ctx->regs[store_reg].host_reg;
                         if (usable_regs & (1u << host_reg)) {
@@ -697,7 +710,8 @@ static bool allocate_regs_for_block(HostX86Context *ctx, int block_index)
                   == sizeof(ctx->reg_map), "Mismatched reg_map sizes");
     memcpy(ctx->blocks[block_index].initial_reg_map, ctx->reg_map,
            sizeof(ctx->reg_map));
-    ctx->block_regs_touched = 0;
+    /* SP is excluded from the free set but doesn't count as a touched reg. */
+    ctx->block_regs_touched = ~(ctx->regs_free | (1 << X86_SP));
 
     for (int insn_index = block->first_insn; insn_index <= block->last_insn;
          insn_index++)
@@ -960,8 +974,9 @@ static void first_pass_for_block(HostX86Context *ctx, int block_index)
                 src2_info->host_reg = X86_CX;
                 ctx->last_cx_death = src2_reg->death;
             }
-            /* Make sure rCX isn't allocated to this register later, since
-             * the translator doesn't support rCX as a shift destination. */
+            /* Make sure rCX isn't allocated to this register even if it's
+             * later used as a shift count, since the translator doesn't
+             * support rCX as a shift destination. */
             ctx->regs[insn->dest].avoid_regs |= 1u << X86_CX;
             break;
           }  // case RTLOP_{SLL,SRL,SRA,ROR}

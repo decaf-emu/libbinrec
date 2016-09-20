@@ -407,11 +407,106 @@ static APPEND_INLINE void append_move(
       case RTLTYPE_FLOAT:
       case RTLTYPE_DOUBLE:
       case RTLTYPE_V2_DOUBLE:
-        append_insn_ModRM_reg(code, true, X86OP_MOVAPS_V_W,
+        /* The Intel optimization guidelines state: (1) avoid mixed use of
+         * integer/FP operations on the same register (thus MOVAPS instead
+         * of MOVDQA); (2) use PS instead of PD if both operations are
+         * bitwise-equivalent (thus MOVAPS even for double-precision types). */
+        append_insn_ModRM_reg(code, false, X86OP_MOVAPS_V_W,
                               host_dest, host_src);
+        break;
         break;
       default:
         ASSERT(!"Invalid data type for register move");
+    }
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
+ * append_load:  Append an instruction to load a register from a memory
+ * location.  The memory address is assumed to be properly aligned.
+ *
+ * [Parameters]
+ *     code: Output code buffer.
+ *     type: Register type (RTLTYPE_*).
+ *     host_dest: Destination host register.
+ *     host_base: Host register for memory address base.
+ *     offset: Access offset from base register.
+ */
+static APPEND_INLINE void append_load(
+    CodeBuffer *code, RTLDataType type, X86Register host_dest,
+    X86Register host_base, int32_t offset)
+{
+    switch (type) {
+      case RTLTYPE_INT32:
+        append_insn_ModRM_mem(code, false, X86OP_MOV_Gv_Ev,
+                              host_dest, host_base, offset);
+        break;
+      case RTLTYPE_ADDRESS:
+        append_insn_ModRM_mem(code, true, X86OP_MOV_Gv_Ev,
+                              host_dest, host_base, offset);
+        break;
+      case RTLTYPE_FLOAT:
+        append_insn_ModRM_mem(code, false, X86OP_MOVSS_V_W,
+                              host_dest, host_base, offset);
+        break;
+      case RTLTYPE_DOUBLE:
+        append_insn_ModRM_mem(code, false, X86OP_MOVSD_V_W,
+                              host_dest, host_base, offset);
+        break;
+      case RTLTYPE_V2_DOUBLE:
+        /* MOVAPS instead of MOVAPD for optimization purposes (see note in
+         * append_move()). */
+        append_insn_ModRM_mem(code, false, X86OP_MOVAPS_V_W,
+                              host_dest, host_base, offset);
+        break;
+      default:
+        ASSERT(!"Invalid data type for register load");
+    }
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
+ * append_store:  Append an instruction to store a register to a memory
+ * location.  The memory address is assumed to be properly aligned.
+ *
+ * [Parameters]
+ *     code: Output code buffer.
+ *     type: Register type (RTLTYPE_*).
+ *     host_src: Destination host register.
+ *     host_base: Host register for memory address base.
+ *     offset: Access offset from base register.
+ */
+static APPEND_INLINE void append_store(
+    CodeBuffer *code, RTLDataType type, X86Register host_src,
+    X86Register host_base, int32_t offset)
+{
+    switch (type) {
+      case RTLTYPE_INT32:
+        append_insn_ModRM_mem(code, false, X86OP_MOV_Ev_Gv,
+                              host_src, host_base, offset);
+        break;
+      case RTLTYPE_ADDRESS:
+        append_insn_ModRM_mem(code, true, X86OP_MOV_Ev_Gv,
+                              host_src, host_base, offset);
+        break;
+      case RTLTYPE_FLOAT:
+        append_insn_ModRM_mem(code, false, X86OP_MOVSS_W_V,
+                              host_src, host_base, offset);
+        break;
+      case RTLTYPE_DOUBLE:
+        append_insn_ModRM_mem(code, false, X86OP_MOVSD_W_V,
+                              host_src, host_base, offset);
+        break;
+      case RTLTYPE_V2_DOUBLE:
+        /* MOVAPS instead of MOVAPD for optimization purposes (see note in
+         * append_move()). */
+        append_insn_ModRM_mem(code, false, X86OP_MOVAPS_W_V,
+                              host_src, host_base, offset);
+        break;
+      default:
+        ASSERT(!"Invalid data type for register store");
     }
 }
 
@@ -433,19 +528,7 @@ static APPEND_INLINE void append_load_alias(
 {
     const X86Register host_base =
         alias->base ? ctx->regs[alias->base].host_reg : X86_SP;
-    switch (alias->type) {
-      case RTLTYPE_INT32:
-        append_insn_ModRM_mem(code, false, X86OP_MOV_Gv_Ev,
-                              host_dest, host_base, alias->offset);
-        break;
-      case RTLTYPE_ADDRESS:
-        append_insn_ModRM_mem(code, true, X86OP_MOV_Gv_Ev,
-                              host_dest, host_base, alias->offset);
-        break;
-      default:
-        // FIXME: handle FP registers when we support those
-        ASSERT(!"Invalid data type for alias store");
-    }
+    append_load(code, alias->type, host_dest, host_base, alias->offset);
 }
 
 /*-----------------------------------------------------------------------*/
@@ -466,19 +549,7 @@ static APPEND_INLINE void append_store_alias(
 {
     const X86Register host_base =
         alias->base ? ctx->regs[alias->base].host_reg : X86_SP;
-    switch (alias->type) {
-      case RTLTYPE_INT32:
-        append_insn_ModRM_mem(code, false, X86OP_MOV_Ev_Gv,
-                              host_src, host_base, alias->offset);
-        break;
-      case RTLTYPE_ADDRESS:
-        append_insn_ModRM_mem(code, true, X86OP_MOV_Ev_Gv,
-                              host_src, host_base, alias->offset);
-        break;
-      default:
-        // FIXME: handle FP registers when we support those
-        ASSERT(!"Invalid data type for alias store");
-    }
+    append_store(code, alias->type, host_src, host_base, alias->offset);
 }
 
 /*-----------------------------------------------------------------------*/
@@ -564,11 +635,12 @@ static APPEND_INLINE void append_jump(
 /* Maximum length of alias setup code generated by setup_aliases_for_block().
  * If the input code buffer has at least this much space available, it will
  * not be expanded.  Worst case is:
- *    - 1 GPR exchange + 14 moves, all with REX prefixes = 45 bytes
- *    - 15 XMM exchanges + 1 move, all with REX prefixes = 184 bytes
- * for a total of 229 bytes.  We round up to 256 to potentially help the
+ *    - 15 GPR loads with REX prefixes = 105 bytes
+ *    - 15 XMM exchanges with REX prefixes = 180 bytes
+ *    - 1 XMM load with a REX prefix = 9 bytes
+ * for a total of 294 bytes.  We round up to 320 to potentially help the
  * compiler optimize. */
-#define SETUP_ALIAS_SIZE  256
+#define SETUP_ALIAS_SIZE  320
 
 /**
  * setup_aliases_for_block:  Set up registers expected to contain alias
@@ -591,7 +663,6 @@ static bool setup_aliases_for_block(
     const int num_aliases = unit->next_alias;
     const uint16_t *current_store = ctx->blocks[block_index].alias_store;
     const uint16_t *next_load = ctx->blocks[target_index].alias_load;
-    const uint16_t *next_store = ctx->blocks[target_index].alias_store;
 
     if (UNLIKELY(code->buffer_size - code->len < SETUP_ALIAS_SIZE)) {
         ASSERT(code->buffer == ctx->handle->code_buffer);
@@ -604,26 +675,41 @@ static bool setup_aliases_for_block(
         code->buffer_size = ctx->handle->code_buffer_size;
     }
 
-    /* First construct a map of which registers get moved where.  We need
-     * a separate step for this in case the target of one move would
-     * overwrite the source of another, in which case we have to use a
-     * swap instead. */
+    /* First construct a map of which registers get moved where and which
+     * need to be loaded from storage.  We need a separate step for this in
+     * case the target of one move would overwrite the source of another,
+     * in which case we have to use a swap instead.  This can get
+     * particularly tricky if several registers are shifted in a loop (see
+     * tests/host-x86/general/alias-merge-swap-cycle-* for examples). */
     uint32_t move_targets = 0;  // Bit set = register is a move target
-    int8_t move_map[32];   // -1 or X86Register: move_map[dest] = src
-    memset(move_map, -1, sizeof(move_map));
-    uint8_t type_map[32];  // RTLDataType for each destination register
+    uint32_t load_targets = 0;  // Bit set = register is a load target
+    uint8_t move_map[32];  // X86Register source for each move target
     uint8_t src_map[32];   // Map from original to current (swapped) registers
+                           //    (i.e., "where is this register's value now?")
+    uint8_t value_map[32]; // Map from original reg values to current locations
+                           //    (i.e., "what does this register now hold?")
+    uint8_t src_count[32]; // # of times each host register is used as a source
+    uint16_t load_map[32]; // RTL alias to load into each load target
+    uint8_t dest_type[32]; // RTLDataType of each alias, indexed by move target
+    memset(src_count, 0, sizeof(src_count));
     for (int i = 1; i < num_aliases; i++) {
-        /* This is exactly the opposite condition of the test in SET_ALIAS
-         * for whether an alias store should be written through to memory. */
         const int merge_reg = next_load[i];
-        if (merge_reg && ctx->regs[merge_reg].merge_alias && next_store[i]) {
-            const X86Register host_src = ctx->regs[current_store[i]].host_reg;
+        if (merge_reg && ctx->regs[merge_reg].merge_alias) {
             const X86Register host_dest = ctx->regs[merge_reg].host_merge;
-            move_targets |= 1u << host_dest;
-            move_map[host_dest] = host_src;
-            type_map[host_dest] = unit->regs[merge_reg].type;
-            src_map[host_src] = host_src;
+            dest_type[host_dest] = unit->regs[merge_reg].type;
+            value_map[host_dest] = host_dest;
+            const int store_reg = current_store[i];
+            if (store_reg) {
+                const X86Register host_src = ctx->regs[store_reg].host_reg;
+                move_targets |= 1u << host_dest;
+                move_map[host_dest] = host_src;
+                src_map[host_src] = host_src;
+                value_map[host_src] = host_src;
+                src_count[host_src]++;
+            } else {
+                load_targets |= 1u << host_dest;
+                load_map[host_dest] = (uint16_t)i;
+            }
         }
     }
 
@@ -633,10 +719,13 @@ static bool setup_aliases_for_block(
     while (move_targets) {
         const X86Register host_dest = ctz32(move_targets);
         move_targets ^= 1u << host_dest;
-        ASSERT(move_map[host_dest] >= 0);
-        const X86Register host_src = src_map[move_map[host_dest]];
+        const X86Register move_src = move_map[host_dest];
+        const X86Register host_src = src_map[move_src];
         if (host_src != host_dest) {
-            if (move_targets & (1u << host_src)) {
+            if (src_count[value_map[host_dest]] > 0) {
+                /* The value in the register we're about to write is still
+                 * needed.  Swap it with the source value for this alias,
+                 * then update maps so we know where the values have gone. */
                 if (host_dest >= X86_XMM0) {
                     ASSERT(host_src >= X86_XMM0);
                     append_insn_ModRM_reg(code, false, X86OP_XORPS, 
@@ -647,15 +736,26 @@ static bool setup_aliases_for_block(
                                           host_dest, host_src);
                 } else {
                     ASSERT(host_src < X86_XMM0);
-                    const bool is64 = (type_map[host_dest] == RTLTYPE_ADDRESS);
-                    append_insn_ModRM_reg(code, is64, X86OP_XCHG_Ev_Gv,
+                    append_insn_ModRM_reg(code, true, X86OP_XCHG_Ev_Gv,
                                           host_src, host_dest);
                 }
-                src_map[host_src] = host_dest;
+                value_map[host_src] = value_map[host_dest];
+                src_map[value_map[host_dest]] = host_src;
+                value_map[host_dest] = move_src;
+                src_map[move_src] = host_dest;
             } else {
-                append_move(code, type_map[host_dest], host_dest, host_src);
+                append_move(code, dest_type[host_dest], host_dest, host_src);
             }
         }
+        src_count[move_src]--;
+    }
+
+    /* Finally, load values from storage which were not live. */
+    while (load_targets) {
+        const X86Register host_dest = ctz32(load_targets);
+        load_targets ^= 1u << host_dest;
+        append_load_alias(code, ctx, &unit->aliases[load_map[host_dest]],
+                          host_dest);
     }
 
     return true;
@@ -681,18 +781,16 @@ static bool check_alias_conflicts(const HostX86Context *ctx, int block_index,
 {
     RTLUnit * const unit = ctx->unit;
     const int num_aliases = unit->next_alias;
+    const uint32_t end_live = ctx->blocks[block_index].end_live;
     const uint16_t *current_store = ctx->blocks[block_index].alias_store;
     const uint16_t *next_load = ctx->blocks[target_index].alias_load;
-    const uint16_t *next_store = ctx->blocks[target_index].alias_store;
 
     for (int i = 1; i < num_aliases; i++) {
-        /* This is exactly the opposite condition of the test in SET_ALIAS
-         * for whether an alias store should be written through to memory. */
         const int merge_reg = next_load[i];
-        if (merge_reg && ctx->regs[merge_reg].merge_alias && next_store[i]) {
+        if (merge_reg && ctx->regs[merge_reg].merge_alias) {
             const X86Register host_src = ctx->regs[current_store[i]].host_reg;
             const X86Register host_dest = ctx->regs[merge_reg].host_merge;
-            if (host_dest != host_src) {
+            if (host_dest != host_src && (end_live & (1 << host_dest))) {
                 return true;
             }
         }
@@ -712,7 +810,7 @@ static bool check_alias_conflicts(const HostX86Context *ctx, int block_index,
  *     ctx: Translation context.
  *     block_index: Index of basic block in ctx->unit->blocks[].
  * [Return value]
- *     True on success, false on error.
+ *     True on success, false if out of memory.
  */
 static bool translate_block(HostX86Context *ctx, int block_index)
 {
@@ -759,7 +857,10 @@ static bool translate_block(HostX86Context *ctx, int block_index)
             code.buffer_size = handle->code_buffer_size;
         }
 
-        const long initial_len = code.len;
+        /* This is not "const" because we rewrite it in GOTO_IF_* if we
+         * add alias conflict resolution code, since that has its own
+         * buffer size check. */
+        long initial_len = code.len;
 
         switch ((RTLOpcode)insn->opcode) {
 
@@ -815,7 +916,7 @@ static bool translate_block(HostX86Context *ctx, int block_index)
                  * a different register. */
                 append_move(&code, unit->regs[dest].type,
                             ctx->regs[dest].host_reg,
-                            ctx->regs[src1].host_merge);
+                            ctx->regs[dest].host_merge);
             }
             break;
 
@@ -1690,24 +1791,10 @@ static bool translate_block(HostX86Context *ctx, int block_index)
             break;
           }  // case RTLOP_LOAD_ARG
 
-          case RTLOP_LOAD: {
-            const X86Register host_dest = ctx->regs[dest].host_reg;
-            const X86Register host_src1 = ctx->regs[src1].host_reg;
-            switch (unit->regs[dest].type) {
-              case RTLTYPE_INT32:
-                append_insn_ModRM_mem(&code, false, X86OP_MOV_Gv_Ev,
-                                      host_dest, host_src1, insn->offset);
-                break;
-              case RTLTYPE_ADDRESS:
-                append_insn_ModRM_mem(&code, true, X86OP_MOV_Gv_Ev,
-                                      host_dest, host_src1, insn->offset);
-                break;
-              default:
-                // FIXME: handle FP registers when we support those
-                ASSERT(!"Invalid data type in LOAD");
-            }
+          case RTLOP_LOAD:
+            append_load(&code, unit->regs[dest].type, ctx->regs[dest].host_reg,
+                        ctx->regs[src1].host_reg, insn->offset);
             break;
-          }  // case RTLOP_LOAD
 
           case RTLOP_LOAD_U8:
           case RTLOP_LOAD_S8: {
@@ -1731,24 +1818,10 @@ static bool translate_block(HostX86Context *ctx, int block_index)
             break;
           }  // case RTLOP_LOAD_U16, RTLOP_LOAD_S16
 
-          case RTLOP_STORE: {
-            const X86Register host_src1 = ctx->regs[src1].host_reg;
-            const X86Register host_src2 = ctx->regs[src2].host_reg;
-            switch (unit->regs[src2].type) {
-              case RTLTYPE_INT32:
-                append_insn_ModRM_mem(&code, false, X86OP_MOV_Ev_Gv,
-                                      host_src2, host_src1, insn->offset);
-                break;
-              case RTLTYPE_ADDRESS:
-                append_insn_ModRM_mem(&code, true, X86OP_MOV_Ev_Gv,
-                                      host_src2, host_src1, insn->offset);
-                break;
-              default:
-                // FIXME: handle FP registers when we support those
-                ASSERT(!"Invalid data type in STORE");
-            }
+          case RTLOP_STORE:
+            append_store(&code, unit->regs[src2].type, ctx->regs[src2].host_reg,
+                         ctx->regs[src1].host_reg, insn->offset);
             break;
-          }  // case RTLOP_STORE
 
           case RTLOP_STORE_I8: {
             const X86Register host_src1 = ctx->regs[src1].host_reg;
@@ -1957,17 +2030,15 @@ static bool translate_block(HostX86Context *ctx, int block_index)
                 /* Write this jump as though the next one (to the target
                  * label) will have a 32-bit displacement.  If it ends up
                  * having an 8-bit displacement, we'll fix up this
-                 * displacement afterwards.  (That may result in having a
-                 * 32-bit displacement within the 8-bit range, but we don't
-                 * worry about that case as it should have negligible effect
-                 * on performance even if it does occur.) */
+                 * instruction afterwards. */
                 append_jump_raw(&code, short_opcode ^ 1, long_opcode ^ 1,
                                 setup_code.len + 5);
                 const long setup_start = code.len;
-                if (UNLIKELY(code.len + setup_code.len + 5 > code.buffer_size)) {
+                const long needed_space = setup_code.len + 5;
+                if (UNLIKELY(code.len + needed_space > code.buffer_size)) {
                     handle->code_len = code.len;
                     if (UNLIKELY(!binrec_ensure_code_space(
-                                     handle, setup_code.len))) {
+                                     handle, needed_space))) {
                         return false;
                     }
                     code.buffer = handle->code_buffer;
@@ -1976,15 +2047,23 @@ static bool translate_block(HostX86Context *ctx, int block_index)
                 memcpy(&code.buffer[code.len], setup_code.buffer,
                        setup_code.len);
                 code.len += setup_code.len;
+                const long final_jump = code.len;
                 append_jump(&code, block_info, X86OP_JMP_Jb, X86OP_JMP_Jz,
                             insn->label, ctx->label_offsets[insn->label]);
-                if (code.len == setup_start + 2) {
-                    if (setup_start > setup_jump + 4) { // 32-bit displacement?
-                        code.buffer[setup_start - 4] -= 3;
-                    } else {
-                        code.buffer[setup_start - 1] -= 3;
-                    }
+                if (code.len == final_jump + 2) {
+                    /* In order for the initial (conditional) jump over the
+                     * setup code to have a 32-bit displacement, the setup
+                     * code must have been at least 123 bytes long.  But in
+                     * that case, the displacement for the final jump will
+                     * be -6 (for the initial jump) - 123 - at least 2 for
+                     * this jump, which is less than -128 so it can't be
+                     * encoded in one byte.  Thus, if the final jump has an
+                     * 8-bit displacement, the initial jump must also have
+                     * had an 8-bit displacement. */
+                    ASSERT(setup_start == setup_jump + 2);
+                    code.buffer[setup_start - 1] -= 3;
                 }
+                initial_len = code.len;  // Suppress output length check.
             } else {
                 if (!setup_aliases_for_block(&code, ctx, block_index,
                                              target_block)) {
@@ -2056,7 +2135,7 @@ static bool translate_block(HostX86Context *ctx, int block_index)
  * [Parameters]
  *     ctx: Translation context.
  * [Return value]
- *     True on success, false on error.
+ *     True on success, false if out of memory.
  */
 static bool append_prologue(HostX86Context *ctx)
 {
@@ -2285,7 +2364,7 @@ static bool append_prologue(HostX86Context *ctx)
  * [Parameters]
  *     ctx: Translation context.
  * [Return value]
- *     True on success, false on error.
+ *     True on success, false if out of memory.
  */
 static bool append_epilogue(HostX86Context *ctx)
 {
@@ -2405,7 +2484,7 @@ static void resolve_branches(HostX86Context *ctx)
  * [Parameters]
  *     ctx: Translation context.
  * [Return value]
- *     True on success, false on error.
+ *     True on success, false if out of memory.
  */
 static bool translate_unit(HostX86Context *ctx)
 {
@@ -2525,6 +2604,7 @@ bool host_x86_translate(binrec_t *handle, struct RTLUnit *unit)
     }
 
     if (!translate_unit(&ctx)) {
+        log_error(handle, "Out of memory while generating code");
         goto error_destroy_context;
     }
 
