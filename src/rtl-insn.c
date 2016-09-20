@@ -78,13 +78,13 @@ static ALWAYS_INLINE void mark_live(RTLUnit * const unit, const int insn_index,
 /**
  * make_nop:  Encode a NOP instruction.
  */
-static bool make_nop(RTLUnit *unit, RTLInsn *insn, unsigned int dest,
-                     uint32_t src1, uint32_t src2, uint64_t other)
+static bool make_nop(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
+                     int src2, uint64_t other)
 {
     ASSERT(insn != NULL);
-    ASSERT(dest < unit->next_reg);
-    ASSERT(src1 < unit->next_reg);
-    ASSERT(src2 < unit->next_reg);
+    ASSERT(dest >= 0 && dest < unit->next_reg);
+    ASSERT(src1 >= 0 && src1 < unit->next_reg);
+    ASSERT(src2 >= 0 && src2 < unit->next_reg);
 
     insn->dest = dest;
     insn->src1 = src1;
@@ -113,13 +113,13 @@ static bool make_nop(RTLUnit *unit, RTLInsn *insn, unsigned int dest,
 /**
  * make_set_alias:  Encode a SET_ALIAS instruction.
  */
-static bool make_set_alias(RTLUnit *unit, RTLInsn *insn, unsigned int dest,
-                           uint32_t src1, uint32_t src2, uint64_t other)
+static bool make_set_alias(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
+                           int src2, uint64_t other)
 {
     ASSERT(unit != NULL);
     ASSERT(unit->regs != NULL);
     ASSERT(insn != NULL);
-    ASSERT(src1 < unit->next_reg);
+    ASSERT(src1 >= 0 && src1 < unit->next_reg);
     ASSERT(other < unit->next_alias);
 
 #ifdef ENABLE_OPERAND_SANITY_CHECKS
@@ -144,13 +144,13 @@ static bool make_set_alias(RTLUnit *unit, RTLInsn *insn, unsigned int dest,
 /**
  * make_get_alias:  Encode a GET_ALIAS instruction.
  */
-static bool make_get_alias(RTLUnit *unit, RTLInsn *insn, unsigned int dest,
-                           uint32_t src1, uint32_t src2, uint64_t other)
+static bool make_get_alias(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
+                           int src2, uint64_t other)
 {
     ASSERT(unit != NULL);
     ASSERT(unit->regs != NULL);
     ASSERT(insn != NULL);
-    ASSERT(dest < unit->next_reg);
+    ASSERT(dest >= 0 && dest < unit->next_reg);
     ASSERT(other < unit->next_alias);
 
 #ifdef ENABLE_OPERAND_SANITY_CHECKS
@@ -177,14 +177,14 @@ static bool make_get_alias(RTLUnit *unit, RTLInsn *insn, unsigned int dest,
 /**
  * make_move:  Encode a MOVE instruction.
  */
-static bool make_move(RTLUnit *unit, RTLInsn *insn, unsigned int dest,
-                      uint32_t src1, uint32_t src2, uint64_t other)
+static bool make_move(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
+                      int src2, uint64_t other)
 {
     ASSERT(unit != NULL);
     ASSERT(unit->regs != NULL);
     ASSERT(insn != NULL);
-    ASSERT(dest < unit->next_reg);
-    ASSERT(src1 < unit->next_reg);
+    ASSERT(dest >= 0 && dest < unit->next_reg);
+    ASSERT(src1 >= 0 && src1 < unit->next_reg);
 
 #ifdef ENABLE_OPERAND_SANITY_CHECKS
     OPERAND_ASSERT(dest != 0);
@@ -214,15 +214,15 @@ static bool make_move(RTLUnit *unit, RTLInsn *insn, unsigned int dest,
 /**
  * make_select:  Encode a SELECT instruction.
  */
-static bool make_select(RTLUnit *unit, RTLInsn *insn, unsigned int dest,
-                        uint32_t src1, uint32_t src2, uint64_t other)
+static bool make_select(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
+                        int src2, uint64_t other)
 {
     ASSERT(unit != NULL);
     ASSERT(unit->regs != NULL);
     ASSERT(insn != NULL);
-    ASSERT(dest < unit->next_reg);
-    ASSERT(src1 < unit->next_reg);
-    ASSERT(src2 < unit->next_reg);
+    ASSERT(dest >= 0 && dest < unit->next_reg);
+    ASSERT(src1 >= 0 && src1 < unit->next_reg);
+    ASSERT(src2 >= 0 && src2 < unit->next_reg);
     ASSERT(other < unit->next_reg);
 
 #ifdef ENABLE_OPERAND_SANITY_CHECKS
@@ -267,14 +267,14 @@ static bool make_select(RTLUnit *unit, RTLInsn *insn, unsigned int dest,
 /**
  * make_intcast:  Encode an integer size-cast instruction.
  */
-static bool make_intcast(RTLUnit *unit, RTLInsn *insn, unsigned int dest,
-                         uint32_t src1, uint32_t src2, uint64_t other)
+static bool make_intcast(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
+                         int src2, uint64_t other)
 {
     ASSERT(unit != NULL);
     ASSERT(unit->regs != NULL);
     ASSERT(insn != NULL);
-    ASSERT(dest < unit->next_reg);
-    ASSERT(src1 < unit->next_reg);
+    ASSERT(dest >= 0 && dest < unit->next_reg);
+    ASSERT(src1 >= 0 && src1 < unit->next_reg);
 
 #ifdef ENABLE_OPERAND_SANITY_CHECKS
     OPERAND_ASSERT(dest != 0);
@@ -305,14 +305,14 @@ static bool make_intcast(RTLUnit *unit, RTLInsn *insn, unsigned int dest,
 /**
  * make_alu_1op:  Encode a 1-operand ALU-type instruction.
  */
-static bool make_alu_1op(RTLUnit *unit, RTLInsn *insn, unsigned int dest,
-                         uint32_t src1, uint32_t src2, uint64_t other)
+static bool make_alu_1op(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
+                         int src2, uint64_t other)
 {
     ASSERT(unit != NULL);
     ASSERT(unit->regs != NULL);
     ASSERT(insn != NULL);
-    ASSERT(dest < unit->next_reg);
-    ASSERT(src1 < unit->next_reg);
+    ASSERT(dest >= 0 && dest < unit->next_reg);
+    ASSERT(src1 >= 0 && src1 < unit->next_reg);
 
 #ifdef ENABLE_OPERAND_SANITY_CHECKS
     OPERAND_ASSERT(dest != 0);
@@ -342,15 +342,15 @@ static bool make_alu_1op(RTLUnit *unit, RTLInsn *insn, unsigned int dest,
 /**
  * make_alu_2op:  Encode a 2-operand ALU-type instruction.
  */
-static bool make_alu_2op(RTLUnit *unit, RTLInsn *insn, unsigned int dest,
-                         uint32_t src1, uint32_t src2, uint64_t other)
+static bool make_alu_2op(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
+                         int src2, uint64_t other)
 {
     ASSERT(unit != NULL);
     ASSERT(unit->regs != NULL);
     ASSERT(insn != NULL);
-    ASSERT(dest < unit->next_reg);
-    ASSERT(src1 < unit->next_reg);
-    ASSERT(src2 < unit->next_reg);
+    ASSERT(dest >= 0 && dest < unit->next_reg);
+    ASSERT(src1 >= 0 && src1 < unit->next_reg);
+    ASSERT(src2 >= 0 && src2 < unit->next_reg);
 
 #ifdef ENABLE_OPERAND_SANITY_CHECKS
     OPERAND_ASSERT(dest != 0);
@@ -387,14 +387,14 @@ static bool make_alu_2op(RTLUnit *unit, RTLInsn *insn, unsigned int dest,
 /**
  * make_alu_imm:  Encode a register-immediate ALU-type instruction.
  */
-static bool make_alu_imm(RTLUnit *unit, RTLInsn *insn, unsigned int dest,
-                         uint32_t src1, uint32_t src2, uint64_t other)
+static bool make_alu_imm(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
+                         int src2, uint64_t other)
 {
     ASSERT(unit != NULL);
     ASSERT(unit->regs != NULL);
     ASSERT(insn != NULL);
-    ASSERT(dest < unit->next_reg);
-    ASSERT(src1 < unit->next_reg);
+    ASSERT(dest >= 0 && dest < unit->next_reg);
+    ASSERT(src1 >= 0 && src1 < unit->next_reg);
 
 #ifdef ENABLE_OPERAND_SANITY_CHECKS
     OPERAND_ASSERT(dest != 0);
@@ -428,15 +428,15 @@ static bool make_alu_imm(RTLUnit *unit, RTLInsn *insn, unsigned int dest,
 /**
  * make_cmp:  Encode a comparison instruction.
  */
-static bool make_cmp(RTLUnit *unit, RTLInsn *insn, unsigned int dest,
-                     uint32_t src1, uint32_t src2, uint64_t other)
+static bool make_cmp(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
+                     int src2, uint64_t other)
 {
     ASSERT(unit != NULL);
     ASSERT(unit->regs != NULL);
     ASSERT(insn != NULL);
-    ASSERT(dest < unit->next_reg);
-    ASSERT(src1 < unit->next_reg);
-    ASSERT(src2 < unit->next_reg);
+    ASSERT(dest >= 0 && dest < unit->next_reg);
+    ASSERT(src1 >= 0 && src1 < unit->next_reg);
+    ASSERT(src2 >= 0 && src2 < unit->next_reg);
 
 #ifdef ENABLE_OPERAND_SANITY_CHECKS
     OPERAND_ASSERT(dest != 0);
@@ -473,14 +473,14 @@ static bool make_cmp(RTLUnit *unit, RTLInsn *insn, unsigned int dest,
 /**
  * make_cmp_imm:  Encode a register-immediate comparison instruction.
  */
-static bool make_cmp_imm(RTLUnit *unit, RTLInsn *insn, unsigned int dest,
-                         uint32_t src1, uint32_t src2, uint64_t other)
+static bool make_cmp_imm(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
+                         int src2, uint64_t other)
 {
     ASSERT(unit != NULL);
     ASSERT(unit->regs != NULL);
     ASSERT(insn != NULL);
-    ASSERT(dest < unit->next_reg);
-    ASSERT(src1 < unit->next_reg);
+    ASSERT(dest >= 0 && dest < unit->next_reg);
+    ASSERT(src1 >= 0 && src1 < unit->next_reg);
 
 #ifdef ENABLE_OPERAND_SANITY_CHECKS
     OPERAND_ASSERT(dest != 0);
@@ -514,15 +514,15 @@ static bool make_cmp_imm(RTLUnit *unit, RTLInsn *insn, unsigned int dest,
 /**
  * make_bitfield:  Encode a bitfield instruction.
  */
-static bool make_bitfield(RTLUnit *unit, RTLInsn *insn, unsigned int dest,
-                          uint32_t src1, uint32_t src2, uint64_t other)
+static bool make_bitfield(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
+                          int src2, uint64_t other)
 {
     ASSERT(unit != NULL);
     ASSERT(unit->regs != NULL);
     ASSERT(insn != NULL);
-    ASSERT(dest < unit->next_reg);
-    ASSERT(src1 < unit->next_reg);
-    ASSERT(src2 < unit->next_reg);
+    ASSERT(dest >= 0 && dest < unit->next_reg);
+    ASSERT(src1 >= 0 && src1 < unit->next_reg);
+    ASSERT(src2 >= 0 && src2 < unit->next_reg);
 
     const int start = other & 0xFF;
     const int count = (other >> 8) & 0xFF;
@@ -571,13 +571,13 @@ static bool make_bitfield(RTLUnit *unit, RTLInsn *insn, unsigned int dest,
 /**
  * make_load_imm:  Encode a LOAD_IMM instruction.
  */
-static bool make_load_imm(RTLUnit *unit, RTLInsn *insn, unsigned int dest,
-                          uint32_t src1, uint32_t src2, uint64_t other)
+static bool make_load_imm(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
+                          int src2, uint64_t other)
 {
     ASSERT(unit != NULL);
     ASSERT(unit->regs != NULL);
     ASSERT(insn != NULL);
-    ASSERT(dest < unit->next_reg);
+    ASSERT(dest >= 0 && dest < unit->next_reg);
 
 #ifdef ENABLE_OPERAND_SANITY_CHECKS
     OPERAND_ASSERT(dest != 0);
@@ -613,13 +613,13 @@ static bool make_load_imm(RTLUnit *unit, RTLInsn *insn, unsigned int dest,
 /**
  * make_load_arg:  Encode a LOAD_ARG instruction.
  */
-static bool make_load_arg(RTLUnit *unit, RTLInsn *insn, unsigned int dest,
-                          uint32_t src1, uint32_t src2, uint64_t other)
+static bool make_load_arg(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
+                          int src2, uint64_t other)
 {
     ASSERT(unit != NULL);
     ASSERT(unit->regs != NULL);
     ASSERT(insn != NULL);
-    ASSERT(dest < unit->next_reg);
+    ASSERT(dest >= 0 && dest < unit->next_reg);
 
 #ifdef ENABLE_OPERAND_SANITY_CHECKS
     OPERAND_ASSERT(dest != 0);
@@ -628,12 +628,12 @@ static bool make_load_arg(RTLUnit *unit, RTLInsn *insn, unsigned int dest,
 #endif
 
     insn->dest = dest;
-    insn->arg_index = other;
+    insn->arg_index = (uint8_t)other;
 
     RTLRegister * const destreg = &unit->regs[dest];
     const uint32_t insn_index = unit->num_insns;
     destreg->source = RTLREG_FUNC_ARG;
-    destreg->arg_index = (unsigned int)other;
+    destreg->arg_index = (uint8_t)other;
     mark_live(unit, insn_index, destreg, dest);
 
     return true;
@@ -644,14 +644,14 @@ static bool make_load_arg(RTLUnit *unit, RTLInsn *insn, unsigned int dest,
 /**
  * make_load:  Encode a memory load instruction.
  */
-static bool make_load(RTLUnit *unit, RTLInsn *insn, unsigned int dest,
-                      uint32_t src1, uint32_t src2, uint64_t other)
+static bool make_load(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
+                      int src2, uint64_t other)
 {
     ASSERT(unit != NULL);
     ASSERT(unit->regs != NULL);
     ASSERT(insn != NULL);
-    ASSERT(dest < unit->next_reg);
-    ASSERT(src1 < unit->next_reg);
+    ASSERT(dest >= 0 && dest < unit->next_reg);
+    ASSERT(src1 >= 0 && src1 < unit->next_reg);
 
 #ifdef ENABLE_OPERAND_SANITY_CHECKS
     OPERAND_ASSERT(dest != 0);
@@ -685,26 +685,26 @@ static bool make_load(RTLUnit *unit, RTLInsn *insn, unsigned int dest,
 /**
  * make_load_narrow:  Encode a memory load instruction for a narrow integer.
  */
-static bool make_load_narrow(RTLUnit *unit, RTLInsn *insn, unsigned int dest,
-                             uint32_t src1, uint32_t src2, uint64_t other)
+static bool make_load_narrow(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
+                             int src2, uint64_t other)
 {
     ASSERT(unit != NULL);
     ASSERT(unit->regs != NULL);
     ASSERT(insn != NULL);
-    ASSERT(dest < unit->next_reg);
-    ASSERT(src1 < unit->next_reg);
+    ASSERT(dest >= 0 && dest < unit->next_reg);
+    ASSERT(src1 >= 0 && src1 < unit->next_reg);
 
     /* Lookup tables for each instruction. */
     static const struct {
-        uint8_t size;       // destreg->memory.size for this insn
-        uint8_t is_signed;  // destreg->memory.is_signed for this insn
+        uint8_t size;   // destreg->memory.size for this insn
+        bool is_signed; // destreg->memory.is_signed for this insn
     } insn_info[] = {
-        [RTLOP_LOAD_U8     - RTLOP_LOAD_U8] = {.size = 1, .is_signed = 0},
-        [RTLOP_LOAD_S8     - RTLOP_LOAD_U8] = {.size = 1, .is_signed = 1},
-        [RTLOP_LOAD_U16    - RTLOP_LOAD_U8] = {.size = 2, .is_signed = 0},
-        [RTLOP_LOAD_S16    - RTLOP_LOAD_U8] = {.size = 2, .is_signed = 1},
-        [RTLOP_LOAD_U16_BR - RTLOP_LOAD_U8] = {.size = 2, .is_signed = 0},
-        [RTLOP_LOAD_S16_BR - RTLOP_LOAD_U8] = {.size = 2, .is_signed = 1},
+        [RTLOP_LOAD_U8     - RTLOP_LOAD_U8] = {.size = 1, .is_signed = false},
+        [RTLOP_LOAD_S8     - RTLOP_LOAD_U8] = {.size = 1, .is_signed = true},
+        [RTLOP_LOAD_U16    - RTLOP_LOAD_U8] = {.size = 2, .is_signed = false},
+        [RTLOP_LOAD_S16    - RTLOP_LOAD_U8] = {.size = 2, .is_signed = true},
+        [RTLOP_LOAD_U16_BR - RTLOP_LOAD_U8] = {.size = 2, .is_signed = false},
+        [RTLOP_LOAD_S16_BR - RTLOP_LOAD_U8] = {.size = 2, .is_signed = true},
     };
 
     const int lookup_index = insn->opcode - RTLOP_LOAD_U8;
@@ -745,14 +745,14 @@ static bool make_load_narrow(RTLUnit *unit, RTLInsn *insn, unsigned int dest,
 /**
  * make_store:  Encode a memory store instruction.
  */
-static bool make_store(RTLUnit *unit, RTLInsn *insn, unsigned int dest,
-                       uint32_t src1, uint32_t src2, uint64_t other)
+static bool make_store(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
+                       int src2, uint64_t other)
 {
     ASSERT(unit != NULL);
     ASSERT(unit->regs != NULL);
     ASSERT(insn != NULL);
-    ASSERT(src1 < unit->next_reg);
-    ASSERT(src2 < unit->next_reg);
+    ASSERT(src1 >= 0 && src1 < unit->next_reg);
+    ASSERT(src2 >= 0 && src2 < unit->next_reg);
 
 #ifdef ENABLE_OPERAND_SANITY_CHECKS
     OPERAND_ASSERT(src1 != 0);
@@ -781,14 +781,14 @@ static bool make_store(RTLUnit *unit, RTLInsn *insn, unsigned int dest,
 /**
  * make_store_narrow:  Encode a memory store instruction.
  */
-static bool make_store_narrow(RTLUnit *unit, RTLInsn *insn, unsigned int dest,
-                              uint32_t src1, uint32_t src2, uint64_t other)
+static bool make_store_narrow(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
+                              int src2, uint64_t other)
 {
     ASSERT(unit != NULL);
     ASSERT(unit->regs != NULL);
     ASSERT(insn != NULL);
-    ASSERT(src1 < unit->next_reg);
-    ASSERT(src2 < unit->next_reg);
+    ASSERT(src1 >= 0 && src1 < unit->next_reg);
+    ASSERT(src2 >= 0 && src2 < unit->next_reg);
 
 #ifdef ENABLE_OPERAND_SANITY_CHECKS
     OPERAND_ASSERT(src1 != 0);
@@ -818,8 +818,8 @@ static bool make_store_narrow(RTLUnit *unit, RTLInsn *insn, unsigned int dest,
 /**
  * make_label:  Encode a LABEL instruction.
  */
-static bool make_label(RTLUnit *unit, RTLInsn *insn, unsigned int dest,
-                       uint32_t src1, uint32_t src2, uint64_t other)
+static bool make_label(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
+                       int src2, uint64_t other)
 {
     ASSERT(unit != NULL);
     ASSERT(unit->blocks != NULL);
@@ -866,8 +866,8 @@ static bool make_label(RTLUnit *unit, RTLInsn *insn, unsigned int dest,
 /**
  * make_goto:  Encode a GOTO instruction.
  */
-static bool make_goto(RTLUnit *unit, RTLInsn *insn, unsigned int dest,
-                      uint32_t src1, uint32_t src2, uint64_t other)
+static bool make_goto(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
+                      int src2, uint64_t other)
 {
     ASSERT(unit != NULL);
     ASSERT(unit->regs != NULL);
@@ -882,7 +882,7 @@ static bool make_goto(RTLUnit *unit, RTLInsn *insn, unsigned int dest,
 
     /* Terminate the current basic block after this instruction. */
     unit->blocks[unit->cur_block].last_insn = unit->num_insns;
-    unit->have_block = 0;
+    unit->have_block = false;
 
     return true;
 }
@@ -892,13 +892,13 @@ static bool make_goto(RTLUnit *unit, RTLInsn *insn, unsigned int dest,
 /**
  * make_goto_cond:  Encode a GOTO_IF_Z or GOTO_IF_NZ instruction.
  */
-static bool make_goto_cond(RTLUnit *unit, RTLInsn *insn, unsigned int dest,
-                           uint32_t src1, uint32_t src2, uint64_t other)
+static bool make_goto_cond(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
+                           int src2, uint64_t other)
 {
     ASSERT(unit != NULL);
     ASSERT(unit->regs != NULL);
     ASSERT(insn != NULL);
-    ASSERT(src1 < unit->next_reg);
+    ASSERT(src1 >= 0 && src1 < unit->next_reg);
     ASSERT(other < unit->next_label);
 
 #ifdef ENABLE_OPERAND_SANITY_CHECKS
@@ -937,13 +937,13 @@ static bool make_goto_cond(RTLUnit *unit, RTLInsn *insn, unsigned int dest,
 /**
  * make_return:  Encode a RETURN instruction.
  */
-static bool make_return(RTLUnit *unit, RTLInsn *insn, unsigned int dest,
-                        uint32_t src1, uint32_t src2, uint64_t other)
+static bool make_return(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
+                        int src2, uint64_t other)
 {
     ASSERT(unit != NULL);
     ASSERT(unit->regs != NULL);
     ASSERT(insn != NULL);
-    ASSERT(src1 < unit->next_reg);
+    ASSERT(src1 >= 0 && src1 < unit->next_reg);
 
 #ifdef ENABLE_OPERAND_SANITY_CHECKS
     if (src1 != 0) {
@@ -956,7 +956,7 @@ static bool make_return(RTLUnit *unit, RTLInsn *insn, unsigned int dest,
 
     /* Terminate the current basic block, like GOTO. */
     unit->blocks[unit->cur_block].last_insn = unit->num_insns;
-    unit->have_block = 0;
+    unit->have_block = false;
 
     return true;
 }
@@ -966,8 +966,8 @@ static bool make_return(RTLUnit *unit, RTLInsn *insn, unsigned int dest,
 /**
  * make_illegal:  Encode an ILLEGAL instruction.
  */
-static bool make_illegal(RTLUnit *unit, RTLInsn *insn, unsigned int dest,
-                         uint32_t src1, uint32_t src2, uint64_t other)
+static bool make_illegal(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
+                         int src2, uint64_t other)
 {
     return true;  // Nothing to encode.
 }
@@ -976,8 +976,8 @@ static bool make_illegal(RTLUnit *unit, RTLInsn *insn, unsigned int dest,
 /************************ Encoding function table ************************/
 /*************************************************************************/
 
-bool (* const makefunc_table[])(RTLUnit *, RTLInsn *, unsigned int,
-                                uint32_t, uint32_t, uint64_t) = {
+bool (* const makefunc_table[])(RTLUnit *, RTLInsn *, int, int, int,
+                                uint64_t) = {
     [RTLOP_NOP       ] = make_nop,
     [RTLOP_SET_ALIAS ] = make_set_alias,
     [RTLOP_GET_ALIAS ] = make_get_alias,

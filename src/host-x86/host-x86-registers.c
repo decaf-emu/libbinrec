@@ -214,26 +214,25 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int32_t insn_index,
 {
     ASSERT(ctx);
     ASSERT(ctx->unit);
-    ASSERT(insn_index >= 0);
-    ASSERT((uint32_t)insn_index < ctx->unit->num_insns);
+    ASSERT(insn_index >= 0 && (uint32_t)insn_index < ctx->unit->num_insns);
     ASSERT(block_index >= 0);
     ASSERT((unsigned int)block_index < ctx->unit->num_blocks);
 
     const RTLUnit * const unit = ctx->unit;
     const RTLInsn * const insn = &unit->insns[insn_index];
 
-    const uint32_t dest = insn->dest;
-    ASSERT(dest < unit->next_reg);
+    const int dest = insn->dest;
+    ASSERT(dest >= 0 && dest < unit->next_reg);
     const RTLRegister * const dest_reg = &unit->regs[dest];
     HostX86RegInfo * const dest_info = &ctx->regs[dest];
 
-    const uint32_t src1 = insn->src1;
-    ASSERT(src1 < unit->next_reg);
+    const int src1 = insn->src1;
+    ASSERT(src1 >= 0 && src1 < unit->next_reg);
     const RTLRegister * const src1_reg = &unit->regs[src1];
     const HostX86RegInfo * const src1_info = &ctx->regs[src1];
 
-    const uint32_t src2 = insn->src2;
-    ASSERT(src2 < unit->next_reg);
+    const int src2 = insn->src2;
+    ASSERT(src2 >= 0 && src2 < unit->next_reg);
     const RTLRegister * const src2_reg = &unit->regs[src2];
     const HostX86RegInfo * const src2_info = &ctx->regs[src2];
 
@@ -309,9 +308,7 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int32_t insn_index,
         } else {
             /* Make sure not to collide with any registers that have
              * already been allocated. */
-            for (uint32_t r = ctx->fixed_reg_list; r;
-                 r = ctx->regs[r].next_fixed)
-            {
+            for (int r = ctx->fixed_reg_list; r; r = ctx->regs[r].next_fixed) {
                 if (unit->regs[r].birth >= dest_reg->death) {
                     break;
                 }
@@ -769,11 +766,11 @@ static void first_pass_for_block(HostX86Context *ctx, int block_index)
         (ctx->handle->host_opt & BINREC_OPT_H_X86_FIXED_REGS) != 0;
 
     const int num_aliases = unit->next_alias;
-    block_info->alias_load =
-        (uint16_t *)&ctx->alias_buffer[block_index * (4 * num_aliases)];
-    block_info->alias_store =
-        (uint16_t *)&ctx->alias_buffer[block_index * (4 * num_aliases)
-                                       + (2 * num_aliases)];
+    block_info->alias_load = (uint16_t *)((char *)ctx->alias_buffer
+                                          + block_index * (4 * num_aliases));
+    block_info->alias_store = (uint16_t *)((char *)ctx->alias_buffer
+                                           + block_index * (4 * num_aliases)
+                                           + (2 * num_aliases));
 
     /* If this block has exactly one entering edge and that edge comes from
      * a block we've already seen, carry alias-store data over from that

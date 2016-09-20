@@ -111,7 +111,7 @@ static bool init_unit(GuestPPCContext *ctx)
         }
     }
 
-    uint32_t cr = 0;
+    int cr = 0;
     for (int i = 0; i < 8; i++) {
         if ((cr_used | cr_changed) & (1 << i)) {
             ALLOC_ALIAS(ctx->alias.cr[i], RTLTYPE_INT32);
@@ -188,7 +188,7 @@ static bool add_epilogue(GuestPPCContext *ctx)
     ADD_INSN(RTLOP_LABEL, 0, 0, 0, ctx->epilogue_label);
 
     if (ctx->cr_changed) {
-        uint32_t cr;
+        int cr;
         ALLOC_REGISTER(cr, RTLTYPE_INT32);
         if (ctx->cr_changed != 0xFF) {
             ADD_INSN(RTLOP_LOAD, cr, ctx->psb_reg, 0,
@@ -207,7 +207,7 @@ static bool add_epilogue(GuestPPCContext *ctx)
             if (ctx->cr_changed & (1 << i)) {
                 DECLARE_NEW_REGISTER(crN, RTLTYPE_INT32);
                 ADD_INSN(RTLOP_GET_ALIAS, crN, 0, 0, ctx->alias.cr[i]);
-                uint32_t shifted_crN;
+                int shifted_crN;
                 if (i == 7) {
                     shifted_crN = crN;
                 } else {

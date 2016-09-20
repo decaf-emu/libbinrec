@@ -40,7 +40,7 @@
  */
 static bool update_cr0(
     GuestPPCContext * const ctx, GuestPPCBlockInfo * const block,
-    const uint32_t address, const uint32_t result, uint32_t xer)
+    const uint32_t address, const int result, int xer)
 {
     RTLUnit * const unit = ctx->unit;
 
@@ -102,7 +102,7 @@ static bool translate_arith_imm(
     ADD_INSN(RTLOP_SET_ALIAS, 0, result, 0, ctx->alias.gpr[get_rD(insn)]);
     ctx->live.gpr[get_rD(insn)] = result;
 
-    uint32_t xer = 0;
+    int xer = 0;
     if (set_ca) {
         ASSERT(rtlop == RTLOP_ADDI);
         ALLOC_REGISTER(xer, RTLTYPE_INT32);

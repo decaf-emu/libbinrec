@@ -330,22 +330,25 @@ extern void rtl_clear_unit(RTLUnit *unit);
  *     True on success, false on error.
  */
 #define rtl_add_insn INTERNAL(rtl_add_insn)
-extern bool rtl_add_insn(RTLUnit *unit, RTLOpcode opcode, uint32_t dest,
-                         uint32_t src1, uint32_t src2, uintptr_t other);
+extern bool rtl_add_insn(RTLUnit *unit, RTLOpcode opcode,
+                         int dest, int src1, int src2, uint64_t other);
 
 /**
  * rtl_alloc_register:  Allocate a new register for use in the given unit.
  * The register's value is undefined until it has been used as the
  * destination of an instruction.
  *
+ * Register numbers will always fit in a uint16_t; they are passed and
+ * returned as int to reduce unnecessary size casts in the compiled code.
+ *
  * [Parameters]
  *     unit: RTLUnit to allocate a register for.
  *     type: Data type for register (RTLTYPE_*).
  * [Return value]
- *     Register number (nonzero) on success, zero on error.
+ *     Register number (positive) on success, zero on error.
  */
 #define rtl_alloc_register INTERNAL(rtl_alloc_register)
-extern uint32_t rtl_alloc_register(RTLUnit *unit, RTLDataType type);
+extern int rtl_alloc_register(RTLUnit *unit, RTLDataType type);
 
 /**
  * rtl_make_unique_pointer:  Mark the given register as being a "unique
@@ -357,21 +360,24 @@ extern uint32_t rtl_alloc_register(RTLUnit *unit, RTLDataType type);
  *     reg: Register number to mark.
  */
 #define rtl_make_unique_pointer INTERNAL(rtl_make_unique_pointer)
-extern void rtl_make_unique_pointer(RTLUnit *unit, uint32_t reg);
+extern void rtl_make_unique_pointer(RTLUnit *unit, int reg);
 
 /**
  * rtl_alloc_alias_register:  Allocate a new register which will serve as
  * an alias for another register.  Alias registers may only be used as the
  * source or target of a MOVE instruction, but they may be reassigned freely.
  *
+ * Alias register numbers will always fit in a uint16_t; they are passed and
+ * returned as int to reduce unnecessary size casts in the compiled code.
+ *
  * [Parameters]
  *     unit: RTLUnit to allocate an alias register for.
  *     type: Data type for register (RTLTYPE_*).
  * [Return value]
- *     Register number (nonzero) on success, zero on error.
+ *     Alias register number (positive) on success, zero on error.
  */
 #define rtl_alloc_alias_register INTERNAL(rtl_alloc_alias_register)
-extern uint32_t rtl_alloc_alias_register(RTLUnit *unit, RTLDataType type);
+extern int rtl_alloc_alias_register(RTLUnit *unit, RTLDataType type);
 
 /**
  * rtl_set_alias_storage:  Define the storage location for an alias register.
@@ -406,19 +412,22 @@ extern uint32_t rtl_alloc_alias_register(RTLUnit *unit, RTLDataType type);
  *     offset: Byte offset for memory access (must be within [-32768,+32767]).
  */
 #define rtl_set_alias_storage INTERNAL(rtl_set_alias_storage)
-extern void rtl_set_alias_storage(RTLUnit *unit, uint32_t alias,
-                                  uint32_t base, int16_t offset);
+extern void rtl_set_alias_storage(RTLUnit *unit, int alias, int base,
+                                  int16_t offset);
 
 /**
  * rtl_alloc_label:  Allocate a new label for use in the given unit.
  *
+ * Label numbers will always fit in a uint16_t; they are passed and
+ * returned as int to reduce unnecessary size casts in the compiled code.
+ *
  * [Parameters]
  *     unit: RTLUnit to allocate a label for.
  * [Return value]
- *     Label number (nonzero) on success, zero on error.
+ *     Label number (positive) on success, zero on error.
  */
 #define rtl_alloc_label INTERNAL(rtl_alloc_label)
-extern uint32_t rtl_alloc_label(RTLUnit *unit);
+extern int rtl_alloc_label(RTLUnit *unit);
 
 /**
  * rtl_finalize_unit:  Perform housekeeping at the end of the given unit's
@@ -445,7 +454,7 @@ extern bool rtl_finalize_unit(RTLUnit *unit);
  *     True on success, false on error.
  */
 #define rtl_optimize_unit INTERNAL(rtl_optimize_unit)
-extern bool rtl_optimize_unit(RTLUnit *unit, uint32_t flags);
+extern bool rtl_optimize_unit(RTLUnit *unit, unsigned int flags);
 
 /**
  * rtl_disassemble_unit:  Return a string containing a disassembled version

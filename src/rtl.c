@@ -131,8 +131,8 @@ static void update_live_ranges(RTLUnit * const unit)
  * function parameter registers on the rtl_add_insn() fast path.
  */
 static NOINLINE bool rtl_add_insn_with_extend(
-    RTLUnit *unit, RTLOpcode opcode, uint32_t dest, uint32_t src1,
-    uint32_t src2, uint64_t other)
+    RTLUnit *unit, RTLOpcode opcode,
+    int dest, int src1, int src2, uint64_t other)
 {
     uint32_t new_insns_size = unit->num_insns + INSNS_EXPAND_SIZE;
     RTLInsn *new_insns =
@@ -162,13 +162,13 @@ static NOINLINE bool rtl_add_insn_with_extend(
  * function parameter registers on the rtl_add_insn() fast path.
  */
 static NOINLINE bool rtl_add_insn_with_new_block(
-    RTLUnit *unit, RTLOpcode opcode, uint32_t dest, uint32_t src1,
-    uint32_t src2, uint64_t other)
+    RTLUnit *unit, RTLOpcode opcode,
+    int dest, int src1, int src2, uint64_t other)
 {
     if (UNLIKELY(!rtl_block_add(unit))) {
         return false;
     }
-    unit->have_block = 1;
+    unit->have_block = true;
     unit->cur_block = unit->num_blocks - 1;
     unit->blocks[unit->cur_block].first_insn = unit->num_insns;
 
@@ -841,7 +841,7 @@ RTLUnit *rtl_create_unit(binrec_t *handle)
     unit->blocks = NULL;
     unit->blocks_size = BLOCKS_EXPAND_SIZE;
     unit->num_blocks = 0;
-    unit->have_block = 0;
+    unit->have_block = false;
     unit->cur_block = 0;
 
     unit->regs = NULL;
@@ -858,7 +858,7 @@ RTLUnit *rtl_create_unit(binrec_t *handle)
     unit->labels_size = LABELS_EXPAND_SIZE;
     unit->next_label = 1;
 
-    unit->finalized = 0;
+    unit->finalized = false;
 
     unit->disassembly = NULL;
 
@@ -921,7 +921,7 @@ void rtl_clear_unit(RTLUnit *unit)
     unit->num_insns = 0;
 
     unit->num_blocks = 0;
-    unit->have_block = 0;
+    unit->have_block = false;
     unit->cur_block = 0;
 
     unit->next_reg = 1;
@@ -932,13 +932,13 @@ void rtl_clear_unit(RTLUnit *unit)
 
     unit->next_label = 1;
 
-    unit->finalized = 0;
+    unit->finalized = false;
 }
 
 /*-----------------------------------------------------------------------*/
 
-bool rtl_add_insn(RTLUnit *unit, RTLOpcode opcode, uint32_t dest,
-                  uint32_t src1, uint32_t src2, uintptr_t other)
+bool rtl_add_insn(RTLUnit *unit, RTLOpcode opcode,
+                  int dest, int src1, int src2, uint64_t other)
 {
     ASSERT(unit != NULL);
     ASSERT(!unit->finalized);
@@ -973,7 +973,7 @@ bool rtl_add_insn(RTLUnit *unit, RTLOpcode opcode, uint32_t dest,
 
 /*-----------------------------------------------------------------------*/
 
-uint32_t rtl_alloc_register(RTLUnit *unit, RTLDataType type)
+int rtl_alloc_register(RTLUnit *unit, RTLDataType type)
 {
     ASSERT(unit != NULL);
     ASSERT(!unit->finalized);
@@ -1011,7 +1011,7 @@ uint32_t rtl_alloc_register(RTLUnit *unit, RTLDataType type)
 
 /*-----------------------------------------------------------------------*/
 
-void rtl_make_unique_pointer(RTLUnit *unit, uint32_t reg)
+void rtl_make_unique_pointer(RTLUnit *unit, int reg)
 {
     ASSERT(unit != NULL);
     ASSERT(!unit->finalized);
@@ -1023,7 +1023,7 @@ void rtl_make_unique_pointer(RTLUnit *unit, uint32_t reg)
 
 /*-----------------------------------------------------------------------*/
 
-uint32_t rtl_alloc_alias_register(RTLUnit *unit, RTLDataType type)
+int rtl_alloc_alias_register(RTLUnit *unit, RTLDataType type)
 {
     ASSERT(unit != NULL);
     ASSERT(!unit->finalized);
@@ -1060,8 +1060,7 @@ uint32_t rtl_alloc_alias_register(RTLUnit *unit, RTLDataType type)
 
 /*-----------------------------------------------------------------------*/
 
-void rtl_set_alias_storage(RTLUnit *unit, uint32_t alias,
-                           uint32_t base, int16_t offset)
+void rtl_set_alias_storage(RTLUnit *unit, int alias, int base, int16_t offset)
 {
     ASSERT(unit != NULL);
     ASSERT(!unit->finalized);
@@ -1077,7 +1076,7 @@ void rtl_set_alias_storage(RTLUnit *unit, uint32_t alias,
 
 /*-----------------------------------------------------------------------*/
 
-uint32_t rtl_alloc_label(RTLUnit *unit)
+int rtl_alloc_label(RTLUnit *unit)
 {
     ASSERT(unit != NULL);
     ASSERT(!unit->finalized);
@@ -1126,7 +1125,7 @@ bool rtl_finalize_unit(RTLUnit *unit)
     /* Terminate the last block (if there is one). */
     if (unit->have_block) {
         unit->blocks[unit->cur_block].last_insn = unit->num_insns - 1;
-        unit->have_block = 0;
+        unit->have_block = false;
     }
 
     /* Add execution graph edges for GOTO instructions. */
@@ -1137,13 +1136,13 @@ bool rtl_finalize_unit(RTLUnit *unit)
     /* Update live ranges for registers used in loops. */
     update_live_ranges(unit);
 
-    unit->finalized = 1;
+    unit->finalized = true;
     return true;
 }
 
 /*-----------------------------------------------------------------------*/
 
-bool rtl_optimize_unit(RTLUnit *unit, uint32_t flags)
+bool rtl_optimize_unit(RTLUnit *unit, unsigned int flags)
 {
     ASSERT(unit != NULL);
     ASSERT(unit->finalized);

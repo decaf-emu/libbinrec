@@ -148,7 +148,7 @@ struct RTLRegister {
     uint16_t unique_pointer;
 
     /* Liveness information */
-    uint8_t live;               // Nonzero if this register has been referenced
+    bool live;                  // True if this register has been referenced
                                 //    (this field is never cleared once set)
     uint16_t live_link;         // Next register in live list (sorted by birth)
     int32_t birth;              // First RTL insn index when register is live
@@ -163,15 +163,14 @@ struct RTLRegister {
             float float_;
             double double_;
         } value;
-        unsigned int arg_index; // Function argument index for RTLREG_FUNC_ARG
+        uint8_t arg_index;      // Function argument index for RTLREG_FUNC_ARG
         struct {
             uint16_t addr_reg;  // Register holding address for RTLREG_MEMORY
             int16_t offset;     // Access offset
-            uint8_t byterev;    // Nonzero if a byte-reversed access, else 0
+            bool byterev;       // True if a byte-reversed access
             uint8_t size;       // Access size in bytes (1 or 2) if this is a
                                 //    narrow integer load, else 0
-            uint8_t is_signed;  // Nonzero if a signed narrow integer load,
-                                //    else 0
+            bool is_signed;     // True if a signed narrow integer load
         } memory;
         struct {
             uint16_t src;       // Source alias register
@@ -256,7 +255,7 @@ struct RTLUnit {
     RTLBlock *blocks;           // Basic block array
     uint16_t blocks_size;       // Size of block array (entries)
     uint16_t num_blocks;        // Number of blocks actually in array
-    uint8_t have_block;         // Nonzero if there is a currently active block
+    bool have_block;            // Nonzero if there is a currently active block
     uint16_t cur_block;         // Current block index if have_block != 0
 
     int16_t *label_blockmap;    // Label-to-block-index mapping (-1 = unset)
@@ -276,13 +275,13 @@ struct RTLUnit {
     uint16_t next_alias;        // Next alias register number to allocate
                                 //    (== number of allocated alias registers)
 
-    uint8_t finalized;          // Nonzero if unit has been finalized
+    bool finalized;             // Nonzero if unit has been finalized
 
     char *disassembly;          // Last disassembly result, or NULL if none
                                 //    (saved so we can free it at destroy time)
 
     /* The following fields are used only by optimization routines: */
-    uint8_t *block_seen;        // Array of "seen" flags for all blocks
+    bool *block_seen;           // Array of "seen" flags for all blocks
                                 //    (used by rtlopt_drop_dead_blocks())
 };
 
@@ -336,8 +335,8 @@ extern void rtl_block_remove_edge(RTLUnit *unit, int from_index,
 
 /* Internal table used by rtl_insn_make(). */
 #define makefunc_table INTERNAL(makefunc_table)
-extern bool (* const makefunc_table[])(RTLUnit *, RTLInsn *, unsigned int,
-                                       uint32_t, uint32_t, uint64_t);
+extern bool (* const makefunc_table[])(RTLUnit *, RTLInsn *, int, int, int,
+                                       uint64_t);
 
 /**
  * rtl_insn_make:  Fill in an RTLInsn structure based on the opcode stored
@@ -354,8 +353,7 @@ extern bool (* const makefunc_table[])(RTLUnit *, RTLInsn *, unsigned int,
  *     True on success, false on error.
  */
 static inline bool rtl_insn_make(RTLUnit *unit, RTLInsn *insn,
-                                 unsigned int dest, uint32_t src1,
-                                 uint32_t src2, uint64_t other)
+                                 int dest, int src1, int src2, uint64_t other)
 {
     ASSERT(unit != NULL);
     ASSERT(unit->insns != NULL);

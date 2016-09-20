@@ -211,7 +211,7 @@ static APPEND_INLINE void append_ModRM_SIB(
  * RTL register.
  */
 static inline void append_test_reg(HostX86Context *ctx, CodeBuffer *code,
-                                   uint32_t reg)
+                                   int reg)
 {
     if ((ctx->handle->host_opt & BINREC_OPT_H_X86_CONDITION_CODES)
      && ctx->cc_reg == reg) {
@@ -841,9 +841,9 @@ static bool translate_block(HostX86Context *ctx, int block_index)
         const RTLInsn * const insn = &unit->insns[insn_index];
         ASSERT(insn->opcode >= RTLOP__FIRST);
         ASSERT(insn->opcode <= RTLOP__LAST);
-        const uint32_t dest = insn->dest;
-        const uint32_t src1 = insn->src1;
-        const uint32_t src2 = insn->src2;
+        const int dest = insn->dest;
+        const int src1 = insn->src1;
+        const int src2 = insn->src2;
 
         /* No instruction translations need more than 28 bytes.  (Worst
          * case: BFINS with 64-bit src1 and 32-bit src2 masks.) */
@@ -2459,8 +2459,8 @@ static void resolve_branches(HostX86Context *ctx)
         HostX86BlockInfo *block_info = &ctx->blocks[i];
         const long branch_offset = block_info->unresolved_branch_offset;
         if (branch_offset >= 0) {
-            const uint32_t label = block_info->unresolved_branch_target;
-            ASSERT(label < ctx->unit->next_label);
+            const int label = block_info->unresolved_branch_target;
+            ASSERT(label >= 0 && label < ctx->unit->next_label);
             ASSERT(ctx->label_offsets[label] >= 0);
             long offset = ctx->label_offsets[label] - branch_offset;
             ASSERT(offset > 0);  // Or else it would have been resolved.

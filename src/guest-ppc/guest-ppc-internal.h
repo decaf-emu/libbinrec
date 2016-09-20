@@ -45,21 +45,21 @@ typedef struct GuestPPCBlockInfo {
         reserve_changed : 1;
 
     /* RTL label for this block, or 0 if none has been allocated yet. */
-    uint32_t label;
+    int label;
 } GuestPPCBlockInfo;
 
 /* RTL register set corresponding to guest CPU state. */
 typedef struct GuestPPCRegSet {
-    uint32_t gpr[32];
-    uint32_t fpr[32];
-    uint32_t cr[8];
-    uint32_t lr;
-    uint32_t ctr;
-    uint32_t xer;
-    uint32_t fpscr;
-    uint32_t reserve_flag;
-    uint32_t reserve_address;
-    uint32_t nia;
+    uint16_t gpr[32];
+    uint16_t fpr[32];
+    uint16_t cr[8];
+    uint16_t lr;
+    uint16_t ctr;
+    uint16_t xer;
+    uint16_t fpscr;
+    uint16_t reserve_flag;
+    uint16_t reserve_address;
+    uint16_t nia;
 } GuestPPCRegSet;
 
 /* Context block used to maintain translation state. */
@@ -75,10 +75,10 @@ typedef struct GuestPPCContext {
     int blocks_size;  // Allocated size of array.
 
     /* RTL label for the unit epilogue. */
-    uint32_t epilogue_label;
+    uint16_t epilogue_label;
 
     /* RTL register holding the processor state block. */
-    uint32_t psb_reg;
+    uint16_t psb_reg;
 
     /* Alias registers for guest CPU state. */
     GuestPPCRegSet alias;
@@ -178,7 +178,7 @@ typedef struct GuestPPCContext {
  * from the current function on failure.
  */
 #define DECLARE_NEW_REGISTER(name, type)                        \
-    const uint32_t name = rtl_alloc_register(unit, (type));     \
+    const int name = rtl_alloc_register(unit, (type));          \
     if (UNLIKELY(!name)) {                                      \
         log_ice(ctx->handle, "Failed to allocate register" ICE_SUFFIX); \
         return false;                                           \

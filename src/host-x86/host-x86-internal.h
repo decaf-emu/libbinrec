@@ -68,21 +68,21 @@ enum {
 /* Data associated with each RTL register. */
 typedef struct HostX86RegInfo {
     /* Has a host register been allocated for this register? */
-    uint8_t host_allocated;
+    bool host_allocated;
     /* Index of allocated register (X86Register). */
     uint8_t host_reg;
 
-    /* Host register (X86Register) to use for temporary values in the
-     * instruction that sets this register. */
+    /* Has a host register been allocated for temporary values in the
+     * instruction that sets this register? */
+    bool temp_allocated;
+    /* Host register (X86Register) to use for temporary values. */
     uint8_t host_temp;
-    /* Has a temporary host register been allocated? */
-    uint8_t temp_allocated;
 
     /* Bitmask of host registers not to allocate for this register. */
     uint32_t avoid_regs;
 
     /* Has a stack frame slot been allocated to spill this register? */
-    uint8_t frame_allocated;
+    bool frame_allocated;
     /* Index of the allocated stack frame. */
     uint8_t frame_slot;
     /* Byte offset (from SP) of the allocated stack frame. */
@@ -90,7 +90,7 @@ typedef struct HostX86RegInfo {
 
     /* Should predecessor blocks load this register with its alias's value
      * on block exit? (see RTLRegister.alias for the alias number) */
-    uint8_t merge_alias;
+    bool merge_alias;
     /* Target host register for alias loads.  This may not be the same as
      * host_reg! */
     uint8_t host_merge;
@@ -124,7 +124,7 @@ typedef struct HostX86BlockInfo {
     long unresolved_branch_offset;
     /* Label targeted by the unresolved branch, or 0 if it targets the
      * function epilogue. */
-    uint32_t unresolved_branch_target;
+    int unresolved_branch_target;
 } HostX86BlockInfo;
 
 /* Context block used to maintain translation state. */
@@ -145,7 +145,7 @@ typedef struct HostX86Context {
      * yet been seen. */
     long *label_offsets;
     /* Buffer for alias_* arrays for each block. */
-    uint8_t *alias_buffer;
+    void *alias_buffer;
 
     /* Current mapping from x86 to RTL registers. */
     uint16_t reg_map[32];
