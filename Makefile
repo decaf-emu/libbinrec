@@ -83,6 +83,16 @@ ENABLE_OPERAND_SANITY_CHECKS = 1
 INSTALL_PKGCONFIG = 0
 
 
+# STRIP_TESTS:  If this variable is set to 1, test programs will be built
+# with debugging information removed.  This makes it harder to debug the
+# programs in the debugger, but it can provide a significant savings in
+# disk space consumed by the tests.
+#
+# The default is 1 (test programs will be stripped).
+
+STRIP_TESTS = 1
+
+
 # TESTS:  If this variable is not empty, it gives a list of tests to be
 # executed for "make test" or "make coverage".  Tests should be specified
 # by the pathname to the test source file without the ".c" extension; for
@@ -440,6 +450,7 @@ TEST_UTILITY_OBJECTS = \
 $(TEST_BINS) : %: %.o $(TEST_UTILITY_OBJECTS) $(STATIC_LIB)
 	$(ECHO) 'Linking $@'
 	$(Q)$(CC) $(LDFLAGS) -o '$@' $^ $(LIBS)
+	$(Q)$(call if-true,STRIP_TESTS,strip '$@')
 
 tests/coverage: tests/coverage-main.o $(TEST_UTILITY_OBJECTS:%.o=%_cov.o) $(LIBRARY_OBJECTS:%.o=%_cov.o) $(TEST_SOURCES:%.c=%_cov.o)
 	$(ECHO) 'Linking $@'
