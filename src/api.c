@@ -32,7 +32,7 @@
 static const char *arch_name(binrec_arch_t arch)
 {
     switch (arch) {
-      case BINREC_ARCH_POWERPC_750CL:
+      case BINREC_ARCH_PPC_7XX:
         return "PowerPC 750CL";
       case BINREC_ARCH_X86_64_SYSV:
         return "x86-64 (SysV ABI)";
@@ -55,7 +55,7 @@ static bool arch_is_little_endian(binrec_arch_t arch)
 {
     switch (arch) {
       case BINREC_ARCH_INVALID:  // Avoid a compiler warning.
-      case BINREC_ARCH_POWERPC_750CL:
+      case BINREC_ARCH_PPC_7XX:
         return false;
       case BINREC_ARCH_X86_64_SYSV:
       case BINREC_ARCH_X86_64_WINDOWS:
@@ -372,7 +372,7 @@ int binrec_translate(binrec_t *handle, uint32_t address,
 
     bool (*guest_translate)(binrec_t *handle, uint32_t address, RTLUnit *unit);
     switch (handle->setup.guest) {
-      case BINREC_ARCH_POWERPC_750CL:
+      case BINREC_ARCH_PPC_7XX:
         guest_translate = guest_ppc_translate;
         break;
       default:

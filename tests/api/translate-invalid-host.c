@@ -17,7 +17,7 @@ int main(void)
 {
     binrec_setup_t setup;
     memset(&setup, 0, sizeof(setup));
-    setup.guest = BINREC_ARCH_POWERPC_750CL;
+    setup.guest = BINREC_ARCH_PPC_7XX;
     setup.log = log_capture;
     binrec_t *handle;
 
@@ -39,7 +39,7 @@ int main(void)
     binrec_destroy_handle(handle);
     clear_log_messages();
 
-    setup.host = BINREC_ARCH_POWERPC_750CL;
+    setup.host = BINREC_ARCH_PPC_7XX;
     EXPECT(handle = binrec_create_handle(&setup));
     EXPECT_FALSE(binrec_translate(handle, 0, (void *[1]){}, (long[1]){}));
     EXPECT_STREQ(get_log_messages(),

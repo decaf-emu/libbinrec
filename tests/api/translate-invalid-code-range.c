@@ -17,7 +17,7 @@ int main(void)
 {
     binrec_setup_t setup;
     memset(&setup, 0, sizeof(setup));
-    setup.guest = BINREC_ARCH_POWERPC_750CL;
+    setup.guest = BINREC_ARCH_PPC_7XX;
     setup.host = BINREC_ARCH_X86_64_SYSV;
     setup.log = log_capture;
     binrec_t *handle;

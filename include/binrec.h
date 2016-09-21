@@ -49,16 +49,35 @@ typedef struct binrec_t binrec_t;
 
 /**
  * binrec_arch_t:  Enumeration of architectures and variants supported by
- * the library.  Not all architectures are supported as both guest and
- * host; see the inline comments below.
+ * the library.  All currently supported architectures are either
+ * guest-only or host-only; see the inline comments at each enumerator.
+ *
+ * As a general rule, libbinrec assumes that its input is a program
+ * designed to run on the selected guest architecture, and therefore all
+ * instructions encountered in the program will be valid instruction
+ * encodings.  Consequently, this enumeration only includes coarse
+ * architecture families which encompass a group of compatible processors;
+ * for example, the PPC_7XX architecture covers all PowerPC CPUs through
+ * the 750CL, and the input program is assumed to use only instructions
+ * which are valid on the architecture it was written for. See also the
+ * note on library limitations in the README file.
  */
 typedef enum binrec_arch_t {
     /* Constant used to indicate an unsupported architecture by
      * binrec_native_arch(). */
     BINREC_ARCH_INVALID = 0,
 
-    BINREC_ARCH_POWERPC_750CL,          // Guest only.
+    /* PowerPC 32-bit architecture as implemented in PowerPC 7xx
+     * processors, including all other instruction set extensions through
+     * the PowerPC 750CL.  Also supports programs written for PowerPC 6xx
+     * CPUs, with the exception of non-PowerPC instructions (such as ABS)
+     * specific to the PowerPC 601. */
+    BINREC_ARCH_PPC_7XX,                // Guest only.
+
+    /* Intel/AMD x86 64-bit architecture, using the SysV ABI. */
     BINREC_ARCH_X86_64_SYSV,            // Host only.
+
+    /* Intel/AMD x86 64-bit architecture, using the Windows ABI. */
     BINREC_ARCH_X86_64_WINDOWS,         // Host only.
 
     /* Variant of BINREC_ARCH_X86_64_WINDOWS which prepends unwind
