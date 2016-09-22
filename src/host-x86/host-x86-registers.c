@@ -1252,11 +1252,6 @@ bool host_x86_allocate_registers(HostX86Context *ctx)
         }
     }
 
-    /* x86-64 requires a 16-byte-aligned stack, and the code generator
-     * expects us to give it a properly aligned frame size in order to
-     * keep the stack aligned after saving registers. */
-    ctx->frame_size = align_up(ctx->frame_size, 16);
-
     return true;
 }
 

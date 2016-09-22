@@ -165,8 +165,7 @@ typedef struct HostX86Context {
     int32_t last_cx_death;
     int32_t last_dx_death;
 
-    /* Stack frame size.  Must be a multiple of 16. */
-    // FIXME: why not make use of the wasted 8 bytes with no pushes?
+    /* Stack frame size. */
     int frame_size;
     /* Total stack allocation, excluding PUSH instructions. */
     int stack_alloc;

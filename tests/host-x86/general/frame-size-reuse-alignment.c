@@ -18,19 +18,20 @@ static const unsigned int host_opt = 0;
 
 static int add_rtl(RTLUnit *unit)
 {
-    alloc_dummy_registers(unit, 1, RTLTYPE_INT32);
-
-    uint32_t reg1, alias;
-    EXPECT(alias = rtl_alloc_alias_register(unit, RTLTYPE_ADDRESS));
-    EXPECT(reg1 = rtl_alloc_register(unit, RTLTYPE_ADDRESS));
-    EXPECT(rtl_add_insn(unit, RTLOP_GET_ALIAS, reg1, 0, 0, alias));
+    uint32_t reg, alias;
+    EXPECT(alias = rtl_alloc_alias_register(unit, RTLTYPE_INT32));
+    EXPECT(reg = rtl_alloc_register(unit, RTLTYPE_INT32));
+    EXPECT(rtl_add_insn(unit, RTLOP_GET_ALIAS, reg, 0, 0, alias));
 
     return EXIT_SUCCESS;
 }
 
 static const uint8_t expected_code[] = {
+    /* The function's frame size is 4 bytes (for the single alias).
+     * This fits within the 8-byte stack realignment that's required
+     * anyway, so we shouldn't add any more space on top of that. */
     0x48,0x83,0xEC,0x08,                // sub $8,%rsp
-    0x48,0x8B,0x0C,0x24,                // mov (%rsp),%rcx
+    0x8B,0x04,0x24,                     // mov (%rsp),%eax
     0x48,0x83,0xC4,0x08,                // add $8,%rsp
     0xC3,                               // ret
 };

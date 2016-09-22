@@ -2346,7 +2346,6 @@ static bool append_prologue(HostX86Context *ctx)
 {
     ASSERT(ctx);
     ASSERT(ctx->handle);
-    ASSERT(ctx->frame_size % 16 == 0);
 
     binrec_t * const handle = ctx->handle;
     const uint32_t regs_to_save = ctx->regs_touched & ctx->callee_saved_regs;
@@ -2357,16 +2356,29 @@ static bool append_prologue(HostX86Context *ctx)
     int total_stack_use;
     const int push_size = 8 * popcnt32(regs_to_save & 0xFFFF);
     total_stack_use = push_size;
-    /* We have to realign the stack at this specific point; if we're saving
-     * XMM registers then those need to be aligned, and in any case we
-     * maintain our local stack space multiples of 16 bytes.  Somewhat
-     * confusingly, this means setting total_stack_use to an _un_aligned
-     * value, since the stack pointer comes in unaligned due to the return
-     * address that was just pushed onto it. */
-    if (total_stack_use % 16 == 0) {
-        total_stack_use += 8;
+    /* If we have any XMM registers to save, we have to align the stack at
+     * this point so the saves and loads are properly aligned.  This implies
+     * that we also need to align the frame size here, since the final stack
+     * pointer must remain 16-byte aligned. */
+    const uint32_t xmm_to_save = regs_to_save >> 16;
+    if (xmm_to_save) {
+        /* The stack pointer after pushes is either 0 or 8 bytes past a
+         * multiple of 16.  To align it, we subtract 8 if the number of
+         * pushes is even.  (That's not a typo -- the stack pointer comes
+         * in unaligned due to the return address pushed by the CALL
+         * instruction that jumped here.) */
+        if (push_size % 16 == 0) {
+            total_stack_use += 8;
+        }
+        total_stack_use += 16 * popcnt32(xmm_to_save);
+        ctx->frame_size = align_up(ctx->frame_size, 16);
     }
-    total_stack_use += 16 * popcnt32(regs_to_save >> 16) + ctx->frame_size;
+    total_stack_use += ctx->frame_size;
+    /* Final stack pointer alignment: the total stack usage should be a
+     * multiple of 16 plus 8, again because of the return address. */
+    if (total_stack_use % 16 != 8) {
+        total_stack_use += 16 - ((total_stack_use + 8) & 15);
+    }
 
     /* Calculate the amount of stack space to reserve, excluding GPR pushes. */
     const int stack_alloc = total_stack_use - push_size;
