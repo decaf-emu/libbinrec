@@ -24,7 +24,7 @@ int main(void)
     EXPECT(unit = rtl_create_unit(handle));
 
     /* Allocate enough RTL registers to use up all available host registers. */
-    alloc_dummy_registers(unit, 15, RTLTYPE_INT32);
+    alloc_dummy_registers(unit, 14, RTLTYPE_INT32);
     alloc_dummy_registers(unit, 16, RTLTYPE_FLOAT);
 
     EXPECT(rtl_finalize_unit(unit));
@@ -35,11 +35,7 @@ int main(void)
         0x41,0x54,                      // push %r12
         0x41,0x55,                      // push %r13
         0x41,0x56,                      // push %r14
-        0x41,0x57,                      // push %r15
-        0x48,0x83,0xEC,0x08,            // sub $8,%rsp  # for stack alignment
         /* All XMM registers are caller-saved in the SysV ABI. */
-        0x48,0x83,0xC4,0x08,            // add $8,%rsp
-        0x41,0x5F,                      // pop %r15
         0x41,0x5E,                      // pop %r14
         0x41,0x5D,                      // pop %r13
         0x41,0x5C,                      // pop %r12

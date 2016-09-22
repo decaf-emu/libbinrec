@@ -18,7 +18,7 @@ static const unsigned int host_opt = 0;
 
 static int add_rtl(RTLUnit *unit)
 {
-    alloc_dummy_registers(unit, 9, RTLTYPE_INT32);
+    alloc_dummy_registers(unit, 8, RTLTYPE_INT32);
 
     uint32_t regs[6];
     for (int i = 0; i < lenof(regs); i++) {
@@ -38,16 +38,12 @@ static const uint8_t expected_code[] = {
     0x41,0x54,                          // push %r12
     0x41,0x55,                          // push %r13
     0x41,0x56,                          // push %r14
-    0x41,0x57,                          // push %r15
-    0x48,0x83,0xEC,0x08,                // sub $8,%rsp
-    0x8B,0xDF,                          // mov %edi,%ebx
-    0x8B,0xEE,                          // mov %esi,%ebp
-    0x44,0x8B,0xE2,                     // mov %edx,%r12d
-    0x44,0x8B,0xE9,                     // mov %ecx,%r13d
-    0x45,0x8B,0xF0,                     // mov %r8d,%r14d
-    0x45,0x8B,0xF9,                     // mov %r9d,%r15d
-    0x48,0x83,0xC4,0x08,                // add $8,%rsp
-    0x41,0x5F,                          // pop %r15
+    0x44,0x8B,0xDF,                     // mov %edi,%r11d
+    0x8B,0xDE,                          // mov %esi,%ebx
+    0x8B,0xEA,                          // mov %edx,%ebp
+    0x44,0x8B,0xE1,                     // mov %ecx,%r12d
+    0x45,0x8B,0xE8,                     // mov %r8d,%r13d
+    0x45,0x8B,0xF1,                     // mov %r9d,%r14d
     0x41,0x5E,                          // pop %r14
     0x41,0x5D,                          // pop %r13
     0x41,0x5C,                          // pop %r12

@@ -404,11 +404,15 @@ extern int rtl_alloc_alias_register(RTLUnit *unit, RTLDataType type);
  * the end of the unit or appending a final NOP with that register as a
  * source.
  *
+ * The number of distinct base registers used for aliases should be kept to
+ * a minimum; host code generators may fail at register allocation if too
+ * many base registers are used.
+ *
  * [Parameters]
  *     unit: RTLUnit to operate on.
  *     alias: Alias register to define the storage location for.
  *     base: RTL register containing base address for memory access (must be
- *         nonzero).
+ *         nonzero and of type RTLTYPE_ADDRESS).
  *     offset: Byte offset for memory access (must be within [-32768,+32767]).
  */
 #define rtl_set_alias_storage INTERNAL(rtl_set_alias_storage)

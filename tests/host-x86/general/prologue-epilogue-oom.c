@@ -39,7 +39,7 @@ int main(void)
     EXPECT(unit = rtl_create_unit(handle));
 
     /* Allocate enough RTL registers to use up all available GPRs. */
-    alloc_dummy_registers(unit, 15, RTLTYPE_INT32);
+    alloc_dummy_registers(unit, 14, RTLTYPE_INT32);
 
     /* Add some NOPs to pad the code stream, so the entire buffer doesn't
      * fit in the space reserved for the prologue. */
@@ -53,9 +53,7 @@ int main(void)
         /* Offset to code. */
         0x20,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
         /* Unwind data starts here. */
-        0x01,0x10,0x09,0x00,            // UNWIND_INFO
-        0x0C,0x02,                      // 0x0C: UWOP_ALLOC_SMALL 0
-        0x0A,0xF0,                      // 0x0A: UWOP_PUSH_NONVOL r15
+        0x01,0x0A,0x07,0x00,            // UNWIND_INFO
         0x08,0xE0,                      // 0x08: UWOP_PUSH_NONVOL r14
         0x06,0xD0,                      // 0x06: UWOP_PUSH_NONVOL r13
         0x04,0xC0,                      // 0x04: UWOP_PUSH_NONVOL r12
@@ -64,7 +62,7 @@ int main(void)
         0x01,0x50,                      // 0x01: UWOP_PUSH_NONVOL rbp
         0x00,0x30,                      // 0x00: UWOP_PUSH_NONVOL rbx
         /* Padding to align the code. */
-        0x00,0x00,
+        0x00,0x00,0x00,0x00,0x00,0x00,
         /* Actual code starts here, 16-byte aligned. */
         0x53,                           // push %rbx
         0x55,                           // push %rbp
@@ -73,8 +71,6 @@ int main(void)
         0x41,0x54,                      // push %r12
         0x41,0x55,                      // push %r13
         0x41,0x56,                      // push %r14
-        0x41,0x57,                      // push %r15
-        0x48,0x83,0xEC,0x08,            // sub $8,%rsp  # for stack alignment
         0x0F,0x1F,0x05,0x01,0x00,0x00,0x00, // nop 1(%rip)
         0x0F,0x1F,0x05,0x02,0x00,0x00,0x00, // nop 2(%rip)
         0x0F,0x1F,0x05,0x03,0x00,0x00,0x00, // nop 3(%rip)
@@ -90,8 +86,6 @@ int main(void)
         0x0F,0x1F,0x05,0x0D,0x00,0x00,0x00, // nop 13(%rip)
         0x0F,0x1F,0x05,0x0E,0x00,0x00,0x00, // nop 14(%rip)
         0x0F,0x1F,0x05,0x0F,0x00,0x00,0x00, // nop 15(%rip)
-        0x48,0x83,0xC4,0x08,            // add $8,%rsp
-        0x41,0x5F,                      // pop %r15
         0x41,0x5E,                      // pop %r14
         0x41,0x5D,                      // pop %r13
         0x41,0x5C,                      // pop %r12

@@ -18,7 +18,7 @@ static const unsigned int host_opt = BINREC_OPT_H_X86_FIXED_REGS;
 
 static int add_rtl(RTLUnit *unit)
 {
-    uint32_t reg1, reg2, alias, tempreg[13];
+    uint32_t reg1, reg2, alias, tempreg[12];
     EXPECT(reg1 = rtl_alloc_register(unit, RTLTYPE_ADDRESS));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_ARG, reg1, 0, 0, 0));
     EXPECT(alias = rtl_alloc_alias_register(unit, RTLTYPE_ADDRESS));
@@ -69,8 +69,6 @@ static const uint8_t expected_code[] = {
     0x41,0x54,                          // push %r12
     0x41,0x55,                          // push %r13
     0x41,0x56,                          // push %r14
-    0x41,0x57,                          // push %r15
-    0x48,0x83,0xEC,0x08,                // sub $8,%rsp
     0x33,0xC0,                          // xor %eax,%eax
     0x0F,0x1F,0x05,0x01,0x00,0x00,0x00, // nop 1(%rip)
     0x33,0xC9,                          // xor %ecx,%ecx
@@ -85,7 +83,6 @@ static const uint8_t expected_code[] = {
     0x45,0x33,0xE4,                     // xor %r12d,%r12d
     0x45,0x33,0xED,                     // xor %r13d,%r13d
     0x45,0x33,0xF6,                     // xor %r14d,%r14d
-    0x45,0x33,0xFF,                     // xor %r15d,%r15d
     0x48,0x8B,0xD0,                     // mov %rax,%rdx
     0x33,0xC0,                          // xor %eax,%eax
     0x0F,0x1F,0x05,0x02,0x00,0x00,0x00, // nop 2(%rip)
@@ -94,8 +91,6 @@ static const uint8_t expected_code[] = {
     0x33,0xD2,                          // xor %edx,%edx
     0x48,0xF7,0xF1,                     // div %rcx
     0x48,0x89,0x97,0x34,0x12,0x00,0x00, // mov %rdx,0x1234(%rdi)
-    0x48,0x83,0xC4,0x08,                // add $8,%rsp
-    0x41,0x5F,                          // pop %r15
     0x41,0x5E,                          // pop %r14
     0x41,0x5D,                          // pop %r13
     0x41,0x5C,                          // pop %r12

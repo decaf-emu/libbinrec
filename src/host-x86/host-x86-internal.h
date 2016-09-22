@@ -69,7 +69,7 @@ enum {
 typedef struct HostX86RegInfo {
     /* Has a host register been allocated for this register? */
     bool host_allocated;
-    /* Index of allocated register (X86Register). */
+    /* Index of allocated host register (X86Register). */
     uint8_t host_reg;
 
     /* Has a host register been allocated for temporary values in the
@@ -81,18 +81,18 @@ typedef struct HostX86RegInfo {
     /* Bitmask of host registers not to allocate for this register. */
     uint32_t avoid_regs;
 
-    /* Has a stack frame slot been allocated to spill this register? */
-    bool frame_allocated;
-    /* Index of the allocated stack frame. */
-    uint8_t frame_slot;
-    /* Byte offset (from SP) of the allocated stack frame. */
-    int16_t stack_offset;
+    /* Has a spill location been allocated for this register? */
+    bool spilled;
+    /* Byte offset from SP of the spill storage location. */
+    int16_t spill_offset;
+    /* Instruction index at which the register was spilled. */
+    int32_t spill_insn;
 
     /* Should predecessor blocks load this register with its alias's value
      * on block exit? (see RTLRegister.alias for the alias number) */
     bool merge_alias;
-    /* Target host register for alias loads.  This may not be the same as
-     * host_reg! */
+    /* Target host register for alias loads.  This might not be the same
+     * as host_reg! */
     uint8_t host_merge;
 
     /* Next register in the fixed-allocation list, or 0 if the end of the
@@ -102,12 +102,6 @@ typedef struct HostX86RegInfo {
 
 /* Data associated with each basic block. */
 typedef struct HostX86BlockInfo {
-    /* Map from host registers to RTL registers as of the beginning of the
-     * block.  Set during register allocation and used to initialize the
-     * current register map when starting to translate the block. */
-    // FIXME: looks like we won't need this?
-    uint16_t initial_reg_map[32];
-
     /* Bitmap of host registers which are live at the end of the block. */
     uint32_t end_live;
 
@@ -172,9 +166,14 @@ typedef struct HostX86Context {
     int32_t last_dx_death;
 
     /* Stack frame size.  Must be a multiple of 16. */
+    // FIXME: why not make use of the wasted 8 bytes with no pushes?
     int frame_size;
     /* Total stack allocation, excluding PUSH instructions. */
     int stack_alloc;
+    /* Were any registers spilled? */
+    bool has_spills;
+    /* Stack offset of temporary storage for spill reloads. */
+    int spill_save;
 } HostX86Context;
 
 /*************************************************************************/

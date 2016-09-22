@@ -1072,6 +1072,7 @@ void rtl_set_alias_storage(RTLUnit *unit, int alias, int base, int16_t offset)
 
     unit->aliases[alias].base = base;
     unit->aliases[alias].offset = offset;
+    unit->regs[base].is_alias_base = true;
 }
 
 /*-----------------------------------------------------------------------*/
