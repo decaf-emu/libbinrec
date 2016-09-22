@@ -596,64 +596,6 @@ static APPEND_INLINE void append_move_or_load(
 /*-----------------------------------------------------------------------*/
 
 /**
- * append_reload_spilled_reg:  If the given register has been spilled,
- * append instructions to copy the associated host register's contents to
- * temporary storage and load the spilled value into the register;
- * otherwise, do nothing.
- *
- * [Parameters]
- *     code: Output code buffer.
- *     ctx: Translation context.
- *     unit: RTLUnit being translated.
- *     insn_index: Index of current instruction in ctx->unit->insns[].
- *     reg_index: Index of register to reload.
- */
-static APPEND_INLINE void append_reload_spilled_reg(
-    CodeBuffer *code, const HostX86Context *ctx, const RTLUnit *unit,
-    int insn_index, int reg_index)
-{
-    if (!is_spilled(ctx, reg_index, insn_index)) {
-        return;
-    }
-    const HostX86RegInfo *reg_info = &ctx->regs[reg_index];
-    const X86Register host_reg = reg_info->host_reg;
-    const int spill_index = ctx->reg_map[host_reg];
-    const RTLDataType type = ctx->unit->regs[spill_index].type;
-    append_store(code, type, host_reg, X86_SP, ctx->spill_save);
-    append_load(code, type, host_reg, X86_SP, reg_info->spill_offset);
-}
-
-/*-----------------------------------------------------------------------*/
-
-/**
- * append_unload_spilled_reg:  If the given register has been spilled,
- * append instructions to restore the associated host register's contents
- * from temporary storage; otherwise, do nothing.
- *
- * [Parameters]
- *     code: Output code buffer.
- *     ctx: Translation context.
- *     unit: RTLUnit being translated.
- *     insn_index: Index of current instruction in ctx->unit->insns[].
- *     reg_index: Index of register to reload.
- */
-static APPEND_INLINE void append_unload_spilled_reg(
-    CodeBuffer *code, const HostX86Context *ctx, const RTLUnit *unit,
-    int insn_index, int reg_index)
-{
-    if (!is_spilled(ctx, reg_index, insn_index)) {
-        return;
-    }
-    const HostX86RegInfo *reg_info = &ctx->regs[reg_index];
-    const X86Register host_reg = reg_info->host_reg;
-    const int spill_index = ctx->reg_map[host_reg];
-    append_load(code, ctx->unit->regs[spill_index].type, host_reg,
-                X86_SP, ctx->spill_save);
-}
-
-/*-----------------------------------------------------------------------*/
-
-/**
  * append_test_reg:  Append an instruction to test the value of the given
  * RTL register for zeroness.
  */
@@ -1052,10 +994,18 @@ static bool translate_block(HostX86Context *ctx, int block_index)
                 }
             }
             if (need_store) {
-                append_reload_spilled_reg(&code, ctx, unit, insn_index, src1);
-                append_store_alias(&code, ctx, &unit->aliases[insn->alias],
-                                   ctx->regs[src1].host_reg);
-                append_unload_spilled_reg(&code, ctx, unit, insn_index, src1);
+                if (is_spilled(ctx, src1, insn_index)) {
+                    const RTLDataType type = unit->regs[src1].type;
+                    const X86Register temp_reg =
+                        (type <= RTLTYPE_ADDRESS ? X86_R15 : X86_XMM15);
+                    append_load(&code, type, temp_reg,
+                                X86_SP, ctx->regs[src1].spill_offset);
+                    append_store_alias(&code, ctx, &unit->aliases[insn->alias],
+                                       temp_reg);
+                } else {
+                    append_store_alias(&code, ctx, &unit->aliases[insn->alias],
+                                       ctx->regs[src1].host_reg);
+                }
             }
             break;
           }  // case RTLOP_SET_ALIAS
@@ -2746,16 +2696,6 @@ static bool translate_unit(HostX86Context *ctx)
     ASSERT(ctx);
     ASSERT(ctx->handle);
     ASSERT(ctx->unit);
-
-    if (ctx->has_spills) {
-        /* Allocate temporary storage in case we need to reload a spilled
-         * register (we put the current value of the register here -- we
-         * can't do a simple XCHG even for GPRs because the types might be
-         * different). */
-        ctx->frame_size = align_up(ctx->frame_size, 16);
-        ctx->spill_save = ctx->frame_size;
-        ctx->frame_size += 16;
-    }
 
     if (!append_prologue(ctx)) {
         return false;

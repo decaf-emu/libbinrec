@@ -170,8 +170,6 @@ typedef struct HostX86Context {
     int frame_size;
     /* Total stack allocation, excluding PUSH instructions. */
     int stack_alloc;
-    /* Were any registers spilled? */
-    bool has_spills;
     /* Stack offset of temporary storage for spill reloads. */
     int spill_save;
 } HostX86Context;

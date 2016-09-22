@@ -96,7 +96,6 @@
  *   instructions referencing the alias's storage.  Merged stores are also
  *   stored to memory if the successor block does not store the alias
  *   itself.
- *   FIXME: note that this has implications for spilling due to live range extension -- if the register is live through the end of the block but ends up getting stored because merged alloc failed, and it also ends up getting spilled due to later code (after the SET_ALIAS) in the block, we can ignore the spill; this does however mean that we need to match spill location to alias storage, so if the register is used for something else later in the block, it's properly reloaded
  */
 
 /*************************************************************************/
@@ -109,8 +108,11 @@
  * last-resort register for instructions which need a temporary register
  * in case all other registers are in use, since it simplifies code
  * generation logic if only the destination register can cause a spill.
+ * We also reserve both R15 and XMM15 as temporaries for reloading spilled
+ * values in SET_ALIAS instructions, since those instructions don't have a
+ * destination register with which we can associate a temporary.
  */
-#define RESERVED_REGS  (1u<<X86_SP | 1u<<X86_R15)
+#define RESERVED_REGS  (1u<<X86_SP | 1u<<X86_R15 | 1u<<X86_XMM15)
 
 /*************************************************************************/
 /**************************** Local routines *****************************/
@@ -291,7 +293,6 @@ static X86Register allocate_register(
     }
 
     ctx->reg_map[spill_reg] = reg_index;
-    ctx->has_spills = true;
     return spill_reg;
 }
 
@@ -364,6 +365,14 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int32_t insn_index,
          * (unless they're undefined). */
         if (LIKELY(src1_reg->source != RTLREG_UNDEFINED)) {
             ASSERT(src1_info->host_allocated);
+            if (insn->opcode == RTLOP_SET_ALIAS && src1_info->spilled) {
+                /* We'll use R15 or XMM15 as a temporary to hold the value
+                 * while storing it.  Make sure the register is saved and
+                 * restored if appropriate for the selected ABI. */
+                const X86Register temp_reg =
+                    (src1_reg->type <= RTLTYPE_ADDRESS ? X86_R15 : X86_XMM15);
+                ctx->block_regs_touched |= 1u << temp_reg;
+            }
             if (src1_reg->death == insn_index) {
                 unassign_register(ctx, src1, src1_info);
             }

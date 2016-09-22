@@ -25,7 +25,7 @@ int main(void)
 
     /* Allocate enough RTL registers to use up all available host registers. */
     alloc_dummy_registers(unit, 14, RTLTYPE_INT32);
-    alloc_dummy_registers(unit, 16, RTLTYPE_FLOAT);
+    alloc_dummy_registers(unit, 15, RTLTYPE_FLOAT);
 
     EXPECT(rtl_finalize_unit(unit));
 
