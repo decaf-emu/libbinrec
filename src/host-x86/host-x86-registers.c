@@ -284,12 +284,11 @@ static X86Register allocate_register(
     ASSERT(spill_index);
 
     HostX86RegInfo *spill_info = &ctx->regs[spill_index];
-    if (!spill_info->spilled) {
-        spill_info->spilled = true;
-        spill_info->spill_offset =
-            allocate_frame_slot(ctx, unit->regs[spill_index].type);
-        spill_info->spill_insn = insn_index;
-    }
+    ASSERT(!spill_info->spilled);
+    spill_info->spilled = true;
+    spill_info->spill_offset =
+        allocate_frame_slot(ctx, unit->regs[spill_index].type);
+    spill_info->spill_insn = insn_index;
 
     ctx->reg_map[spill_reg] = reg_index;
     return spill_reg;
