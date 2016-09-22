@@ -361,49 +361,43 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int32_t insn_index,
     const HostX86RegInfo * const src2_info = &ctx->regs[src2];
 
     if (src1) {
-        /* Source registers must have already had a host register allocated
-         * (unless they're undefined). */
-        if (LIKELY(src1_reg->source != RTLREG_UNDEFINED)) {
-            ASSERT(src1_info->host_allocated);
-            if (insn->opcode == RTLOP_SET_ALIAS && src1_info->spilled) {
-                /* We'll use R15 or XMM15 as a temporary to hold the value
-                 * while storing it.  Make sure the register is saved and
-                 * restored if appropriate for the selected ABI. */
-                const X86Register temp_reg =
-                    (src1_reg->type <= RTLTYPE_ADDRESS ? X86_R15 : X86_XMM15);
-                ctx->block_regs_touched |= 1u << temp_reg;
-            }
-            if (src1_reg->death == insn_index) {
-                unassign_register(ctx, src1, src1_info);
-            }
-        } else {
-            /* Extra sanity check to make sure not to leak host registers. */
-            ASSERT(!src1_info->host_allocated);
+        /* Source registers must have already had a host register allocated,
+         * unless they're undefined (which is invalid in the first place
+         * and is prevented by operand assertions if enabled).  Note that if
+         * the register index is 0 (likewise invalid), the associated
+         * RTLRegister record has type INVALID and source UNDEFINED, so we
+         * end up treating it just like a nonzero-index undefined register. */
+        ASSERT((src1_reg->source != RTLREG_UNDEFINED)
+               == src1_info->host_allocated);
+        if (insn->opcode == RTLOP_SET_ALIAS && src1_info->spilled) {
+            /* We'll use R15 or XMM15 as a temporary to hold the value
+             * while storing it.  Make sure the register is saved and
+             * restored if appropriate for the selected ABI. */
+            const X86Register temp_reg =
+                (src1_reg->type <= RTLTYPE_ADDRESS ? X86_R15 : X86_XMM15);
+            ctx->block_regs_touched |= 1u << temp_reg;
+        }
+        if (src1_reg->death == insn_index) {
+            unassign_register(ctx, src1, src1_info);
         }
     }
 
     if (src2) {
-        if (LIKELY(src2_reg->source != RTLREG_UNDEFINED)) {
-            ASSERT(src2_info->host_allocated);
-            if (src2_reg->death == insn_index) {
-                unassign_register(ctx, src2, src2_info);
-            }
-        } else {
-            ASSERT(!src2_info->host_allocated);
+        ASSERT((src2_reg->source != RTLREG_UNDEFINED)
+               == src2_info->host_allocated);
+        if (src2_reg->death == insn_index) {
+            unassign_register(ctx, src2, src2_info);
         }
     }
 
-    if (insn->opcode == RTLOP_SELECT && insn->cond) {
+    if (insn->opcode == RTLOP_SELECT) {
         ASSERT(insn->cond < unit->next_reg);
         const RTLRegister * const cond_reg = &unit->regs[insn->cond];
         const HostX86RegInfo * const cond_info = &ctx->regs[insn->cond];
-        if (LIKELY(cond_reg->source != RTLREG_UNDEFINED)) {
-            ASSERT(cond_info->host_allocated);
-            if (cond_reg->death == insn_index) {
-                unassign_register(ctx, insn->cond, cond_info);
-            }
-        } else {
-            ASSERT(!cond_info->host_allocated);
+        ASSERT((cond_reg->source != RTLREG_UNDEFINED)
+               == cond_info->host_allocated);
+        if (cond_reg->death == insn_index) {
+            unassign_register(ctx, insn->cond, cond_info);
         }
     }
 
