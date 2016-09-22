@@ -288,7 +288,6 @@ static X86Register allocate_register(
         spill_info->spilled = true;
         spill_info->spill_offset =
             allocate_frame_slot(ctx, unit->regs[spill_index].type);
-        // FIXME: special alias handling?
         spill_info->spill_insn = insn_index;
     }
 
