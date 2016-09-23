@@ -18,7 +18,7 @@ static const unsigned int host_opt = BINREC_OPT_H_X86_FIXED_REGS;
 
 static int add_rtl(RTLUnit *unit)
 {
-    uint32_t reg1, alias, label1;
+    int reg1, alias, label1;
     EXPECT(reg1 = rtl_alloc_register(unit, RTLTYPE_ADDRESS));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_ARG, reg1, 0, 0, 0));
     EXPECT(alias = rtl_alloc_alias_register(unit, RTLTYPE_INT32));
@@ -26,7 +26,7 @@ static int add_rtl(RTLUnit *unit)
     EXPECT(label1 = rtl_alloc_label(unit));
     EXPECT(rtl_add_insn(unit, RTLOP_GOTO, 0, 0, 0, label1));
 
-    uint32_t reg2, reg3, reg4, label2, label3;
+    int reg2, reg3, reg4, label2, label3;
     EXPECT(label2 = rtl_alloc_label(unit));
     EXPECT(rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, label2));
     EXPECT(reg2 = rtl_alloc_register(unit, RTLTYPE_INT32));
@@ -42,7 +42,7 @@ static int add_rtl(RTLUnit *unit)
     EXPECT(label3 = rtl_alloc_label(unit));
     EXPECT(rtl_add_insn(unit, RTLOP_GOTO, 0, 0, 0, label3));
 
-    uint32_t reg5, reg6, reg7;
+    int reg5, reg6, reg7;
     EXPECT(rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, label1));
     EXPECT(reg5 = rtl_alloc_register(unit, RTLTYPE_INT32));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg5, 0, 0, 0));  // Gets EAX.

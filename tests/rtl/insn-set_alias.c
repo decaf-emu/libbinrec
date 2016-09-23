@@ -24,7 +24,7 @@ int main(void)
     RTLUnit *unit;
     EXPECT(unit = rtl_create_unit(handle));
 
-    uint32_t reg1, reg2, alias;
+    int reg1, reg2, alias;
     EXPECT(reg1 = rtl_alloc_register(unit, RTLTYPE_INT32));
     EXPECT(reg2 = rtl_alloc_register(unit, RTLTYPE_INT32));
     EXPECT(alias = rtl_alloc_alias_register(unit, RTLTYPE_INT32));

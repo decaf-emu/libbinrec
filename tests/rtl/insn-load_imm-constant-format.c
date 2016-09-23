@@ -27,7 +27,7 @@ int main(void)
     /* Check that small constants in INT32 registers are disassembled to
      * decimal, but ADDRESS registers always use hex. */
 
-    uint32_t reg1, reg2, reg3, reg4, reg5, reg6, reg7, reg8, reg9, reg10;
+    int reg1, reg2, reg3, reg4, reg5, reg6, reg7, reg8, reg9, reg10;
     EXPECT(reg1 = rtl_alloc_register(unit, RTLTYPE_INT32));
     EXPECT(reg2 = rtl_alloc_register(unit, RTLTYPE_INT32));
     EXPECT(reg3 = rtl_alloc_register(unit, RTLTYPE_INT32));

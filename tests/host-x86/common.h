@@ -33,7 +33,7 @@ static inline void alloc_dummy_registers(RTLUnit *unit, int count,
                                          RTLDataType type)
 {
     for (int i = 0; i < count; i++) {
-        uint32_t reg;
+        int reg;
         ASSERT(reg = rtl_alloc_register(unit, type));
         ASSERT(rtl_add_insn(unit, RTLOP_NOP, reg, 0, 0, 0));
         /* Prevent the register from dying. */

@@ -18,7 +18,7 @@ static const unsigned int host_opt = 0;
 
 static int add_rtl(RTLUnit *unit)
 {
-    uint32_t reg1, reg2, alias, label1;
+    int reg1, reg2, alias, label1;
     EXPECT(reg1 = rtl_alloc_register(unit, RTLTYPE_ADDRESS));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_ARG, reg1, 0, 0, 0));
     EXPECT(alias = rtl_alloc_alias_register(unit, RTLTYPE_ADDRESS));
@@ -30,14 +30,14 @@ static int add_rtl(RTLUnit *unit)
     EXPECT(rtl_add_insn(unit, RTLOP_GOTO_IF_Z, 0, reg2, 0, label1));
 
     /* This block has two entry edges to block alias store forwarding. */
-    uint32_t reg3, label2;
+    int reg3, label2;
     EXPECT(label2 = rtl_alloc_label(unit));
     EXPECT(rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, label2));
     EXPECT(reg3 = rtl_alloc_register(unit, RTLTYPE_INT32));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg3, 0, 0, 0));
     EXPECT(rtl_add_insn(unit, RTLOP_GOTO_IF_Z, 0, reg3, 0, label2));
 
-    uint32_t reg4;
+    int reg4;
     EXPECT(rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, label1));
     EXPECT(reg4 = rtl_alloc_register(unit, RTLTYPE_ADDRESS));
     EXPECT(rtl_add_insn(unit, RTLOP_GET_ALIAS, reg4, 0, 0, alias));

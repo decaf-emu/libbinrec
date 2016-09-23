@@ -18,7 +18,7 @@ static const unsigned int host_opt = 0;
 
 static int add_rtl(RTLUnit *unit)
 {
-    uint32_t reg1, reg2, alias, label;
+    int reg1, reg2, alias, label;
     EXPECT(reg1 = rtl_alloc_register(unit, RTLTYPE_ADDRESS));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_ARG, reg1, 0, 0, 0));
     EXPECT(alias = rtl_alloc_alias_register(unit, RTLTYPE_INT32));
@@ -32,7 +32,7 @@ static int add_rtl(RTLUnit *unit)
     /* Force EAX to be live past the conditional branch. */
     EXPECT(rtl_add_insn(unit, RTLOP_NOP, 0, reg2, 0, 1));
 
-    uint32_t reg3;
+    int reg3;
     EXPECT(rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, label));
     EXPECT(reg3 = rtl_alloc_register(unit, RTLTYPE_INT32));
     /* reg3 will get the same host register (EAX) as reg2.  That will be

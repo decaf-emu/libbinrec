@@ -18,7 +18,7 @@ static const unsigned int host_opt = 0;
 
 static int add_rtl(RTLUnit *unit)
 {
-    uint32_t reg1, reg2, reg3, alias, label1;
+    int reg1, reg2, reg3, alias, label1;
     EXPECT(reg1 = rtl_alloc_register(unit, RTLTYPE_ADDRESS));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_ARG, reg1, 0, 0, 0));
     EXPECT(alias = rtl_alloc_alias_register(unit, RTLTYPE_INT32));
@@ -31,7 +31,7 @@ static int add_rtl(RTLUnit *unit)
     EXPECT(rtl_add_insn(unit, RTLOP_SET_ALIAS, 0, reg3, 0, alias));
     EXPECT(rtl_add_insn(unit, RTLOP_GOTO_IF_Z, 0, reg2, 0, label1));
 
-    uint32_t reg4, reg5, label2;
+    int reg4, reg5, label2;
     /* Allocate ECX (live through the end of the unit) to prevent merging
      * to the same register. */
     EXPECT(reg4 = rtl_alloc_register(unit, RTLTYPE_INT32));
@@ -44,7 +44,7 @@ static int add_rtl(RTLUnit *unit)
     EXPECT(label2 = rtl_alloc_label(unit));
     EXPECT(rtl_add_insn(unit, RTLOP_GOTO, 0, 0, 0, label2));
 
-    uint32_t reg6;
+    int reg6;
     EXPECT(rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, label1));
     EXPECT(reg6 = rtl_alloc_register(unit, RTLTYPE_INT32));
     /* reg5 should be merged with reg3 via EAX.  Since EAX dies at the

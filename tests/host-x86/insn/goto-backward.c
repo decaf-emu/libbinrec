@@ -18,7 +18,7 @@ static const unsigned int host_opt = 0;
 
 static int add_rtl(RTLUnit *unit)
 {
-    uint32_t label;
+    int label;
     EXPECT(label = rtl_alloc_label(unit));
 
     EXPECT(rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, label));

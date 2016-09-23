@@ -26,7 +26,7 @@ int main(void)
     RTLUnit *unit;
     EXPECT(unit = rtl_create_unit(handle));
 
-    uint32_t label;
+    int label;
     EXPECT(label = rtl_alloc_label(unit));
 
     EXPECT_FALSE(rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, 0));

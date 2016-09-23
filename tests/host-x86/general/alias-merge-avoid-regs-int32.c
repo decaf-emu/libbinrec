@@ -18,7 +18,7 @@ static const unsigned int host_opt = BINREC_OPT_H_X86_FIXED_REGS;
 
 static int add_rtl(RTLUnit *unit)
 {
-    uint32_t reg1, reg2, alias, tempreg[12];
+    int reg1, reg2, alias, tempreg[12];
     EXPECT(reg1 = rtl_alloc_register(unit, RTLTYPE_ADDRESS));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_ARG, reg1, 0, 0, 0));
     EXPECT(alias = rtl_alloc_alias_register(unit, RTLTYPE_INT32));
@@ -36,7 +36,7 @@ static int add_rtl(RTLUnit *unit)
     }
     EXPECT(rtl_add_insn(unit, RTLOP_NOP, 0, tempreg[1], 0, 0));  // EDX dies.
 
-    uint32_t reg3, reg4, reg5, reg6, label;
+    int reg3, reg4, reg5, reg6, label;
     EXPECT(label = rtl_alloc_label(unit));
     EXPECT(rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, label));
     for (int i = 0; i < lenof(tempreg); i++) {

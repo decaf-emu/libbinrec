@@ -20,7 +20,7 @@ static int add_rtl(RTLUnit *unit)
 {
     alloc_dummy_registers(unit, 1, RTLTYPE_INT32);
 
-    uint32_t reg1, reg2, reg3;
+    int reg1, reg2, reg3;
     EXPECT(reg1 = rtl_alloc_register(unit, RTLTYPE_INT32));
     /* This register would normally get ECX (the 4th integer argument in
      * the SysV ABI), but it should be avoided here since the shift count

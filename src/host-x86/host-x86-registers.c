@@ -241,7 +241,7 @@ static int allocate_frame_slot(HostX86Context *ctx, RTLDataType type)
  *     Allocated register index.
  */
 static X86Register allocate_register(
-    HostX86Context *ctx, int32_t insn_index, int reg_index,
+    HostX86Context *ctx, int insn_index, int reg_index,
     const RTLRegister *reg, uint32_t avoid_regs)
 {
     ASSERT(ctx);
@@ -330,7 +330,7 @@ static void unassign_register(HostX86Context *ctx, int reg_index,
  * [Return value]
  *     True on success, false on error.
  */
-static bool allocate_regs_for_insn(HostX86Context *ctx, int32_t insn_index,
+static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
                                    int block_index)
 {
     ASSERT(ctx);

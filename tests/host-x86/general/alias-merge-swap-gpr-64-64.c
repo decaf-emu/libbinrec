@@ -18,7 +18,7 @@ static const unsigned int host_opt = 0;
 
 static int add_rtl(RTLUnit *unit)
 {
-    uint32_t reg1, reg2, reg3, alias1, alias2;
+    int reg1, reg2, reg3, alias1, alias2;
     EXPECT(reg1 = rtl_alloc_register(unit, RTLTYPE_ADDRESS));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_ARG, reg1, 0, 0, 0));
     EXPECT(alias1 = rtl_alloc_alias_register(unit, RTLTYPE_ADDRESS));
@@ -32,7 +32,7 @@ static int add_rtl(RTLUnit *unit)
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg3, 0, 0, 0));
     EXPECT(rtl_add_insn(unit, RTLOP_SET_ALIAS, 0, reg3, 0, alias2));
 
-    uint32_t reg4, reg5, reg6, reg7, label;
+    int reg4, reg5, reg6, reg7, label;
     EXPECT(label = rtl_alloc_label(unit));
     EXPECT(rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, label));
     EXPECT(reg4 = rtl_alloc_register(unit, RTLTYPE_ADDRESS));

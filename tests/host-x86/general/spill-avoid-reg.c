@@ -18,13 +18,13 @@ static const unsigned int host_opt = BINREC_OPT_H_X86_FIXED_REGS;
 
 static int add_rtl(RTLUnit *unit)
 {
-    uint32_t regs[14];
+    int regs[14];
     for (int i = 0; i < lenof(regs); i++) {
         EXPECT(regs[i] = rtl_alloc_register(unit, RTLTYPE_INT32));
         EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, regs[i], 0, 0, i+1));
     }
 
-    uint32_t reg2;
+    int reg2;
     EXPECT(reg2 = rtl_alloc_register(unit, RTLTYPE_INT32));
     /* regs[13] will get ECX by fixed-regs allocation.  It's also the last
      * register to die, but since reg2 is forced to avoid ECX, it should

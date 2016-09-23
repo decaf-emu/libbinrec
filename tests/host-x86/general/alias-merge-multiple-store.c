@@ -18,7 +18,7 @@ static const unsigned int host_opt = BINREC_OPT_H_X86_FIXED_REGS;
 
 static int add_rtl(RTLUnit *unit)
 {
-    uint32_t reg1, reg2, reg3, reg4, reg5, alias1, alias2, alias3, alias4;
+    int reg1, reg2, reg3, reg4, reg5, alias1, alias2, alias3, alias4;
     EXPECT(reg1 = rtl_alloc_register(unit, RTLTYPE_ADDRESS));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_ARG, reg1, 0, 0, 0));
     EXPECT(alias1 = rtl_alloc_alias_register(unit, RTLTYPE_INT32));
@@ -43,7 +43,7 @@ static int add_rtl(RTLUnit *unit)
     EXPECT(rtl_add_insn(unit, RTLOP_SET_ALIAS, 0, reg5, 0, alias4));
     EXPECT(rtl_add_insn(unit, RTLOP_NOP, 0, reg3, 0, 0));
 
-    uint32_t reg6, reg7, reg8, reg9, reg10, reg11, label;
+    int reg6, reg7, reg8, reg9, reg10, reg11, label;
     EXPECT(label = rtl_alloc_label(unit));
     EXPECT(rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, label));
     EXPECT(reg6 = rtl_alloc_register(unit, RTLTYPE_INT32));

@@ -103,7 +103,7 @@ static bool make_nop(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
     insn->src2 = src2;
     insn->src_imm = other;
 
-    const uint32_t insn_index = unit->num_insns;
+    const int insn_index = unit->num_insns;
     if (dest) {
         RTLRegister * const destreg = &unit->regs[dest];
         unit->regs[dest].source = RTLREG_RESULT;
@@ -147,7 +147,7 @@ static bool make_set_alias(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
     insn->alias = (uint16_t)other;
 
     RTLRegister * const src1reg = &unit->regs[src1];
-    const uint32_t insn_index = unit->num_insns;
+    const int insn_index = unit->num_insns;
     mark_live(unit, insn_index, src1reg, src1);
 
     return true;
@@ -178,7 +178,7 @@ static bool make_get_alias(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
     insn->alias = (uint16_t)other;
 
     RTLRegister * const destreg = &unit->regs[dest];
-    const uint32_t insn_index = unit->num_insns;
+    const int insn_index = unit->num_insns;
     destreg->source = RTLREG_ALIAS;
     destreg->alias.src = (uint16_t)other;
     mark_live(unit, insn_index, destreg, dest);
@@ -213,7 +213,7 @@ static bool make_move(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
 
     RTLRegister * const destreg = &unit->regs[dest];
     RTLRegister * const src1reg = &unit->regs[src1];
-    const uint32_t insn_index = unit->num_insns;
+    const int insn_index = unit->num_insns;
     destreg->source = RTLREG_RESULT;
     destreg->result.opcode = insn->opcode;
     destreg->result.src1 = src1;
@@ -262,7 +262,7 @@ static bool make_select(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
     RTLRegister * const src1reg = &unit->regs[src1];
     RTLRegister * const src2reg = &unit->regs[src2];
     RTLRegister * const condreg = &unit->regs[other];
-    const uint32_t insn_index = unit->num_insns;
+    const int insn_index = unit->num_insns;
     destreg->source = RTLREG_RESULT;
     destreg->result.opcode = insn->opcode;
     destreg->result.src1 = src1;
@@ -304,7 +304,7 @@ static bool make_intcast(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
 
     RTLRegister * const destreg = &unit->regs[dest];
     RTLRegister * const src1reg = &unit->regs[src1];
-    const uint32_t insn_index = unit->num_insns;
+    const int insn_index = unit->num_insns;
     destreg->source = RTLREG_RESULT;
     destreg->result.opcode = insn->opcode;
     destreg->result.src1 = src1;
@@ -341,7 +341,7 @@ static bool make_alu_1op(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
 
     RTLRegister * const destreg = &unit->regs[dest];
     RTLRegister * const src1reg = &unit->regs[src1];
-    const uint32_t insn_index = unit->num_insns;
+    const int insn_index = unit->num_insns;
     destreg->source = RTLREG_RESULT;
     destreg->result.opcode = insn->opcode;
     destreg->result.src1 = src1;
@@ -384,7 +384,7 @@ static bool make_alu_2op(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
     RTLRegister * const destreg = &unit->regs[dest];
     RTLRegister * const src1reg = &unit->regs[src1];
     RTLRegister * const src2reg = &unit->regs[src2];
-    const uint32_t insn_index = unit->num_insns;
+    const int insn_index = unit->num_insns;
     destreg->source = RTLREG_RESULT;
     destreg->result.opcode = insn->opcode;
     destreg->result.src1 = src1;
@@ -426,7 +426,7 @@ static bool make_alu_imm(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
 
     RTLRegister * const destreg = &unit->regs[dest];
     RTLRegister * const src1reg = &unit->regs[src1];
-    const uint32_t insn_index = unit->num_insns;
+    const int insn_index = unit->num_insns;
     destreg->source = RTLREG_RESULT;
     destreg->result.opcode = insn->opcode;
     destreg->result.src1 = src1;
@@ -465,7 +465,7 @@ static bool make_clz(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
 
     RTLRegister * const destreg = &unit->regs[dest];
     RTLRegister * const src1reg = &unit->regs[src1];
-    const uint32_t insn_index = unit->num_insns;
+    const int insn_index = unit->num_insns;
     destreg->source = RTLREG_RESULT;
     destreg->result.opcode = insn->opcode;
     destreg->result.src1 = src1;
@@ -508,7 +508,7 @@ static bool make_cmp(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
     RTLRegister * const destreg = &unit->regs[dest];
     RTLRegister * const src1reg = &unit->regs[src1];
     RTLRegister * const src2reg = &unit->regs[src2];
-    const uint32_t insn_index = unit->num_insns;
+    const int insn_index = unit->num_insns;
     destreg->source = RTLREG_RESULT;
     destreg->result.opcode = insn->opcode;
     destreg->result.src1 = src1;
@@ -550,7 +550,7 @@ static bool make_cmp_imm(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
 
     RTLRegister * const destreg = &unit->regs[dest];
     RTLRegister * const src1reg = &unit->regs[src1];
-    const uint32_t insn_index = unit->num_insns;
+    const int insn_index = unit->num_insns;
     destreg->source = RTLREG_RESULT;
     destreg->result.opcode = insn->opcode;
     destreg->result.src1 = src1;
@@ -602,7 +602,7 @@ static bool make_bitfield(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
     RTLRegister * const destreg = &unit->regs[dest];
     RTLRegister * const src1reg = &unit->regs[src1];
     RTLRegister * const src2reg = &unit->regs[src2];
-    const uint32_t insn_index = unit->num_insns;
+    const int insn_index = unit->num_insns;
     destreg->source = RTLREG_RESULT;
     destreg->result.opcode = insn->opcode;
     destreg->result.src1 = src1;
@@ -643,7 +643,7 @@ static bool make_load_imm(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
     insn->src_imm = other;
 
     RTLRegister * const destreg = &unit->regs[dest];
-    const uint32_t insn_index = unit->num_insns;
+    const int insn_index = unit->num_insns;
     destreg->source = RTLREG_CONSTANT;
     switch (unit->regs[dest].type) {
       case RTLTYPE_INT32:
@@ -683,7 +683,7 @@ static bool make_load_arg(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
     insn->arg_index = (uint8_t)other;
 
     RTLRegister * const destreg = &unit->regs[dest];
-    const uint32_t insn_index = unit->num_insns;
+    const int insn_index = unit->num_insns;
     destreg->source = RTLREG_FUNC_ARG;
     destreg->arg_index = (uint8_t)other;
     mark_live(unit, insn_index, destreg, dest);
@@ -720,7 +720,7 @@ static bool make_load(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
 
     RTLRegister * const destreg = &unit->regs[dest];
     RTLRegister * const src1reg = &unit->regs[src1];
-    const uint32_t insn_index = unit->num_insns;
+    const int insn_index = unit->num_insns;
     destreg->source = RTLREG_MEMORY;
     destreg->memory.addr_reg = src1;
     destreg->memory.offset = (int16_t)other;
@@ -779,7 +779,7 @@ static bool make_load_narrow(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
 
     RTLRegister * const destreg = &unit->regs[dest];
     RTLRegister * const src1reg = &unit->regs[src1];
-    const uint32_t insn_index = unit->num_insns;
+    const int insn_index = unit->num_insns;
     destreg->source = RTLREG_MEMORY;
     destreg->memory.addr_reg = src1;
     destreg->memory.offset = (int16_t)other;
@@ -821,7 +821,7 @@ static bool make_store(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
 
     RTLRegister * const destreg = &unit->regs[dest];
     RTLRegister * const src1reg = &unit->regs[src1];
-    const uint32_t insn_index = unit->num_insns;
+    const int insn_index = unit->num_insns;
     mark_live(unit, insn_index, destreg, dest);
     mark_live(unit, insn_index, src1reg, src1);
 
@@ -858,7 +858,7 @@ static bool make_store_narrow(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
 
     RTLRegister * const destreg = &unit->regs[dest];
     RTLRegister * const src1reg = &unit->regs[src1];
-    const uint32_t insn_index = unit->num_insns;
+    const int insn_index = unit->num_insns;
     mark_live(unit, insn_index, destreg, dest);
     mark_live(unit, insn_index, src1reg, src1);
 
@@ -964,7 +964,7 @@ static bool make_goto_cond(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
     insn->label = (uint16_t)other;
 
     RTLRegister * const src1reg = &unit->regs[src1];
-    const uint32_t insn_index = unit->num_insns;
+    const int insn_index = unit->num_insns;
     mark_live(unit, insn_index, src1reg, src1);
 
     /* Terminate the current basic block after this instruction, and

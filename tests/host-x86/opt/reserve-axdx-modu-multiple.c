@@ -18,7 +18,7 @@ static const unsigned int host_opt = BINREC_OPT_H_X86_FIXED_REGS;
 
 static int add_rtl(RTLUnit *unit)
 {
-    uint32_t reg1, reg2, reg3, reg4, reg5, reg6;
+    int reg1, reg2, reg3, reg4, reg5, reg6;
     EXPECT(reg1 = rtl_alloc_register(unit, RTLTYPE_INT32));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg1, 0, 0, 0));  // reg1=EAX
     EXPECT(reg2 = rtl_alloc_register(unit, RTLTYPE_INT32));

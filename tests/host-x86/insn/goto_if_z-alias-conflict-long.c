@@ -18,7 +18,7 @@ static const unsigned int host_opt = 0;
 
 static int add_rtl(RTLUnit *unit)
 {
-    uint32_t reg1, reg2, reg3, alias, label1;
+    int reg1, reg2, reg3, alias, label1;
     EXPECT(reg1 = rtl_alloc_register(unit, RTLTYPE_ADDRESS));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_ARG, reg1, 0, 0, 0));
     EXPECT(alias = rtl_alloc_alias_register(unit, RTLTYPE_INT32));
@@ -31,7 +31,7 @@ static int add_rtl(RTLUnit *unit)
     EXPECT(rtl_add_insn(unit, RTLOP_SET_ALIAS, 0, reg3, 0, alias));
     EXPECT(rtl_add_insn(unit, RTLOP_GOTO_IF_Z, 0, reg3, 0, label1));
 
-    uint32_t reg4, label2;
+    int reg4, label2;
     EXPECT(reg4 = rtl_alloc_register(unit, RTLTYPE_INT32));
     /* Allocate ECX (live through the end of the unit) to prevent merging
      * to the same register. */
@@ -47,7 +47,7 @@ static int add_rtl(RTLUnit *unit)
      * which are merged into the next block in order to pad the alias setup
      * code to the point where a 32-bit displacement is required to jump
      * over it. */
-    uint32_t pad_alias[15], pad_reg[15];
+    int pad_alias[15], pad_reg[15];
     STATIC_ASSERT(lenof(pad_alias) == lenof(pad_reg), "Array length mismatch");
     for (int i = 0; i < lenof(pad_alias); i++) {
         EXPECT(pad_alias[i] = rtl_alloc_alias_register(unit, RTLTYPE_FLOAT));
@@ -59,7 +59,7 @@ static int add_rtl(RTLUnit *unit)
                             0, pad_reg[i], 0, pad_alias[i]));
     }
 
-    uint32_t reg5;
+    int reg5;
     EXPECT(rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, label1));
     EXPECT(reg5 = rtl_alloc_register(unit, RTLTYPE_INT32));
     /* reg5 should be merged with reg3 via EAX.  Since EAX is live past the
@@ -70,7 +70,7 @@ static int add_rtl(RTLUnit *unit)
     EXPECT(rtl_add_insn(unit, RTLOP_SET_ALIAS, 0, reg5, 0, alias));
     /* Also reload the padding aliases to trigger merging. */
     for (int i = 0; i < lenof(pad_alias); i++) {
-        uint32_t reg;
+        int reg;
         EXPECT(reg = rtl_alloc_register(unit, RTLTYPE_FLOAT));
         EXPECT(rtl_add_insn(unit, RTLOP_GET_ALIAS, reg, 0, 0, pad_alias[i]));
     }

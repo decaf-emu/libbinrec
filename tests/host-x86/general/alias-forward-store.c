@@ -18,7 +18,7 @@ static const unsigned int host_opt = 0;
 
 static int add_rtl(RTLUnit *unit)
 {
-    uint32_t reg1, reg2, reg3, alias1, alias2;
+    int reg1, reg2, reg3, alias1, alias2;
     EXPECT(reg1 = rtl_alloc_register(unit, RTLTYPE_ADDRESS));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_ARG, reg1, 0, 0, 0));
     EXPECT(alias1 = rtl_alloc_alias_register(unit, RTLTYPE_INT32));
@@ -32,13 +32,13 @@ static int add_rtl(RTLUnit *unit)
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg3, 0, 0, 0));
     EXPECT(rtl_add_insn(unit, RTLOP_SET_ALIAS, 0, reg3, 0, alias2));
 
-    uint32_t label1;
+    int label1;
     EXPECT(label1 = rtl_alloc_label(unit));
     EXPECT(rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, label1));
     EXPECT(rtl_add_insn(unit, RTLOP_NOP, 0, 0, 0, 1));
     /* Stores should be forwarded through this block. */
 
-    uint32_t label2, reg4, reg5;
+    int label2, reg4, reg5;
     EXPECT(label2 = rtl_alloc_label(unit));
     EXPECT(rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, label2));
     EXPECT(reg4 = rtl_alloc_register(unit, RTLTYPE_INT32));
@@ -47,7 +47,7 @@ static int add_rtl(RTLUnit *unit)
     EXPECT(rtl_add_insn(unit, RTLOP_ADDI, reg5, reg4, 0, 5));
     /* Only alias1 should be forwarded, due to the load of alias2. */
 
-    uint32_t label3, reg6, reg7, reg8, reg9;
+    int label3, reg6, reg7, reg8, reg9;
     EXPECT(label3 = rtl_alloc_label(unit));
     EXPECT(rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, label3));
     EXPECT(reg6 = rtl_alloc_register(unit, RTLTYPE_INT32));
@@ -61,14 +61,14 @@ static int add_rtl(RTLUnit *unit)
     EXPECT(rtl_add_insn(unit, RTLOP_SET_ALIAS, 0, reg8, 0, alias1));
     EXPECT(rtl_add_insn(unit, RTLOP_SET_ALIAS, 0, reg9, 0, alias2));
 
-    uint32_t label4;
+    int label4;
     EXPECT(label4 = rtl_alloc_label(unit));
     EXPECT(rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, label4));
     EXPECT(rtl_add_insn(unit, RTLOP_NOP, 0, 0, 0, 4));
     /* Stores should be not forwarded through this block since it has
      * multiple entry edges. */
 
-    uint32_t label5, reg10, reg11, reg12;
+    int label5, reg10, reg11, reg12;
     EXPECT(label5 = rtl_alloc_label(unit));
     EXPECT(rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, label5));
     EXPECT(reg10 = rtl_alloc_register(unit, RTLTYPE_INT32));
@@ -81,7 +81,7 @@ static int add_rtl(RTLUnit *unit)
     EXPECT(rtl_add_insn(unit, RTLOP_SET_ALIAS, 0, reg11, 0, alias2));
     EXPECT(rtl_add_insn(unit, RTLOP_GOTO_IF_Z, 0, reg12, 0, label4));
 
-    uint32_t label6, reg13;
+    int label6, reg13;
     EXPECT(label6 = rtl_alloc_label(unit));
     EXPECT(rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, label6));
     EXPECT(reg13 = rtl_alloc_register(unit, RTLTYPE_INT32));
@@ -89,7 +89,7 @@ static int add_rtl(RTLUnit *unit)
     EXPECT(rtl_add_insn(unit, RTLOP_SET_ALIAS, 0, reg13, 0, alias1));
     /* The store to alias1 should override store forwarding for that alias. */
 
-    uint32_t label7, reg14, reg15, reg16;
+    int label7, reg14, reg15, reg16;
     EXPECT(label7 = rtl_alloc_label(unit));
     EXPECT(rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, label7));
     EXPECT(reg14 = rtl_alloc_register(unit, RTLTYPE_INT32));

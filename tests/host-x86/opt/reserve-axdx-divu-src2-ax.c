@@ -18,7 +18,7 @@ static const unsigned int host_opt = BINREC_OPT_H_X86_FIXED_REGS;
 
 static int add_rtl(RTLUnit *unit)
 {
-    uint32_t reg1, reg2, reg3;
+    int reg1, reg2, reg3;
     EXPECT(reg1 = rtl_alloc_register(unit, RTLTYPE_INT32));
     /* Following normal allocation rules, reg1 would get EAX here, but
      * that should be suppressed since reg3 is assigned EAX during the

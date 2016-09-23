@@ -20,7 +20,7 @@ static int add_rtl(RTLUnit *unit)
 {
     alloc_dummy_registers(unit, 7, RTLTYPE_INT32);
 
-    uint32_t reg;
+    int reg;
     EXPECT(reg = rtl_alloc_register(unit, RTLTYPE_ADDRESS));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg, 0, 0,
                         UINT64_C(0xFFFFFFFF7FFFFFFF)));
