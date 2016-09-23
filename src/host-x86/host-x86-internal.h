@@ -13,6 +13,26 @@
 #include "src/common.h"
 #include "src/rtl.h"
 
+/*
+ * Notes on terminology and typography:
+ *
+ * - When not qualified with a specific size, "word" refers to a 32-bit
+ *   unit.  This differs from Intel usage, but follows the usage of all
+ *   other major architectures currently in use.
+ *
+ * - In comments, register names such as "rAX" with a lower-case "r"
+ *   indicate an indeterminate data size, while "RAX" and "EAX"
+ *   specifically indicate that the register is being used in 64-bit or
+ *   32-bit mode respectively.  In some cases (notably the register
+ *   constants defined below), the prefix may be omitted for brevity;
+ *   this is not considered likely to cause confusion since 16-bit
+ *   registers are only used in a few locations.
+ *
+ * - Assembly instructions in comments (particularly in tests) follow
+ *   AT&T syntax, as seen in GCC-style inline assembly: for example,
+ *   "movl $0x1234,(%rsp)" rather than "MOV DWORD PTR [RSP],1234h".
+ */
+
 /*************************************************************************/
 /**************** Internal constants and data structures *****************/
 /*************************************************************************/

@@ -38,7 +38,7 @@ static const uint8_t expected_code[] = {
     0x33,0xD2,                          // xor %edx,%edx
     0x3B,0xCA,                          // cmp %edx,%ecx
     /* Note empty REX prefix here, required to access low byte of ESI. */
-    0x40,0x0F,0x94,0xC6,                // sete %sil
+    0x40,0x0F,0x94,0xC6,                // setz %sil
     0x40,0x0F,0xB6,0xF6,                // movzbl %sil,%esi
     0x48,0x83,0xC4,0x08,                // add $8,%rsp
     0xC3,                               // ret

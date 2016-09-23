@@ -249,8 +249,7 @@ static X86Register allocate_register(
     ASSERT(reg_index > 0);
     ASSERT(reg_index < ctx->unit->next_reg);
 
-    const bool is_gpr =
-        reg->type == RTLTYPE_INT32 || reg->type == RTLTYPE_ADDRESS;
+    const bool is_gpr = rtl_register_is_int(reg);
 
     int host_reg;
     if (is_gpr) {
@@ -372,7 +371,7 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int32_t insn_index,
              * while storing it.  Make sure the register is saved and
              * restored if appropriate for the selected ABI. */
             const X86Register temp_reg =
-                (src1_reg->type <= RTLTYPE_ADDRESS ? X86_R15 : X86_XMM15);
+                (rtl_register_is_int(src1_reg) ? X86_R15 : X86_XMM15);
             ctx->block_regs_touched |= 1u << temp_reg;
         }
         if (src1_reg->death == insn_index) {
@@ -519,11 +518,11 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int32_t insn_index,
              * there's nothing to merge, so don't even try to allocate a
              * register. */
             if (!dest_info->merge_alias && have_preceding_store) {
-                const RTLDataType type = dest_reg->type;
                 const uint32_t saved_free = ctx->regs_free;
                 ctx->regs_free = usable_regs;
+                const bool is_gpr = rtl_register_is_int(dest_reg);
                 int host_reg;
-                if (type == RTLTYPE_INT32 || type == RTLTYPE_ADDRESS) {
+                if (is_gpr) {
                     host_reg = get_gpr(ctx, avoid_regs);
                 } else {
                     host_reg = get_xmm(ctx, avoid_regs);
@@ -532,7 +531,7 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int32_t insn_index,
                     /* Try again without excluding any registers.  We won't
                      * be able to keep the value in this register, but we
                      * can at least avoid a round trip to memory. */
-                    if (type == RTLTYPE_INT32 || type == RTLTYPE_ADDRESS) {
+                    if (is_gpr) {
                         host_reg = get_gpr(ctx, 0);
                     } else {
                         host_reg = get_xmm(ctx, 0);
@@ -639,10 +638,13 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int32_t insn_index,
                 if (src1 && !src1_info->spilled
                  && src1_reg->death == insn_index) {
                     /* The first operand's register can usually be reused
-                     * for the destination, except for shifts with src1 in
-                     * rCX (since we need CL for the count) and BFINS with
-                     * src1==src2 (since we need to write dest before
-                     * reading src2). */
+                     * for the destination, except for:
+                     * - Shifts with src1 in rCX (since we need CL for the
+                     *   count)
+                     * - BFINS with src1==src2 (since we need to write dest
+                     *   before reading src2)
+                     * - LOAD to an XMM register (different register types)
+                     */
                     bool src1_ok;
                     switch (insn->opcode) {
                       case RTLOP_SLL:
@@ -659,6 +661,9 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int32_t insn_index,
                       case RTLOP_BFINS:
                         src1_ok = (src1_info->host_reg != src2_info->host_reg);
                         break;
+                      case RTLOP_LOAD:
+                        src1_ok = rtl_register_is_int(dest_reg);
+                        break;
                       default:
                         src1_ok = true;
                         break;
@@ -674,7 +679,7 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int32_t insn_index,
                 if (!host_allocated && src2 && !src2_info->spilled
                  && src2_reg->death == insn_index) {
                     /* The second operand's register can only be reused for
-                     * commutative operations.  However, RTL SLT/SLE
+                     * commutative operations.  However, RTL SLT/SGT
                      * instructions translate to multiple x86 instructions,
                      * so we can safely reuse src2 for those cases.  DIV/MOD
                      * instructions aren't included here since they don't
@@ -729,6 +734,9 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int32_t insn_index,
           case RTLOP_MULHS:
             /* Temporary needed to save RAX if it's live across this insn. */
             need_temp = (ctx->reg_map[X86_AX] != 0);
+            /* These technically don't need to be avoided if they're
+             * spilled, but it's not worth the extra cycles to check.
+             * Likewise below. */
             temp_avoid |= 1u << ctx->regs[src1].host_reg
                         | 1u << ctx->regs[src2].host_reg;
             break;
@@ -749,6 +757,13 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int32_t insn_index,
                          || ctx->regs[src2].host_reg == X86_AX);
             temp_avoid |= 1u << ctx->regs[src1].host_reg
                         | 1u << ctx->regs[src2].host_reg;
+            break;
+          case RTLOP_SLL:
+          case RTLOP_SRL:
+          case RTLOP_SRA:
+          case RTLOP_ROR:
+            /* Temporary needed if rCX is live and src2 is spilled. */
+            need_temp = (ctx->reg_map[X86_CX] != 0 && ctx->regs[src2].spilled);
             break;
           case RTLOP_CLZ:
             /* Temporary needed if using BSR instead of LZCNT to count bits.
@@ -1086,9 +1101,9 @@ static void first_pass_for_block(HostX86Context *ctx, int block_index)
                 src2_info->host_reg = X86_CX;
                 ctx->last_cx_death = src2_reg->death;
             }
-            /* Make sure rCX isn't allocated to this register even if it's
-             * later used as a shift count, since the translator doesn't
-             * support rCX as a shift destination. */
+            /* Make sure rCX isn't allocated to the destination register
+             * even if it's later used as a shift count, since the
+             * translator doesn't support rCX as a shift destination. */
             ctx->regs[insn->dest].avoid_regs |= 1u << X86_CX;
             break;
           }  // case RTLOP_{SLL,SRL,SRA,ROR}

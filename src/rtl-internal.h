@@ -461,28 +461,20 @@ extern int rtl_opt_drop_dead_branches(RTLUnit *unit);
 /*------------------------ Register information -------------------------*/
 
 /**
- * rtl_register_is_int:  Return whether the given register has an integral
- * type.
+ * rtl_type_is_float:  Return whether the given data type is an integral type.
  */
-static inline bool rtl_register_is_int(const RTLRegister *reg)
+static inline CONST_FUNCTION bool rtl_type_is_int(RTLDataType type)
 {
-    const uint32_t int_types =
-        1u << RTLTYPE_INT32 |
-        1u << RTLTYPE_ADDRESS;
-    return (int_types & (1u << reg->type)) != 0;
+    return type <= RTLTYPE_ADDRESS;
 }
 
 /**
- * rtl_register_is_float:  Return whether the given register has a
- * floating-point type.
+ * rtl_register_is_int:  Return whether the given register has an integral
+ * type.
  */
-static inline bool rtl_register_is_float(const RTLRegister *reg)
+static inline PURE_FUNCTION bool rtl_register_is_int(const RTLRegister *reg)
 {
-    const uint32_t float_types =
-        1u << RTLTYPE_FLOAT |
-        1u << RTLTYPE_DOUBLE |
-        1u << RTLTYPE_V2_DOUBLE;
-    return (float_types & (1u << reg->type)) != 0;
+    return rtl_type_is_int(reg->type);
 }
 
 /*************************************************************************/

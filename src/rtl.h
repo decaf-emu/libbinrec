@@ -135,7 +135,11 @@ typedef enum RTLOpcode {
      * these have no effect on code behavior, but they do extend the live
      * range of the registers, which can be useful in forcing certain
      * registers to remain live in tests or as a base register for alias
-     * storage. */
+     * storage.  If registers are given, they must obey the usual rules
+     * of definedness (dest must be undefined, src1 and src2 must be
+     * defined).  Passing a register as the destination of a NOP and then
+     * using that register as the source of another (non-NOP) instruction
+     * results in undefined behavior. */
     RTLOP_NOP = 1,
 
     /* Alias register operations */

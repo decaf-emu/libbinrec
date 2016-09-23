@@ -65,9 +65,9 @@ static int add_rtl(RTLUnit *unit)
      * which are merged into the next block in order to pad the alias setup
      * code to the point where it will exceed the available space in the
      * output buffer.  (We need to pad the setup code because the
-     * translator always reserves a fixed size, currently 28 bytes (see
+     * translator always reserves a fixed size, currently 45 bytes (see
      * MAX_INSN_LEN), for all instructions.) */
-    uint32_t pad_alias[5], pad_reg[5];
+    uint32_t pad_alias[6], pad_reg[6];
     STATIC_ASSERT(lenof(pad_alias) == lenof(pad_reg), "Array length mismatch");
     for (int i = 0; i < lenof(pad_alias); i++) {
         EXPECT(pad_alias[i] = rtl_alloc_alias_register(unit, RTLTYPE_INT32));
@@ -134,7 +134,7 @@ int main(void)
 
     /* We have to set the buffer to a precise size to trigger the
      * buffer-full logic in alias conflict resolution. */
-    handle->code_buffer_size = 128;
+    handle->code_buffer_size = 143;
     handle->code_alignment = 16;
     EXPECT(handle->code_buffer = binrec_code_malloc(
                handle, handle->code_buffer_size, handle->code_alignment));

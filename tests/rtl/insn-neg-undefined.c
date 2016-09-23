@@ -27,7 +27,7 @@ int main(void)
     EXPECT(unit = rtl_create_unit(handle));
 
     uint32_t reg1, reg2;
-    EXPECT(reg1 = rtl_alloc_register(unit, RTLTYPE_ADDRESS));
+    EXPECT(reg1 = rtl_alloc_register(unit, RTLTYPE_INT32));
     EXPECT(reg2 = rtl_alloc_register(unit, RTLTYPE_INT32));
 
     EXPECT_FALSE(rtl_add_insn(unit, RTLOP_NEG, reg2, reg1, 0, 0));

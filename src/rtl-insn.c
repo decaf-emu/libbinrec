@@ -86,6 +86,18 @@ static bool make_nop(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
     ASSERT(src1 >= 0 && src1 < unit->next_reg);
     ASSERT(src2 >= 0 && src2 < unit->next_reg);
 
+#ifdef ENABLE_OPERAND_SANITY_CHECKS
+    if (dest != 0) {
+        OPERAND_ASSERT(unit->regs[dest].source == RTLREG_UNDEFINED);
+    }
+    if (src1 != 0) {
+        OPERAND_ASSERT(unit->regs[src1].source != RTLREG_UNDEFINED);
+    }
+    if (src2 != 0) {
+        OPERAND_ASSERT(unit->regs[src2].source != RTLREG_UNDEFINED);
+    }
+#endif
+
     insn->dest = dest;
     insn->src1 = src1;
     insn->src2 = src2;
@@ -94,6 +106,8 @@ static bool make_nop(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
     const uint32_t insn_index = unit->num_insns;
     if (dest) {
         RTLRegister * const destreg = &unit->regs[dest];
+        unit->regs[dest].source = RTLREG_RESULT;
+        unit->regs[dest].result.opcode = RTLOP_NOP;
         mark_live(unit, insn_index, destreg, dest);
     }
     if (src1) {
