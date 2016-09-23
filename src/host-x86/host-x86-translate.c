@@ -1558,15 +1558,6 @@ static bool translate_block(HostX86Context *ctx, int block_index)
 
             X86Register host_shifted;
             if (insn->bitfield.start != 0) {
-                /* We could use SHRD (which takes separate input and output
-                 * operands) to avoid the extra MOV, but SHRD has higher
-                 * latency than SHR on current x86 architecture
-                 * implementations, and simple inter-GPR moves are free
-                 * (zero latency) on at least current Intel CPUs, so the
-                 * only penalty is the time to decode the additional
-                 * instruction.  Since we need the shift result right away,
-                 * that decode penalty is probably less than the latency
-                 * we'd see from SHRD. */
                 if (is_spilled(ctx, src1, insn_index)) {
                     append_load(&code, unit->regs[src1].type, host_dest,
                                 X86_SP, ctx->regs[src1].spill_offset);
