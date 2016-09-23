@@ -123,7 +123,14 @@ typedef enum RTLDataType_ {
 
 /**
  * RTLOpcode:  Enumeration of operations, used as the value of the
- * RTLInsn.op field.
+ * RTLInsn.opcode field.
+ *
+ * Note that in general, computational instructions require that all
+ * operands be of the same type; for example, it is invalid to ADD an
+ * INT32 register and an ADDRESS register, or to add two INT32 registers
+ * and store the result in an ADDRESS register.  Use the appropriate
+ * typecast instructions, such as ZCAST or SCAST for integers, to convert
+ * between types.
  */
 typedef enum RTLOpcode {
     /* Zero is invalid. */
@@ -188,6 +195,7 @@ typedef enum RTLOpcode {
     RTLOP_ROR,          // dest = src1 ROR (src2 % #bits(src1))
                         //    [src2 may be any integer type]
     RTLOP_CLZ,          // dest = [number of leading zeros in src1]
+                        //    [dest may be any integer type]
     RTLOP_BSWAP,        // dest = [reverse order of bytes in src1]
     RTLOP_SEQ,          // dest = src1 == src2 ? 1 : 0
                         //    [dest may be any integer type]

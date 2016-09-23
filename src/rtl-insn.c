@@ -440,6 +440,44 @@ static bool make_alu_imm(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
 /*-----------------------------------------------------------------------*/
 
 /**
+ * make_clz:  Encode a CLZ instruction.
+ */
+static bool make_clz(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
+                     int src2, uint64_t other)
+{
+    ASSERT(unit != NULL);
+    ASSERT(unit->regs != NULL);
+    ASSERT(insn != NULL);
+    ASSERT(dest >= 0 && dest < unit->next_reg);
+    ASSERT(src1 >= 0 && src1 < unit->next_reg);
+
+#ifdef ENABLE_OPERAND_SANITY_CHECKS
+    OPERAND_ASSERT(dest != 0);
+    OPERAND_ASSERT(src1 != 0);
+    OPERAND_ASSERT(unit->regs[dest].source == RTLREG_UNDEFINED);
+    OPERAND_ASSERT(unit->regs[src1].source != RTLREG_UNDEFINED);
+    OPERAND_ASSERT(rtl_register_is_int(&unit->regs[dest]));
+    OPERAND_ASSERT(rtl_register_is_int(&unit->regs[src1]));
+#endif
+
+    insn->dest = dest;
+    insn->src1 = src1;
+
+    RTLRegister * const destreg = &unit->regs[dest];
+    RTLRegister * const src1reg = &unit->regs[src1];
+    const uint32_t insn_index = unit->num_insns;
+    destreg->source = RTLREG_RESULT;
+    destreg->result.opcode = insn->opcode;
+    destreg->result.src1 = src1;
+    mark_live(unit, insn_index, destreg, dest);
+    mark_live(unit, insn_index, src1reg, src1);
+
+    return true;
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
  * make_cmp:  Encode a comparison instruction.
  */
 static bool make_cmp(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
@@ -1017,7 +1055,7 @@ bool (* const makefunc_table[])(RTLUnit *, RTLInsn *, int, int, int,
     [RTLOP_SRL       ] = make_alu_2op,
     [RTLOP_SRA       ] = make_alu_2op,
     [RTLOP_ROR       ] = make_alu_2op,
-    [RTLOP_CLZ       ] = make_alu_1op,
+    [RTLOP_CLZ       ] = make_clz,
     [RTLOP_BSWAP     ] = make_alu_1op,
     [RTLOP_SEQ       ] = make_cmp,
     [RTLOP_SLTU      ] = make_cmp,
