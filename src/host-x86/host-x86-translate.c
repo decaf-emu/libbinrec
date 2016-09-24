@@ -686,11 +686,6 @@ static APPEND_INLINE void append_test_reg(
 {
     ASSERT(rtl_register_is_int(&unit->regs[reg]));
 
-    if ((ctx->handle->host_opt & BINREC_OPT_H_X86_CONDITION_CODES)
-     && ctx->cc_reg == reg) {
-        return;  // Condition codes are already set appropriately.
-    }
-
     if (is_spilled(ctx, reg, insn_index)) {
         const bool is64 = (unit->regs[reg].type == RTLTYPE_ADDRESS);
         append_insn_ModRM_mem(code, is64, X86OP_IMM_Ev_Ib, X86OP_IMM_CMP,
@@ -712,8 +707,6 @@ static APPEND_INLINE void append_test_reg(
         }
         append_ModRM(code, X86MOD_REG, host_reg & 7, host_reg & 7);
     }
-
-    ctx->cc_reg = reg;
 }
 
 /*-----------------------------------------------------------------------*/
@@ -2027,8 +2020,6 @@ static bool translate_block(HostX86Context *ctx, int block_index)
                 if (imm == 0) {
                     append_insn_ModRM_reg(&code, false, X86OP_XOR_Gv_Ev,
                                           host_dest, host_dest);
-                    // FIXME: need to go back and fill these in all over
-                    ctx->cc_reg = dest;
                 } else if (imm <= UINT64_C(0xFFFFFFFF)) {
                     append_insn_R(&code, false, X86OP_MOV_rAX_Iv, host_dest);
                     append_imm32(&code, (uint32_t)imm);

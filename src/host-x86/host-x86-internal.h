@@ -171,9 +171,6 @@ typedef struct HostX86Context {
     /* Bitmap of registers which have been used in the current block. */
     uint32_t block_regs_touched;
 
-    /* RTL register whose value was used to set the condition codes, or 0
-     * if the flags do not represent the value of a particular register. */
-    uint16_t cc_reg;
     /* List of registers which are allocated to specific hardware registers
      * due to instruction requirements (e.g. shift counts in CL).  The
      * first register in the list is stored here, and subsequent registers
