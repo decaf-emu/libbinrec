@@ -41,9 +41,11 @@ typedef struct CodeBuffer {
  * CodeBuffer structure) are not clobbered by writes to the output code
  * buffer; this can reduce instruction count in the translation loop by
  * around 30% (observed with GCC 5.3) if the compiler would ordinarily
- * choose not to inline the functions.  For coverage testing, however,
- * it's more useful to see the branch coverage of the functions themselves
- * rather than of every location they're used in the code.
+ * choose not to inline the functions.  Inlining also avoids numerous
+ * unnecessary comparisons against constant values such as opcodes.  For
+ * coverage testing, however, it's more useful to see the branch coverage
+ * of the functions themselves rather than of every location they're used
+ * in the code.
  */
 #ifdef COVERAGE
     #define APPEND_INLINE  /*nothing*/
@@ -2064,10 +2066,30 @@ static bool translate_block(HostX86Context *ctx, int block_index)
             break;
           }  // case RTLOP_LOAD_U16, RTLOP_LOAD_S16
 
-          case RTLOP_STORE:
-            append_store(&code, unit->regs[src2].type, ctx->regs[src2].host_reg,
-                         ctx->regs[src1].host_reg, insn->offset);
+          case RTLOP_STORE: {
+            X86Register host_base = ctx->regs[src1].host_reg;
+            X86Register host_value = ctx->regs[src2].host_reg;
+            RTLDataType type = unit->regs[src2].type;
+            if (is_spilled(ctx, src1, insn_index)) {
+                ASSERT(unit->regs[src1].type == RTLTYPE_ADDRESS);
+                append_load(&code, RTLTYPE_ADDRESS, X86_R15,
+                            X86_SP, ctx->regs[src1].spill_offset);
+                host_base = X86_R15;
+            }
+            if (is_spilled(ctx, src2, insn_index)) {
+                if (type == RTLTYPE_INT32) {
+                    type = RTLTYPE_FLOAT;
+                } else if (type == RTLTYPE_ADDRESS) {
+                    type = RTLTYPE_DOUBLE;
+                }
+                ASSERT(!rtl_type_is_int(type));
+                append_load(&code, type, X86_XMM15,
+                            X86_SP, ctx->regs[src2].spill_offset);
+                host_value = X86_XMM15;
+            }
+            append_store(&code, type, host_value, host_base, insn->offset);
             break;
+          }  // case RTLOP_STORE
 
           case RTLOP_STORE_I8: {
             const X86Register host_src1 = ctx->regs[src1].host_reg;

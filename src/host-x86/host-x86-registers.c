@@ -357,6 +357,43 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
     const RTLRegister * const src2_reg = &unit->regs[src2];
     const HostX86RegInfo * const src2_info = &ctx->regs[src2];
 
+    /* Special cases for store-type instructions.  These instructions
+     * don't have destination register operands, so we don't have a place
+     * to record an arbitrary temporary register for reloading spilled
+     * values; instead, we unconditionally use R15 or XMM15 (as
+     * appropriate) to store the reloaded value, so we need to mark the
+     * relevant register as touched so it's saved and restored in the
+     * prologue/epilogue if needed. */
+    switch (insn->opcode) {
+      case RTLOP_SET_ALIAS:
+        if (src1_info->spilled) {
+            const X86Register temp_reg =
+                (rtl_register_is_int(src1_reg) ? X86_R15 : X86_XMM15);
+            ctx->block_regs_touched |= 1u << temp_reg;
+        }
+        break;
+      case RTLOP_STORE:
+      case RTLOP_STORE_I8:
+      case RTLOP_STORE_I16:
+      case RTLOP_STORE_BR:
+      case RTLOP_STORE_I16_BR:
+        if (src1_info->spilled) {
+            ctx->block_regs_touched |= 1u << X86_R15;
+        }
+        if (src2_info->spilled) {
+            /* We load the value to be stored into XMM15 regardless of its
+             * type.  If src1 is also spilled, it's already occupying R15,
+             * and even if not, it simplifies the logic (and thus reduces
+             * compilation time) to just use a fixed register, especially
+             * since this ought to be an unlikely case.  For narrow-integer
+             * and byte-reversed stores, since we can't store directly from
+             * XMM15, we instead use it to hold the value of R14, which we
+             * use as the value register. */
+            ctx->block_regs_touched |= 1u << X86_XMM15;
+        }
+        break;
+    }
+
     if (src1) {
         /* Source registers must have already had a host register allocated,
          * unless they're undefined (which is invalid in the first place
@@ -366,14 +403,6 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
          * end up treating it just like a nonzero-index undefined register. */
         ASSERT((src1_reg->source != RTLREG_UNDEFINED)
                == src1_info->host_allocated);
-        if (insn->opcode == RTLOP_SET_ALIAS && src1_info->spilled) {
-            /* We'll use R15 or XMM15 as a temporary to hold the value
-             * while storing it.  Make sure the register is saved and
-             * restored if appropriate for the selected ABI. */
-            const X86Register temp_reg =
-                (rtl_register_is_int(src1_reg) ? X86_R15 : X86_XMM15);
-            ctx->block_regs_touched |= 1u << temp_reg;
-        }
         if (src1_reg->death == insn_index) {
             unassign_register(ctx, src1, src1_info);
         }
