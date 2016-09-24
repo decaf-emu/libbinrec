@@ -2323,6 +2323,8 @@ static bool translate_block(HostX86Context *ctx, int block_index)
                     handle->code_len = code.len;
                     if (UNLIKELY(!binrec_ensure_code_space(
                                      handle, needed_space))) {
+                        log_error(ctx->handle, "No memory for alias conflict"
+                                  " resolution code");
                         return false;
                     }
                     code.buffer = handle->code_buffer;
