@@ -20,12 +20,12 @@ static int add_rtl(RTLUnit *unit)
 {
     alloc_dummy_registers(unit, 1, RTLTYPE_INT32);
 
-    int reg, label;
-    EXPECT(reg = rtl_alloc_register(unit, RTLTYPE_INT32));
+    int reg1, label;
+    EXPECT(reg1 = rtl_alloc_register(unit, RTLTYPE_INT32));
     EXPECT(label = rtl_alloc_label(unit));
 
-    EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg, 0, 0, 0));
-    EXPECT(rtl_add_insn(unit, RTLOP_GOTO_IF_NZ, 0, reg, 0, label));
+    EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg1, 0, 0, 1));
+    EXPECT(rtl_add_insn(unit, RTLOP_GOTO_IF_NZ, 0, reg1, 0, label));
     EXPECT(rtl_add_insn(unit, RTLOP_ILLEGAL, 0, 0, 0, 0));
     EXPECT(rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, label));
     EXPECT(rtl_add_insn(unit, RTLOP_NOP, 0, 0, 0, 1));
@@ -35,7 +35,7 @@ static int add_rtl(RTLUnit *unit)
 
 static const uint8_t expected_code[] = {
     0x48,0x83,0xEC,0x08,                // sub $8,%rsp
-    0x33,0xC9,                          // xor %ecx,%ecx
+    0xB9,0x01,0x00,0x00,0x00,           // mov $1,%ecx
     0x85,0xC9,                          // test %ecx,%ecx
     0x0F,0x85,0x02,0x00,0x00,0x00,      // jnz L1
     0x0F,0x0B,                          // ud2

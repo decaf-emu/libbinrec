@@ -29,9 +29,9 @@ static int add_rtl(RTLUnit *unit)
     rtl_set_alias_storage(unit, alias, reg1, 0x1234);
     EXPECT(label1 = rtl_alloc_label(unit));
     EXPECT(reg2 = rtl_alloc_register(unit, RTLTYPE_INT32));
-    EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg2, 0, 0, 0));  // Gets EAX.
+    EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg2, 0, 0, 2));  // Gets EAX.
     EXPECT(reg3 = rtl_alloc_register(unit, RTLTYPE_INT32));
-    EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg3, 0, 0, 0));  // Gets ECX.
+    EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg3, 0, 0, 3));  // Gets ECX.
     /* Add a bunch of NOPs to pad the code past the length reserved for
      * the prologue. */
     EXPECT(rtl_add_insn(unit, RTLOP_NOP, 0, 0, 0, 1));
@@ -53,7 +53,7 @@ static int add_rtl(RTLUnit *unit)
     EXPECT(reg4 = rtl_alloc_register(unit, RTLTYPE_INT32));
     /* Allocate ECX (live through the end of the unit) to prevent merging
      * to the same register. */
-    EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg4, 0, 0, 0));
+    EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg4, 0, 0, 4));
     /* Force EAX to be live past the conditional branch. */
     EXPECT(rtl_add_insn(unit, RTLOP_NOP, 0, reg2, 0, 1));
     /* Don't fall through so that the GET_ALIAS below can be merged without
@@ -134,7 +134,7 @@ int main(void)
 
     /* We have to set the buffer to a precise size to trigger the
      * buffer-full logic in alias conflict resolution. */
-    handle->code_buffer_size = 143;
+    handle->code_buffer_size = 154;
     handle->code_alignment = 16;
     EXPECT(handle->code_buffer = binrec_code_malloc(
                handle, handle->code_buffer_size, handle->code_alignment));

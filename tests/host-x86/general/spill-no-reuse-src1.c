@@ -27,7 +27,7 @@ static int add_rtl(RTLUnit *unit)
         EXPECT(rtl_add_insn(unit, RTLOP_NOP, 0, regs[i], 0, 0));
     }
     EXPECT(reg2 = rtl_alloc_register(unit, RTLTYPE_INT32));
-    EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg2, 0, 0, 0));
+    EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg2, 0, 0, 2));
     EXPECT(reg3 = rtl_alloc_register(unit, RTLTYPE_INT32));
     /* regs[13] is spilled here, so reg3 should not attempt to reuse it
      * even though it dies at this instruction. */
@@ -59,7 +59,7 @@ static const uint8_t expected_code[] = {
     0x41,0xBE,0x0E,0x00,0x00,0x00,      // mov $14,%r14d
     0x44,0x89,0x34,0x24,                // mov %r14d,(%rsp)
     0x41,0xBE,0x0F,0x00,0x00,0x00,      // mov $15,%r14d
-    0x33,0xC0,                          // xor %eax,%eax
+    0xB8,0x02,0x00,0x00,0x00,           // mov $2,%eax
     0x03,0x04,0x24,                     // add (%rsp),%eax
     0x48,0x83,0xC4,0x10,                // add $16,%rsp
     0x41,0x5E,                          // pop %r14

@@ -22,7 +22,7 @@ static int add_rtl(RTLUnit *unit)
 
     int reg1, reg2, reg3, reg4;
     EXPECT(reg1 = rtl_alloc_register(unit, RTLTYPE_INT32));
-    EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg1, 0, 0, 0));
+    EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg1, 0, 0, 1));
     EXPECT(reg2 = rtl_alloc_register(unit, RTLTYPE_ADDRESS));
     EXPECT(rtl_add_insn(unit, RTLOP_SCAST, reg2, reg1, 0, 0));
 
@@ -41,7 +41,7 @@ static int add_rtl(RTLUnit *unit)
 
 static const uint8_t expected_code[] = {
     0x53,                               // push %rbx
-    0x33,0xFF,                          // xor %edi,%edi
+    0xBF,0x01,0x00,0x00,0x00,           // mov $1,%edi
     0x4C,0x63,0xC7,                     // movslq %edi,%r8
     0x49,0x63,0xD8,                     // movslq %r8d,%rbx
     0x5B,                               // pop %rbx

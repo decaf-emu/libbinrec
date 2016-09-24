@@ -24,7 +24,7 @@ static int add_rtl(RTLUnit *unit)
     EXPECT(alias = rtl_alloc_alias_register(unit, RTLTYPE_INT32));
     rtl_set_alias_storage(unit, alias, reg1, 0x1234);
     EXPECT(reg2 = rtl_alloc_register(unit, RTLTYPE_INT32));
-    EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg2, 0, 0, 0));
+    EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg2, 0, 0, 2));
     EXPECT(rtl_add_insn(unit, RTLOP_SET_ALIAS, 0, reg2, 0, alias));
     EXPECT(rtl_add_insn(unit, RTLOP_NOP, 0, 0, 0, 1));
     /* Block out every register except EDX through the beginning of the
@@ -46,7 +46,7 @@ static int add_rtl(RTLUnit *unit)
     }
     /* Touch EAX so it can't be used for merging. */
     EXPECT(reg3 = rtl_alloc_register(unit, RTLTYPE_INT32));
-    EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg3, 0, 0, 0));
+    EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg3, 0, 0, 3));
     EXPECT(rtl_add_insn(unit, RTLOP_NOP, 0, 0, 0, 2));
     /* EDX is the only register still available for merging, but we use the
      * loaded value as a divisor so it can't be assigned EDX.  This should
@@ -54,7 +54,7 @@ static int add_rtl(RTLUnit *unit)
     EXPECT(reg4 = rtl_alloc_register(unit, RTLTYPE_INT32));
     EXPECT(rtl_add_insn(unit, RTLOP_GET_ALIAS, reg4, 0, 0, alias));
     EXPECT(reg5 = rtl_alloc_register(unit, RTLTYPE_INT32));
-    EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg5, 0, 0, 0));
+    EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg5, 0, 0, 5));
     EXPECT(reg6 = rtl_alloc_register(unit, RTLTYPE_INT32));
     EXPECT(rtl_add_insn(unit, RTLOP_MODU, reg6, reg5, reg4, 0));
     EXPECT(rtl_add_insn(unit, RTLOP_SET_ALIAS, 0, reg6, 0, alias));
@@ -69,7 +69,7 @@ static const uint8_t expected_code[] = {
     0x41,0x54,                          // push %r12
     0x41,0x55,                          // push %r13
     0x41,0x56,                          // push %r14
-    0x33,0xC0,                          // xor %eax,%eax
+    0xB8,0x02,0x00,0x00,0x00,           // mov $2,%eax
     0x0F,0x1F,0x05,0x01,0x00,0x00,0x00, // nop 1(%rip)
     0x33,0xC9,                          // xor %ecx,%ecx
     0x33,0xD2,                          // xor %edx,%edx
@@ -84,10 +84,10 @@ static const uint8_t expected_code[] = {
     0x45,0x33,0xED,                     // xor %r13d,%r13d
     0x45,0x33,0xF6,                     // xor %r14d,%r14d
     0x8B,0xD0,                          // mov %eax,%edx
-    0x33,0xC0,                          // xor %eax,%eax
+    0xB8,0x03,0x00,0x00,0x00,           // mov $3,%eax
     0x0F,0x1F,0x05,0x02,0x00,0x00,0x00, // nop 2(%rip)
     0x8B,0xCA,                          // mov %edx,%ecx
-    0x33,0xC0,                          // xor %eax,%eax
+    0xB8,0x05,0x00,0x00,0x00,           // mov $5,%eax
     0x33,0xD2,                          // xor %edx,%edx
     0xF7,0xF1,                          // div %ecx
     0x89,0x97,0x34,0x12,0x00,0x00,      // mov %edx,0x1234(%rdi)

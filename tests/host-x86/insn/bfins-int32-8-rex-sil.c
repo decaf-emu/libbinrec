@@ -22,9 +22,9 @@ static int add_rtl(RTLUnit *unit)
 
     int reg1, reg2, reg3;
     EXPECT(reg1 = rtl_alloc_register(unit, RTLTYPE_INT32));
-    EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg1, 0, 0, 0));
+    EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg1, 0, 0, 1));
     EXPECT(reg2 = rtl_alloc_register(unit, RTLTYPE_INT32));
-    EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg2, 0, 0, 0));
+    EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg2, 0, 0, 2));
     EXPECT(reg3 = rtl_alloc_register(unit, RTLTYPE_INT32));
     EXPECT(rtl_add_insn(unit, RTLOP_BFINS, reg3, reg1, reg2, 2 | 8<<8));
     EXPECT(rtl_add_insn(unit, RTLOP_NOP, 0, 0, reg2, 0));
@@ -34,8 +34,8 @@ static int add_rtl(RTLUnit *unit)
 
 static const uint8_t expected_code[] = {
     0x48,0x83,0xEC,0x08,                // sub $8,%rsp
-    0x33,0xD2,                          // xor %edx,%edx
-    0x33,0xF6,                          // xor %esi,%esi
+    0xBA,0x01,0x00,0x00,0x00,           // mov $1,%edx
+    0xBE,0x02,0x00,0x00,0x00,           // mov $2,%esi
     0x81,0xE2,0x03,0xFC,0xFF,0xFF,      // and $0xFFFFFC03,%edx
     /* %sil requires an empty REX prefix. */
     0x40,0x0F,0xB6,0xFE,                // movzbl %sil,%edi

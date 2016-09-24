@@ -35,7 +35,7 @@ static int add_rtl(RTLUnit *unit)
      * should trigger an alias conflict. */
     EXPECT(rtl_add_insn(unit, RTLOP_GET_ALIAS, reg2, 0, 0, alias));
     EXPECT(reg3 = rtl_alloc_register(unit, RTLTYPE_INT32));
-    EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg3, 0, 0, 0));
+    EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg3, 0, 0, 3));
     EXPECT(reg4 = rtl_alloc_register(unit, RTLTYPE_INT32));
     EXPECT(rtl_add_insn(unit, RTLOP_SLL, reg4, reg3, reg2, alias));
     EXPECT(rtl_add_insn(unit, RTLOP_SET_ALIAS, 0, reg4, 0, alias));
@@ -45,11 +45,11 @@ static int add_rtl(RTLUnit *unit)
     int reg5, reg6, reg7;
     EXPECT(rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, label1));
     EXPECT(reg5 = rtl_alloc_register(unit, RTLTYPE_INT32));
-    EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg5, 0, 0, 0));  // Gets EAX.
+    EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg5, 0, 0, 5));  // Gets EAX.
     EXPECT(reg6 = rtl_alloc_register(unit, RTLTYPE_INT32));
-    EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg6, 0, 0, 0));  // Gets ECX.
+    EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg6, 0, 0, 6));  // Gets ECX.
     EXPECT(reg7 = rtl_alloc_register(unit, RTLTYPE_INT32));
-    EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg7, 0, 0, 0));  // Gets EDX.
+    EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg7, 0, 0, 7));  // Gets EDX.
     EXPECT(rtl_add_insn(unit, RTLOP_NOP, 0, reg5, 0, 0));
     EXPECT(rtl_add_insn(unit, RTLOP_SET_ALIAS, 0, reg7, 0, alias));
     EXPECT(rtl_add_insn(unit, RTLOP_GOTO_IF_Z, 0, reg6, 0, label2));
@@ -61,19 +61,19 @@ static int add_rtl(RTLUnit *unit)
 
 static const uint8_t expected_code[] = {
     0x48,0x83,0xEC,0x08,                // sub $8,%rsp
-    0xE9,0x0F,0x00,0x00,0x00,           // jmp L1
-    0x33,0xC0,                          // L2: xor %eax,%eax
+    0xE9,0x12,0x00,0x00,0x00,           // jmp L1
+    0xB8,0x03,0x00,0x00,0x00,           // L2: mov $3,%eax
     0xD3,0xE0,                          // shl %cl,%eax
     0x89,0x87,0x34,0x12,0x00,0x00,      // mov %eax,0x1234(%rdi)
-    0xE9,0x14,0x00,0x00,0x00,           // jmp L3
-    0x33,0xC0,                          // L1: xor %eax,%eax
-    0x33,0xC9,                          // xor %ecx,%ecx
-    0x33,0xD2,                          // xor %edx,%edx
+    0xE9,0x1D,0x00,0x00,0x00,           // jmp L3
+    0xB8,0x05,0x00,0x00,0x00,           // L1: mov $5,%eax
+    0xB9,0x06,0x00,0x00,0x00,           // mov $6,%ecx
+    0xBA,0x07,0x00,0x00,0x00,           // mov $7,%edx
     0x89,0x97,0x34,0x12,0x00,0x00,      // mov %edx,0x1234(%rdi)
     0x85,0xC9,                          // test %ecx,%ecx
     0x75,0x04,                          // jnz L3
     0x8B,0xCA,                          // mov %edx,%ecx
-    0xEB,0xDD,                          // jmp L2
+    0xEB,0xD1,                          // jmp L2
     0x48,0x83,0xC4,0x08,                // L3: add $8,%rsp
     0xC3,                               // ret
 };

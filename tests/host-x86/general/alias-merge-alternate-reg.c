@@ -24,7 +24,7 @@ static int add_rtl(RTLUnit *unit)
     EXPECT(alias = rtl_alloc_alias_register(unit, RTLTYPE_INT32));
     rtl_set_alias_storage(unit, alias, reg1, 0x1234);
     EXPECT(reg2 = rtl_alloc_register(unit, RTLTYPE_INT32));
-    EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg2, 0, 0, 0));
+    EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg2, 0, 0, 2));
     EXPECT(rtl_add_insn(unit, RTLOP_SET_ALIAS, 0, reg2, 0, alias));
 
     int reg3, reg4, reg5, reg6, label;
@@ -32,10 +32,10 @@ static int add_rtl(RTLUnit *unit)
     EXPECT(rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, label));
     EXPECT(reg3 = rtl_alloc_register(unit, RTLTYPE_INT32));
     /* This will touch EAX, so the alias can't be carried over directly. */
-    EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg3, 0, 0, 0));
+    EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg3, 0, 0, 3));
     EXPECT(reg4 = rtl_alloc_register(unit, RTLTYPE_INT32));
     /* This touches ECX, preventing the alias from being loaded directly. */
-    EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg4, 0, 0, 0));
+    EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg4, 0, 0, 4));
     EXPECT(reg5 = rtl_alloc_register(unit, RTLTYPE_INT32));
     /* The alias will be allocated ECX because it's used as a shift count.
      * This load should be merged with the store above, but both EAX and
@@ -52,10 +52,10 @@ static int add_rtl(RTLUnit *unit)
 
 static const uint8_t expected_code[] = {
     0x48,0x83,0xEC,0x08,                // sub $8,%rsp
-    0x33,0xC0,                          // xor %eax,%eax
+    0xB8,0x02,0x00,0x00,0x00,           // mov $2,%eax
     0x8B,0xD0,                          // mov %eax,%edx
-    0x33,0xC0,                          // xor %eax,%eax
-    0x33,0xC9,                          // xor %ecx,%ecx
+    0xB8,0x03,0x00,0x00,0x00,           // mov $3,%eax
+    0xB9,0x04,0x00,0x00,0x00,           // mov $4,%ecx
     0x8B,0xCA,                          // mov %edx,%ecx
     0xD3,0xE0,                          // shl %cl,%eax
     0x89,0x87,0x34,0x12,0x00,0x00,      // mov %eax,0x1234(%rdi)

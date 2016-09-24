@@ -22,14 +22,14 @@ static int add_rtl(RTLUnit *unit)
 
     int reg1, reg2, reg3;
     EXPECT(reg1 = rtl_alloc_register(unit, RTLTYPE_ADDRESS));
-    EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg1, 0, 0, 0));
+    EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg1, 0, 0, 1));
     EXPECT(reg2 = rtl_alloc_register(unit, RTLTYPE_INT32));
-    EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg2, 0, 0, 0));
+    EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg2, 0, 0, 2));
     EXPECT(rtl_add_insn(unit, RTLOP_STORE_I8, 0, reg1, reg2, 0));
     EXPECT(reg3 = rtl_alloc_register(unit, RTLTYPE_ADDRESS));
     /* Also check that no extraneous REX is added if the base register
      * requires REX. */
-    EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg3, 0, 0, 0));
+    EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg3, 0, 0, 3));
     EXPECT(rtl_add_insn(unit, RTLOP_STORE_I8, 0, reg3, reg2, 0));
     EXPECT(rtl_add_insn(unit, RTLOP_NOP, 0, reg1, reg2, 0));
     EXPECT(rtl_add_insn(unit, RTLOP_NOP, 0, reg3, 0, 0));
@@ -39,10 +39,10 @@ static int add_rtl(RTLUnit *unit)
 
 static const uint8_t expected_code[] = {
     0x48,0x83,0xEC,0x08,                // sub $8,%rsp
-    0x33,0xF6,                          // xor %esi,%esi
-    0x33,0xFF,                          // xor %edi,%edi
+    0xBE,0x01,0x00,0x00,0x00,           // mov $1,%esi
+    0xBF,0x02,0x00,0x00,0x00,           // mov $2,%edi
     0x40,0x88,0x3E,                     // mov %dil,(%rsi)
-    0x45,0x33,0xC0,                     // xor %r8d,%r8d
+    0x41,0xB8,0x03,0x00,0x00,0x00,      // mov $3,%r8d
     0x41,0x88,0x38,                     // mov %dil,(%r8)
     0x48,0x83,0xC4,0x08,                // add $8,%rsp
     0xC3,                               // ret

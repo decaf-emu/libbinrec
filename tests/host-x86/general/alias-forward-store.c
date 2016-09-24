@@ -26,10 +26,10 @@ static int add_rtl(RTLUnit *unit)
     EXPECT(alias2 = rtl_alloc_alias_register(unit, RTLTYPE_INT32));
     rtl_set_alias_storage(unit, alias2, reg1, 0x5678);
     EXPECT(reg2 = rtl_alloc_register(unit, RTLTYPE_INT32));
-    EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg2, 0, 0, 0));
+    EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg2, 0, 0, 2));
     EXPECT(rtl_add_insn(unit, RTLOP_SET_ALIAS, 0, reg2, 0, alias1));
     EXPECT(reg3 = rtl_alloc_register(unit, RTLTYPE_INT32));
-    EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg3, 0, 0, 0));
+    EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg3, 0, 0, 3));
     EXPECT(rtl_add_insn(unit, RTLOP_SET_ALIAS, 0, reg3, 0, alias2));
 
     int label1;
@@ -85,7 +85,7 @@ static int add_rtl(RTLUnit *unit)
     EXPECT(label6 = rtl_alloc_label(unit));
     EXPECT(rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, label6));
     EXPECT(reg13 = rtl_alloc_register(unit, RTLTYPE_INT32));
-    EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg13, 0, 0, 0));
+    EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg13, 0, 0, 13));
     EXPECT(rtl_add_insn(unit, RTLOP_SET_ALIAS, 0, reg13, 0, alias1));
     /* The store to alias1 should override store forwarding for that alias. */
 
@@ -108,9 +108,9 @@ static const uint8_t expected_code[] = {
     0x48,0x83,0xEC,0x08,                // sub $8,%rsp
 
     /* Block 0 */
-    0x33,0xC0,                          // xor %eax,%eax
+    0xB8,0x02,0x00,0x00,0x00,           // mov $2,%eax
     0x89,0x87,0x34,0x12,0x00,0x00,      // mov %eax,0x1234(%rdi)
-    0x33,0xC9,                          // xor %ecx,%ecx
+    0xB9,0x03,0x00,0x00,0x00,           // mov $3,%ecx
     0x89,0x8F,0x78,0x56,0x00,0x00,      // mov %ecx,0x5678(%rdi)
 
     /* Block 1 */
@@ -139,7 +139,7 @@ static const uint8_t expected_code[] = {
     0x74,0xDB,                          // jz L4
 
     /* Block 6 */
-    0x33,0xC0,                          // xor %eax,%eax
+    0xB8,0x0D,0x00,0x00,0x00,           // mov $13,%eax
 
     /* Block 7 */
     0x03,0xC1,                          // add %ecx,%eax

@@ -25,7 +25,7 @@ static int add_rtl(RTLUnit *unit)
     rtl_set_alias_storage(unit, alias, reg1, 0x1234);
     EXPECT(label = rtl_alloc_label(unit));
     EXPECT(reg2 = rtl_alloc_register(unit, RTLTYPE_INT32));
-    EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg2, 0, 0, 0));  // Gets EAX.
+    EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg2, 0, 0, 2));  // Gets EAX.
     EXPECT(rtl_add_insn(unit, RTLOP_SET_ALIAS, 0, reg2, 0, alias));
     EXPECT(rtl_add_insn(unit, RTLOP_GOTO_IF_Z, 0, reg2, 0, label));
 
@@ -47,7 +47,7 @@ static int add_rtl(RTLUnit *unit)
 
 static const uint8_t expected_code[] = {
     0x48,0x83,0xEC,0x08,                // sub $8,%rsp
-    0x33,0xC0,                          // xor %eax,%eax
+    0xB8,0x02,0x00,0x00,0x00,           // mov $2,%eax
     0x89,0x87,0x34,0x12,0x00,0x00,      // mov %eax,0x1234(%rdi)
     0x85,0xC0,                          // test %eax,%eax
     /* If the conflict check goes wrong, this will be turned into a jnz. */

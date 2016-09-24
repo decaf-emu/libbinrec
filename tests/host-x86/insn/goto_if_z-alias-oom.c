@@ -22,13 +22,13 @@ static const unsigned int host_opt = 0;
 
 static int add_rtl(RTLUnit *unit)
 {
-    int reg, label;
-    EXPECT(reg = rtl_alloc_register(unit, RTLTYPE_INT32));
+    int reg1, label;
+    EXPECT(reg1 = rtl_alloc_register(unit, RTLTYPE_INT32));
     EXPECT(label = rtl_alloc_label(unit));
 
     EXPECT(rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, label));
-    EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg, 0, 0, 0));
-    EXPECT(rtl_add_insn(unit, RTLOP_GOTO_IF_Z, 0, reg, 0, label));
+    EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg1, 0, 0, 1));
+    EXPECT(rtl_add_insn(unit, RTLOP_GOTO_IF_Z, 0, reg1, 0, label));
 
     return EXIT_SUCCESS;
 }

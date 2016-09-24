@@ -25,9 +25,9 @@ static int add_rtl(RTLUnit *unit)
     rtl_set_alias_storage(unit, alias, reg1, 0x1234);
     EXPECT(label1 = rtl_alloc_label(unit));
     EXPECT(reg2 = rtl_alloc_register(unit, RTLTYPE_INT32));
-    EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg2, 0, 0, 0));  // Gets EAX.
+    EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg2, 0, 0, 2));  // Gets EAX.
     EXPECT(reg3 = rtl_alloc_register(unit, RTLTYPE_INT32));
-    EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg3, 0, 0, 0));  // Gets ECX.
+    EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg3, 0, 0, 3));  // Gets ECX.
     EXPECT(rtl_add_insn(unit, RTLOP_SET_ALIAS, 0, reg3, 0, alias));
     EXPECT(rtl_add_insn(unit, RTLOP_GOTO_IF_Z, 0, reg3, 0, label1));
 
@@ -35,7 +35,7 @@ static int add_rtl(RTLUnit *unit)
     EXPECT(reg4 = rtl_alloc_register(unit, RTLTYPE_INT32));
     /* Allocate ECX (live through the end of the unit) to prevent merging
      * to the same register. */
-    EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg4, 0, 0, 0));
+    EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg4, 0, 0, 4));
     /* Force EAX to be live past the conditional branch. */
     EXPECT(rtl_add_insn(unit, RTLOP_NOP, 0, reg2, 0, 1));
     /* Don't fall through so that the GET_ALIAS below can be merged without
@@ -82,8 +82,8 @@ static int add_rtl(RTLUnit *unit)
 
 static const uint8_t expected_code[] = {
     0x48,0x83,0xEC,0x08,                // sub $8,%rsp
-    0x33,0xC0,                          // xor %eax,%eax
-    0x33,0xC9,                          // xor %ecx,%ecx
+    0xB8,0x02,0x00,0x00,0x00,           // mov $2,%eax
+    0xB9,0x03,0x00,0x00,0x00,           // mov $3,%ecx
     0x89,0x8F,0x34,0x12,0x00,0x00,      // mov %ecx,0x1234(%rdi)
     0x85,0xC9,                          // test %ecx,%ecx
     0x0F,0x85,0x86,0x00,0x00,0x00,      // jnz L0
@@ -103,8 +103,8 @@ static const uint8_t expected_code[] = {
     0xF3,0x44,0x0F,0x10,0xA7,0x30,0x01,0x00,0x00, // movss 0x130(%rdi),%xmm12
     0xF3,0x44,0x0F,0x10,0xAF,0x34,0x01,0x00,0x00, // movss 0x134(%rdi),%xmm13
     0xF3,0x44,0x0F,0x10,0xB7,0x38,0x01,0x00,0x00, // movss 0x138(%rdi),%xmm14
-    0xE9,0x12,0x01,0x00,0x00,           // jmp L1
-    0x33,0xC9,                          // L0: xor %ecx,%ecx
+    0xE9,0x15,0x01,0x00,0x00,           // jmp L1
+    0xB9,0x04,0x00,0x00,0x00,           // L0: mov $4,%ecx
     0x0F,0x1F,0x05,0x01,0x00,0x00,0x00, // nop 1(%rip)
     0xE9,0x0A,0x01,0x00,0x00,           // jmp L2
     0xF3,0x0F,0x10,0x87,0x00,0x01,0x00,0x00,      // movss 0x100(%rdi),%xmm0

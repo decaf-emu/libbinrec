@@ -30,7 +30,7 @@ static int add_rtl(RTLUnit *unit)
      * instruction with undefined inputs, so we add a LOAD_IMM (to set the
      * live range on the destination register properly) and modify the
      * instruction entry directly. */
-    EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg4, 0, 0, 0));
+    EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg4, 0, 0, 4));
     unit->insns[unit->num_insns-1].opcode = RTLOP_SELECT;
     unit->insns[unit->num_insns-1].src1 = reg1;
     unit->insns[unit->num_insns-1].src2 = reg2;

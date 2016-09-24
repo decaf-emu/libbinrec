@@ -26,9 +26,9 @@ static int add_rtl(RTLUnit *unit)
     rtl_set_alias_storage(unit, alias, reg1, 0x1234);
     EXPECT(label1 = rtl_alloc_label(unit));
     EXPECT(reg2 = rtl_alloc_register(unit, RTLTYPE_INT32));
-    EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg2, 0, 0, 0));  // Gets EAX.
+    EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg2, 0, 0, 2));  // Gets EAX.
     EXPECT(reg3 = rtl_alloc_register(unit, RTLTYPE_INT32));
-    EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg3, 0, 0, 0));  // Gets ECX.
+    EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg3, 0, 0, 3));  // Gets ECX.
     /* Add a bunch of NOPs to pad the code past the length reserved for
      * the prologue. */
     EXPECT(rtl_add_insn(unit, RTLOP_NOP, 0, 0, 0, 1));
@@ -50,7 +50,7 @@ static int add_rtl(RTLUnit *unit)
     EXPECT(reg4 = rtl_alloc_register(unit, RTLTYPE_INT32));
     /* Allocate ECX (live through the end of the unit) to prevent merging
      * to the same register. */
-    EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg4, 0, 0, 0));
+    EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg4, 0, 0, 4));
     /* Force EAX to be live past the conditional branch. */
     EXPECT(rtl_add_insn(unit, RTLOP_NOP, 0, reg2, 0, 1));
     /* Don't fall through so that the GET_ALIAS below can be merged without
@@ -98,8 +98,8 @@ static int add_rtl(RTLUnit *unit)
 
 static const uint8_t expected_code[] = {
     0x48,0x83,0xEC,0x08,                // sub $8,%rsp
-    0x33,0xC0,                          // xor %eax,%eax
-    0x33,0xC9,                          // xor %ecx,%ecx
+    0xB8,0x02,0x00,0x00,0x00,           // mov $2,%eax
+    0xB9,0x03,0x00,0x00,0x00,           // mov $3,%ecx
     0x0F,0x1F,0x05,0x01,0x00,0x00,0x00, // nop 1(%rip)
     0x0F,0x1F,0x05,0x02,0x00,0x00,0x00, // nop 2(%rip)
     0x0F,0x1F,0x05,0x03,0x00,0x00,0x00, // nop 3(%rip)
@@ -122,8 +122,8 @@ static const uint8_t expected_code[] = {
     0x44,0x8B,0x8F,0x0C,0x01,0x00,0x00, // mov 0x10C(%rdi),%r9d
     0x44,0x8B,0x97,0x10,0x01,0x00,0x00, // mov 0x110(%rdi),%r10d
     0x44,0x8B,0x9F,0x14,0x01,0x00,0x00, // mov 0x114(%rdi),%r11d
-    0xE9,0x5C,0x00,0x00,0x00,           // jmp L1
-    0x33,0xC9,                          // L0: xor %ecx,%ecx
+    0xE9,0x5F,0x00,0x00,0x00,           // jmp L1
+    0xB9,0x04,0x00,0x00,0x00,           // L0: mov $4,%ecx
     0x0F,0x1F,0x05,0x01,0x00,0x00,0x00, // nop 1(%rip)
     0xE9,0x54,0x00,0x00,0x00,           // jmp L2
     0x33,0xC0,                          // xor %eax,%eax
@@ -182,7 +182,7 @@ int main(void)
 
     /* We have to set the buffer to a precise size to trigger the
      * buffer-full logic in alias conflict resolution. */
-    handle->code_buffer_size = 143;
+    handle->code_buffer_size = 154;
     handle->code_alignment = 16;
     EXPECT(handle->code_buffer = binrec_code_malloc(
                handle, handle->code_buffer_size, handle->code_alignment));
