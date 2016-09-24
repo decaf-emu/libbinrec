@@ -234,6 +234,42 @@ static ALWAYS_INLINE CONST_FUNCTION int popcnt64(uint64_t x)
     return (int)x;
 }
 
+/*-----------------------------------------------------------------------*/
+
+/**
+ * float_to_bits, double_to_bits:  Return the bit pattern corresponding to
+ * the given floating-point value.
+ */
+static ALWAYS_INLINE CONST_FUNCTION uint32_t float_to_bits(float x)
+{
+    union {uint32_t i; float f;} u = {.f = x};
+    return u.i;
+}
+
+static ALWAYS_INLINE CONST_FUNCTION uint64_t double_to_bits(double x)
+{
+    union {uint64_t i; double f;} u = {.f = x};
+    return u.i;
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
+ * bits_to_float, bits_to_double:  Return the floating-point value
+ * corresponding to the given bit pattern.
+ */
+static ALWAYS_INLINE CONST_FUNCTION float bits_to_float(uint32_t x)
+{
+    union {uint32_t i; float f;} u = {.i = x};
+    return u.f;
+}
+
+static ALWAYS_INLINE CONST_FUNCTION double bits_to_double(uint64_t x)
+{
+    union {uint64_t i; double f;} u = {.i = x};
+    return u.f;
+}
+
 /*************************************************************************/
 /*************************************************************************/
 

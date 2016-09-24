@@ -7,11 +7,13 @@
  * NO WARRANTY is provided with this software.
  */
 
+#include "src/bitutils.h"
 #include "src/common.h"
 #include "src/rtl.h"
 #include "src/rtl-internal.h"
 
 #include <inttypes.h>
+#include <math.h>
 #include <stdarg.h>
 #include <stdio.h>
 
@@ -102,7 +104,7 @@ static void update_live_ranges(RTLUnit * const unit)
             }
         }
         if (latest_entry_block >= block_index
-         && unit->blocks[latest_entry_block].last_insn >= 0) {  // Just in case
+         && unit->blocks[latest_entry_block].last_insn >= 0) { // Just in case.
             const int32_t birth_limit = block->first_insn;
             const int32_t min_death =
                 unit->blocks[latest_entry_block].last_insn;
@@ -196,6 +198,47 @@ static int snprintf_assert(char *buf, size_t size, const char *format, ...)
 /*-----------------------------------------------------------------------*/
 
 /**
+ * format_float, format_double:  Write the given floating-point value to
+ * the given buffer as a numeric string.  Returns the number of bytes
+ * written, like snprintf().
+ */
+static int format_float(char *buf, int bufsize, float value)
+{
+    if (isnan(value)) {
+        return snprintf_assert(buf, bufsize, "nan(0x%X)",
+                               float_to_bits(value) & 0x007FFFFF);
+    } else if (isinf(value)) {
+        return snprintf_assert(buf, bufsize, value < 0.0f ? "-inf" : "inf");
+    } else {
+        int n = snprintf_assert(buf, bufsize, "%.8g", value);
+        if (!strchr(buf, '.')) {
+            n += snprintf_assert(buf+n, bufsize-n, ".0");
+        }
+        n += snprintf_assert(buf+n, bufsize-n, "f");
+        return n;
+    }
+}
+
+static int format_double(char *buf, int bufsize, double value)
+{
+    if (isnan(value)) {
+        return snprintf_assert(
+            buf, bufsize, "nan(0x%"PRIX64")",
+            double_to_bits(value) & UINT64_C(0x000FFFFFFFFFFFFF));
+    } else if (isinf(value)) {
+        return snprintf_assert(buf, bufsize, value < 0.0 ? "-inf" : "inf");
+    } else {
+        int n = snprintf_assert(buf, bufsize, "%.17g", value);
+        if (!strchr(buf, '.')) {
+            n += snprintf_assert(buf+n, bufsize-n, ".0");
+        }
+        return n;
+    }
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
  * rtl_describe_register:  Generate a string describing the contents of the
  * given RTL register.
  *
@@ -230,16 +273,20 @@ static void rtl_describe_register(const RTLRegister *reg,
             } else {
                 snprintf(buf, bufsize, "%d", reg->value.int32);
             }
-            return;
+            break;
           case RTLTYPE_ADDRESS:
-            snprintf(buf, bufsize, "0x%"PRIX64, reg->value.address);
-            return;
+            snprintf(buf, bufsize, "0x%"PRIX64, reg->value.int64);
+            break;
           case RTLTYPE_FLOAT:
+            format_float(buf, bufsize, reg->value.float_);
+            break;
           case RTLTYPE_DOUBLE:
-          case RTLTYPE_V2_DOUBLE:
-            break;  // FIXME: not yet implemented
+            format_double(buf, bufsize, reg->value.double_);
+            break;
+          default:
+            ASSERT(!"Invalid constant type");
         }
-        ASSERT(!"Invalid constant type");
+        return;
 
       case RTLREG_FUNC_ARG:
         snprintf(buf, bufsize, "arg[%u]", reg->arg_index);
@@ -653,6 +700,15 @@ static void rtl_decode_insn(const RTLUnit *unit, uint32_t index,
           case RTLTYPE_ADDRESS:
             s += snprintf_assert(s, top - s, "0x%"PRIX64"\n", insn->src_imm);
             break;
+          case RTLTYPE_FLOAT:
+            s += format_float(s, top - s,
+                              bits_to_float((uint32_t)insn->src_imm));
+            s += snprintf_assert(s, top - s, "\n");
+            break;
+          case RTLTYPE_DOUBLE:
+            s += format_double(s, top - s, bits_to_double(insn->src_imm));
+            s += snprintf_assert(s, top - s, "\n");
+           break;
           default:
             ASSERT(!"Invalid type for LOAD_IMM");
         }

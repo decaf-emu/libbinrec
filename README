@@ -40,6 +40,7 @@ C99) about the execution environment:
    - The exact-size integer types int8_t, int16_t, int32_t, and int64_t
      exist.
    - The "int" and "intptr_t" types are at least 32 bits wide.
+   - The "float" and "double" types use IEEE 754 floating-point format.
 There are currently no plans to support environments for which these do
 not all hold.
 

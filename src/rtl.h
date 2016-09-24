@@ -245,6 +245,8 @@ typedef enum RTLOpcode {
 
     /* Non-memory load operations */
     RTLOP_LOAD_IMM,     // dest = IMMEDIATE(other)
+                        //    [dest must be a scalar type; for floating-point
+                        //     types, other is assumed to be in IEEE format]
     RTLOP_LOAD_ARG,     // dest = ARG(other)
                         //    [other is a function argument index; only
                         //     integer arguments are supported]

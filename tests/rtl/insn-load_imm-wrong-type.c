@@ -27,11 +27,11 @@ int main(void)
     EXPECT(unit = rtl_create_unit(handle));
 
     int reg;
-    EXPECT(reg = rtl_alloc_register(unit, RTLTYPE_FLOAT));
+    EXPECT(reg = rtl_alloc_register(unit, RTLTYPE_V2_DOUBLE));
 
     EXPECT_FALSE(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg, 0, 0, 10));
     EXPECT_ICE("Operand constraint violated:"
-               " rtl_register_is_int(&unit->regs[dest])");
+               " rtl_register_is_scalar(&unit->regs[dest])");
     EXPECT_EQ(unit->num_insns, 0);
 
     rtl_destroy_unit(unit);

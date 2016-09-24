@@ -634,8 +634,9 @@ static bool make_load_imm(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
 #ifdef ENABLE_OPERAND_SANITY_CHECKS
     OPERAND_ASSERT(dest != 0);
     OPERAND_ASSERT(unit->regs[dest].source == RTLREG_UNDEFINED);
-    OPERAND_ASSERT(rtl_register_is_int(&unit->regs[dest]));
+    OPERAND_ASSERT(rtl_register_is_scalar(&unit->regs[dest]));
     OPERAND_ASSERT(unit->regs[dest].type == RTLTYPE_ADDRESS
+                   || unit->regs[dest].type == RTLTYPE_DOUBLE
                    || other <= UINT64_C(0xFFFFFFFF));
 #endif
 
@@ -647,10 +648,12 @@ static bool make_load_imm(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
     destreg->source = RTLREG_CONSTANT;
     switch (unit->regs[dest].type) {
       case RTLTYPE_INT32:
+      case RTLTYPE_FLOAT:
         destreg->value.int32 = (uint32_t)other;
         break;
       case RTLTYPE_ADDRESS:
-        destreg->value.address = other;
+      case RTLTYPE_DOUBLE:
+        destreg->value.int64 = other;
         break;
       default:
         UNREACHABLE;

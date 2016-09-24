@@ -162,7 +162,7 @@ struct RTLRegister {
     union {
         union {                 // Value of register for RTLREG_CONSTANT
             uint32_t int32;
-            uint64_t address;
+            uint64_t int64;
             float float_;
             double double_;
         } value;
@@ -461,11 +461,19 @@ extern int rtl_opt_drop_dead_branches(RTLUnit *unit);
 /*------------------------ Register information -------------------------*/
 
 /**
- * rtl_type_is_float:  Return whether the given data type is an integral type.
+ * rtl_type_is_int:  Return whether the given data type is an integral type.
  */
 static inline CONST_FUNCTION bool rtl_type_is_int(RTLDataType type)
 {
     return type <= RTLTYPE_ADDRESS;
+}
+
+/**
+ * rtl_type_is_scalar:  Return whether the given data type is a scalar type.
+ */
+static inline CONST_FUNCTION bool rtl_type_is_scalar(RTLDataType type)
+{
+    return type <= RTLTYPE_DOUBLE;
 }
 
 /**
@@ -475,6 +483,15 @@ static inline CONST_FUNCTION bool rtl_type_is_int(RTLDataType type)
 static inline PURE_FUNCTION bool rtl_register_is_int(const RTLRegister *reg)
 {
     return rtl_type_is_int(reg->type);
+}
+
+/**
+ * rtl_register_is_scalar:  Return whether the given register has a scalar
+ * type.
+ */
+static inline PURE_FUNCTION bool rtl_register_is_scalar(const RTLRegister *reg)
+{
+    return rtl_type_is_scalar(reg->type);
 }
 
 /*************************************************************************/

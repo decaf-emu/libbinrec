@@ -434,7 +434,6 @@ static APPEND_INLINE void append_move(
         append_insn_ModRM_reg(code, false, X86OP_MOVAPS_V_W,
                               host_dest, host_src);
         break;
-        break;
     }
 }
 
@@ -1992,9 +1991,39 @@ static bool translate_block(HostX86Context *ctx, int block_index)
           case RTLOP_LOAD_IMM: {
             const uint64_t imm = insn->src_imm;
             const X86Register host_dest = ctx->regs[dest].host_reg;
+
             switch (unit->regs[dest].type) {
-              case RTLTYPE_INT32:
-              case RTLTYPE_ADDRESS:
+              case RTLTYPE_FLOAT:
+                if (imm == 0) {
+                    append_insn_ModRM_reg(&code, false, X86OP_XORPS,
+                                          host_dest, host_dest);
+                } else {
+                    ASSERT(ctx->regs[dest].temp_allocated);
+                    const X86Register host_temp = ctx->regs[dest].host_temp;
+                    append_insn_R(&code, false, X86OP_MOV_rAX_Iv, host_temp);
+                    append_imm32(&code, (uint32_t)imm);
+                    append_insn_ModRM_reg(&code, false, X86OP_MOVD_V_E,
+                                          host_dest, host_temp);
+                }
+                break;
+
+              case RTLTYPE_DOUBLE:
+                if (imm == 0) {
+                    append_insn_ModRM_reg(&code, false, X86OP_XORPS,
+                                          host_dest, host_dest);
+                } else {
+                    ASSERT(ctx->regs[dest].temp_allocated);
+                    const X86Register host_temp = ctx->regs[dest].host_temp;
+                    append_insn_R(&code, true, X86OP_MOV_rAX_Iv, host_temp);
+                    append_imm32(&code, (uint32_t)imm);
+                    append_imm32(&code, (uint32_t)(imm >> 32));
+                    append_insn_ModRM_reg(&code, true, X86OP_MOVD_V_E,
+                                          host_dest, host_temp);
+                }
+                break;
+
+              default:
+                ASSERT(rtl_type_is_int(unit->regs[dest].type));
                 if (imm == 0) {
                     append_insn_ModRM_reg(&code, false, X86OP_XOR_Gv_Ev,
                                           host_dest, host_dest);
@@ -2013,10 +2042,8 @@ static bool translate_block(HostX86Context *ctx, int block_index)
                     append_imm32(&code, (uint32_t)(imm >> 32));
                 }
                 break;
-              default:
-                // FIXME: handle FP registers when we support those
-                ASSERT(!"Invalid data type in LOAD_IMM");
             }
+
             break;
           }  // case RTLOP_LOAD_IMM
 

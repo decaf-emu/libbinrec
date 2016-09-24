@@ -821,6 +821,10 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
             temp_avoid |= 1u << ctx->regs[src1].host_reg
                         | 1u << ctx->regs[src2].host_reg;
             break;
+          case RTLOP_LOAD_IMM:
+            /* Temporary needed if loading a nonzero floating-point value. */
+            need_temp = (!rtl_register_is_int(dest_reg) && insn->src_imm != 0);
+            break;
           default:
             need_temp = false;
             break;

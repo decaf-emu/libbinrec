@@ -32,7 +32,9 @@ int main(void)
     EXPECT_FALSE(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg, 0, 0,
                               UINT64_C(0x123456789)));
     EXPECT_ICE("Operand constraint violated:"
-               " unit->regs[dest].type == RTLTYPE_ADDRESS || other <= UINT64_C(0xFFFFFFFF)");
+               " unit->regs[dest].type == RTLTYPE_ADDRESS"
+               " || unit->regs[dest].type == RTLTYPE_DOUBLE"
+               " || other <= UINT64_C(0xFFFFFFFF)");
     EXPECT_EQ(unit->num_insns, 0);
 
     rtl_destroy_unit(unit);
