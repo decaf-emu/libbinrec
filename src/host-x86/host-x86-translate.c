@@ -656,6 +656,28 @@ static APPEND_INLINE void append_move_or_load_gpr(
 /*-----------------------------------------------------------------------*/
 
 /**
+ * reload_base_reg:  Return the host register containing the value of "base",
+ * which is assumed to be the base register of a load or store operation.
+ * If src1 is spilled, load its value to the register designated by
+ * "fallback" and return that register.
+ */
+static APPEND_INLINE X86Register reload_base_reg(
+    CodeBuffer *code, const HostX86Context *ctx, int insn_index, int base,
+    X86Register fallback)
+{
+    if (!is_spilled(ctx, base, insn_index)) {
+        return ctx->regs[base].host_reg;
+    } else {
+        ASSERT(ctx->unit->regs[base].type == RTLTYPE_ADDRESS);
+        append_load(code, RTLTYPE_ADDRESS, fallback,
+                    X86_SP, ctx->regs[base].spill_offset);
+        return fallback;
+    }
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
  * append_test_reg:  Append an instruction to test the value of the given
  * integer RTL register for zeroness.
  */
@@ -2014,15 +2036,8 @@ static bool translate_block(HostX86Context *ctx, int block_index)
 
           case RTLOP_LOAD: {
             const X86Register host_dest = ctx->regs[dest].host_reg;
-            X86Register host_base;
-            if (is_spilled(ctx, src1, insn_index)) {
-                ASSERT(unit->regs[src1].type == RTLTYPE_ADDRESS);
-                append_load(&code, RTLTYPE_ADDRESS, host_dest,
-                            X86_SP, ctx->regs[src1].spill_offset);
-                host_base = host_dest;
-            } else {
-                host_base = ctx->regs[src1].host_reg;
-            }
+            const X86Register host_base =
+                reload_base_reg(&code, ctx, insn_index, src1, host_dest);
             append_load(&code, unit->regs[dest].type, host_dest,
                         host_base, insn->offset);
             break;
@@ -2031,15 +2046,8 @@ static bool translate_block(HostX86Context *ctx, int block_index)
           case RTLOP_LOAD_U8:
           case RTLOP_LOAD_S8: {
             const X86Register host_dest = ctx->regs[dest].host_reg;
-            X86Register host_base;
-            if (is_spilled(ctx, src1, insn_index)) {
-                ASSERT(unit->regs[src1].type == RTLTYPE_ADDRESS);
-                append_load(&code, RTLTYPE_ADDRESS, host_dest,
-                            X86_SP, ctx->regs[src1].spill_offset);
-                host_base = host_dest;
-            } else {
-                host_base = ctx->regs[src1].host_reg;
-            }
+            const X86Register host_base =
+                reload_base_reg(&code, ctx, insn_index, src1, host_dest);
             const X86Opcode opcode = (insn->opcode == RTLOP_LOAD_U8
                                       ? X86OP_MOVZX_Gv_Eb : X86OP_MOVSX_Gv_Eb);
             append_insn_ModRM_mem(&code, false, opcode,
@@ -2050,15 +2058,8 @@ static bool translate_block(HostX86Context *ctx, int block_index)
           case RTLOP_LOAD_U16:
           case RTLOP_LOAD_S16: {
             const X86Register host_dest = ctx->regs[dest].host_reg;
-            X86Register host_base;
-            if (is_spilled(ctx, src1, insn_index)) {
-                ASSERT(unit->regs[src1].type == RTLTYPE_ADDRESS);
-                append_load(&code, RTLTYPE_ADDRESS, host_dest,
-                            X86_SP, ctx->regs[src1].spill_offset);
-                host_base = host_dest;
-            } else {
-                host_base = ctx->regs[src1].host_reg;
-            }
+            const X86Register host_base =
+                reload_base_reg(&code, ctx, insn_index, src1, host_dest);
             const X86Opcode opcode = (insn->opcode == RTLOP_LOAD_U16
                                       ? X86OP_MOVZX_Gv_Ew : X86OP_MOVSX_Gv_Ew);
             append_insn_ModRM_mem(&code, false, opcode,
@@ -2067,15 +2068,10 @@ static bool translate_block(HostX86Context *ctx, int block_index)
           }  // case RTLOP_LOAD_U16, RTLOP_LOAD_S16
 
           case RTLOP_STORE: {
-            X86Register host_base = ctx->regs[src1].host_reg;
+            const X86Register host_base =
+                reload_base_reg(&code, ctx, insn_index, src1, X86_R15);
             X86Register host_value = ctx->regs[src2].host_reg;
             RTLDataType type = unit->regs[src2].type;
-            if (is_spilled(ctx, src1, insn_index)) {
-                ASSERT(unit->regs[src1].type == RTLTYPE_ADDRESS);
-                append_load(&code, RTLTYPE_ADDRESS, X86_R15,
-                            X86_SP, ctx->regs[src1].spill_offset);
-                host_base = X86_R15;
-            }
             if (is_spilled(ctx, src2, insn_index)) {
                 if (type == RTLTYPE_INT32) {
                     type = RTLTYPE_FLOAT;
@@ -2092,38 +2088,61 @@ static bool translate_block(HostX86Context *ctx, int block_index)
           }  // case RTLOP_STORE
 
           case RTLOP_STORE_I8: {
-            const X86Register host_src1 = ctx->regs[src1].host_reg;
-            const X86Register host_src2 = ctx->regs[src2].host_reg;
+            const X86Register host_base =
+                reload_base_reg(&code, ctx, insn_index, src1, X86_R15);
+            X86Register host_value = ctx->regs[src2].host_reg;
+            bool saved_ax = false;
+            if (is_spilled(ctx, src2, insn_index)) {
+                ASSERT(unit->regs[src2].type == RTLTYPE_INT32);
+                append_insn_ModRM_reg(&code, true, X86OP_MOVD_V_E,
+                                      X86_XMM15, X86_AX);
+                append_load(&code, RTLTYPE_INT32, X86_AX,
+                            X86_SP, ctx->regs[src2].spill_offset);
+                host_value = X86_AX;
+                saved_ax = true;
+            }
             /* Handle mandatory REX prefix for low byte of SP/BP/SI/DI. */
-            if (host_src2 >= X86_SP && host_src2 <= X86_DI
-             && host_src1 <= X86_DI) {
+            if (host_value >= X86_SP && host_value <= X86_DI
+             && host_base <= X86_DI) {
                 append_opcode(&code, X86OP_REX);
             }
             append_insn_ModRM_mem(&code, false, X86OP_MOV_Eb_Gb,
-                                  host_src2, host_src1, insn->offset);
+                                  host_value, host_base, insn->offset);
+            if (saved_ax) {
+                append_insn_ModRM_reg(&code, true, X86OP_MOVD_E_V,
+                                      X86_XMM15, X86_AX);
+            }
             break;
           }  // case RTLOP_STORE_I8
 
           case RTLOP_STORE_I16: {
-            const X86Register host_src1 = ctx->regs[src1].host_reg;
-            const X86Register host_src2 = ctx->regs[src2].host_reg;
+            const X86Register host_base =
+                reload_base_reg(&code, ctx, insn_index, src1, X86_R15);
+            X86Register host_value = ctx->regs[src2].host_reg;
+            bool saved_ax = false;
+            if (is_spilled(ctx, src2, insn_index)) {
+                ASSERT(unit->regs[src2].type == RTLTYPE_INT32);
+                append_insn_ModRM_reg(&code, true, X86OP_MOVD_V_E,
+                                      X86_XMM15, X86_AX);
+                append_load(&code, RTLTYPE_INT32, X86_AX,
+                            X86_SP, ctx->regs[src2].spill_offset);
+                host_value = X86_AX;
+                saved_ax = true;
+            }
             append_opcode(&code, X86OP_OPERAND_SIZE);
             append_insn_ModRM_mem(&code, false, X86OP_MOV_Ev_Gv,
-                                  host_src2, host_src1, insn->offset);
+                                  host_value, host_base, insn->offset);
+            if (saved_ax) {
+                append_insn_ModRM_reg(&code, true, X86OP_MOVD_E_V,
+                                      X86_XMM15, X86_AX);
+            }
             break;
           }  // case RTLOP_STORE_I16
 
           case RTLOP_LOAD_BR: {
             const X86Register host_dest = ctx->regs[dest].host_reg;
-            X86Register host_base;
-            if (is_spilled(ctx, src1, insn_index)) {
-                ASSERT(unit->regs[src1].type == RTLTYPE_ADDRESS);
-                append_load(&code, RTLTYPE_ADDRESS, host_dest,
-                            X86_SP, ctx->regs[src1].spill_offset);
-                host_base = host_dest;
-            } else {
-                host_base = ctx->regs[src1].host_reg;
-            }
+            const X86Register host_base =
+                reload_base_reg(&code, ctx, insn_index, src1, host_dest);
             switch (unit->regs[dest].type) {
               case RTLTYPE_INT32:
                 if (handle->setup.host_features & BINREC_FEATURE_X86_MOVBE) {
@@ -2155,15 +2174,8 @@ static bool translate_block(HostX86Context *ctx, int block_index)
           case RTLOP_LOAD_U16_BR:
           case RTLOP_LOAD_S16_BR: {
             const X86Register host_dest = ctx->regs[dest].host_reg;
-            X86Register host_base;
-            if (is_spilled(ctx, src1, insn_index)) {
-                ASSERT(unit->regs[src1].type == RTLTYPE_ADDRESS);
-                append_load(&code, RTLTYPE_ADDRESS, host_dest,
-                            X86_SP, ctx->regs[src1].spill_offset);
-                host_base = host_dest;
-            } else {
-                host_base = ctx->regs[src1].host_reg;
-            }
+            const X86Register host_base =
+                reload_base_reg(&code, ctx, insn_index, src1, host_dest);
 
             if (handle->setup.host_features & BINREC_FEATURE_X86_MOVBE) {
                 append_insn_ModRM_mem(&code, false, X86OP_MOVBE_Gw_Mw,
@@ -2196,32 +2208,50 @@ static bool translate_block(HostX86Context *ctx, int block_index)
           }  // case RTLOP_LOAD_U16_BR, RTLOP_LOAD_S16_BR
 
           case RTLOP_STORE_BR: {
-            const X86Register host_src1 = ctx->regs[src1].host_reg;
-            const X86Register host_src2 = ctx->regs[src2].host_reg;
+            const X86Register host_base =
+                reload_base_reg(&code, ctx, insn_index, src1, X86_R15);
+            X86Register host_value = ctx->regs[src2].host_reg;
+            bool saved_ax = false;
+            if (is_spilled(ctx, src2, insn_index)) {
+                append_insn_ModRM_reg(&code, true, X86OP_MOVD_V_E,
+                                      X86_XMM15, X86_AX);
+                host_value = X86_AX;
+                saved_ax = true;
+            }
             switch (unit->regs[src2].type) {
               case RTLTYPE_INT32:
+                if (saved_ax) {
+                    append_load(&code, RTLTYPE_INT32, X86_AX,
+                                X86_SP, ctx->regs[src2].spill_offset);
+                }
                 if (handle->setup.host_features & BINREC_FEATURE_X86_MOVBE) {
                     append_insn_ModRM_mem(&code, false, X86OP_MOVBE_My_Gy,
-                                          host_src2, host_src1, insn->offset);
+                                          host_value, host_base, insn->offset);
                 } else {
-                    append_insn_R(&code, false, X86OP_BSWAP_rAX, host_src2);
+                    append_insn_R(&code, false, X86OP_BSWAP_rAX, host_value);
                     append_insn_ModRM_mem(&code, false, X86OP_MOV_Ev_Gv,
-                                          host_src2, host_src1, insn->offset);
-                    if (unit->regs[src2].death > insn_index) {
-                        append_insn_R(&code, false, X86OP_BSWAP_rAX, host_src2);
+                                          host_value, host_base, insn->offset);
+                    if (!saved_ax && unit->regs[src2].death > insn_index) {
+                        append_insn_R(&code, false, X86OP_BSWAP_rAX,
+                                      host_value);
                     }
                 }
                 break;
               case RTLTYPE_ADDRESS:
+                if (saved_ax) {
+                    append_load(&code, RTLTYPE_ADDRESS, X86_AX,
+                                X86_SP, ctx->regs[src2].spill_offset);
+                }
                 if (handle->setup.host_features & BINREC_FEATURE_X86_MOVBE) {
                     append_insn_ModRM_mem(&code, true, X86OP_MOVBE_My_Gy,
-                                          host_src2, host_src1, insn->offset);
+                                          host_value, host_base, insn->offset);
                 } else {
-                    append_insn_R(&code, true, X86OP_BSWAP_rAX, host_src2);
+                    append_insn_R(&code, true, X86OP_BSWAP_rAX, host_value);
                     append_insn_ModRM_mem(&code, true, X86OP_MOV_Ev_Gv,
-                                          host_src2, host_src1, insn->offset);
-                    if (unit->regs[src2].death > insn_index) {
-                        append_insn_R(&code, true, X86OP_BSWAP_rAX, host_src2);
+                                          host_value, host_base, insn->offset);
+                    if (!saved_ax && unit->regs[src2].death > insn_index) {
+                        append_insn_R(&code, true, X86OP_BSWAP_rAX,
+                                      host_value);
                     }
                 }
                 break;
@@ -2229,35 +2259,54 @@ static bool translate_block(HostX86Context *ctx, int block_index)
                 // FIXME: handle FP registers when we support those
                 ASSERT(!"Invalid data type in STORE_BR");
             }
+            if (saved_ax) {
+                append_insn_ModRM_reg(&code, true, X86OP_MOVD_E_V,
+                                      X86_XMM15, X86_AX);
+            }
             break;
           }  // case RTLOP_STORE_BR
 
           case RTLOP_STORE_I16_BR: {
-            const X86Register host_src1 = ctx->regs[src1].host_reg;
-            const X86Register host_src2 = ctx->regs[src2].host_reg;
+            const X86Register host_base =
+                reload_base_reg(&code, ctx, insn_index, src1, X86_R15);
+            X86Register host_value = ctx->regs[src2].host_reg;
+            bool saved_ax = false;
+            if (is_spilled(ctx, src2, insn_index)) {
+                ASSERT(unit->regs[src2].type == RTLTYPE_INT32);
+                append_insn_ModRM_reg(&code, true, X86OP_MOVD_V_E,
+                                      X86_XMM15, X86_AX);
+                append_load(&code, RTLTYPE_INT32, X86_AX,
+                            X86_SP, ctx->regs[src2].spill_offset);
+                host_value = X86_AX;
+                saved_ax = true;
+            }
             if (handle->setup.host_features & BINREC_FEATURE_X86_MOVBE) {
                 append_insn_ModRM_mem(&code, false, X86OP_MOVBE_Mw_Gw,
-                                      host_src2, host_src1, insn->offset);
-            } else if (unit->regs[src2].death <= insn_index) {
-                append_insn_R(&code, false, X86OP_BSWAP_rAX, host_src2);
+                                      host_value, host_base, insn->offset);
+            } else if (saved_ax || unit->regs[src2].death <= insn_index) {
+                append_insn_R(&code, false, X86OP_BSWAP_rAX, host_value);
                 append_insn_ModRM_reg(&code, false, X86OP_SHIFT_Ev_Ib,
-                                      X86OP_SHIFT_SHR, host_src2);
+                                      X86OP_SHIFT_SHR, host_value);
                 append_imm8(&code, 16);
                 append_opcode(&code, X86OP_OPERAND_SIZE);
                 append_insn_ModRM_mem(&code, false, X86OP_MOV_Ev_Gv,
-                                      host_src2, host_src1, insn->offset);
+                                      host_value, host_base, insn->offset);
             } else {
                 append_opcode(&code, X86OP_OPERAND_SIZE);
                 append_insn_ModRM_reg(&code, false, X86OP_SHIFT_Ev_Ib,
-                                      X86OP_SHIFT_ROR, host_src2);
+                                      X86OP_SHIFT_ROR, host_value);
                 append_imm8(&code, 8);
                 append_opcode(&code, X86OP_OPERAND_SIZE);
                 append_insn_ModRM_mem(&code, false, X86OP_MOV_Ev_Gv,
-                                      host_src2, host_src1, insn->offset);
+                                      host_value, host_base, insn->offset);
                 append_opcode(&code, X86OP_OPERAND_SIZE);
                 append_insn_ModRM_reg(&code, false, X86OP_SHIFT_Ev_Ib,
-                                      X86OP_SHIFT_ROR, host_src2);
+                                      X86OP_SHIFT_ROR, host_value);
                 append_imm8(&code, 8);
+            }
+            if (saved_ax) {
+                append_insn_ModRM_reg(&code, true, X86OP_MOVD_E_V,
+                                      X86_XMM15, X86_AX);
             }
             break;
           }  // case RTLOP_STORE_I16_BR
@@ -2540,11 +2589,10 @@ static bool append_prologue(HostX86Context *ctx)
         }
 
         const int code_size = sizeof(unwind_info) - unwind_pos;
-        memmove(unwind_info + 4, unwind_info + unwind_pos, code_size);
         const int size = 4 + code_size;
-
-        unwind_info[1] = prologue_pos;
         ASSERT(size <= (int)sizeof(unwind_info));
+        memmove(unwind_info + 4, unwind_info + unwind_pos, code_size);
+        unwind_info[1] = prologue_pos;
         unwind_info[2] = code_size / 2;
 
         const int alignment = ctx->handle->code_alignment;

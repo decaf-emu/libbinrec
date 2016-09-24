@@ -387,7 +387,7 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
              * compilation time) to just use a fixed register, especially
              * since this ought to be an unlikely case.  For narrow-integer
              * and byte-reversed stores, since we can't store directly from
-             * XMM15, we instead use it to hold the value of R14, which we
+             * XMM15, we instead use it to hold the value of RAX, which we
              * use as the value register. */
             ctx->block_regs_touched |= 1u << X86_XMM15;
         }
