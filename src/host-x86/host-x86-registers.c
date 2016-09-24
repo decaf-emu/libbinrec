@@ -559,12 +559,11 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
                 if (host_reg < 0 && avoid_regs != 0) {
                     /* Try again without excluding any registers.  We won't
                      * be able to keep the value in this register, but we
-                     * can at least avoid a round trip to memory. */
-                    if (is_gpr) {
-                        host_reg = get_gpr(ctx, 0);
-                    } else {
-                        host_reg = get_xmm(ctx, 0);
-                    }
+                     * can at least avoid a round trip to memory.  Note
+                     * that currently we only need to avoid GPRs, so this
+                     * will never be hit for XMM registers. */
+                    ASSERT(is_gpr);
+                    host_reg = get_gpr(ctx, 0);
                 }
                 ctx->regs_free = saved_free;
                 if (host_reg >= 0) {
