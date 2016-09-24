@@ -100,16 +100,16 @@ static void update_live_ranges(RTLUnit * const unit)
         unsigned int i;
         for (i = 0; i < lenof(block->entries) && block->entries[i] >= 0; i++) {
             if (block->entries[i] > latest_entry_block) {
-                latest_entry_block = block->entries[i];
+                const RTLBlock *entry_block = &unit->blocks[block->entries[i]];
+                if (entry_block->last_insn >= entry_block->first_insn) {
+                    latest_entry_block = block->entries[i];
+                }
             }
         }
-        if (latest_entry_block >= block_index
-         && unit->blocks[latest_entry_block].last_insn >= 0) { // Just in case.
-            const int32_t birth_limit = block->first_insn;
-            const int32_t min_death =
-                unit->blocks[latest_entry_block].last_insn;
-            unsigned int reg;
-            for (reg = unit->first_live_reg;
+        if (latest_entry_block >= block_index) {
+            const int birth_limit = block->first_insn;
+            const int min_death = unit->blocks[latest_entry_block].last_insn;
+            for (int reg = unit->first_live_reg;
                  reg != 0 && unit->regs[reg].birth < birth_limit;
                  reg = unit->regs[reg].live_link)
             {
