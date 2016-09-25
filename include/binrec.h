@@ -588,7 +588,8 @@ extern unsigned int binrec_native_features(void);
  * binrec_create_handle:  Create a new translation handle.
  *
  * [Parameters]
- *     setup: Pointer to a binrec_setup_t structure that defines
+ *     setup: Pointer to a binrec_setup_t structure that defines the
+ *         translation parameters to use.
  * [Return value]
  *     Newly created handle, or NULL on error.
  */
@@ -767,6 +768,11 @@ extern void binrec_clear_readonly_regions(binrec_t *handle);
  * passed-in pointer if, for example, the code is running in a simulated
  * multi-processor environment and a system call instruction causes the
  * code to be rescheduled on a different simulated processor).
+ *
+ * The returned code pointer will have been allocated with the code_malloc
+ * or code_realloc function passed in the setup structure to
+ * binrec_create_handle(), or the relevant fallback function if code_*
+ * functions were not supplied.
  *
  * Return-value arguments are only modified on a successful return.
  *
