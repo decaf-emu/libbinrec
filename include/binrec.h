@@ -232,13 +232,13 @@ typedef struct binrec_setup_t {
      * code_malloc:  Pointer to a function which allocates a block of
      * memory for output machine code.  If NULL, the malloc() callback (or
      * the system's malloc(), if that callback is also NULL) will be used
-     * and alignment will be performed internally.
+     * and no alignment will be performed.
      *
      * [Parameters]
      *     userdata: User data pointer from setup structure.
      *     size: Size of block to allocate, in bytes (guaranteed to be
      *         nonzero).
-     *     alignment: Required address alignment, in bytes (guaranteed to
+     *     alignment: Desired address alignment, in bytes (guaranteed to
      *         be a power of 2).
      * [Return value]
      *     Pointer to allocated memory, or NULL on error.
@@ -253,7 +253,7 @@ typedef struct binrec_setup_t {
      *
      * [Parameters]
      *     userdata: User data pointer from setup structure.
-     *     ptr: Pointer to block to resize (guaranteed to be non-NULL).
+     *     ptr: Block to resize (guaranteed to be non-NULL).
      *     old_size: Current size of block, in bytes.
      *     new_size: New size of block, in bytes (guaranteed to be nonzero).
      *     alignment: Required address alignment, in bytes (guaranteed to
@@ -272,7 +272,7 @@ typedef struct binrec_setup_t {
      *
      * [Parameters]
      *     userdata: User data pointer from setup structure.
-     *     ptr: Pointer to block to free (may be NULL).
+     *     ptr: Block to free (may be NULL).
      */
     void (*code_free)(void *userdata, void *ptr);
 

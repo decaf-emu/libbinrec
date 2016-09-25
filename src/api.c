@@ -11,7 +11,6 @@
 #include "src/common.h"
 #include "src/guest-ppc.h"
 #include "src/host-x86.h"
-#include "src/memory.h"
 #include "src/rtl.h"
 
 /* Disable malloc() suppression from common.h. */

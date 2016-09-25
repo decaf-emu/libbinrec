@@ -155,7 +155,6 @@ static const char expected_log[] = "";
 
 /* Tweaked version of tests/rtl-translate-test.i to trigger buffer resize. */
 
-#include "src/memory.h"
 #include "tests/log-capture.h"
 
 int main(void)

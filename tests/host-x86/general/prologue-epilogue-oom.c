@@ -7,7 +7,6 @@
  * NO WARRANTY is provided with this software.
  */
 
-#include "src/memory.h"
 #include "tests/common.h"
 #include "tests/host-x86/common.h"
 #include "tests/mem-wrappers.h"

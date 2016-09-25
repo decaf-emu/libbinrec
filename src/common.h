@@ -435,6 +435,83 @@ static inline void binrec_free(const binrec_t *handle, void *ptr)
 }
 
 /**
+ * binrec_code_malloc:  Allocate an output code buffer.
+ *
+ * [Parameters]
+ *     handle: Translation handle.
+ *     size: Size of buffer, in bytes.  Must be nonzero.
+ *     alignment: Desired buffer alignment, in bytes.  Must be a power of 2.
+ * [Return value]
+ *     Allocated buffer, or NULL on error.
+ */
+static inline void *binrec_code_malloc(const binrec_t *handle, size_t size,
+                                       size_t alignment)
+{
+    ASSERT(handle);
+    ASSERT(size > 0);
+    ASSERT(alignment > 0);
+    ASSERT((alignment & (alignment - 1)) == 0);  // Ensure it's a power of 2.
+
+    if (handle->setup.code_malloc) {
+        return (*handle->setup.code_malloc)(
+            handle->setup.userdata, size, alignment);
+    } else {
+        return binrec_malloc(handle, size);
+    }
+}
+
+/**
+ * binrec_code_realloc:  Expand an output code buffer.
+ *
+ * [Parameters]
+ *     handle: Translation handle.
+ *     ptr: Output code buffer to expand.
+ *     old_size: Old size of buffer, in bytes.
+ *     new_size: New size of buffer, in bytes.  Must be nonzero.
+ *     alignment: Buffer alignment, in bytes.  Must be equal to the value
+ *         passed to binrec_code_malloc() when the block was allocated.
+ * [Return value]
+ *     Expanded buffer, or NULL on error.
+ */
+static inline void *binrec_code_realloc(const binrec_t *handle, void *ptr,
+                                        size_t old_size, size_t new_size,
+                                        size_t alignment)
+{
+    ASSERT(handle);
+    ASSERT(ptr);
+    ASSERT(old_size > 0);
+    ASSERT(new_size > 0);
+    ASSERT(alignment > 0);
+    ASSERT((alignment & (alignment - 1)) == 0);
+
+    if (handle->setup.code_realloc) {
+        return (*handle->setup.code_realloc)(
+            handle->setup.userdata, ptr, old_size, new_size, alignment);
+    } else {
+        return binrec_realloc(handle, ptr, new_size);
+    }
+}
+
+/**
+ * binrec_code_free:  Free an output code buffer.
+ *
+ * [Parameters]
+ *     handle: Translation handle.
+ *     ptr: Output code buffer to free.
+ */
+static inline void binrec_code_free(const binrec_t *handle, void *ptr)
+{
+    ASSERT(handle);
+
+    if (handle->setup.code_free) {
+        return (*handle->setup.code_free)(
+            handle->setup.userdata, ptr);
+    } else {
+        binrec_free(handle, ptr);
+    }
+}
+
+/**
  * binrec_expand_code_buffer:  Expand the code buffer to at least the
  * given size.
  *

@@ -38,7 +38,6 @@
 
 #include "src/common.h"
 #include "src/host-x86.h"
-#include "src/memory.h"
 #include "src/rtl.h"
 #include "tests/common.h"
 #include "tests/log-capture.h"
