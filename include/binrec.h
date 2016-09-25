@@ -580,6 +580,30 @@ extern binrec_arch_t binrec_native_arch(void);
  */
 extern unsigned int binrec_native_features(void);
 
+/**
+ * binrec_guest_supported:  Return whether the given architecture is
+ * supported as a guest architecture for translation.
+ *
+ * [Parameters]
+ *     arch: Architecture to check.
+ * [Return value]
+ *     True (nonzero) if the given architecture is supported as a guest
+ *     architecture, false (zero) if not.
+ */
+extern int binrec_guest_supported(binrec_arch_t arch);
+
+/**
+ * binrec_host_supported:  Return whether the given architecture is
+ * supported as a guest architecture for translation.
+ *
+ * [Parameters]
+ *     arch: Architecture to check.
+ * [Return value]
+ *     True (nonzero) if the given architecture is supported as a guest
+ *     architecture, false (zero) if not.
+ */
+extern int binrec_host_supported(binrec_arch_t arch);
+
 /*************************************************************************/
 /*************** Interface: Translation handle management ****************/
 /*************************************************************************/

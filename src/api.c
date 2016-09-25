@@ -22,6 +22,15 @@
 #include <string.h>
 
 /*************************************************************************/
+/*************************** Local data types ****************************/
+/*************************************************************************/
+
+/* Function types for guest and host translators. */
+typedef bool GuestTranslateFunc(binrec_t *handle, uint32_t address,
+                                uint32_t limit, RTLUnit *unit);
+typedef bool HostTranslateFunc(binrec_t *handle, RTLUnit *unit);
+
+/*************************************************************************/
 /*************************** Helper functions ****************************/
 /*************************************************************************/
 
@@ -62,6 +71,61 @@ static bool arch_is_little_endian(binrec_arch_t arch)
         return true;
     }
     return false;
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
+ * arch_guest_translate_func:  Return the guest (input) translation
+ * function for the given architecture, or NULL if the architecture is not
+ * supported as a guest.
+ */
+static GuestTranslateFunc *arch_guest_translate_func(binrec_arch_t arch)
+{
+    switch (arch) {
+      case BINREC_ARCH_PPC_7XX:
+        return guest_ppc_translate;
+      default:
+        return NULL;
+    }
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
+ * arch_host_translate_func:  Return the host (input) translation
+ * function for the given architecture, or NULL if the architecture is not
+ * supported as a host.
+ */
+static HostTranslateFunc *arch_host_translate_func(binrec_arch_t arch)
+{
+    switch (arch) {
+      case BINREC_ARCH_X86_64_SYSV:
+      case BINREC_ARCH_X86_64_WINDOWS:
+      case BINREC_ARCH_X86_64_WINDOWS_SEH:
+        return host_x86_translate;
+      default:
+        return NULL;
+    }
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
+ * arch_host_code_alignment:  Return the preferred alignment for generated
+ * host code for the given architecture, or 0 if the architecture is not
+ * supported as a host.
+ */
+static int arch_host_code_alignment(binrec_arch_t arch)
+{
+    switch (arch) {
+      case BINREC_ARCH_X86_64_SYSV:
+      case BINREC_ARCH_X86_64_WINDOWS:
+      case BINREC_ARCH_X86_64_WINDOWS_SEH:
+        return 16;
+      default:
+        return 0;
+    }
 }
 
 /*-----------------------------------------------------------------------*/
@@ -181,9 +245,23 @@ binrec_arch_t binrec_native_features(void)
         if (ebx_7 & (1<<8)) features |= BINREC_FEATURE_X86_BMI2;
         return features;
 
-    #else  // Unsupported architecture
+    #else  // Unsupported architecture.
         return 0;
     #endif
+}
+
+/*-----------------------------------------------------------------------*/
+
+int binrec_guest_supported(binrec_arch_t arch)
+{
+    return arch_guest_translate_func(arch) != NULL;
+}
+
+/*-----------------------------------------------------------------------*/
+
+int binrec_host_supported(binrec_arch_t arch)
+{
+    return arch_host_translate_func(arch) != NULL;
 }
 
 /*-----------------------------------------------------------------------*/
@@ -369,27 +447,18 @@ int binrec_translate(binrec_t *handle, uint32_t address, uint32_t limit,
     ASSERT(code_ret);
     ASSERT(size_ret);
 
-    bool (*guest_translate)(binrec_t *handle, uint32_t address,
-                            uint32_t limit, RTLUnit *unit);
-    switch (handle->setup.guest) {
-      case BINREC_ARCH_PPC_7XX:
-        guest_translate = guest_ppc_translate;
-        break;
-      default:
+    GuestTranslateFunc * const guest_translate =
+        arch_guest_translate_func(handle->setup.guest);
+    if (!guest_translate) {
         log_error(handle, "Unsupported guest architecture: %s",
                   arch_name(handle->setup.guest));
         return 0;
     }
 
-    bool (*host_translate)(binrec_t *handle, RTLUnit *unit);
-    switch (handle->setup.host) {
-      case BINREC_ARCH_X86_64_SYSV:
-      case BINREC_ARCH_X86_64_WINDOWS:
-      case BINREC_ARCH_X86_64_WINDOWS_SEH:
-        host_translate = host_x86_translate;
-        handle->code_alignment = 16;
-        break;
-      default:
+    HostTranslateFunc * const host_translate =
+        arch_host_translate_func(handle->setup.host);
+    handle->code_alignment = arch_host_code_alignment(handle->setup.host);
+    if (!host_translate) {
         log_error(handle, "Unsupported host architecture: %s",
                   arch_name(handle->setup.host));
         return 0;

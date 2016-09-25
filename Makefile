@@ -444,6 +444,7 @@ $(STATIC_LIB): $(LIBRARY_OBJECTS)
 
 TEST_UTILITY_OBJECTS = \
     tests/common.o \
+    tests/execute.o \
     tests/log-capture.o \
     tests/mem-wrappers.o
 

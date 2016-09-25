@@ -189,6 +189,18 @@ extern Arch native_arch() {return ::binrec_native_arch();}
  */
 extern unsigned int native_features() {return ::binrec_native_features();}
 
+/**
+ * guest_supported:  Return whether the given architecture is supported as
+ * a guest architecure.  Wraps binrec_guest_supported().
+ */
+extern bool guest_supported(Arch arch) {return ::binrec_guest_supported(arch);}
+
+/**
+ * host_supported:  Return whether the given architecture is supported as
+ * a host architecure.  Wraps binrec_host_supported().
+ */
+extern bool host_supported(Arch arch) {return ::binrec_host_supported(arch);}
+
 /*************************************************************************/
 /*************************************************************************/
 
