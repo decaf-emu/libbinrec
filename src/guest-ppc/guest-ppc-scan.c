@@ -872,17 +872,17 @@ static void update_used_changed(GuestPPCBlockInfo *block, const uint32_t insn)
 /************************* Scanning entry point **************************/
 /*************************************************************************/
 
-bool guest_ppc_scan(GuestPPCContext *ctx)
+bool guest_ppc_scan(GuestPPCContext *ctx, uint32_t limit)
 {
     ASSERT(ctx);
 
     ASSERT((ctx->start & 3) == 0);
-    ASSERT(ctx->handle->code_range_end >= ctx->start + 3);
+    ASSERT(limit >= ctx->start + 3);
     const uint32_t start = ctx->start;
     /* max_insns is calculated in this manner to correctly handle the
-     * pathological case where start == 0 and code_range_1en == -1. */
-    const uint32_t limit = ctx->handle->code_range_end - 3;
-    const uint32_t max_insns = (limit - ctx->start) / 4 + 1;
+     * pathological case where start == 0 and limit == -1. */
+    const uint32_t aligned_limit = min(limit, ctx->handle->code_range_end) - 3;
+    const uint32_t max_insns = (aligned_limit - ctx->start) / 4 + 1;
     const uint32_t *memory_base =
         (const uint32_t *)ctx->handle->setup.memory_base;
 
@@ -944,7 +944,7 @@ bool guest_ppc_scan(GuestPPCContext *ctx)
                 } else {
                     target = address + disp;
                 }
-                if (target >= start && target <= limit) {
+                if (target >= start && target <= aligned_limit) {
                     if (UNLIKELY(!get_block(ctx, target))) {
                         log_error(ctx->handle, "Out of memory expanding basic"
                                   " block table for branch target 0x%X",
@@ -971,9 +971,14 @@ bool guest_ppc_scan(GuestPPCContext *ctx)
     }
 
     if (block) {
-        block->len = (limit + 4) - block->start;
-        log_warning(ctx->handle, "Scanning terminated at 0x%X due to code"
-                    " range limit", limit + 4);
+        block->len = (aligned_limit + 4) - block->start;
+        if (aligned_limit + 3 >= limit) {
+            log_info(ctx->handle, "Scanning terminated at requested limit"
+                     " 0x%X", limit);
+        } else {
+            log_warning(ctx->handle, "Scanning terminated at 0x%X due to code"
+                        " range bounds", aligned_limit + 4);
+        }
     }
 
     /* Backward branches may have inserted basic blocks in the block list

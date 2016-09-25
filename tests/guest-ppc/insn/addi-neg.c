@@ -16,7 +16,7 @@ static const uint8_t input[] = {
 static const bool expected_success = true;
 
 static const char expected[] =
-    "[warning] Scanning terminated at 0x4 due to code range limit\n"
+    "[info] Scanning terminated at requested limit 0x3\n"
     "    0: LOAD_ARG   r1, 0\n"
     "    1: LABEL      L1\n"
     "    2: GET_ALIAS  r2, a3\n"

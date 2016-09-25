@@ -27,10 +27,9 @@ int main(void)
     binrec_t *handle;
     EXPECT(handle = binrec_create_handle(&setup));
 
-    binrec_set_code_range(handle, 0x1000, 0x1FFF);
-
     mem_wrap_fail_after(0);
-    EXPECT_FALSE(binrec_translate(handle, 0x1000, (void *[1]){}, (long[1]){}));
+    EXPECT_FALSE(binrec_translate(handle, 0x1000, 0x1FFF,
+                                  (void *[1]){}, (long[1]){}));
     EXPECT_STREQ(get_log_messages(), ("[error] No memory for RTLUnit\n"
                                       "[error] Failed to create RTLUnit\n"));
 

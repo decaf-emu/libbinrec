@@ -21,14 +21,14 @@ int main(void)
     binrec_t *handle;
     EXPECT(handle = binrec_create_handle(&setup));
 
-    binrec_set_code_range(handle, 0, 3);
+    binrec_set_code_range(handle, 0, 7);
 
     RTLUnit *unit;
     EXPECT(unit = rtl_create_unit(handle));
 
     /* This should fail without even trying to read an instruction
      * (which would crash since we've left the base pointer at NULL). */
-    EXPECT_FALSE(guest_ppc_translate(handle, 1, unit));
+    EXPECT_FALSE(guest_ppc_translate(handle, 1, -1, unit));
 
     EXPECT_STREQ(get_log_messages(), "[error] Invalid address 0x1 (not"
                  " word-aligned)\n");

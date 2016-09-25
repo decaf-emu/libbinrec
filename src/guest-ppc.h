@@ -18,19 +18,20 @@ struct RTLUnit;
 /*************************************************************************/
 
 /**
- * guest_ppc_translate:  Translate PowerPC 750CL machine code starting at
+ * guest_ppc_translate:  Translate 32-bit PowerPC machine code starting at
  * the given address into RTL.
  *
  * [Parameters]
  *     handle: Handle to use for translation.
  *     address: Address (in guest memory) of first instruction to translate.
+ *     limit: Address (in guest memory) at which to terminate translation.
  *     unit: RTLUnit into which to write RTL instructions.
  * [Return value]
  *     True on success, false on error.
  */
 #define guest_ppc_translate INTERNAL(guest_ppc_translate)
 extern bool guest_ppc_translate(binrec_t *handle, uint32_t address,
-                                struct RTLUnit *unit);
+                                uint32_t limit, struct RTLUnit *unit);
 
 /*************************************************************************/
 /*************************************************************************/

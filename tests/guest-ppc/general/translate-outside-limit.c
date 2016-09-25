@@ -21,18 +21,16 @@ int main(void)
     binrec_t *handle;
     EXPECT(handle = binrec_create_handle(&setup));
 
-    /* The range includes 3 bytes of the word at 0x4, but not the last byte. */
-    binrec_set_code_range(handle, 0, 6);
-
     RTLUnit *unit;
     EXPECT(unit = rtl_create_unit(handle));
 
-    /* This should fail without even trying to read an instruction
+    /* The range includes 3 bytes of the word at 0x4, but not the last byte.
+     * This should fail without even trying to read an instruction
      * (which would crash since we've left the base pointer at NULL). */
-    EXPECT_FALSE(guest_ppc_translate(handle, 4, -1, unit));
+    EXPECT_FALSE(guest_ppc_translate(handle, 4, 6, unit));
 
     EXPECT_STREQ(get_log_messages(), "[error] First instruction at 0x4 falls"
-                 " outside code range\n");
+                 " outside translation range\n");
 
     rtl_destroy_unit(unit);
     binrec_destroy_handle(handle);

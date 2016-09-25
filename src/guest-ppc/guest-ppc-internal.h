@@ -206,11 +206,12 @@ extern bool guest_ppc_gen_rtl(GuestPPCContext *ctx, int index);
  *
  * [Parameters]
  *     context: Translation context.
+ *     limit: Upper address bound for scanning.
  * [Return value]
  *     True on success, false on error.
  */
 #define guest_ppc_scan INTERNAL(guest_ppc_scan)
-extern bool guest_ppc_scan(GuestPPCContext *ctx);
+extern bool guest_ppc_scan(GuestPPCContext *ctx, uint32_t limit);
 
 /*************************************************************************/
 /*************************************************************************/

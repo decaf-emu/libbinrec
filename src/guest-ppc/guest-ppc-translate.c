@@ -239,7 +239,8 @@ static bool add_epilogue(GuestPPCContext *ctx)
 /************************ Translation entry point ************************/
 /*************************************************************************/
 
-bool guest_ppc_translate(binrec_t *handle, uint32_t address, RTLUnit *unit)
+bool guest_ppc_translate(binrec_t *handle, uint32_t address,
+                         uint32_t limit, RTLUnit *unit)
 {
     ASSERT(handle);
     ASSERT(unit);
@@ -255,6 +256,11 @@ bool guest_ppc_translate(binrec_t *handle, uint32_t address, RTLUnit *unit)
                   address);
         return 0;
     }
+    if (UNLIKELY(address + 3 > limit)) {
+        log_error(handle, "First instruction at 0x%X falls outside translation"
+                  " range", address);
+        return 0;
+    }
 
     GuestPPCContext ctx;
     memset(&ctx, 0, sizeof(ctx));
@@ -265,7 +271,7 @@ bool guest_ppc_translate(binrec_t *handle, uint32_t address, RTLUnit *unit)
 
     /* Scan guest memory to determine the range of code to translate and
      * record relevant properties about the code. */
-    if (!guest_ppc_scan(&ctx)) {
+    if (!guest_ppc_scan(&ctx, limit)) {
         goto error;
     }
     ASSERT(ctx.num_blocks > 0);

@@ -161,8 +161,10 @@ class Handle {
      * translate:  Translate a block of guest machine code into native
      * machine code.  Wraps binrec_translate().
      */
-    bool translate(uint64_t address, void **code_ret, long *size_ret) {
-        return bool(::binrec_translate(handle, address, code_ret, size_ret));
+    bool translate(uint32_t address, uint32_t limit,
+                   void **code_ret, long *size_ret) {
+        return bool(::binrec_translate(handle, address, limit,
+                                       code_ret, size_ret));
     }
 
   private:

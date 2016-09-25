@@ -32,7 +32,7 @@ static const char *arch_name(binrec_arch_t arch)
 {
     switch (arch) {
       case BINREC_ARCH_PPC_7XX:
-        return "PowerPC 750CL";
+        return "PowerPC 6xx/7xx";
       case BINREC_ARCH_X86_64_SYSV:
         return "x86-64 (SysV ABI)";
       case BINREC_ARCH_X86_64_WINDOWS:
@@ -362,14 +362,15 @@ void binrec_clear_readonly_regions(binrec_t *handle)
 
 /*-----------------------------------------------------------------------*/
 
-int binrec_translate(binrec_t *handle, uint32_t address,
+int binrec_translate(binrec_t *handle, uint32_t address, uint32_t limit,
                      void **code_ret, long *size_ret)
 {
     ASSERT(handle);
     ASSERT(code_ret);
     ASSERT(size_ret);
 
-    bool (*guest_translate)(binrec_t *handle, uint32_t address, RTLUnit *unit);
+    bool (*guest_translate)(binrec_t *handle, uint32_t address,
+                            uint32_t limit, RTLUnit *unit);
     switch (handle->setup.guest) {
       case BINREC_ARCH_PPC_7XX:
         guest_translate = guest_ppc_translate;
@@ -404,6 +405,11 @@ int binrec_translate(binrec_t *handle, uint32_t address,
                   address, handle->code_range_start, handle->code_range_end);
         return 0;
     }
+    if (UNLIKELY(limit < address)) {
+        log_error(handle, "Invalid translation range 0x%X-0x%X",
+                  address, limit);
+        return 0;
+    }
 
     RTLUnit *unit = rtl_create_unit(handle);
     if (UNLIKELY(!unit)) {
@@ -411,7 +417,7 @@ int binrec_translate(binrec_t *handle, uint32_t address,
         return 0;
     }
 
-    if (!(*guest_translate)(handle, address, unit)) {
+    if (!(*guest_translate)(handle, address, limit, unit)) {
         log_error(handle, "Failed to parse guest instructions starting at"
                   " 0x%X", address);
         return 0;

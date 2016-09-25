@@ -618,10 +618,12 @@ extern void binrec_destroy_handle(binrec_t *handle);
  * By default, the entire address space is considered valid for reading
  * instructions.
  *
- * This range can be changed for each binrec_translate() call to limit the
- * length of the guest code routine to translate in that call, though
- * binrec_translate() will end translation on its own when it finds a
- * reasonable stopping point (such as a return-from-subroutine instruction).
+ * Note that binrec_translate() also allows specifying an address range for
+ * translation.  This function is intended more for the purpose of avoiding
+ * translation of memory areas known to be outside the bounds of the input
+ * program code, such as data segments or undefined memory, similar to the
+ * "execute" permission bit in hardware memory management units.  (It is
+ * not currently possible to specify multiple disjoint code ranges.)
  *
  * [Parameters]
  *     handle: Handle to operate on.
@@ -758,6 +760,15 @@ extern void binrec_clear_readonly_regions(binrec_t *handle);
  * binrec_translate:  Translate a block of guest machine code into native
  * machine code.
  *
+ * The "address" and "limit" parameters specify the inclusive address
+ * bounds from which instructions will be read for this call.  Translation
+ * will stop when the translator reaches a source instruction which is not
+ * entirely contained in the inclusive range [address,limit],  or when all
+ * code paths starting from "address" have been translated (such as when
+ * the end of a function in the input program is reached).  A value of -1
+ * for "limit" allows translation to continue until such a natural endpoint
+ * is found.
+ *
  * On success, the returned block can be executed by calling it as a
  * function with the following signature:
  *     void *code(void *state);
@@ -779,6 +790,7 @@ extern void binrec_clear_readonly_regions(binrec_t *handle);
  * [Parameters]
  *     handle: Handle to use for translation.
  *     address: Address (in guest memory) of first instruction to translate.
+ *     limit: Address (in guest memory) at which to terminate translation.
  *     code_ret: Pointer to variable to receive a pointer to the
  *         translated machine code.
  *     size_ret: Pointer to variable to receive the length of the
@@ -786,7 +798,7 @@ extern void binrec_clear_readonly_regions(binrec_t *handle);
  * [Return value]
  *     True (nonzero) on success, false (zero) on error.
  */
-extern int binrec_translate(binrec_t *handle, uint32_t address,
+extern int binrec_translate(binrec_t *handle, uint32_t address, uint32_t limit,
                             void **code_ret, long *size_ret);
 
 /*************************************************************************/

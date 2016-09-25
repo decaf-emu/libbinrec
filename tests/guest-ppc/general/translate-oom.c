@@ -38,8 +38,6 @@ int main(void)
     binrec_t *handle;
     EXPECT(handle = binrec_create_handle(&setup));
 
-    binrec_set_code_range(handle, 0, 3);
-
     RTLUnit *unit;
     for (int count = 0; ; count++) {
         if (count >= 100) {
@@ -53,7 +51,7 @@ int main(void)
         unit->regs_size = 1;
         unit->aliases_size = 1;
         mem_wrap_fail_after(count);
-        if (guest_ppc_translate(handle, 0, unit)) {
+        if (guest_ppc_translate(handle, 0, 3, unit)) {
             if (count == 0) {
                 FAIL("Translation did not fail on memory allocation failure");
             }

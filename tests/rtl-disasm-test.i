@@ -57,12 +57,13 @@ int main(void)
     RTLUnit *unit;
     EXPECT(unit = rtl_create_unit(handle));
 
-    if (guest_ppc_translate(handle, 0, unit) != expected_success) {
+    if (guest_ppc_translate(handle, 0, sizeof(input) - 1,
+                            unit) != expected_success) {
         const char *log_messages = get_log_messages();
         if (log_messages) {
             fputs(log_messages, stderr);
         }
-        FAIL("guest_ppc_translate(handle, 0, unit) did not %s as expected",
+        FAIL("guest_ppc_translate(handle, 0, -1, unit) did not %s as expected",
              expected_success ? "succeed" : "fail");
     }
 
