@@ -79,14 +79,16 @@ libbinrec assumes that the input program it is given is valid machine
 code for the selected input architecture (referred to as the "guest"
 architecture in library documentation).  The library will correctly
 detect and translate explicit illegal instructions, such as the x86 UD2
-(0x0F 0x0B) or Motorola 68000 ILLEGAL (0x4AFC) instructions, but
+(0x0F 0x0B) or Motorola 68000 ILLEGAL (0x4AFC) instructions (note that
+neither of these architectures are currently supported as guests), but
 instructions whose encoding is not valid for the guest architecture may
 result in behavior different from a physical implementation of that
 specific architecture.  As a consequence, libbinrec may not correctly
 translate programs which include deliberately invalid instruction
 encodings, such as to detect the presence of a specific CPU feature by
 generating an illegal instruction exception if the feature is not
-present.
+present or to take advantage of undocumented behavior of a specific
+architecture implementation.
 
 libbinrec is intended as a pure translator rather than a full-fledged
 architecture emulator, and consequently it does not support translation
@@ -94,6 +96,10 @@ of privileged instructions in the input program.  Non-privileged
 instructions which explicitly transfer control to a privileged handler,
 such as the PowerPC sc (system call) instruction, are translated by
 inserting a call to a handler function supplied by the library user.
+Similarly, libbinrec has no facility for handling memory-mapped I/O; if
+such support is needed, the client program should mark relevant regions
+of the guest memory space as unmapped on the host system and use
+unmapped-access host exceptions to detect and handle such accesses.
 
 
 Reporting bugs
