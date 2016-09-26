@@ -197,12 +197,19 @@ static void update_cr0(
     const int so = rtl_alloc_register(unit, RTLTYPE_INT32);
     rtl_add_insn(unit, RTLOP_BFEXT, so, xer, 0, 31 | 1<<8);
 
+    const int eq_shifted = rtl_alloc_register(unit, RTLTYPE_INT32);
+    rtl_add_insn(unit, RTLOP_SLLI, eq_shifted, eq, 0, 1);
     const int cr0_2 = rtl_alloc_register(unit, RTLTYPE_INT32);
-    rtl_add_insn(unit, RTLOP_BFINS, cr0_2, so, eq, 1 | 1<<8);
+    rtl_add_insn(unit, RTLOP_OR, cr0_2, so, eq_shifted, 0);
+    const int gt_shifted = rtl_alloc_register(unit, RTLTYPE_INT32);
+    rtl_add_insn(unit, RTLOP_SLLI, gt_shifted, gt, 0, 2);
     const int cr0_3 = rtl_alloc_register(unit, RTLTYPE_INT32);
-    rtl_add_insn(unit, RTLOP_BFINS, cr0_3, cr0_2, gt, 2 | 1<<8);
+    rtl_add_insn(unit, RTLOP_OR, cr0_3, cr0_2, gt_shifted, 0);
+    const int lt_shifted = rtl_alloc_register(unit, RTLTYPE_INT32);
+    rtl_add_insn(unit, RTLOP_SLLI, lt_shifted, lt, 0, 3);
     const int cr0 = rtl_alloc_register(unit, RTLTYPE_INT32);
-    rtl_add_insn(unit, RTLOP_BFINS, cr0, cr0_3, lt, 3 | 1<<8);
+    rtl_add_insn(unit, RTLOP_OR, cr0, cr0_3, lt_shifted, 0);
+
     set_cr(ctx, 0, cr0);
 }
 
