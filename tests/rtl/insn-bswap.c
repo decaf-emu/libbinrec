@@ -47,7 +47,7 @@ int main(void)
         "    2: MOVE       r3, r2\n"
         "           r2: bswap(r1)\n"
         "\n"
-        "Block    0: <none> --> [0,2] --> <none>\n"
+        "Block 0: <none> --> [0,2] --> <none>\n"
         ;
     EXPECT_STREQ(rtl_disassemble_unit(unit, true), disassembly);
 

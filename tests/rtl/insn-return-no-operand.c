@@ -35,7 +35,7 @@ int main(void)
     const char *disassembly =
         "    0: RETURN\n"
         "\n"
-        "Block    0: <none> --> [0,0] --> <none>\n"
+        "Block 0: <none> --> [0,0] --> <none>\n"
         ;
     EXPECT_STREQ(rtl_disassemble_unit(unit, true), disassembly);
 

@@ -72,9 +72,9 @@ int main(void)
                  "\n"
                  "Alias 1: int32 @ 956(r1)\n"
                  "\n"
-                 "Block    0: <none> --> [0,0] --> 1\n"
-                 "Block    1: 0 --> [1,4] --> 2\n"
-                 "Block    2: 1 --> [5,6] --> <none>\n"
+                 "Block 0: <none> --> [0,0] --> 1\n"
+                 "Block 1: 0 --> [1,4] --> 2\n"
+                 "Block 2: 1 --> [5,6] --> <none>\n"
                  );
 
 

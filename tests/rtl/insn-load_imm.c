@@ -46,7 +46,7 @@ int main(void)
         "    0: LOAD_IMM   r1, 0x12345678\n"
         "    1: LOAD_IMM   r2, 0x123456789\n"
         "\n"
-        "Block    0: <none> --> [0,1] --> <none>\n"
+        "Block 0: <none> --> [0,1] --> <none>\n"
         ;
     EXPECT_STREQ(rtl_disassemble_unit(unit, true), disassembly);
 

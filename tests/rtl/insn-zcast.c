@@ -61,7 +61,7 @@ int main(void)
         "    5: MOVE       r6, r4\n"
         "           r4: zcast(r2)\n"
         "\n"
-        "Block    0: <none> --> [0,5] --> <none>\n"
+        "Block 0: <none> --> [0,5] --> <none>\n"
         ;
     EXPECT_STREQ(rtl_disassemble_unit(unit, true), disassembly);
 

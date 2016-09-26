@@ -40,7 +40,7 @@ int main(void)
         "    0: LABEL      L1\n"
         "    1: GOTO       L1\n"
         "\n"
-        "Block    0: 0 --> [0,1] --> 0\n"
+        "Block 0: 0 --> [0,1] --> 0\n"
         ;
     EXPECT_STREQ(rtl_disassemble_unit(unit, true), disassembly);
 

@@ -151,7 +151,7 @@ int main(void)
         "   29: MOVE       r30, r25\n"
         "           r25: nan(0x1)\n"
         "\n"
-        "Block    0: <none> --> [0,29] --> <none>\n"
+        "Block 0: <none> --> [0,29] --> <none>\n"
         ;
     EXPECT_STREQ(rtl_disassemble_unit(unit, true), disassembly);
 

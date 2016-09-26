@@ -68,15 +68,15 @@ int main(void)
                         "%.*s", (int)(eol - s), s) < (int)sizeof(line));
         if (i == 0) {
             ASSERT(snprintf(expect, sizeof(expect),
-                            "Block %4d: <none> --> [%d,%d] --> %d\n",
+                            "Block %d: <none> --> [%d,%d] --> %d\n",
                             i, i*2, i*2+1, i+1) < (int)sizeof(expect));
         } else if (i == NUM_BLOCKS - 1) {
             ASSERT(snprintf(expect, sizeof(expect),
-                            "Block %4d: %d --> [%d,%d] --> <none>\n",
+                            "Block %d: %d --> [%d,%d] --> <none>\n",
                             i, i-1, i*2, i*2+1) < (int)sizeof(expect));
         } else {
             ASSERT(snprintf(expect, sizeof(expect),
-                            "Block %4d: %d --> [%d,%d] --> %d\n",
+                            "Block %d: %d --> [%d,%d] --> %d\n",
                             i, i-1, i*2, i*2+1, i+1) < (int)sizeof(expect));
         }
         EXPECT_STREQ(line, expect);

@@ -41,7 +41,7 @@ int main(void)
         "    1: RETURN     r1\n"
         "           r1: 10\n"
         "\n"
-        "Block    0: <none> --> [0,1] --> <none>\n"
+        "Block 0: <none> --> [0,1] --> <none>\n"
         ;
     EXPECT_STREQ(rtl_disassemble_unit(unit, true), disassembly);
 

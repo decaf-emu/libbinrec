@@ -47,8 +47,8 @@ int main(void)
         "    2: GOTO_IF_Z  r2, L1\n"
         "           r2: 10\n"
         "\n"
-        "Block    0: 0 --> [0,2] --> 1,0\n"
-        "Block    1: 0 --> [empty] --> <none>\n"
+        "Block 0: 0 --> [0,2] --> 1,0\n"
+        "Block 1: 0 --> [empty] --> <none>\n"
         ;
     EXPECT_STREQ(rtl_disassemble_unit(unit, true), disassembly);
 

@@ -10,7 +10,7 @@
 #include "tests/guest-ppc/insn/common.h"
 
 static const uint8_t input[] = {
-    0x38, 0x64, 0x12, 0x34,  // addi r3,r4,4660
+    0x38,0x64,0x12,0x34,  // addi r3,r4,4660
 };
 
 static const bool expected_success = true;
@@ -31,9 +31,9 @@ static const char expected[] =
     "Alias 2: int32 @ 268(r1)\n"
     "Alias 3: int32 @ 272(r1)\n"
     "\n"
-    "Block    0: <none> --> [0,0] --> 1\n"
-    "Block    1: 0 --> [1,6] --> 2\n"
-    "Block    2: 1 --> [7,8] --> <none>\n"
+    "Block 0: <none> --> [0,0] --> 1\n"
+    "Block 1: 0 --> [1,6] --> 2\n"
+    "Block 2: 1 --> [7,8] --> <none>\n"
     ;
 
 #include "tests/rtl-disasm-test.i"

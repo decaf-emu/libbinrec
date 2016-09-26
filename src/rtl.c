@@ -46,10 +46,10 @@ static bool add_block_edges(RTLUnit * const unit)
             if (insn->opcode == RTLOP_GOTO
              || insn->opcode == RTLOP_GOTO_IF_Z
              || insn->opcode == RTLOP_GOTO_IF_NZ) {
-                const unsigned int label = insn->label;
+                const int label = insn->label;
                 if (UNLIKELY(unit->label_blockmap[label] < 0)) {
-                    log_error(unit->handle, "GOTO to undefined label L%u at"
-                              " %u", label, block->last_insn);
+                    log_error(unit->handle, "GOTO to undefined label L%d at"
+                              " %d", label, block->last_insn);
                     return false;
                 } else if (UNLIKELY(!rtl_block_add_edge(unit, block_index, unit->label_blockmap[label]))) {
                     static const char * const opcode_names[] = {
@@ -57,8 +57,8 @@ static bool add_block_edges(RTLUnit * const unit)
                         [RTLOP_GOTO_IF_Z  - RTLOP_GOTO] = "GOTO_IF_Z",
                         [RTLOP_GOTO_IF_NZ - RTLOP_GOTO] = "GOTO_IF_NZ",
                     };
-                    log_ice(unit->handle, "Failed to add edge %u->%u for"
-                            " %s L%u at %u",
+                    log_ice(unit->handle, "Failed to add edge %d->%d for"
+                            " %s L%d at %d",
                             block_index, unit->label_blockmap[label],
                             opcode_names[insn->opcode - RTLOP_GOTO], label,
                             block->last_insn);
@@ -289,7 +289,7 @@ static void rtl_describe_register(const RTLRegister *reg,
         return;
 
       case RTLREG_FUNC_ARG:
-        snprintf(buf, bufsize, "arg[%u]", reg->arg_index);
+        snprintf(buf, bufsize, "arg[%d]", reg->arg_index);
         return;
 
       case RTLREG_MEMORY: {
@@ -315,14 +315,14 @@ static void rtl_describe_register(const RTLRegister *reg,
             break;
         }
         ASSERT(type);
-        snprintf(buf, bufsize, "@%d(r%u).%s%s",
+        snprintf(buf, bufsize, "@%d(r%d).%s%s",
                  reg->memory.offset, reg->memory.addr_reg, type,
                  reg->memory.byterev ? ".br" : "");
         return;
       }
 
       case RTLREG_ALIAS:
-        snprintf(buf, bufsize, "a%u", reg->alias.src);
+        snprintf(buf, bufsize, "a%d", reg->alias.src);
         return;
 
       case RTLREG_RESULT:
@@ -381,22 +381,22 @@ static void rtl_describe_register(const RTLRegister *reg,
 
         switch (reg->result.opcode) {
           case RTLOP_MOVE:
-            snprintf(buf, bufsize, "r%u", reg->result.src1);
+            snprintf(buf, bufsize, "r%d", reg->result.src1);
             break;
           case RTLOP_SELECT:
-            snprintf(buf, bufsize, "r%u ? r%u : r%u", reg->result.cond,
+            snprintf(buf, bufsize, "r%d ? r%d : r%d", reg->result.cond,
                      reg->result.src1, reg->result.src2);
             break;
           case RTLOP_NEG:
           case RTLOP_NOT:
-            snprintf(buf, bufsize, "%sr%u",
+            snprintf(buf, bufsize, "%sr%d",
                      operators[reg->result.opcode], reg->result.src1);
             break;
           case RTLOP_SCAST:
           case RTLOP_ZCAST:
           case RTLOP_CLZ:
           case RTLOP_BSWAP:
-            snprintf(buf, bufsize, "%s(r%u)",
+            snprintf(buf, bufsize, "%s(r%d)",
                      operators[reg->result.opcode], reg->result.src1);
             break;
           case RTLOP_ADD:
@@ -418,7 +418,7 @@ static void rtl_describe_register(const RTLRegister *reg,
           case RTLOP_SLTS:
           case RTLOP_SGTU:
           case RTLOP_SGTS:
-            snprintf(buf, bufsize, "%sr%u %s r%u",
+            snprintf(buf, bufsize, "%sr%d %s r%d",
                      is_signed[reg->result.opcode] ? "(signed) " : "",
                      reg->result.src1, operators[reg->result.opcode],
                      reg->result.src2);
@@ -437,23 +437,23 @@ static void rtl_describe_register(const RTLRegister *reg,
           case RTLOP_SLTSI:
           case RTLOP_SGTUI:
           case RTLOP_SGTSI:
-            snprintf(buf, bufsize, "%sr%u %s %d",
+            snprintf(buf, bufsize, "%sr%d %s %d",
                      is_signed[reg->result.opcode] ? "(signed) " : "",
                      reg->result.src1, operators[reg->result.opcode],
                      reg->result.src_imm);
             break;
           case RTLOP_MULHU:
           case RTLOP_MULHS:
-            snprintf(buf, bufsize, "%shi(r%u * r%u)",
+            snprintf(buf, bufsize, "%shi(r%d * r%d)",
                      reg->result.opcode == RTLOP_MULHS ? "(signed) " : "",
                      reg->result.src1, reg->result.src2);
             break;
           case RTLOP_BFEXT:
-            snprintf(buf, bufsize, "bfext(r%u, %u, %u)",
+            snprintf(buf, bufsize, "bfext(r%d, %d, %d)",
                      reg->result.src1, reg->result.start, reg->result.count);
             break;
           case RTLOP_BFINS:
-            snprintf(buf, bufsize, "bfins(r%u, r%u, %u, %u)",
+            snprintf(buf, bufsize, "bfins(r%d, r%d, %d, %d)",
                      reg->result.src1, reg->result.src2,
                      reg->result.start, reg->result.count);
             break;
@@ -568,7 +568,7 @@ static void rtl_decode_insn(const RTLUnit *unit, uint32_t index,
     #define APPEND_REG_DESC(regnum)  do { if (verbose) { \
         const unsigned int _regnum = (regnum); \
         rtl_describe_register(&unit->regs[_regnum], regbuf, sizeof(regbuf)); \
-        s += snprintf_assert(s, top - s, "           r%u: %s\n", \
+        s += snprintf_assert(s, top - s, "           r%d: %s\n", \
                              _regnum, regbuf); \
     } } while (0)
 
@@ -592,13 +592,13 @@ static void rtl_decode_insn(const RTLUnit *unit, uint32_t index,
         return;
 
       case RTLOP_SET_ALIAS:
-        s += snprintf_assert(s, top - s, "%-10s a%u, r%u\n",
+        s += snprintf_assert(s, top - s, "%-10s a%d, r%d\n",
                              name, insn->alias, src1);
         APPEND_REG_DESC(src1);
         return;
 
       case RTLOP_GET_ALIAS:
-        s += snprintf_assert(s, top - s, "%-10s r%u, a%u\n",
+        s += snprintf_assert(s, top - s, "%-10s r%d, a%d\n",
                              name, dest, insn->alias);
         return;
 
@@ -609,12 +609,12 @@ static void rtl_decode_insn(const RTLUnit *unit, uint32_t index,
       case RTLOP_NOT:
       case RTLOP_CLZ:
       case RTLOP_BSWAP:
-        s += snprintf_assert(s, top - s, "%-10s r%u, r%u\n", name, dest, src1);
+        s += snprintf_assert(s, top - s, "%-10s r%d, r%d\n", name, dest, src1);
         APPEND_REG_DESC(src1);
         return;
 
       case RTLOP_SELECT:
-        s += snprintf_assert(s, top - s, "%-10s r%u, r%u, r%u, r%u\n",
+        s += snprintf_assert(s, top - s, "%-10s r%d, r%d, r%d, r%d\n",
                              name, dest, src1, src2, insn->cond);
         APPEND_REG_DESC(src1);
         APPEND_REG_DESC(src2);
@@ -642,21 +642,21 @@ static void rtl_decode_insn(const RTLUnit *unit, uint32_t index,
       case RTLOP_SLTS:
       case RTLOP_SGTU:
       case RTLOP_SGTS:
-        s += snprintf_assert(s, top - s, "%-10s r%u, r%u, r%u\n",
+        s += snprintf_assert(s, top - s, "%-10s r%d, r%d, r%d\n",
                              name, dest, src1, src2);
         APPEND_REG_DESC(src1);
         APPEND_REG_DESC(src2);
         return;
 
       case RTLOP_BFEXT:
-        s += snprintf_assert(s, top - s, "%-10s r%u, r%u, %u, %u\n",
+        s += snprintf_assert(s, top - s, "%-10s r%d, r%d, %d, %d\n",
                              name, dest, src1, insn->bitfield.start,
                              insn->bitfield.count);
         APPEND_REG_DESC(src1);
         return;
 
       case RTLOP_BFINS:
-        s += snprintf_assert(s, top - s, "%-10s r%u, r%u, r%u, %u, %u\n",
+        s += snprintf_assert(s, top - s, "%-10s r%d, r%d, r%d, %d, %d\n",
                              name, dest, src1, src2, insn->bitfield.start,
                              insn->bitfield.count);
         APPEND_REG_DESC(src1);
@@ -677,13 +677,13 @@ static void rtl_decode_insn(const RTLUnit *unit, uint32_t index,
       case RTLOP_SLTSI:
       case RTLOP_SGTUI:
       case RTLOP_SGTSI:
-        s += snprintf_assert(s, top - s, "%-10s r%u, r%u, %d\n",
+        s += snprintf_assert(s, top - s, "%-10s r%d, r%d, %d\n",
                              name, dest, src1, (int32_t)insn->src_imm);
         APPEND_REG_DESC(src1);
         return;
 
       case RTLOP_LOAD_IMM:
-        s += snprintf_assert(s, top - s, "%-10s r%u, ", name, dest);
+        s += snprintf_assert(s, top - s, "%-10s r%d, ", name, dest);
         ASSERT(dest > 0 && dest < unit->next_reg);
         switch (unit->regs[dest].type) {
           case RTLTYPE_INT32:
@@ -715,7 +715,7 @@ static void rtl_decode_insn(const RTLUnit *unit, uint32_t index,
         return;
 
       case RTLOP_LOAD_ARG:
-        s += snprintf_assert(s, top - s, "%-10s r%u, %u\n",
+        s += snprintf_assert(s, top - s, "%-10s r%d, %d\n",
                              name, dest, insn->arg_index);
         return;
 
@@ -727,7 +727,7 @@ static void rtl_decode_insn(const RTLUnit *unit, uint32_t index,
       case RTLOP_LOAD_BR:
       case RTLOP_LOAD_U16_BR:
       case RTLOP_LOAD_S16_BR:
-        s += snprintf_assert(s, top - s, "%-10s r%u, %d(r%u)\n",
+        s += snprintf_assert(s, top - s, "%-10s r%d, %d(r%d)\n",
                              name, dest, insn->offset, src1);
         APPEND_REG_DESC(src1);
         return;
@@ -737,7 +737,7 @@ static void rtl_decode_insn(const RTLUnit *unit, uint32_t index,
       case RTLOP_STORE_I16:
       case RTLOP_STORE_BR:
       case RTLOP_STORE_I16_BR:
-        s += snprintf_assert(s, top - s, "%-10s %d(r%u), r%u\n",
+        s += snprintf_assert(s, top - s, "%-10s %d(r%d), r%d\n",
                              name, insn->offset, src1, src2);
         APPEND_REG_DESC(src1);
         APPEND_REG_DESC(src2);
@@ -745,19 +745,19 @@ static void rtl_decode_insn(const RTLUnit *unit, uint32_t index,
 
       case RTLOP_LABEL:
       case RTLOP_GOTO:
-        s += snprintf_assert(s, top - s, "%-10s L%u\n", name, insn->label);
+        s += snprintf_assert(s, top - s, "%-10s L%d\n", name, insn->label);
         return;
 
       case RTLOP_GOTO_IF_Z:
       case RTLOP_GOTO_IF_NZ:
-        s += snprintf_assert(s, top - s, "%-10s r%u, L%u\n",
+        s += snprintf_assert(s, top - s, "%-10s r%d, L%d\n",
                              name, src1, insn->label);
         APPEND_REG_DESC(src1);
         return;
 
       case RTLOP_RETURN:
         if (src1) {
-            s += snprintf_assert(s, top - s, "%-10s r%u\n", name, src1);
+            s += snprintf_assert(s, top - s, "%-10s r%d\n", name, src1);
             APPEND_REG_DESC(src1);
         } else {
             s += snprintf_assert(s, top - s, "%s\n", name);
@@ -808,10 +808,10 @@ static void rtl_describe_alias(const RTLUnit *unit, int index,
     };
     ASSERT(alias->type > 0 && alias->type < lenof(type_names));
 
-    s += snprintf_assert(s, top - s, "Alias %u: %s",
+    s += snprintf_assert(s, top - s, "Alias %d: %s",
                          index, type_names[alias->type]);
     if (alias->base) {
-        s += snprintf_assert(s, top - s, " @ %d(r%u)",
+        s += snprintf_assert(s, top - s, " @ %d(r%d)",
                              alias->offset, alias->base);
     } else {
         s += snprintf_assert(s, top - s, ", no bound storage");
@@ -842,7 +842,7 @@ static void rtl_describe_block(const RTLUnit *unit, int index,
     char *s = buf;
     char * const top = buf + bufsize;
 
-    s += snprintf_assert(s, top - s, "Block %4u: ", index);
+    s += snprintf_assert(s, top - s, "Block %d: ", index);
 
     if (block->entries[0] < 0) {
         s += snprintf_assert(s, top - s, "<none>");
@@ -850,7 +850,7 @@ static void rtl_describe_block(const RTLUnit *unit, int index,
         for (int j = 0; j < lenof(block->entries) && block->entries[j] >= 0;
              j++)
         {
-            s += snprintf_assert(s, top - s, "%s%u", j==0 ? "" : ",",
+            s += snprintf_assert(s, top - s, "%s%d", j==0 ? "" : ",",
                                  block->entries[j]);
         }
     }
@@ -866,7 +866,7 @@ static void rtl_describe_block(const RTLUnit *unit, int index,
         s += snprintf_assert(s, top - s, "<none>");
     } else {
         for (int j = 0; j < lenof(block->exits) && block->exits[j] >= 0; j++) {
-            s += snprintf_assert(s, top - s, "%s%u",
+            s += snprintf_assert(s, top - s, "%s%d",
                                  j==0 ? "" : ",", block->exits[j]);
         }
     }

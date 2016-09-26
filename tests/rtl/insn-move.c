@@ -60,7 +60,7 @@ int main(void)
         "    4: MOVE       r5, r4\n"
         "           r4: 0x28\n"
         "\n"
-        "Block    0: <none> --> [0,4] --> <none>\n"
+        "Block 0: <none> --> [0,4] --> <none>\n"
         ;
     EXPECT_STREQ(rtl_disassemble_unit(unit, true), disassembly);
 

@@ -36,7 +36,7 @@ int main(void)
     EXPECT_STREQ(output, ("    0: RETURN     r1\n"
                           "           r1: (undefined)\n"
                           "\n"
-                          "Block    0: <none> --> [0,0] --> <none>\n"));
+                          "Block 0: <none> --> [0,0] --> <none>\n"));
 
     rtl_destroy_unit(unit);
     binrec_destroy_handle(handle);

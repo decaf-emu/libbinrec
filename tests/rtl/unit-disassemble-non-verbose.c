@@ -66,8 +66,8 @@ int main(void)
                  "   10: GOTO_IF_NZ r7, L1\n"
                  "   11: RETURN     r6\n"
                  "\n"
-                 "Block    0: 0 --> [0,10] --> 1,0\n"
-                 "Block    1: 0 --> [11,11] --> <none>\n");
+                 "Block 0: 0 --> [0,10] --> 1,0\n"
+                 "Block 1: 0 --> [11,11] --> <none>\n");
 
     rtl_destroy_unit(unit);
     binrec_destroy_handle(handle);

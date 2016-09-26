@@ -70,7 +70,7 @@ int main(void)
         "           r5: 50\n"
         "           r4: r3 ? r1 : r2\n"
         "\n"
-        "Block    0: <none> --> [0,5] --> <none>\n"
+        "Block 0: <none> --> [0,5] --> <none>\n"
         ;
     EXPECT_STREQ(rtl_disassemble_unit(unit, true), disassembly);
 

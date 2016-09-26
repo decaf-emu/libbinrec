@@ -83,7 +83,7 @@ int main(void)
         "    6: MOVE       r7, r4\n"
         "           r4: @-32768(r1).u8\n"
         "\n"
-        "Block    0: <none> --> [0,6] --> <none>\n"
+        "Block 0: <none> --> [0,6] --> <none>\n"
         ;
     EXPECT_STREQ(rtl_disassemble_unit(unit, true), disassembly);
 
