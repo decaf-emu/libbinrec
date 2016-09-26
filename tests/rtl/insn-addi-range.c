@@ -47,6 +47,7 @@ int main(void)
     EXPECT_EQ(unit->insns[2].src1, reg1);
     EXPECT_EQ(unit->insns[2].src_imm, 0x7FFFFFFF);
     EXPECT(unit->have_block);
+    EXPECT_FALSE(unit->error);
 
 #ifdef ENABLE_OPERAND_SANITY_CHECKS
     EXPECT_FALSE(rtl_add_insn(unit, RTLOP_ADDI, reg6, reg1, 0,
@@ -54,11 +55,16 @@ int main(void)
     EXPECT_ICE("Operand constraint violated:"
                " other + UINT64_C(0x80000000) < UINT64_C(0x100000000)");
     EXPECT_EQ(unit->num_insns, 5);
+    EXPECT(unit->error);
+    unit->error = false;
+
     EXPECT_FALSE(rtl_add_insn(unit, RTLOP_ADDI, reg6, reg1, 0,
                               UINT64_C(0x80000000)));
     EXPECT_ICE("Operand constraint violated:"
                " other + UINT64_C(0x80000000) < UINT64_C(0x100000000)");
     EXPECT_EQ(unit->num_insns, 5);
+    EXPECT(unit->error);
+    unit->error = false;
 #endif
 
     EXPECT(rtl_finalize_unit(unit));

@@ -36,6 +36,8 @@ int main(void)
                " || unit->regs[dest].type == RTLTYPE_DOUBLE"
                " || other <= UINT64_C(0xFFFFFFFF)");
     EXPECT_EQ(unit->num_insns, 0);
+    EXPECT(unit->error);
+    unit->error = false;
 
     rtl_destroy_unit(unit);
     binrec_destroy_handle(handle);

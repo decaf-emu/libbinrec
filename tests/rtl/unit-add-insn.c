@@ -28,6 +28,7 @@ int main(void)
     EXPECT_EQ(unit->num_insns, 1);
     EXPECT_EQ(unit->insns[0].opcode, RTLOP_NOP);
     EXPECT_EQ(unit->num_blocks, 1);
+    EXPECT_FALSE(unit->error);
 
     /* The second instruction should not start another new block.
      * Also check behavior when the instruction array needs to be expanded. */
@@ -38,6 +39,7 @@ int main(void)
     EXPECT_EQ(unit->insns[0].opcode, RTLOP_NOP);
     EXPECT_EQ(unit->insns[1].opcode, RTLOP_ILLEGAL);
     EXPECT_EQ(unit->num_blocks, 1);
+    EXPECT_FALSE(unit->error);
 
     EXPECT_STREQ(get_log_messages(), NULL);
 

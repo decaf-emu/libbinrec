@@ -38,14 +38,21 @@ int main(void)
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg2, 0, 0, 20));
     EXPECT(rtl_add_insn(unit, RTLOP_GET_ALIAS, reg3, 0, 0, alias));
     EXPECT_EQ(unit->num_insns, 3);
+    EXPECT_FALSE(unit->error);
+
     EXPECT_FALSE(rtl_add_insn(unit, RTLOP_ADDI, reg4, reg1, 0, 40));
     EXPECT_ICE("Operand constraint violated:"
                " unit->regs[src1].type == unit->regs[dest].type");
     EXPECT_EQ(unit->num_insns, 3);
+    EXPECT(unit->error);
+    unit->error = false;
+
     EXPECT_FALSE(rtl_add_insn(unit, RTLOP_ADDI, reg5, reg3, 0, 50));
     EXPECT_ICE("Operand constraint violated:"
                " rtl_register_is_int(&unit->regs[dest])");
     EXPECT_EQ(unit->num_insns, 3);
+    EXPECT(unit->error);
+    unit->error = false;
 
     rtl_destroy_unit(unit);
     binrec_destroy_handle(handle);

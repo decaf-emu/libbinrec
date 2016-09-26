@@ -32,6 +32,7 @@ int main(void)
     EXPECT_EQ(unit->next_alias, 2);
     EXPECT_EQ(unit->aliases[1].type, RTLTYPE_INT32);
     EXPECT_EQ(unit->aliases[1].base, 0);
+    EXPECT_FALSE(unit->error);
 
     unit->aliases_size = 2;
     mem_wrap_fail_after(0);
@@ -40,6 +41,8 @@ int main(void)
     EXPECT_EQ(unit->next_alias, 2);
     EXPECT_EQ(unit->aliases[1].type, RTLTYPE_INT32);
     EXPECT_EQ(unit->aliases[1].base, 0);
+    EXPECT(unit->error);
+    unit->error = false;
 
     char expected_log[100];
     snprintf(expected_log, sizeof(expected_log),

@@ -33,10 +33,14 @@ int main(void)
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg1, 0, 0, 10));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg2, 0, 0, 20));
     EXPECT_EQ(unit->num_insns, 2);
+    EXPECT_FALSE(unit->error);
+
     EXPECT_FALSE(rtl_add_insn(unit, RTLOP_STORE_I16, 0, reg1, reg2, 32));
     EXPECT_ICE("Operand constraint violated:"
                " unit->regs[src2].type == RTLTYPE_INT32");
     EXPECT_EQ(unit->num_insns, 2);
+    EXPECT(unit->error);
+    unit->error = false;
 
     rtl_destroy_unit(unit);
     binrec_destroy_handle(handle);

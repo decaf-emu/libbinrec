@@ -33,6 +33,7 @@ int main(void)
     EXPECT_EQ(unit->regs[1].type, RTLTYPE_INT32);
     EXPECT_EQ(unit->regs[1].source, RTLREG_UNDEFINED);
     EXPECT_FALSE(unit->regs[1].live);
+    EXPECT_FALSE(unit->error);
 
     unit->regs_size = 2;
     mem_wrap_fail_after(0);
@@ -42,6 +43,8 @@ int main(void)
     EXPECT_EQ(unit->regs[1].type, RTLTYPE_INT32);
     EXPECT_EQ(unit->regs[1].source, RTLREG_UNDEFINED);
     EXPECT_FALSE(unit->regs[1].live);
+    EXPECT(unit->error);
+    unit->error = false;
 
     char expected_log[100];
     snprintf(expected_log, sizeof(expected_log),

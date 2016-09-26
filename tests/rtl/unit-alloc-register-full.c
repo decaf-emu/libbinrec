@@ -32,6 +32,7 @@ int main(void)
     EXPECT_EQ(unit->regs[REGS_LIMIT - 1].type, RTLTYPE_INT32);
     EXPECT_EQ(unit->regs[REGS_LIMIT - 1].source, RTLREG_UNDEFINED);
     EXPECT_FALSE(unit->regs[REGS_LIMIT - 1].live);
+    EXPECT_FALSE(unit->error);
 
     EXPECT_EQ(rtl_alloc_register(unit, RTLTYPE_ADDRESS), 0);
     EXPECT_EQ(unit->regs_size, REGS_LIMIT);
@@ -39,11 +40,12 @@ int main(void)
     EXPECT_EQ(unit->regs[REGS_LIMIT - 1].type, RTLTYPE_INT32);
     EXPECT_EQ(unit->regs[REGS_LIMIT - 1].source, RTLREG_UNDEFINED);
     EXPECT_FALSE(unit->regs[REGS_LIMIT - 1].live);
+    EXPECT(unit->error);
+    unit->error = false;
 
     char expected_log[100];
     snprintf(expected_log, sizeof(expected_log),
-             "[error] Too many registers in unit (limit %u)\n",
-             REGS_LIMIT);
+             "[error] Too many registers in unit (limit %u)\n", REGS_LIMIT);
     EXPECT_STREQ(get_log_messages(), expected_log);
 
     rtl_destroy_unit(unit);

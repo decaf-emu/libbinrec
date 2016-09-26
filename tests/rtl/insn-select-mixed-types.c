@@ -53,6 +53,7 @@ int main(void)
     EXPECT_EQ(unit->insns[5].src2, reg5);
     EXPECT_EQ(unit->insns[5].cond, reg4);
     EXPECT(unit->have_block);
+    EXPECT_FALSE(unit->error);
 
     EXPECT(rtl_finalize_unit(unit));
 

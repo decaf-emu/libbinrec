@@ -47,16 +47,22 @@ int main(void)
     EXPECT_EQ(unit->insns[4].src2, reg2);
     EXPECT_EQ(unit->insns[4].offset, -0x8000);
     EXPECT(unit->have_block);
+    EXPECT_FALSE(unit->error);
 
 #ifdef ENABLE_OPERAND_SANITY_CHECKS
     EXPECT_FALSE(rtl_add_insn(unit, RTLOP_STORE_I8, 0, reg1, reg2, 0x8000));
     EXPECT_ICE("Operand constraint violated:"
                " other <= 0x7FFF || other >= UINT64_C(-0x8000)");
     EXPECT_EQ(unit->num_insns, 5);
+    EXPECT(unit->error);
+    unit->error = false;
+
     EXPECT_FALSE(rtl_add_insn(unit, RTLOP_STORE_I8, 0, reg1, reg2, -0x8001));
     EXPECT_ICE("Operand constraint violated:"
                " other <= 0x7FFF || other >= UINT64_C(-0x8000)");
     EXPECT_EQ(unit->num_insns, 5);
+    EXPECT(unit->error);
+    unit->error = false;
 #endif
 
     EXPECT(rtl_finalize_unit(unit));

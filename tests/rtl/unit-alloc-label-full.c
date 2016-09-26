@@ -30,15 +30,17 @@ int main(void)
     EXPECT_EQ(unit->labels_size, LABELS_LIMIT);
     EXPECT_EQ(unit->next_label, LABELS_LIMIT);
     EXPECT_EQ(unit->label_blockmap[LABELS_LIMIT - 1], -1);
+    EXPECT_FALSE(unit->error);
 
     EXPECT_EQ(rtl_alloc_label(unit), 0);
     EXPECT_EQ(unit->labels_size, LABELS_LIMIT);
     EXPECT_EQ(unit->next_label, LABELS_LIMIT);
+    EXPECT(unit->error);
+    unit->error = false;
 
     char expected_log[100];
     snprintf(expected_log, sizeof(expected_log),
-             "[error] Too many labels in unit (limit %u)\n",
-             LABELS_LIMIT);
+             "[error] Too many labels in unit (limit %u)\n", LABELS_LIMIT);
     EXPECT_STREQ(get_log_messages(), expected_log);
 
     rtl_destroy_unit(unit);

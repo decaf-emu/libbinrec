@@ -51,6 +51,7 @@ int main(void)
     EXPECT_EQ(unit->regs[reg3].death, 3);
     EXPECT_EQ(unit->regs[reg3].source, RTLREG_RESULT);
     EXPECT_EQ(unit->regs[reg3].result.opcode, RTLOP_NOP);
+    EXPECT_FALSE(unit->error);
 
     EXPECT(rtl_finalize_unit(unit));
 

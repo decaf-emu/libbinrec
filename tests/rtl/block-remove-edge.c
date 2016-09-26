@@ -52,6 +52,7 @@ int main(void)
     EXPECT_EQ(unit->blocks[3].entries[6], -1);
     EXPECT_EQ(unit->blocks[3].entries[7], -1);
     EXPECT_EQ(unit->blocks[3].exits[0], -1);
+    EXPECT_FALSE(unit->error);
     EXPECT_STREQ(get_log_messages(), NULL);
 
     rtl_block_remove_edge(unit, 1, 0);
@@ -74,6 +75,7 @@ int main(void)
     EXPECT_EQ(unit->blocks[3].entries[6], -1);
     EXPECT_EQ(unit->blocks[3].entries[7], -1);
     EXPECT_EQ(unit->blocks[3].exits[0], -1);
+    EXPECT_FALSE(unit->error);
     EXPECT_STREQ(get_log_messages(), NULL);
 
     rtl_destroy_unit(unit);

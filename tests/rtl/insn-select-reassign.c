@@ -37,10 +37,14 @@ int main(void)
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg3, 0, 0, 30));
     EXPECT(rtl_add_insn(unit, RTLOP_SELECT, reg4, reg1, reg2, reg3));
     EXPECT_EQ(unit->num_insns, 4);
+    EXPECT_FALSE(unit->error);
+
     EXPECT_FALSE(rtl_add_insn(unit, RTLOP_SELECT, reg4, reg1, reg2, reg3));
     EXPECT_ICE("Operand constraint violated:"
                " unit->regs[dest].source == RTLREG_UNDEFINED");
     EXPECT_EQ(unit->num_insns, 4);
+    EXPECT(unit->error);
+    unit->error = false;
 
     rtl_destroy_unit(unit);
     binrec_destroy_handle(handle);

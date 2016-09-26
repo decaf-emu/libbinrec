@@ -33,6 +33,7 @@ int main(void)
     EXPECT_EQ(unit->insns[1].opcode, RTLOP_RETURN);
     EXPECT_EQ(unit->insns[1].src1, reg);
     EXPECT_FALSE(unit->have_block);
+    EXPECT_FALSE(unit->error);
 
     EXPECT(rtl_finalize_unit(unit));
 

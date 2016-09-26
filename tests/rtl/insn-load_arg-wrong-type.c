@@ -33,6 +33,8 @@ int main(void)
     EXPECT_ICE("Operand constraint violated:"
                " rtl_register_is_int(&unit->regs[dest])");
     EXPECT_EQ(unit->num_insns, 0);
+    EXPECT(unit->error);
+    unit->error = false;
 
     rtl_destroy_unit(unit);
     binrec_destroy_handle(handle);

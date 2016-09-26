@@ -38,6 +38,7 @@ int main(void)
     EXPECT_EQ(unit->insns[1].src1, reg1);
     EXPECT_EQ(unit->insns[1].offset, 32);
     EXPECT(unit->have_block);
+    EXPECT_FALSE(unit->error);
 
     EXPECT(rtl_finalize_unit(unit));
 

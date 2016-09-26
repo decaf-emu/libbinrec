@@ -28,6 +28,7 @@ int main(void)
     EXPECT_EQ(unit->next_alias, 2);
     EXPECT_EQ(unit->aliases[1].type, RTLTYPE_INT32);
     EXPECT_EQ(unit->aliases[1].base, 0);
+    EXPECT_FALSE(unit->error);
 
     /* Check behavior when the alias array needs to be expanded. */
     unit->aliases_size = 2;
@@ -38,6 +39,7 @@ int main(void)
     EXPECT_EQ(unit->aliases[1].base, 0);
     EXPECT_EQ(unit->aliases[2].type, RTLTYPE_ADDRESS);
     EXPECT_EQ(unit->aliases[2].base, 0);
+    EXPECT_FALSE(unit->error);
 
     EXPECT_STREQ(get_log_messages(), NULL);
 

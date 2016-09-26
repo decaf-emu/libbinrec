@@ -35,18 +35,28 @@ int main(void)
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg1, 0, 0, 10));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg2, 0, 0, 20));
     EXPECT_EQ(unit->num_insns, 2);
+    EXPECT_FALSE(unit->error);
+
     EXPECT_FALSE(rtl_add_insn(unit, RTLOP_SELECT, reg4, reg3, reg1, reg2));
     EXPECT_ICE("Operand constraint violated:"
                " unit->regs[src1].source != RTLREG_UNDEFINED");
     EXPECT_EQ(unit->num_insns, 2);
+    EXPECT(unit->error);
+    unit->error = false;
+
     EXPECT_FALSE(rtl_add_insn(unit, RTLOP_SELECT, reg4, reg1, reg3, reg2));
     EXPECT_ICE("Operand constraint violated:"
                " unit->regs[src2].source != RTLREG_UNDEFINED");
     EXPECT_EQ(unit->num_insns, 2);
+    EXPECT(unit->error);
+    unit->error = false;
+
     EXPECT_FALSE(rtl_add_insn(unit, RTLOP_SELECT, reg4, reg1, reg2, reg3));
     EXPECT_ICE("Operand constraint violated:"
                " unit->regs[other].source != RTLREG_UNDEFINED");
     EXPECT_EQ(unit->num_insns, 2);
+    EXPECT(unit->error);
+    unit->error = false;
 
     rtl_destroy_unit(unit);
     binrec_destroy_handle(handle);

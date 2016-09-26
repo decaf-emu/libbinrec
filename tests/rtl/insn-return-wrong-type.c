@@ -32,10 +32,14 @@ int main(void)
 
     EXPECT(rtl_add_insn(unit, RTLOP_GET_ALIAS, reg, 0, 0, alias));
     EXPECT_EQ(unit->num_insns, 1);
+    EXPECT_FALSE(unit->error);
+
     EXPECT_FALSE(rtl_add_insn(unit, RTLOP_RETURN, 0, reg, 0, 0));
     EXPECT_ICE("Operand constraint violated:"
                " rtl_register_is_int(&unit->regs[src1])");
     EXPECT_EQ(unit->num_insns, 1);
+    EXPECT(unit->error);
+    unit->error = false;
 
     rtl_destroy_unit(unit);
     binrec_destroy_handle(handle);

@@ -258,7 +258,7 @@ struct RTLUnit {
     RTLBlock *blocks;           // Basic block array
     uint16_t blocks_size;       // Size of block array (entries)
     uint16_t num_blocks;        // Number of blocks actually in array
-    bool have_block;            // Nonzero if there is a currently active block
+    bool have_block;            // True if there is a currently active block
     uint16_t cur_block;         // Current block index if have_block != 0
 
     int16_t *label_blockmap;    // Label-to-block-index mapping (-1 = unset)
@@ -278,7 +278,8 @@ struct RTLUnit {
     uint16_t next_alias;        // Next alias register number to allocate
                                 //    (== number of allocated alias registers)
 
-    bool finalized;             // Nonzero if unit has been finalized
+    bool error;                 // True if an error has been detected
+    bool finalized;             // True if unit has been finalized
 
     char *disassembly;          // Last disassembly result, or NULL if none
                                 //    (saved so we can free it at destroy time)

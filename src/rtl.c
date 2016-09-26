@@ -38,8 +38,9 @@ static bool add_block_edges(RTLUnit * const unit)
     ASSERT(unit->blocks != NULL);
     ASSERT(unit->label_blockmap != NULL);
 
-    unsigned int block_index;
-    for (block_index = 0; block_index < unit->num_blocks; block_index++) {
+    for (unsigned int block_index = 0; block_index < unit->num_blocks;
+         block_index++)
+    {
         RTLBlock * const block = &unit->blocks[block_index];
         if (block->first_insn <= block->last_insn) {
             const RTLInsn * const insn = &unit->insns[block->last_insn];
@@ -97,8 +98,9 @@ static void update_live_ranges(RTLUnit * const unit)
     for (block_index = 0; block_index < unit->num_blocks; block_index++) {
         const RTLBlock * const block = &unit->blocks[block_index];
         int latest_entry_block = -1;
-        unsigned int i;
-        for (i = 0; i < lenof(block->entries) && block->entries[i] >= 0; i++) {
+        for (unsigned int i = 0;
+             i < lenof(block->entries) && block->entries[i] >= 0; i++)
+        {
             if (block->entries[i] > latest_entry_block) {
                 const RTLBlock *entry_block = &unit->blocks[block->entries[i]];
                 if (entry_block->last_insn >= entry_block->first_insn) {
@@ -142,6 +144,7 @@ static NOINLINE bool rtl_add_insn_with_extend(
     if (UNLIKELY(!new_insns)) {
         log_error(unit->handle, "No memory to expand unit to %u instructions",
                   new_insns_size);
+        unit->error = true;
         return false;
     }
     memset(&new_insns[unit->insns_size], 0,
@@ -168,6 +171,7 @@ static NOINLINE bool rtl_add_insn_with_new_block(
     int dest, int src1, int src2, uint64_t other)
 {
     if (UNLIKELY(!rtl_block_add(unit))) {
+        unit->error = true;
         return false;
     }
     unit->have_block = true;
@@ -566,7 +570,7 @@ static void rtl_decode_insn(const RTLUnit *unit, uint32_t index,
     char regbuf[100];
 
     #define APPEND_REG_DESC(regnum)  do { if (verbose) { \
-        const unsigned int _regnum = (regnum); \
+        const int _regnum = (regnum); \
         rtl_describe_register(&unit->regs[_regnum], regbuf, sizeof(regbuf)); \
         s += snprintf_assert(s, top - s, "           r%d: %s\n", \
                              _regnum, regbuf); \
@@ -574,9 +578,9 @@ static void rtl_decode_insn(const RTLUnit *unit, uint32_t index,
 
     const RTLInsn * const insn = &unit->insns[index];
     const char * const name = opcode_names[insn->opcode];
-    const unsigned int dest = insn->dest;
-    const unsigned int src1 = insn->src1;
-    const unsigned int src2 = insn->src2;
+    const int dest = insn->dest;
+    const int src1 = insn->src1;
+    const int src2 = insn->src2;
 
     s += snprintf_assert(s, top - s, "%5d: ", index);
 
@@ -914,6 +918,7 @@ RTLUnit *rtl_create_unit(binrec_t *handle)
     unit->labels_size = LABELS_EXPAND_SIZE;
     unit->next_label = 1;
 
+    unit->error = false;
     unit->finalized = false;
 
     unit->disassembly = NULL;
@@ -923,8 +928,6 @@ RTLUnit *rtl_create_unit(binrec_t *handle)
         log_error(handle, "No memory for %u instructions", unit->insns_size);
         goto fail;
     }
-    /* Clear instruction buffers so output translators can rely on unused
-     * fields in an instruction always being zero. */
     memset(unit->insns, 0, sizeof(*unit->insns) * unit->insns_size);
 
     unit->blocks = rtl_malloc(unit, sizeof(*unit->blocks) * unit->blocks_size);
@@ -932,13 +935,14 @@ RTLUnit *rtl_create_unit(binrec_t *handle)
         log_error(handle, "No memory for %u blocks", unit->blocks_size);
         goto fail;
     }
+    memset(unit->blocks, 0, sizeof(*unit->blocks) * unit->blocks_size);
 
     unit->regs = rtl_malloc(unit, sizeof(*unit->regs) * unit->regs_size);
     if (!unit->regs) {
         log_error(handle, "No memory for %u registers", unit->regs_size);
         goto fail;
     }
-    memset(&unit->regs[0], 0, sizeof(*unit->regs));
+    memset(&unit->regs[0], 0, sizeof(*unit->regs) * unit->regs_size);
 
     unit->aliases =
         rtl_malloc(unit, sizeof(*unit->aliases) * unit->aliases_size);
@@ -946,7 +950,7 @@ RTLUnit *rtl_create_unit(binrec_t *handle)
         log_error(handle, "No memory for %u alias registers", unit->regs_size);
         goto fail;
     }
-    unit->aliases[0].type = 0;
+    memset(&unit->aliases[0], 0, sizeof(*unit->aliases) * unit->aliases_size);
 
     unit->label_blockmap =
         rtl_malloc(unit, sizeof(*unit->label_blockmap) * unit->labels_size);
@@ -954,7 +958,8 @@ RTLUnit *rtl_create_unit(binrec_t *handle)
         log_error(handle, "No memory for %u labels", unit->labels_size);
         goto fail;
     }
-    unit->label_blockmap[0] = -1;
+    memset(&unit->label_blockmap[0], -1,
+           sizeof(*unit->label_blockmap) * unit->labels_size);
 
     return unit;
 
@@ -988,7 +993,22 @@ void rtl_clear_unit(RTLUnit *unit)
 
     unit->next_label = 1;
 
+    unit->error = false;
     unit->finalized = false;
+}
+
+/*-----------------------------------------------------------------------*/
+
+bool rtl_get_error_state(RTLUnit *unit)
+{
+    return unit->error;
+}
+
+/*-----------------------------------------------------------------------*/
+
+void rtl_clear_error_state(RTLUnit *unit)
+{
+    unit->error = false;
 }
 
 /*-----------------------------------------------------------------------*/
@@ -1020,6 +1040,7 @@ bool rtl_add_insn(RTLUnit *unit, RTLOpcode opcode,
     RTLInsn * const insn = &unit->insns[unit->num_insns];
     insn->opcode = opcode;
     if (UNLIKELY(!rtl_insn_make(unit, insn, dest, src1, src2, other))) {
+        unit->error = true;
         return false;
     }
 
@@ -1039,6 +1060,7 @@ int rtl_alloc_register(RTLUnit *unit, RTLDataType type)
         if (unit->regs_size >= REGS_LIMIT) {
             log_error(unit->handle, "Too many registers in unit (limit %u)",
                       REGS_LIMIT);
+            unit->error = true;
             return 0;
         }
         unsigned int new_regs_size;
@@ -1052,15 +1074,17 @@ int rtl_alloc_register(RTLUnit *unit, RTLDataType type)
         if (UNLIKELY(!new_regs)) {
             log_error(unit->handle, "No memory to expand unit to %u registers",
                       new_regs_size);
+            unit->error = true;
             return 0;
         }
+        memset(&new_regs[unit->regs_size], 0,
+               sizeof(*new_regs) * (new_regs_size - unit->regs_size));
         unit->regs = new_regs;
         unit->regs_size = new_regs_size;
     }
 
-    const unsigned int reg_index = unit->next_reg++;
+    const int reg_index = unit->next_reg++;
     RTLRegister *reg = &unit->regs[reg_index];
-    memset(reg, 0, sizeof(*reg));
     reg->type = type;
     return reg_index;
 }
@@ -1072,7 +1096,17 @@ void rtl_make_unique_pointer(RTLUnit *unit, int reg)
     ASSERT(unit != NULL);
     ASSERT(!unit->finalized);
     ASSERT(unit->regs != NULL);
-    ASSERT(reg != 0 && reg < unit->next_reg);
+
+    if (UNLIKELY(reg == 0 || reg >= unit->next_reg)) {
+        log_error(unit->handle, "rtl_make_unique_pointer: Invalid register %d",
+                  reg);
+        return;
+    }
+    if (UNLIKELY(unit->regs[reg].type != RTLTYPE_ADDRESS)) {
+        log_error(unit->handle, "rtl_make_unique_pointer: Register %d has"
+                  " invalid type (must be ADDRESS)", reg);
+        return;
+    }
 
     unit->regs[reg].unique_pointer = reg;
 }
@@ -1089,6 +1123,7 @@ int rtl_alloc_alias_register(RTLUnit *unit, RTLDataType type)
         if (unit->aliases_size >= ALIASES_LIMIT) {
             log_error(unit->handle, "Too many alias registers in unit"
                       " (limit %u)", ALIASES_LIMIT);
+            unit->error = true;
             return 0;
         }
         unsigned int new_aliases_size;
@@ -1102,15 +1137,17 @@ int rtl_alloc_alias_register(RTLUnit *unit, RTLDataType type)
         if (UNLIKELY(!new_aliases)) {
             log_error(unit->handle, "No memory to expand unit to %u alias"
                       " registers", new_aliases_size);
+            unit->error = true;
             return 0;
         }
+        memset(&new_aliases[unit->aliases_size], 0,
+               sizeof(*new_aliases) * (new_aliases_size - unit->aliases_size));
         unit->aliases = new_aliases;
         unit->aliases_size = new_aliases_size;
     }
 
-    const unsigned int alias_index = unit->next_alias++;
+    const int alias_index = unit->next_alias++;
     unit->aliases[alias_index].type = type;
-    unit->aliases[alias_index].base = 0;
     return alias_index;
 }
 
@@ -1122,9 +1159,22 @@ void rtl_set_alias_storage(RTLUnit *unit, int alias, int base, int16_t offset)
     ASSERT(!unit->finalized);
     ASSERT(unit->regs != NULL);
     ASSERT(unit->aliases != NULL);
-    ASSERT(alias > 0 && alias < unit->next_alias);
-    ASSERT(base > 0 && base < unit->next_reg);
-    ASSERT(unit->regs[base].type == RTLTYPE_ADDRESS);
+
+    if (UNLIKELY(alias == 0 || alias >= unit->next_alias)) {
+        log_error(unit->handle, "rtl_set_alias_storage: Invalid alias %d",
+                  alias);
+        return;
+    }
+    if (UNLIKELY(base == 0 || base >= unit->next_reg)) {
+        log_error(unit->handle, "rtl_set_alias_storage: Invalid register %d",
+                  base);
+        return;
+    }
+    if (UNLIKELY(unit->regs[base].type != RTLTYPE_ADDRESS)) {
+        log_error(unit->handle, "rtl_set_alias_storage: Register %d has"
+                  " invalid type (must be ADDRESS)", base);
+        return;
+    }
 
     unit->aliases[alias].base = base;
     unit->aliases[alias].offset = offset;
@@ -1143,6 +1193,7 @@ int rtl_alloc_label(RTLUnit *unit)
         if (unit->labels_size >= LABELS_LIMIT) {
             log_error(unit->handle, "Too many labels in unit (limit %u)",
                       LABELS_LIMIT);
+            unit->error = true;
             return 0;
         }
         unsigned int new_labels_size;
@@ -1157,14 +1208,16 @@ int rtl_alloc_label(RTLUnit *unit)
         if (UNLIKELY(!new_label_blockmap)) {
             log_error(unit->handle, "No memory to expand unit to %u labels",
                       new_labels_size);
+            unit->error = true;
             return 0;
         }
+        memset(&new_label_blockmap[unit->labels_size], -1,
+               sizeof(*new_label_blockmap) * (new_labels_size - unit->labels_size));
         unit->label_blockmap = new_label_blockmap;
         unit->labels_size = new_labels_size;
     }
 
-    const unsigned int label = unit->next_label++;
-    unit->label_blockmap[label] = -1;
+    const int label = unit->next_label++;
     return label;
 }
 

@@ -34,15 +34,25 @@ int main(void)
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg1, 0, 0, 10));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg2, 0, 0, 20));
     EXPECT_EQ(unit->num_insns, 2);
+    EXPECT_FALSE(unit->error);
+
     EXPECT_FALSE(rtl_add_insn(unit, RTLOP_BFINS, 0, reg1, reg2, 2 | 5<<8));
     EXPECT_ICE("Operand constraint violated: dest != 0");
     EXPECT_EQ(unit->num_insns, 2);
+    EXPECT(unit->error);
+    unit->error = false;
+
     EXPECT_FALSE(rtl_add_insn(unit, RTLOP_BFINS, reg3, 0, reg2, 2 | 5<<8));
     EXPECT_ICE("Operand constraint violated: src1 != 0");
     EXPECT_EQ(unit->num_insns, 2);
+    EXPECT(unit->error);
+    unit->error = false;
+
     EXPECT_FALSE(rtl_add_insn(unit, RTLOP_BFINS, reg3, reg1, 0, 2 | 5<<8));
     EXPECT_ICE("Operand constraint violated: src2 != 0");
     EXPECT_EQ(unit->num_insns, 2);
+    EXPECT(unit->error);
+    unit->error = false;
 
     rtl_destroy_unit(unit);
     binrec_destroy_handle(handle);

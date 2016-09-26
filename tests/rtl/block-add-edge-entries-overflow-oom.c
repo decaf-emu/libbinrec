@@ -84,12 +84,14 @@ int main(void)
     EXPECT_EQ(unit->blocks[7].exits[1], 0);
     EXPECT_EQ(unit->blocks[8].entries[0], -1);
     EXPECT_EQ(unit->blocks[8].exits[0], -1);
+    EXPECT_FALSE(unit->error);
     EXPECT_STREQ(get_log_messages(), NULL);
 
     unit->blocks_size = 9;
     mem_wrap_fail_after(0);
     EXPECT_FALSE(rtl_block_add_edge(unit, 8, 0));
     EXPECT_ICE("Failed to add dummy unit");
+    EXPECT_FALSE(unit->error);  // rtl_block_*() do not modify unit->error.
     EXPECT_EQ(unit->num_blocks, 9);
     EXPECT_EQ(unit->blocks[0].entries[0], 0);
     EXPECT_EQ(unit->blocks[0].entries[1], 1);

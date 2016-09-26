@@ -38,6 +38,7 @@ int main(void)
     EXPECT_FALSE(rtl_block_add(unit));
     EXPECT_PTREQ(unit->blocks, blocks);
     EXPECT_EQ(unit->num_blocks, 1);
+    EXPECT_FALSE(unit->error);  // rtl_block_*() do not modify unit->error.
 
     char expected_log[100];
     snprintf(expected_log, sizeof(expected_log),

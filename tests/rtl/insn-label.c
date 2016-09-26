@@ -32,6 +32,7 @@ int main(void)
     EXPECT_EQ(unit->insns[0].opcode, RTLOP_LABEL);
     EXPECT_EQ(unit->insns[0].label, label);
     EXPECT(unit->have_block);
+    EXPECT_FALSE(unit->error);
 
     EXPECT(rtl_finalize_unit(unit));
 

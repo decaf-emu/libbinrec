@@ -34,6 +34,8 @@ int main(void)
     EXPECT_ICE("Operand constraint violated:"
                " unit->regs[dest].type == unit->aliases[other].type");
     EXPECT_EQ(unit->num_insns, 0);
+    EXPECT(unit->error);
+    unit->error = false;
 
     rtl_destroy_unit(unit);
     binrec_destroy_handle(handle);

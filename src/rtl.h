@@ -330,6 +330,31 @@ extern RTLUnit *rtl_create_unit(binrec_t *handle);
 extern void rtl_clear_unit(RTLUnit *unit);
 
 /**
+ * rtl_get_error_state:  Return whether any previous "add" or "alloc"
+ * operation (rtl_add_insn(), rtl_alloc_register(), etc.) has failed.
+ * This is effectively a NAND operation across the return values of all
+ * such functions, and can be used to avoid individual checks on every
+ * return value.
+ *
+ * [Parameters]
+ *     unit: RTLUnit to check.
+ * [Return value]
+ *     True if an error has occurred, false if not.
+ */
+#define rtl_get_error_state INTERNAL(rtl_get_error_state)
+extern bool rtl_get_error_state(RTLUnit *unit);
+
+/**
+ * rtl_clear_error_state:  Clear (reset to false) the state of the error
+ * flag returned by rtl_get_error_state().
+ *
+ * [Parameters]
+ *     unit: RTLUnit to operate on.
+ */
+#define rtl_clear_error_state INTERNAL(rtl_clear_error_state)
+extern void rtl_clear_error_state(RTLUnit *unit);
+
+/**
  * rtl_add_insn:  Append an instruction to the given unit.  The meaning of
  * each operand depends on the instruction.
  *

@@ -33,9 +33,14 @@ int main(void)
     EXPECT_FALSE(rtl_add_insn(unit, RTLOP_GET_ALIAS, 0, 0, 0, alias));
     EXPECT_ICE("Operand constraint violated: dest != 0");
     EXPECT_EQ(unit->num_insns, 0);
+    EXPECT(unit->error);
+    unit->error = false;
+
     EXPECT_FALSE(rtl_add_insn(unit, RTLOP_GET_ALIAS, reg, 0, 0, 0));
     EXPECT_ICE("Operand constraint violated: other != 0");
     EXPECT_EQ(unit->num_insns, 0);
+    EXPECT(unit->error);
+    unit->error = false;
 
     rtl_destroy_unit(unit);
     binrec_destroy_handle(handle);

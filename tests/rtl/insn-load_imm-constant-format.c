@@ -102,6 +102,7 @@ int main(void)
     EXPECT(rtl_add_insn(unit, RTLOP_MOVE, reg29, reg24, 0, 0));
     EXPECT(rtl_add_insn(unit, RTLOP_MOVE, reg30, reg25, 0, 0));
 
+    EXPECT_FALSE(unit->error);
     EXPECT(rtl_finalize_unit(unit));
 
     const char *disassembly =

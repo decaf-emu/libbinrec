@@ -27,6 +27,7 @@ int main(void)
     EXPECT_EQ(rtl_alloc_label(unit), 1);
     EXPECT_EQ(unit->next_label, 2);
     EXPECT_EQ(unit->label_blockmap[1], -1);
+    EXPECT_FALSE(unit->error);
 
     /* Check behavior when the label array needs to be expanded. */
     unit->labels_size = 2;
@@ -35,6 +36,7 @@ int main(void)
     EXPECT_EQ(unit->next_label, 3);
     EXPECT_EQ(unit->label_blockmap[1], -1);
     EXPECT_EQ(unit->label_blockmap[2], -1);
+    EXPECT_FALSE(unit->error);
 
     EXPECT_STREQ(get_log_messages(), NULL);
 

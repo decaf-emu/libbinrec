@@ -32,6 +32,7 @@ int main(void)
     EXPECT_EQ(unit->num_insns, 1);
     EXPECT_EQ(unit->insns[0].opcode, RTLOP_NOP);
     EXPECT_EQ(unit->num_blocks, 1);
+    EXPECT_FALSE(unit->error);
 
     unit->insns_size = 1;
     mem_wrap_fail_after(0);
@@ -40,6 +41,8 @@ int main(void)
     EXPECT_EQ(unit->num_insns, 1);
     EXPECT_EQ(unit->insns[0].opcode, RTLOP_NOP);
     EXPECT_EQ(unit->num_blocks, 1);
+    EXPECT(unit->error);
+    unit->error = false;
 
     char expected_log[100];
     snprintf(expected_log, sizeof(expected_log),

@@ -25,26 +25,26 @@ int main(void)
     EXPECT(unit = rtl_create_unit(handle));
 
     EXPECT_EQ(rtl_alloc_register(unit, RTLTYPE_INT32), 1);
-    EXPECT_EQ(unit->next_reg, 2);
-    EXPECT_EQ(unit->regs[1].type, RTLTYPE_INT32);
-    EXPECT_EQ(unit->regs[1].source, RTLREG_UNDEFINED);
-    EXPECT_FALSE(unit->regs[1].live);
-    EXPECT_FALSE(unit->error);
 
-    /* Check behavior when the register array needs to be expanded. */
-    unit->regs_size = 2;
-    EXPECT_EQ(rtl_alloc_register(unit, RTLTYPE_ADDRESS), 2);
-    EXPECT_EQ(unit->regs_size, 2 + REGS_EXPAND_SIZE);
-    EXPECT_EQ(unit->next_reg, 3);
-    EXPECT_EQ(unit->regs[1].type, RTLTYPE_INT32);
-    EXPECT_EQ(unit->regs[1].source, RTLREG_UNDEFINED);
-    EXPECT_FALSE(unit->regs[1].live);
-    EXPECT_EQ(unit->regs[2].type, RTLTYPE_ADDRESS);
-    EXPECT_EQ(unit->regs[2].source, RTLREG_UNDEFINED);
-    EXPECT_FALSE(unit->regs[2].live);
-    EXPECT_FALSE(unit->error);
+    rtl_make_unique_pointer(unit, 0);
+    EXPECT_EQ(unit->regs[0].unique_pointer, 0);
+    EXPECT_STREQ(get_log_messages(),
+                 "[error] rtl_make_unique_pointer: Invalid register 0\n");
+    clear_log_messages();
 
-    EXPECT_STREQ(get_log_messages(), NULL);
+    EXPECT(unit->regs_size > 2);
+    rtl_make_unique_pointer(unit, 2);
+    EXPECT_EQ(unit->regs[2].unique_pointer, 0);
+    EXPECT_STREQ(get_log_messages(),
+                 "[error] rtl_make_unique_pointer: Invalid register 2\n");
+    clear_log_messages();
+
+    rtl_make_unique_pointer(unit, 1);
+    EXPECT_EQ(unit->regs[1].unique_pointer, 0);
+    EXPECT_STREQ(get_log_messages(),
+                 "[error] rtl_make_unique_pointer: Register 1 has invalid"
+                 " type (must be ADDRESS)\n");
+    clear_log_messages();
 
     rtl_destroy_unit(unit);
     binrec_destroy_handle(handle);

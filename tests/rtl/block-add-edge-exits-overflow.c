@@ -44,10 +44,12 @@ int main(void)
     EXPECT_EQ(unit->blocks[3].entries[0], -1);
     EXPECT_EQ(unit->blocks[3].exits[0], 0);
     EXPECT_EQ(unit->blocks[3].exits[1], 1);
+    EXPECT_FALSE(unit->error);
     EXPECT_STREQ(get_log_messages(), NULL);
 
     EXPECT_FALSE(rtl_block_add_edge(unit, 3, 2));
     EXPECT_ICE("Too many exits from block 3");
+    EXPECT_FALSE(unit->error);  // rtl_block_*() do not modify unit->error.
 
     rtl_destroy_unit(unit);
     binrec_destroy_handle(handle);

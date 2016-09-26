@@ -37,6 +37,7 @@ int main(void)
     EXPECT_EQ(unit->insns[0].label, label);
     EXPECT_EQ(unit->num_blocks, 1);
     EXPECT_FALSE(unit->have_block);
+    EXPECT_FALSE(unit->error);
 
     unit->blocks_size = 1;
     mem_wrap_fail_after(0);
@@ -47,6 +48,8 @@ int main(void)
     EXPECT_EQ(unit->blocks_size, 1);
     EXPECT_EQ(unit->num_blocks, 1);
     EXPECT_FALSE(unit->have_block);
+    EXPECT(unit->error);
+    unit->error = false;
 
     char expected_log[100];
     snprintf(expected_log, sizeof(expected_log),

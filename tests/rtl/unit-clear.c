@@ -28,7 +28,10 @@ int main(void)
     EXPECT(rtl_alloc_alias_register(unit, RTLTYPE_INT32));
     EXPECT(rtl_alloc_label(unit));
     EXPECT(rtl_add_insn(unit, RTLOP_NOP, 0, 0, 0, 0));
+    EXPECT_FALSE(rtl_add_insn(unit, RTLOP_LOAD_IMM, 0, 0, 0, 0));
+    EXPECT(rtl_finalize_unit(unit));
 
+    clear_log_messages();
     rtl_clear_unit(unit);
 
     EXPECT_PTREQ(unit->handle, handle);
@@ -42,6 +45,7 @@ int main(void)
     EXPECT_EQ(unit->next_reg, 1);
     EXPECT(unit->aliases);
     EXPECT_EQ(unit->next_alias, 1);
+    EXPECT_FALSE(unit->error);
     EXPECT_FALSE(unit->finalized);
 
     EXPECT_STREQ(get_log_messages(), NULL);

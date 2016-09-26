@@ -31,6 +31,7 @@ int main(void)
     EXPECT_EQ(rtl_alloc_label(unit), 1);
     EXPECT_EQ(unit->next_label, 2);
     EXPECT_EQ(unit->label_blockmap[1], -1);
+    EXPECT_FALSE(unit->error);
 
     unit->labels_size = 2;
     mem_wrap_fail_after(0);
@@ -38,6 +39,8 @@ int main(void)
     EXPECT_EQ(unit->labels_size, 2);
     EXPECT_EQ(unit->next_label, 2);
     EXPECT_EQ(unit->label_blockmap[1], -1);
+    EXPECT(unit->error);
+    unit->error = false;
 
     char expected_log[100];
     snprintf(expected_log, sizeof(expected_log),

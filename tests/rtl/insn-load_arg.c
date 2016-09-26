@@ -40,6 +40,7 @@ int main(void)
     EXPECT_EQ(unit->insns[1].dest, reg2);
     EXPECT_EQ(unit->insns[1].arg_index, 1);
     EXPECT(unit->have_block);
+    EXPECT_FALSE(unit->error);
 
     EXPECT(rtl_finalize_unit(unit));
 

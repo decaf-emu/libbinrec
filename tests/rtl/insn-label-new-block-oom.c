@@ -36,6 +36,7 @@ int main(void)
     EXPECT_EQ(unit->num_blocks, 1);
     EXPECT(unit->have_block);
     EXPECT_EQ(unit->cur_block, 0);
+    EXPECT_FALSE(unit->error);
 
     unit->blocks_size = 1;
     mem_wrap_fail_after(0);
@@ -45,6 +46,8 @@ int main(void)
     EXPECT_EQ(unit->num_blocks, 1);
     EXPECT(unit->have_block);
     EXPECT_EQ(unit->cur_block, 0);
+    EXPECT(unit->error);
+    unit->error = false;
 
     rtl_destroy_unit(unit);
     binrec_destroy_handle(handle);

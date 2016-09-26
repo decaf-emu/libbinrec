@@ -35,6 +35,7 @@ int main(void)
     EXPECT_EQ(unit->next_reg, 1);
     EXPECT(unit->aliases);
     EXPECT_EQ(unit->next_alias, 1);
+    EXPECT_FALSE(unit->error);
     EXPECT_FALSE(unit->finalized);
 
     EXPECT_STREQ(get_log_messages(), NULL);

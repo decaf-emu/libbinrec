@@ -31,11 +31,13 @@ int main(void)
     EXPECT_EQ(unit->num_insns, 1);
     EXPECT(unit->have_block);
     EXPECT_EQ(unit->cur_block, 0);
+    EXPECT_FALSE(unit->error);
 
     EXPECT(rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, label));
     EXPECT_EQ(unit->num_insns, 2);
     EXPECT(unit->have_block);
     EXPECT_EQ(unit->cur_block, 1);
+    EXPECT_FALSE(unit->error);
 
     EXPECT(rtl_finalize_unit(unit));
 

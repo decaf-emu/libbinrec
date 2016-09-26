@@ -42,6 +42,7 @@ int main(void)
     EXPECT_EQ(unit->insns[2].bitfield.start, 2);
     EXPECT_EQ(unit->insns[2].bitfield.count, 5);
     EXPECT(unit->have_block);
+    EXPECT_FALSE(unit->error);
 
     EXPECT(rtl_finalize_unit(unit));
 

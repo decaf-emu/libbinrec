@@ -28,6 +28,7 @@ int main(void)
     EXPECT_EQ(unit->num_insns, 1);
     EXPECT_EQ(unit->insns[0].opcode, RTLOP_ILLEGAL);
     EXPECT(unit->have_block);
+    EXPECT_FALSE(unit->error);
 
     EXPECT(rtl_finalize_unit(unit));
 

@@ -15,8 +15,6 @@
 
 int main(void)
 {
-#ifdef ENABLE_OPERAND_SANITY_CHECKS
-
     binrec_setup_t setup;
     memset(&setup, 0, sizeof(setup));
     setup.log = log_capture;
@@ -26,21 +24,12 @@ int main(void)
     RTLUnit *unit;
     EXPECT(unit = rtl_create_unit(handle));
 
-    int reg1, reg2;
-    EXPECT(reg1 = rtl_alloc_register(unit, RTLTYPE_INT32));
-    EXPECT(reg2 = rtl_alloc_register(unit, RTLTYPE_INT32));
+    EXPECT_FALSE(rtl_get_error_state(unit));
 
-    EXPECT_FALSE(rtl_add_insn(unit, RTLOP_ADDI, reg2, reg1, 0, 20));
-    EXPECT_ICE("Operand constraint violated:"
-               " unit->regs[src1].source != RTLREG_UNDEFINED");
-    EXPECT_EQ(unit->num_insns, 0);
-    EXPECT(unit->error);
-    unit->error = false;
+    unit->error = true;
+    EXPECT(rtl_get_error_state(unit));
 
     rtl_destroy_unit(unit);
     binrec_destroy_handle(handle);
-
-#endif  // ENABLE_OPERAND_SANITY_CHECKS
-
     return EXIT_SUCCESS;
 }

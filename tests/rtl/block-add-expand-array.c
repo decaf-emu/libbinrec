@@ -75,6 +75,7 @@ int main(void)
     EXPECT_EQ(unit->blocks[1].exits[0], -1);
     EXPECT_EQ(unit->blocks[1].exits[1], -1);
 
+    EXPECT_FALSE(unit->error);
     EXPECT_STREQ(get_log_messages(), NULL);
 
     rtl_destroy_unit(unit);

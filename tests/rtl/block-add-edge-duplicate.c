@@ -38,6 +38,7 @@ int main(void)
     EXPECT_EQ(unit->blocks[1].exits[0], 0);
     EXPECT_EQ(unit->blocks[1].exits[1], -1);  // No duplicate exit.
 
+    EXPECT_FALSE(unit->error);
     EXPECT_STREQ(get_log_messages(), NULL);
 
     rtl_destroy_unit(unit);

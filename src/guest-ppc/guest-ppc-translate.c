@@ -16,9 +16,6 @@
 /**************************** Local routines *****************************/
 /*************************************************************************/
 
-#undef ICE_SUFFIX
-#define ICE_SUFFIX  " in prologue"
-
 /**
  * init_unit:  Set up the context's RTLUnit for translation.  This creates
  * a label for each basic block identified during scanning as well as for
@@ -33,18 +30,18 @@ static bool init_unit(GuestPPCContext *ctx)
 
     /* Allocate a label for each basic block and for the epilogue. */
     for (int i = 0; i < ctx->num_blocks; i++) {
-        ALLOC_LABEL(ctx->blocks[i].label);
+        ctx->blocks[i].label = rtl_alloc_label(unit);
     }
-    ALLOC_LABEL(ctx->epilogue_label);
+    ctx->epilogue_label = rtl_alloc_label(unit);
 
     /* Allocate a register for the guest processor state block, and fetch
      * the state block pointer from the function parameter. */
-    ALLOC_REGISTER(ctx->psb_reg, RTLTYPE_ADDRESS);
+    ctx->psb_reg = rtl_alloc_register(unit, RTLTYPE_ADDRESS);
     rtl_make_unique_pointer(unit, ctx->psb_reg);
-    ADD_INSN(RTLOP_LOAD_ARG, ctx->psb_reg, 0, 0, 0);
+    rtl_add_insn(unit, RTLOP_LOAD_ARG, ctx->psb_reg, 0, 0, 0);
 
     /* Allocate an alias register for the output NIA. */
-    ALLOC_ALIAS(ctx->alias.nia, RTLTYPE_INT32);
+    ctx->alias.nia = rtl_alloc_alias_register(unit, RTLTYPE_INT32);
     rtl_set_alias_storage(unit, ctx->alias.nia, ctx->psb_reg,
                           ctx->handle->setup.state_offset_nia);
 
@@ -99,13 +96,14 @@ static bool init_unit(GuestPPCContext *ctx)
 
     for (int i = 0; i < 32; i++) {
         if ((gpr_used | gpr_changed) & (1 << i)) {
-            ALLOC_ALIAS(ctx->alias.gpr[i], RTLTYPE_INT32);
+            ctx->alias.gpr[i] = rtl_alloc_alias_register(unit, RTLTYPE_INT32);
             rtl_set_alias_storage(unit, ctx->alias.gpr[i], ctx->psb_reg,
                                   ctx->handle->setup.state_offset_gpr + i*4);
         }
 
         if ((fpr_used | fpr_changed) & (1 << i)) {
-            ALLOC_ALIAS(ctx->alias.fpr[i], RTLTYPE_V2_DOUBLE);
+            ctx->alias.fpr[i] =
+                rtl_alloc_alias_register(unit, RTLTYPE_V2_DOUBLE);
             rtl_set_alias_storage(unit, ctx->alias.fpr[i], ctx->psb_reg,
                                   ctx->handle->setup.state_offset_fpr + i*16);
         }
@@ -114,64 +112,71 @@ static bool init_unit(GuestPPCContext *ctx)
     int cr = 0;
     for (int i = 0; i < 8; i++) {
         if ((cr_used | cr_changed) & (1 << i)) {
-            ALLOC_ALIAS(ctx->alias.cr[i], RTLTYPE_INT32);
+            ctx->alias.cr[i] = rtl_alloc_alias_register(unit, RTLTYPE_INT32);
             if (cr_used & (1 << i)) {
                 if (!cr) {
-                    ALLOC_REGISTER(cr, RTLTYPE_INT32);
-                    ADD_INSN(RTLOP_LOAD, cr, ctx->psb_reg, 0,
-                             ctx->handle->setup.state_offset_cr);
+                    cr = rtl_alloc_register(unit, RTLTYPE_INT32);
+                    rtl_add_insn(unit, RTLOP_LOAD, cr, ctx->psb_reg, 0,
+                                 ctx->handle->setup.state_offset_cr);
                 }
-                DECLARE_NEW_REGISTER(crN, RTLTYPE_INT32);
-                ADD_INSN(RTLOP_BFEXT, crN, cr, 0, ((7 - i) * 4) | 4<<8);
-                ADD_INSN(RTLOP_SET_ALIAS, 0, crN, 0, ctx->alias.cr[i]);
+                const int crN = rtl_alloc_register(unit, RTLTYPE_INT32);
+                rtl_add_insn(unit, RTLOP_BFEXT,
+                             crN, cr, 0, ((7 - i) * 4) | 4<<8);
+                rtl_add_insn(unit, RTLOP_SET_ALIAS,
+                             0, crN, 0, ctx->alias.cr[i]);
             }
         }
     }
 
     if (lr_used || lr_changed) {
-        ALLOC_ALIAS(ctx->alias.lr, RTLTYPE_INT32);
+        ctx->alias.lr = rtl_alloc_alias_register(unit, RTLTYPE_INT32);
         rtl_set_alias_storage(unit, ctx->alias.lr, ctx->psb_reg,
                               ctx->handle->setup.state_offset_lr);
     }
 
     if (ctr_used || ctr_changed) {
-        ALLOC_ALIAS(ctx->alias.ctr, RTLTYPE_INT32);
+        ctx->alias.ctr = rtl_alloc_alias_register(unit, RTLTYPE_INT32);
         rtl_set_alias_storage(unit, ctx->alias.ctr, ctx->psb_reg,
                               ctx->handle->setup.state_offset_ctr);
     }
 
     if (xer_used || xer_changed) {
-        ALLOC_ALIAS(ctx->alias.xer, RTLTYPE_INT32);
+        ctx->alias.xer = rtl_alloc_alias_register(unit, RTLTYPE_INT32);
         rtl_set_alias_storage(unit, ctx->alias.xer, ctx->psb_reg,
                               ctx->handle->setup.state_offset_xer);
     }
 
     if (fpscr_used || fpscr_changed) {
-        ALLOC_ALIAS(ctx->alias.fpscr, RTLTYPE_INT32);
+        ctx->alias.fpscr = rtl_alloc_alias_register(unit, RTLTYPE_INT32);
         rtl_set_alias_storage(unit, ctx->alias.fpscr, ctx->psb_reg,
                               ctx->handle->setup.state_offset_fpscr);
     }
 
     if (reserve_used || reserve_changed) {
-        ALLOC_ALIAS(ctx->alias.reserve_flag, RTLTYPE_INT32);
-        ALLOC_ALIAS(ctx->alias.reserve_address, RTLTYPE_INT32);
+        ctx->alias.reserve_flag =
+            rtl_alloc_alias_register(unit, RTLTYPE_INT32);
+        ctx->alias.reserve_address =
+            rtl_alloc_alias_register(unit, RTLTYPE_INT32);
         rtl_set_alias_storage(unit, ctx->alias.reserve_address, ctx->psb_reg,
                               ctx->handle->setup.state_offset_reserve_address);
         if (reserve_used) {
-            DECLARE_NEW_REGISTER(flag, RTLTYPE_INT32);
-            ADD_INSN(RTLOP_LOAD_U8, flag, ctx->psb_reg, 0,
-                     ctx->handle->setup.state_offset_reserve_flag);
-            ADD_INSN(RTLOP_SET_ALIAS, 0, flag, 0, ctx->alias.reserve_flag);
+            const int flag = rtl_alloc_register(unit, RTLTYPE_INT32);
+            rtl_add_insn(unit, RTLOP_LOAD_U8, flag, ctx->psb_reg, 0,
+                         ctx->handle->setup.state_offset_reserve_flag);
+            rtl_add_insn(unit, RTLOP_SET_ALIAS,
+                         0, flag, 0, ctx->alias.reserve_flag);
         }
+    }
+
+    if (UNLIKELY(rtl_get_error_state(unit))) {
+        log_ice(ctx->handle, "Failed to generate prologue");
+        return false;
     }
 
     return true;
 }
 
 /*-----------------------------------------------------------------------*/
-
-#undef ICE_SUFFIX
-#define ICE_SUFFIX  " in epilogue"
 
 /**
  * add_epilogue:  Adds the unit epilogue to the context's RTLUnit,
@@ -185,52 +190,60 @@ static bool add_epilogue(GuestPPCContext *ctx)
 {
     RTLUnit * const unit = ctx->unit;
 
-    ADD_INSN(RTLOP_LABEL, 0, 0, 0, ctx->epilogue_label);
+    rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, ctx->epilogue_label);
 
     if (ctx->cr_changed) {
         int cr;
-        ALLOC_REGISTER(cr, RTLTYPE_INT32);
+        cr = rtl_alloc_register(unit, RTLTYPE_INT32);
         if (ctx->cr_changed != 0xFF) {
-            ADD_INSN(RTLOP_LOAD, cr, ctx->psb_reg, 0,
-                     ctx->handle->setup.state_offset_cr);
+            rtl_add_insn(unit, RTLOP_LOAD, cr, ctx->psb_reg, 0,
+                         ctx->handle->setup.state_offset_cr);
             uint32_t mask = 0;
             for (int i = 0; i < 8; i++) {
                 if (!(ctx->cr_changed & (1 << i))) {
                     mask |= 0xF << ((7 - i) * 4);
                 }
             }
-            DECLARE_NEW_REGISTER(new_cr, RTLTYPE_INT32);
-            ADD_INSN(RTLOP_ANDI, new_cr, cr, 0, (int32_t)mask);
+            const int new_cr = rtl_alloc_register(unit, RTLTYPE_INT32);
+            rtl_add_insn(unit, RTLOP_ANDI, new_cr, cr, 0, (int32_t)mask);
             cr = new_cr;
         }
         for (int i = 0; i < 8; i++) {
             if (ctx->cr_changed & (1 << i)) {
-                DECLARE_NEW_REGISTER(crN, RTLTYPE_INT32);
-                ADD_INSN(RTLOP_GET_ALIAS, crN, 0, 0, ctx->alias.cr[i]);
+                const int crN = rtl_alloc_register(unit, RTLTYPE_INT32);
+                rtl_add_insn(unit, RTLOP_GET_ALIAS,
+                             crN, 0, 0, ctx->alias.cr[i]);
                 int shifted_crN;
                 if (i == 7) {
                     shifted_crN = crN;
                 } else {
-                    ALLOC_REGISTER(shifted_crN, RTLTYPE_INT32);
-                    ADD_INSN(RTLOP_SLLI, shifted_crN, crN, 0, (7 - i) * 4);
+                    shifted_crN = rtl_alloc_register(unit, RTLTYPE_INT32);
+                    rtl_add_insn(unit, RTLOP_SLLI,
+                                 shifted_crN, crN, 0, (7 - i) * 4);
                 }
-                DECLARE_NEW_REGISTER(new_cr, RTLTYPE_INT32);
-                ADD_INSN(RTLOP_OR, new_cr, cr, shifted_crN, 0);
+                const int new_cr = rtl_alloc_register(unit, RTLTYPE_INT32);
+                rtl_add_insn(unit, RTLOP_OR, new_cr, cr, shifted_crN, 0);
                 cr = new_cr;
             }
         }
-        ADD_INSN(RTLOP_STORE, 0, ctx->psb_reg, cr,
-                 ctx->handle->setup.state_offset_cr);
+        rtl_add_insn(unit, RTLOP_STORE, 0, ctx->psb_reg, cr,
+                     ctx->handle->setup.state_offset_cr);
     }
 
     if (ctx->reserve_changed) {
-        DECLARE_NEW_REGISTER(flag, RTLTYPE_INT32);
-        ADD_INSN(RTLOP_GET_ALIAS, flag, 0, 0, ctx->alias.reserve_flag);
-        ADD_INSN(RTLOP_STORE_I8, 0, ctx->psb_reg, flag,
-                 ctx->handle->setup.state_offset_reserve_flag);
+        const int flag = rtl_alloc_register(unit, RTLTYPE_INT32);
+        rtl_add_insn(unit, RTLOP_GET_ALIAS,
+                     flag, 0, 0, ctx->alias.reserve_flag);
+        rtl_add_insn(unit, RTLOP_STORE_I8, 0, ctx->psb_reg, flag,
+                     ctx->handle->setup.state_offset_reserve_flag);
     }
 
-    ADD_INSN(RTLOP_RETURN, 0, ctx->psb_reg, 0, 0);
+    rtl_add_insn(unit, RTLOP_RETURN, 0, ctx->psb_reg, 0, 0);
+
+    if (UNLIKELY(rtl_get_error_state(unit))) {
+        log_ice(ctx->handle, "Failed to generate epilogue");
+        return false;
+    }
 
     return true;
 }
