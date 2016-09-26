@@ -489,6 +489,7 @@ int binrec_translate(binrec_t *handle, uint32_t address, uint32_t limit,
     if (!(*guest_translate)(handle, address, limit, unit)) {
         log_error(handle, "Failed to parse guest instructions starting at"
                   " 0x%X", address);
+        rtl_destroy_unit(unit);
         return 0;
     }
 

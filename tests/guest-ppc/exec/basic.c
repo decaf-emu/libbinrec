@@ -46,5 +46,6 @@ int main(void)
     EXPECT_EQ(state.gpr[3], 1);
     EXPECT_EQ(state.gpr[4], 10);
 
+    free(memory);
     return EXIT_SUCCESS;
 }
