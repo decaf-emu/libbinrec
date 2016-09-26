@@ -103,7 +103,7 @@ typedef struct GuestPPCContext {
 /*************************************************************************/
 
 /**
- * guest_ppc_gen_rtl: Generate RTL for the selected basic block.
+ * guest_ppc_translate_block: Generate RTL for the selected basic block.
  *
  * [Parameters]
  *     context: Translation context.
@@ -111,8 +111,8 @@ typedef struct GuestPPCContext {
  * [Return value]
  *     True on success, false on error.
  */
-#define guest_ppc_gen_rtl INTERNAL(guest_ppc_gen_rtl)
-extern bool guest_ppc_gen_rtl(GuestPPCContext *ctx, int index);
+#define guest_ppc_translate_block INTERNAL(guest_ppc_translate_block)
+extern bool guest_ppc_translate_block(GuestPPCContext *ctx, int index);
 
 /**
  * guest_ppc_scan: Scan guest memory to find the range of addresses to

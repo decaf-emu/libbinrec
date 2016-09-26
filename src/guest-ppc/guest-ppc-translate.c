@@ -298,7 +298,7 @@ bool guest_ppc_translate(binrec_t *handle, uint32_t address,
      * expanded during translation if a jump table is detected, but
      * blocks will never be inserted before the current block. */
     for (int i = 0; i < ctx.num_blocks; i++) {
-        if (!guest_ppc_gen_rtl(&ctx, i)) {
+        if (!guest_ppc_translate_block(&ctx, i)) {
             goto error;
         }
     }

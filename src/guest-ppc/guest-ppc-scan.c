@@ -575,7 +575,7 @@ static void update_used_changed(GuestPPCBlockInfo *block, const uint32_t insn)
                  * were modified get written back to the processor state
                  * block.  RTL optimization should be able to clear out
                  * some of the unnecessary loads and stores, but this is
-                 * probably an example of how the PowerPC manual says that
+                 * probably an example of how (from the PowerPC manual)
                  * "this instruction is likely to ... take longer to
                  * execute, perhaps much longer, than a sequence of
                  * individual load or store instructions that produce the
