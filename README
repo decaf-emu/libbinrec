@@ -80,15 +80,14 @@ code for the selected input architecture (referred to as the "guest"
 architecture in library documentation).  The library will correctly
 detect and translate explicit illegal instructions, such as the x86 UD2
 (0x0F 0x0B) or Motorola 68000 ILLEGAL (0x4AFC) instructions (note that
-neither of these architectures are currently supported as guests), but
-instructions whose encoding is not valid for the guest architecture may
-result in behavior different from a physical implementation of that
-specific architecture.  As a consequence, libbinrec may not correctly
-translate programs which include deliberately invalid instruction
-encodings, such as to detect the presence of a specific CPU feature by
-generating an illegal instruction exception if the feature is not
-present or to take advantage of undocumented behavior of a specific
-architecture implementation.
+neither of these architectures are currently supported as guests) or the
+all-zero PowerPC instruction word, but other byte sequences which do not
+repesent a valid instruction for the guest architecture may result in
+behavior different from a physical implementation of that architecture.
+As a consequence, libbinrec may not correctly translate programs which
+include deliberately invalid instruction encodings, such as to take
+advantage of undocumented behavior of a specific architecture
+implementation.
 
 libbinrec is intended as a pure translator rather than a full-fledged
 architecture emulator, and consequently it does not support translation
