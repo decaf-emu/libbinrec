@@ -21,11 +21,12 @@ int main(void)
     }
 
     uint8_t *memory;
-    EXPECT(memory = malloc(0x2000000));
+    EXPECT(memory = malloc(0x10000));
 
     static const uint8_t ppc_code[] = {
         0x38,0x60,0x00,0x01,  // li r3,1
         0x38,0x80,0x00,0x0A,  // li r4,10
+        0x4E,0x80,0x00,0x20,  // blr
     };
     const uint32_t start_address = 0x1000;
     memcpy(memory + start_address, ppc_code, sizeof(ppc_code));
@@ -40,8 +41,7 @@ int main(void)
         }
         FAIL("Failed to execute guest code");
     }
-    EXPECT_STREQ(get_log_messages(), "[info] Scanning terminated at requested"
-                 " limit 0x1007\n");
+    EXPECT_STREQ(get_log_messages(), NULL);
 
     EXPECT_EQ(state.gpr[3], 1);
     EXPECT_EQ(state.gpr[4], 10);

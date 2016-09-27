@@ -99,15 +99,12 @@ bool call_guest_code(binrec_arch_t arch, void *state, void *memory,
     while (state_ppc->nia != RETURN_ADDRESS) {
         void *code;
         long code_size;
-        if (!binrec_translate(handle, state_ppc->nia,
-                              0x1007,  // FIXME: temp until we implement blr, then -1
-                              &code, &code_size)) {
+        if (!binrec_translate(handle, state_ppc->nia, -1, &code, &code_size)) {
             binrec_destroy_handle(handle);
             return false;
         }
         call(code, code_size, state_ppc);
         free(code);
-        break;  // FIXME: temp until we implement blr
     }
 
     binrec_destroy_handle(handle);
