@@ -10,6 +10,7 @@
 #include "include/binrec.h"
 #include "tests/common.h"
 #include "tests/execute.h"
+#include "tests/guest-ppc/exec/common.h"
 #include "tests/log-capture.h"
 
 
@@ -23,13 +24,13 @@ int main(void)
     uint8_t *memory;
     EXPECT(memory = malloc(0x10000));
 
-    static const uint8_t ppc_code[] = {
-        0x38,0x60,0x00,0x01,  // li r3,1
-        0x38,0x80,0x00,0x0A,  // li r4,10
-        0x4E,0x80,0x00,0x20,  // blr
+    static const uint32_t ppc_code[] = {
+        0x38600001,  // li r3,1
+        0x3880000A,  // li r4,10
+        0x4E800020,  // blr
     };
     const uint32_t start_address = 0x1000;
-    memcpy(memory + start_address, ppc_code, sizeof(ppc_code));
+    memcpy_be32(memory + start_address, ppc_code, sizeof(ppc_code));
 
     PPCState state;
     memset(&state, 0, sizeof(state));
