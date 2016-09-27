@@ -990,6 +990,64 @@ static bool make_goto_cond(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
 /*-----------------------------------------------------------------------*/
 
 /**
+ * make_call_addr:  Encode a CALL_ADDR instruction.
+ */
+static bool make_call_addr(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
+                           int src2, uint64_t other)
+{
+    ASSERT(unit != NULL);
+    ASSERT(unit->regs != NULL);
+    ASSERT(insn != NULL);
+    ASSERT(dest >= 0 && dest < unit->next_reg);
+    ASSERT(src1 >= 0 && src1 < unit->next_reg);
+    ASSERT(src2 >= 0 && src2 < unit->next_reg);
+    ASSERT(other < unit->next_reg);
+
+#ifdef ENABLE_OPERAND_SANITY_CHECKS
+    if (dest != 0) {
+        OPERAND_ASSERT(unit->regs[dest].source == RTLREG_UNDEFINED);
+        OPERAND_ASSERT(rtl_register_is_int(&unit->regs[dest]));
+    }
+    OPERAND_ASSERT(src1 != 0);
+    OPERAND_ASSERT(unit->regs[src1].source != RTLREG_UNDEFINED);
+    OPERAND_ASSERT(unit->regs[src1].type == RTLTYPE_ADDRESS);
+    OPERAND_ASSERT(!(src2 == 0 && other != 0));
+    if (src2 != 0) {
+        OPERAND_ASSERT(unit->regs[src2].source != RTLREG_UNDEFINED);
+        OPERAND_ASSERT(rtl_register_is_int(&unit->regs[src2]));
+        if (other != 0) {
+            OPERAND_ASSERT(unit->regs[other].source != RTLREG_UNDEFINED);
+            OPERAND_ASSERT(rtl_register_is_int(&unit->regs[other]));
+        }
+    }
+#endif
+
+    insn->dest = dest;
+    insn->src1 = src1;
+    insn->src2 = src2;
+    insn->src3 = other;
+
+    const int insn_index = unit->num_insns;
+    if (dest) {
+        RTLRegister * const destreg = &unit->regs[dest];
+        destreg->source = RTLREG_RESULT_NOFOLD;
+        destreg->result.opcode = insn->opcode;
+        mark_live(unit, insn_index, destreg, dest);
+    }
+    mark_live(unit, insn_index, &unit->regs[src1], src1);
+    if (src2) {
+        mark_live(unit, insn_index, &unit->regs[src2], src2);
+        if (other) {
+            mark_live(unit, insn_index, &unit->regs[other], other);
+        }
+    }
+
+    return true;
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
  * make_return:  Encode a RETURN instruction.
  */
 static bool make_return(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
@@ -1100,6 +1158,7 @@ bool (* const makefunc_table[])(RTLUnit *, RTLInsn *, int, int, int,
     [RTLOP_GOTO      ] = make_goto,
     [RTLOP_GOTO_IF_Z ] = make_goto_cond,
     [RTLOP_GOTO_IF_NZ] = make_goto_cond,
+    [RTLOP_CALL_ADDR ] = make_call_addr,
     [RTLOP_RETURN    ] = make_return,
     [RTLOP_ILLEGAL   ] = make_illegal,
 };

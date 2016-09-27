@@ -134,7 +134,7 @@ static inline int get_gpr(HostX86Context *ctx, uint32_t avoid_regs)
 
     /* Give preference to caller-saved registers, so we don't need to
      * unnecessarily save and restore registers ourselves. */
-    // FIXME: will need adjustment when we have native calls (probably also want something like NATIVE_CALL_INTERNAL for pre/post insn callbacks that shouldn't affect register allocation)
+    // FIXME: will need adjustment when we have non-tail calls (probably also want something like CALL_INTERNAL for pre/post insn callbacks that shouldn't affect register allocation)
     int host_reg = ctz32(regs_free & ~ctx->callee_saved_regs);
     if (host_reg < 16) {
         return host_reg;
@@ -594,7 +594,7 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
          * If loading a function argument, try to reuse the same register
          * the argument is passed in.
          */
-        // FIXME: only appropriate if no native calls
+        // FIXME: only appropriate if no non-tail calls
         // FIXME: need more robustness wrt overwriting input regs
         if (!host_allocated && insn->opcode == RTLOP_LOAD_ARG) {
             const int target_reg =

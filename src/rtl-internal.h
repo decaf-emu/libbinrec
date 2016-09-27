@@ -99,6 +99,7 @@ typedef struct RTLInsn_ {
     uint16_t dest;            // Destination register
     uint16_t src1, src2;      // Source registers
     union {
+        uint16_t src3;        // Third source (2nd function arg) for CALL_ADDR
         uint16_t cond;        // Condition register for SELECT
         struct {
             uint8_t start;    // First (lowest) bit number for a bitfield
@@ -179,7 +180,7 @@ struct RTLRegister {
             uint16_t src;       // Source alias register
         } alias;
         struct {
-            uint8_t opcode;     // Operation code for RTLREG_RESULT
+            uint8_t opcode;     // Operation code for RTLREG_RESULT{,_NOFOLD}
             uint16_t src1;      // Operand 1
             union {
                 int32_t src_imm;    // Immediate operand

@@ -961,6 +961,487 @@ static bool check_alias_conflicts(const HostX86Context *ctx, int block_index,
 /*************************************************************************/
 
 /**
+ * append_prologue:  Append the function prologue to the output code buffer.
+ *
+ * [Parameters]
+ *     ctx: Translation context.
+ * [Return value]
+ *     True on success, false if out of memory.
+ */
+static bool append_prologue(HostX86Context *ctx)
+{
+    ASSERT(ctx);
+    ASSERT(ctx->handle);
+
+    binrec_t * const handle = ctx->handle;
+    const uint32_t regs_to_save = ctx->regs_touched & ctx->callee_saved_regs;
+    const bool is_windows_seh =
+        (handle->setup.host == BINREC_ARCH_X86_64_WINDOWS_SEH);
+
+    /* Figure out how much stack space we use in total. */
+    int total_stack_use;
+    const int push_size = 8 * popcnt32(regs_to_save & 0xFFFF);
+    total_stack_use = push_size;
+    /* If we have any XMM registers to save, we have to align the stack at
+     * this point so the saves and loads are properly aligned.  This implies
+     * that we also need to align the frame size here, since the final stack
+     * pointer must remain 16-byte aligned. */
+    const uint32_t xmm_to_save = regs_to_save >> 16;
+    if (xmm_to_save) {
+        /* The stack pointer after pushes is either 0 or 8 bytes past a
+         * multiple of 16.  To align it, we subtract 8 if the number of
+         * pushes is even.  (That's not a typo -- the stack pointer comes
+         * in unaligned due to the return address pushed by the CALL
+         * instruction that jumped here.) */
+        if (push_size % 16 == 0) {
+            total_stack_use += 8;
+        }
+        total_stack_use += 16 * popcnt32(xmm_to_save);
+        ctx->frame_size = align_up(ctx->frame_size, 16);
+    }
+    total_stack_use += ctx->frame_size;
+    /* Final stack pointer alignment: the total stack usage should be a
+     * multiple of 16 plus 8, again because of the return address. */
+    if (total_stack_use % 16 != 8) {
+        total_stack_use += 16 - ((total_stack_use + 8) & 15);
+    }
+
+    /* Calculate the amount of stack space to reserve, excluding GPR pushes. */
+    const int stack_alloc = total_stack_use - push_size;
+    ctx->stack_alloc = stack_alloc;
+
+    if (is_windows_seh) {
+        /* Create unwind data for the function, because Microsoft likes
+         * finding ways to make everybody's lives harder... */
+
+        enum {
+            UWOP_PUSH_NONVOL = 0,
+            UWOP_ALLOC_LARGE = 1,
+            UWOP_ALLOC_SMALL = 2,
+            UWOP_SAVE_XMM128 = 8,
+        };
+
+        /* We'll have at most:
+         *    1 * 8 GPRs
+         *    2 * stack adjustment
+         *    2 * 10 XMM registers
+         * for a total of 30 16-bit data words. */
+        uint8_t unwind_info[4 + 2*30];
+
+        int prologue_pos = 0;
+
+        unwind_info[0] = 1;  // version:3, flags:5
+        unwind_info[1] = 0;  // Size of prologue (will be filled in later)
+        unwind_info[2] = 0;  // Code count (will be filled in later)
+        unwind_info[3] = 0;  // Frame register/offset (not used)
+
+        /* The unwind information has to be given in reverse order (?!),
+         * so generate from the end of the buffer and move it into place
+         * when we're done. */
+        int unwind_pos = sizeof(unwind_info);
+
+        for (int reg = 0; reg < 16; reg++) {
+            if (regs_to_save & (1u << reg)) {
+                unwind_pos -= 2;
+                ASSERT(unwind_pos >= 4);
+                unwind_info[unwind_pos+0] = prologue_pos;
+                unwind_info[unwind_pos+1] = UWOP_PUSH_NONVOL | reg<<4;
+                if (reg < 8) {
+                    prologue_pos += 1;  // PUSH
+                } else {
+                    prologue_pos += 2;  // REX PUSH
+                }
+            }
+        }
+
+        if (stack_alloc > 0) {
+            const int stack_alloc_info = (stack_alloc / 8) - 1;
+            if (stack_alloc > 128) {
+                ASSERT(stack_alloc < 524288);  // Should never need this much.
+                unwind_pos -= 4;
+                ASSERT(unwind_pos >= 4);
+                unwind_info[unwind_pos+0] = prologue_pos;
+                unwind_info[unwind_pos+1] = UWOP_ALLOC_LARGE;
+                unwind_info[unwind_pos+2] = (uint8_t)(stack_alloc_info >> 0);
+                unwind_info[unwind_pos+3] = (uint8_t)(stack_alloc_info >> 8);
+                prologue_pos += 7;
+            } else {
+                unwind_pos -= 2;
+                ASSERT(unwind_pos >= 4);
+                unwind_info[unwind_pos+0] = prologue_pos;
+                unwind_info[unwind_pos+1] =
+                    UWOP_ALLOC_SMALL | stack_alloc_info << 4;
+                if (stack_alloc == 128) {
+                    prologue_pos += 7;
+                } else {
+                    prologue_pos += 4;
+                }
+            }
+        }
+
+        int sp_offset = ctx->frame_size;
+        for (int reg = 16; reg < 32; reg++) {
+            if (regs_to_save & (1u << reg)) {
+                unwind_pos -= 4;
+                ASSERT(unwind_pos >= 4);
+                unwind_info[unwind_pos+0] = prologue_pos;
+                unwind_info[unwind_pos+1] = UWOP_SAVE_XMM128 | reg<<4;
+                unwind_info[unwind_pos+2] = (uint8_t)(sp_offset >> 4);
+                unwind_info[unwind_pos+3] = (uint8_t)(sp_offset >> 12);
+                if (reg & 8) {
+                    prologue_pos += 5;  // REX + MOVAPS + ModR/M + SIB
+                } else {
+                    prologue_pos += 4;  // MOVAPS + ModR/M + SIB
+                }
+                if (sp_offset >= 128) {
+                    prologue_pos += 4;  // disp32
+                } else if (sp_offset > 0) {
+                    prologue_pos += 1;  // disp8
+                }
+                sp_offset += 16;
+            }
+        }
+
+        const int code_size = sizeof(unwind_info) - unwind_pos;
+        const int size = 4 + code_size;
+        ASSERT(size <= (int)sizeof(unwind_info));
+        memmove(unwind_info + 4, unwind_info + unwind_pos, code_size);
+        unwind_info[1] = prologue_pos;
+        unwind_info[2] = code_size / 2;
+
+        const int alignment = handle->code_alignment;
+        ASSERT(alignment >= 8);
+        int code_offset = 8 + size;
+        if (code_offset % alignment != 0) {
+            code_offset += alignment - (code_offset % alignment);
+        }
+        if (UNLIKELY(!binrec_ensure_code_space(handle, code_offset))) {
+            return false;
+        }
+
+        uint8_t *buffer = handle->code_buffer;
+        *ALIGNED_CAST(uint64_t *, buffer) = bswap_le64(code_offset);
+        memcpy(buffer + 8, unwind_info, size);
+        ASSERT(code_offset >= 8+size);
+        memset(buffer + (8+size), 0, code_offset - (8+size));
+        handle->code_len += code_offset;
+    }
+
+    /* In the worst case (Windows ABI with all registers saved and a frame
+     * size of >=128 bytes), the prologue will require:
+     *    1 * 4 low GPR saves
+     *    2 * 4 high GPR saves
+     *    7 * 1 stack adjustment
+     *    8 * 2 low XMM saves
+     *    9 * 8 high XMM saves
+     * for a total of 107 bytes. */
+    if (UNLIKELY(!binrec_ensure_code_space(handle, 107))) {
+        return false;
+    }
+
+    CodeBuffer code = {.buffer = handle->code_buffer,
+                       .buffer_size = handle->code_buffer_size,
+                       .len = handle->code_len};
+
+    for (int reg = 0; reg < 16; reg++) {
+        if (regs_to_save & (1u << reg)) {
+            append_insn_R(&code, false, X86OP_PUSH_rAX, reg);
+        }
+    }
+
+    if (stack_alloc >= 128) {
+        append_opcode(&code, X86OP_REX_W);
+        append_opcode(&code, X86OP_IMM_Ev_Iz);
+        append_ModRM(&code, X86MOD_REG, X86OP_IMM_SUB, X86_SP);
+        append_imm32(&code, stack_alloc);
+    } else if (stack_alloc > 0) {
+        append_opcode(&code, X86OP_REX_W);
+        append_opcode(&code, X86OP_IMM_Ev_Ib);
+        append_ModRM(&code, X86MOD_REG, X86OP_IMM_SUB, X86_SP);
+        append_imm8(&code, stack_alloc);
+    }
+
+    int sp_offset = ctx->frame_size;
+    for (int reg = 16; reg < 32; reg++) {
+        if (regs_to_save & (1u << reg)) {
+            if (reg & 8) {
+                append_rex_opcode(&code, X86OP_REX_R, X86OP_MOVAPS_W_V);
+            } else {
+                append_opcode(&code, X86OP_MOVAPS_W_V);
+            }
+            if (sp_offset >= 128) {
+                append_ModRM_SIB(&code, X86MOD_DISP32, reg & 7,
+                                 0, X86SIB_NOINDEX, X86_SP);
+                append_imm32(&code, sp_offset);
+            } else if (sp_offset > 0) {
+                append_ModRM_SIB(&code, X86MOD_DISP8, reg & 7,
+                                 0, X86SIB_NOINDEX, X86_SP);
+                append_imm8(&code, sp_offset);
+            } else {
+                append_ModRM_SIB(&code, X86MOD_DISP0, reg & 7,
+                                 0, X86SIB_NOINDEX, X86_SP);
+            }
+            sp_offset += 16;
+        }
+    }
+
+    handle->code_len = code.len;
+
+    if (is_windows_seh) {
+        /* Make sure the prologue is the same length we said it would be. */
+        const int code_offset =
+            (int) *ALIGNED_CAST(uint64_t *, handle->code_buffer);
+        ASSERT(handle->code_len == code_offset + handle->code_buffer[9]);
+    }
+
+    return true;
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
+ * append_epilogue:  Append the function epilogue to the output code buffer.
+ *
+ * [Parameters]
+ *     ctx: Translation context.
+ *     append_ret: True to append a RET instruction after the epilogue.
+ * [Return value]
+ *     True on success, false if out of memory.
+ */
+static bool append_epilogue(HostX86Context *ctx, bool append_ret)
+{
+    ASSERT(ctx);
+    ASSERT(ctx->handle);
+
+    binrec_t * const handle = ctx->handle;
+    const uint32_t regs_saved = ctx->regs_touched & ctx->callee_saved_regs;
+    const int stack_alloc = ctx->stack_alloc;
+
+    ctx->label_offsets[0] = handle->code_len;
+
+    /* The maximum size of the epilogue is the same as the maximum size of
+     * the prologue, plus 1 for the RET instruction. */
+    if (UNLIKELY(!binrec_ensure_code_space(handle, 108))) {
+        return false;
+    }
+
+    CodeBuffer code = {.buffer = handle->code_buffer,
+                       .buffer_size = handle->code_buffer_size,
+                       .len = handle->code_len};
+
+    int sp_offset = ctx->frame_size + 16 * popcnt32(regs_saved >> 16);
+    for (int reg = 31; reg >= 16; reg--) {
+        if (regs_saved & (1u << reg)) {
+            sp_offset -= 16;
+            if (reg & 8) {
+                append_rex_opcode(&code, X86OP_REX_R, X86OP_MOVAPS_V_W);
+            } else {
+                append_opcode(&code, X86OP_MOVAPS_V_W);
+            }
+            if (sp_offset >= 128) {
+                append_ModRM_SIB(&code, X86MOD_DISP32, reg & 7,
+                                 0, X86SIB_NOINDEX, X86_SP);
+                append_imm32(&code, sp_offset);
+            } else if (sp_offset > 0) {
+                append_ModRM_SIB(&code, X86MOD_DISP8, reg & 7,
+                                 0, X86SIB_NOINDEX, X86_SP);
+                append_imm8(&code, sp_offset);
+            } else {
+                append_ModRM_SIB(&code, X86MOD_DISP0, reg & 7,
+                                 0, X86SIB_NOINDEX, X86_SP);
+            }
+        }
+    }
+
+    if (stack_alloc >= 128) {
+        append_opcode(&code, X86OP_REX_W);
+        append_opcode(&code, X86OP_IMM_Ev_Iz);
+        append_ModRM(&code, X86MOD_REG, X86OP_IMM_ADD, X86_SP);
+        append_imm32(&code, stack_alloc);
+    } else if (stack_alloc > 0) {
+        append_opcode(&code, X86OP_REX_W);
+        append_opcode(&code, X86OP_IMM_Ev_Ib);
+        append_ModRM(&code, X86MOD_REG, X86OP_IMM_ADD, X86_SP);
+        append_imm8(&code, stack_alloc);
+    }
+
+    for (int reg = 15; reg >= 0; reg--) {
+        if (regs_saved & (1u << reg)) {
+            append_insn_R(&code, false, X86OP_POP_rAX, reg);
+        }
+    }
+
+    if (append_ret) {
+        append_opcode(&code, X86OP_RET);
+    }
+
+    handle->code_len = code.len;
+
+    return true;
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
+ * translate_call_addr:  Translate a CALL_ADDR instruction.
+ *
+ * [Parameters]
+ *     ctx: Translation context.
+ *     block_index: Index of basic block in ctx->unit->blocks[].
+ *     insn_index: Index of instruction in ctx->unit->insns[].
+ * [Return value]
+ *     True on success, false if out of memory.
+ */
+static bool translate_call_addr(HostX86Context *ctx, int block_index,
+                                int insn_index)
+{
+    ASSERT(ctx);
+    ASSERT(ctx->handle);
+    ASSERT(ctx->unit);
+    ASSERT(block_index >= 0);
+    ASSERT(block_index < ctx->unit->num_blocks);
+    ASSERT(insn_index >= 0);
+    ASSERT((uint32_t)insn_index < ctx->unit->num_insns);
+
+    binrec_t * const handle = ctx->handle;
+    const RTLUnit * const unit = ctx->unit;
+    const RTLBlock * const block = &unit->blocks[block_index];
+    const RTLInsn * const insn = &unit->insns[insn_index];
+    const int dest = insn->dest;
+    const int src1 = insn->src1;
+    const int src2 = insn->src2;
+    const int src3 = insn->src3;
+
+    /* Optimize the call as a tail call if possible.  We can optimize if
+     * the next instruction is a RETURN (including the implicit RETURN at
+     * the end of the unit) which either returns no value or returns the
+     * destination register of this call instruction. */
+    if ((uint32_t)insn_index == unit->num_insns - 1
+        || (unit->insns[insn_index+1].opcode == RTLOP_RETURN
+            && (unit->insns[insn_index+1].src1 == 0
+                || unit->insns[insn_index+1].src1 == dest))) {
+        const int MAX_TAIL_CALL_LEN = 24 + 107 + 3;  // 3x load, epilogue, JMP
+        if (UNLIKELY(handle->code_len + MAX_TAIL_CALL_LEN > handle->code_buffer_size)
+         && UNLIKELY(!binrec_ensure_code_space(handle, MAX_TAIL_CALL_LEN))) {
+            log_error(handle, "No memory for tail call");
+            return false;
+        }
+
+        CodeBuffer code = {.buffer = handle->code_buffer,
+                           .buffer_size = handle->code_buffer_size,
+                           .len = handle->code_len};
+        const long initial_len = code.len;
+
+        int src1_loc = (is_spilled(ctx, src1, insn_index)
+                        ? -1 : ctx->regs[src1].host_reg);
+        int src2_loc = (!src2 || is_spilled(ctx, src2, insn_index)
+                        ? -1 : ctx->regs[src2].host_reg);
+        int src3_loc = (!src3 || is_spilled(ctx, src3, insn_index)
+                        ? -1 : ctx->regs[src3].host_reg);
+
+        /* Put arguments (if any) in the right place.  This is a bit ugly
+         * because of all the different ways we might have to swap values
+         * around. */
+        if (src2) {
+            const bool src2_is64 = (unit->regs[src2].type == RTLTYPE_ADDRESS);
+            const bool src3_is64 =  // Safe even if src3 == 0.
+                (unit->regs[src3].type == RTLTYPE_ADDRESS);
+            const int host_arg0 = host_x86_int_arg_register(ctx, 0);
+            ASSERT(host_arg0 >= 0);
+            const int host_arg1 = host_x86_int_arg_register(ctx, 1);
+            ASSERT(host_arg1 >= 0);
+
+            if (src2_loc >= 0) {
+                if (src1_loc == host_arg0) {
+                    append_insn_ModRM_reg(&code, true, X86OP_XCHG_Ev_Gv,
+                                          src2_loc, host_arg0);
+                    src1_loc = src2_loc;
+                } else if (src3_loc == host_arg0) {
+                    append_insn_ModRM_reg(&code, src2_is64 || src3_is64,
+                                          X86OP_XCHG_Ev_Gv, src2_loc,
+                                          host_arg0);
+                    src3_loc = src2_loc;
+                } else if (src2_loc != host_arg0) {
+                    append_insn_ModRM_reg(&code, src2_is64, X86OP_MOV_Gv_Ev,
+                                          host_arg0, src2_loc);
+                }
+            }
+
+            if (src3_loc >= 0) {
+                if (src1_loc == host_arg1) {
+                    append_insn_ModRM_reg(&code, true, X86OP_XCHG_Ev_Gv,
+                                          src3_loc, host_arg1);
+                    src1_loc = src3_loc;
+                } else if (src3_loc != host_arg1) {
+                    append_insn_ModRM_reg(&code, src2_is64, X86OP_MOV_Gv_Ev,
+                                          host_arg1, src3_loc);
+                }
+            }
+
+            /* At this point src2 and src3 are either in their target
+             * registers or not loaded, so we can safely move src1 out of
+             * the way of any spill reloads. */
+
+            if (src2_loc < 0) {
+                if (src1_loc == host_arg0) {
+                    append_insn_ModRM_reg(&code, true, X86OP_MOV_Gv_Ev,
+                                          X86_AX, host_arg0);
+                    src1_loc = X86_AX;
+                }
+                append_load_gpr(&code, unit->regs[src2].type, host_arg0,
+                                X86_SP, ctx->regs[src2].spill_offset);
+            }
+
+            if (src3 && src3_loc < 0) {
+                if (src1_loc == host_arg1) {
+                    append_insn_ModRM_reg(&code, true, X86OP_MOV_Gv_Ev,
+                                          X86_AX, host_arg1);
+                    src1_loc = X86_AX;
+                }
+                append_load_gpr(&code, unit->regs[src3].type, host_arg1,
+                                X86_SP, ctx->regs[src3].spill_offset);
+            }
+        }
+
+        if (src1_loc < 0) {
+            append_load_gpr(&code, RTLTYPE_ADDRESS, X86_AX,
+                            X86_SP, ctx->regs[src1].spill_offset);
+            src1_loc = X86_AX;
+        } else if (ctx->callee_saved_regs & (1u << src1_loc)) {
+            append_move_gpr(&code, RTLTYPE_ADDRESS, X86_AX, src1_loc);
+            src1_loc = X86_AX;
+        }
+
+        /* We've already reserved space for the epilogue, so this can
+         * never fail. */
+        handle->code_len = code.len;
+        ASSERT(append_epilogue(ctx, false));
+        ASSERT(handle->code_buffer == code.buffer);
+        ASSERT(handle->code_buffer_size == code.buffer_size);
+        code.len = handle->code_len;
+
+        append_insn_ModRM_reg(&code, false, X86OP_MISC_FF,
+                              X86OP_MISC_FF_JMP_Ev, src1_loc);
+
+        /* The following RETURN (if present) is no longer needed. */
+        if ((uint32_t)insn_index < unit->num_insns - 1) {
+            /* RETURN should never start a new block. */
+            ASSERT(insn_index < block->last_insn);
+            unit->insns[insn_index+1].opcode = RTLOP_NOP;
+            unit->insns[insn_index+1].src1 = 0;
+        }
+
+        ASSERT(code.len - initial_len <= MAX_TAIL_CALL_LEN);
+        handle->code_len = code.len;
+        return true;
+    }  // if a tail call
+
+    ASSERT(!"Non-tail calls not implemented");
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
  * translate_block:  Translate the given RTL basic block.
  *
  * [Parameters]
@@ -1014,9 +1495,8 @@ static bool translate_block(HostX86Context *ctx, int block_index)
             code.buffer_size = handle->code_buffer_size;
         }
 
-        /* This is not "const" because we rewrite it in GOTO_IF_* if we
-         * add alias conflict resolution code, since that has its own
-         * buffer size check. */
+        /* This is not "const" because we rewrite it for instructions which
+         * do their own buffer size management. */
         long initial_len = code.len;
 
         /* Evict the current occupant of the destination register if needed. */
@@ -2390,7 +2870,7 @@ static bool translate_block(HostX86Context *ctx, int block_index)
                     handle->code_len = code.len;
                     if (UNLIKELY(!binrec_ensure_code_space(
                                      handle, needed_space))) {
-                        log_error(ctx->handle, "No memory for alias conflict"
+                        log_error(handle, "No memory for alias conflict"
                                   " resolution code");
                         return false;
                     }
@@ -2428,6 +2908,17 @@ static bool translate_block(HostX86Context *ctx, int block_index)
             break;
           }  // case RTLOP_GOTO_IF_Z, RTLOP_GOTO_IF_NZ
 
+          case RTLOP_CALL_ADDR:
+            handle->code_len = code.len;
+            if (!translate_call_addr(ctx, block_index, insn_index)) {
+                return false;
+            }
+            code.buffer = handle->code_buffer;
+            code.buffer_size = handle->code_buffer_size;
+            code.len = handle->code_len;
+            initial_len = code.len;  // Suppress output length check.
+            break;
+
           case RTLOP_RETURN:
             ASSERT(block_info->unresolved_branch_offset < 0);
             if (src1) {
@@ -2463,326 +2954,6 @@ static bool translate_block(HostX86Context *ctx, int block_index)
 /*************************************************************************/
 /************************* Other local routines **************************/
 /*************************************************************************/
-
-/**
- * append_prologue:  Append the function prologue to the output code buffer.
- *
- * [Parameters]
- *     ctx: Translation context.
- * [Return value]
- *     True on success, false if out of memory.
- */
-static bool append_prologue(HostX86Context *ctx)
-{
-    ASSERT(ctx);
-    ASSERT(ctx->handle);
-
-    binrec_t * const handle = ctx->handle;
-    const uint32_t regs_to_save = ctx->regs_touched & ctx->callee_saved_regs;
-    const bool is_windows_seh =
-        (ctx->handle->setup.host == BINREC_ARCH_X86_64_WINDOWS_SEH);
-
-    /* Figure out how much stack space we use in total. */
-    int total_stack_use;
-    const int push_size = 8 * popcnt32(regs_to_save & 0xFFFF);
-    total_stack_use = push_size;
-    /* If we have any XMM registers to save, we have to align the stack at
-     * this point so the saves and loads are properly aligned.  This implies
-     * that we also need to align the frame size here, since the final stack
-     * pointer must remain 16-byte aligned. */
-    const uint32_t xmm_to_save = regs_to_save >> 16;
-    if (xmm_to_save) {
-        /* The stack pointer after pushes is either 0 or 8 bytes past a
-         * multiple of 16.  To align it, we subtract 8 if the number of
-         * pushes is even.  (That's not a typo -- the stack pointer comes
-         * in unaligned due to the return address pushed by the CALL
-         * instruction that jumped here.) */
-        if (push_size % 16 == 0) {
-            total_stack_use += 8;
-        }
-        total_stack_use += 16 * popcnt32(xmm_to_save);
-        ctx->frame_size = align_up(ctx->frame_size, 16);
-    }
-    total_stack_use += ctx->frame_size;
-    /* Final stack pointer alignment: the total stack usage should be a
-     * multiple of 16 plus 8, again because of the return address. */
-    if (total_stack_use % 16 != 8) {
-        total_stack_use += 16 - ((total_stack_use + 8) & 15);
-    }
-
-    /* Calculate the amount of stack space to reserve, excluding GPR pushes. */
-    const int stack_alloc = total_stack_use - push_size;
-    ctx->stack_alloc = stack_alloc;
-
-    if (is_windows_seh) {
-        /* Create unwind data for the function, because Microsoft likes
-         * finding ways to make everybody's lives harder... */
-
-        enum {
-            UWOP_PUSH_NONVOL = 0,
-            UWOP_ALLOC_LARGE = 1,
-            UWOP_ALLOC_SMALL = 2,
-            UWOP_SAVE_XMM128 = 8,
-        };
-
-        /* We'll have at most:
-         *    1 * 8 GPRs
-         *    2 * stack adjustment
-         *    2 * 10 XMM registers
-         * for a total of 30 16-bit data words. */
-        uint8_t unwind_info[4 + 2*30];
-
-        int prologue_pos = 0;
-
-        unwind_info[0] = 1;  // version:3, flags:5
-        unwind_info[1] = 0;  // Size of prologue (will be filled in later)
-        unwind_info[2] = 0;  // Code count (will be filled in later)
-        unwind_info[3] = 0;  // Frame register/offset (not used)
-
-        /* The unwind information has to be given in reverse order (?!),
-         * so generate from the end of the buffer and move it into place
-         * when we're done. */
-        int unwind_pos = sizeof(unwind_info);
-
-        for (int reg = 0; reg < 16; reg++) {
-            if (regs_to_save & (1u << reg)) {
-                unwind_pos -= 2;
-                ASSERT(unwind_pos >= 4);
-                unwind_info[unwind_pos+0] = prologue_pos;
-                unwind_info[unwind_pos+1] = UWOP_PUSH_NONVOL | reg<<4;
-                if (reg < 8) {
-                    prologue_pos += 1;  // PUSH
-                } else {
-                    prologue_pos += 2;  // REX PUSH
-                }
-            }
-        }
-
-        if (stack_alloc > 0) {
-            const int stack_alloc_info = (stack_alloc / 8) - 1;
-            if (stack_alloc > 128) {
-                ASSERT(stack_alloc < 524288);  // Should never need this much.
-                unwind_pos -= 4;
-                ASSERT(unwind_pos >= 4);
-                unwind_info[unwind_pos+0] = prologue_pos;
-                unwind_info[unwind_pos+1] = UWOP_ALLOC_LARGE;
-                unwind_info[unwind_pos+2] = (uint8_t)(stack_alloc_info >> 0);
-                unwind_info[unwind_pos+3] = (uint8_t)(stack_alloc_info >> 8);
-                prologue_pos += 7;
-            } else {
-                unwind_pos -= 2;
-                ASSERT(unwind_pos >= 4);
-                unwind_info[unwind_pos+0] = prologue_pos;
-                unwind_info[unwind_pos+1] =
-                    UWOP_ALLOC_SMALL | stack_alloc_info << 4;
-                if (stack_alloc == 128) {
-                    prologue_pos += 7;
-                } else {
-                    prologue_pos += 4;
-                }
-            }
-        }
-
-        int sp_offset = ctx->frame_size;
-        for (int reg = 16; reg < 32; reg++) {
-            if (regs_to_save & (1u << reg)) {
-                unwind_pos -= 4;
-                ASSERT(unwind_pos >= 4);
-                unwind_info[unwind_pos+0] = prologue_pos;
-                unwind_info[unwind_pos+1] = UWOP_SAVE_XMM128 | reg<<4;
-                unwind_info[unwind_pos+2] = (uint8_t)(sp_offset >> 4);
-                unwind_info[unwind_pos+3] = (uint8_t)(sp_offset >> 12);
-                if (reg & 8) {
-                    prologue_pos += 5;  // REX + MOVAPS + ModR/M + SIB
-                } else {
-                    prologue_pos += 4;  // MOVAPS + ModR/M + SIB
-                }
-                if (sp_offset >= 128) {
-                    prologue_pos += 4;  // disp32
-                } else if (sp_offset > 0) {
-                    prologue_pos += 1;  // disp8
-                }
-                sp_offset += 16;
-            }
-        }
-
-        const int code_size = sizeof(unwind_info) - unwind_pos;
-        const int size = 4 + code_size;
-        ASSERT(size <= (int)sizeof(unwind_info));
-        memmove(unwind_info + 4, unwind_info + unwind_pos, code_size);
-        unwind_info[1] = prologue_pos;
-        unwind_info[2] = code_size / 2;
-
-        const int alignment = ctx->handle->code_alignment;
-        ASSERT(alignment >= 8);
-        int code_offset = 8 + size;
-        if (code_offset % alignment != 0) {
-            code_offset += alignment - (code_offset % alignment);
-        }
-        if (UNLIKELY(!binrec_ensure_code_space(ctx->handle, code_offset))) {
-            return false;
-        }
-
-        uint8_t *buffer = ctx->handle->code_buffer;
-        *ALIGNED_CAST(uint64_t *, buffer) = bswap_le64(code_offset);
-        memcpy(buffer + 8, unwind_info, size);
-        ASSERT(code_offset >= 8+size);
-        memset(buffer + (8+size), 0, code_offset - (8+size));
-        ctx->handle->code_len += code_offset;
-    }
-
-    /* In the worst case (Windows ABI with all registers saved and a frame
-     * size of >=128 bytes), the prologue will require:
-     *    1 * 4 low GPR saves
-     *    2 * 4 high GPR saves
-     *    7 * 1 stack adjustment
-     *    8 * 2 low XMM saves
-     *    9 * 8 high XMM saves
-     * for a total of 107 bytes. */
-    if (UNLIKELY(!binrec_ensure_code_space(ctx->handle, 107))) {
-        return false;
-    }
-
-    CodeBuffer code = {.buffer = handle->code_buffer,
-                       .buffer_size = handle->code_buffer_size,
-                       .len = handle->code_len};
-
-    for (int reg = 0; reg < 16; reg++) {
-        if (regs_to_save & (1u << reg)) {
-            append_insn_R(&code, false, X86OP_PUSH_rAX, reg);
-        }
-    }
-
-    if (stack_alloc >= 128) {
-        append_opcode(&code, X86OP_REX_W);
-        append_opcode(&code, X86OP_IMM_Ev_Iz);
-        append_ModRM(&code, X86MOD_REG, X86OP_IMM_SUB, X86_SP);
-        append_imm32(&code, stack_alloc);
-    } else if (stack_alloc > 0) {
-        append_opcode(&code, X86OP_REX_W);
-        append_opcode(&code, X86OP_IMM_Ev_Ib);
-        append_ModRM(&code, X86MOD_REG, X86OP_IMM_SUB, X86_SP);
-        append_imm8(&code, stack_alloc);
-    }
-
-    int sp_offset = ctx->frame_size;
-    for (int reg = 16; reg < 32; reg++) {
-        if (regs_to_save & (1u << reg)) {
-            if (reg & 8) {
-                append_rex_opcode(&code, X86OP_REX_R, X86OP_MOVAPS_W_V);
-            } else {
-                append_opcode(&code, X86OP_MOVAPS_W_V);
-            }
-            if (sp_offset >= 128) {
-                append_ModRM_SIB(&code, X86MOD_DISP32, reg & 7,
-                                 0, X86SIB_NOINDEX, X86_SP);
-                append_imm32(&code, sp_offset);
-            } else if (sp_offset > 0) {
-                append_ModRM_SIB(&code, X86MOD_DISP8, reg & 7,
-                                 0, X86SIB_NOINDEX, X86_SP);
-                append_imm8(&code, sp_offset);
-            } else {
-                append_ModRM_SIB(&code, X86MOD_DISP0, reg & 7,
-                                 0, X86SIB_NOINDEX, X86_SP);
-            }
-            sp_offset += 16;
-        }
-    }
-
-    handle->code_len = code.len;
-
-    if (is_windows_seh) {
-        /* Make sure the prologue is the same length we said it would be. */
-        const int code_offset =
-            (int) *ALIGNED_CAST(uint64_t *, ctx->handle->code_buffer);
-        ASSERT(ctx->handle->code_len ==
-               code_offset + ctx->handle->code_buffer[9]);
-    }
-
-    return true;
-}
-
-/*-----------------------------------------------------------------------*/
-
-/**
- * append_epilogue:  Append the function epilogue to the output code buffer.
- *
- * [Parameters]
- *     ctx: Translation context.
- * [Return value]
- *     True on success, false if out of memory.
- */
-static bool append_epilogue(HostX86Context *ctx)
-{
-    ASSERT(ctx);
-    ASSERT(ctx->handle);
-
-    binrec_t * const handle = ctx->handle;
-    const uint32_t regs_saved = ctx->regs_touched & ctx->callee_saved_regs;
-    const int stack_alloc = ctx->stack_alloc;
-
-    ctx->label_offsets[0] = handle->code_len;
-
-    /* The maximum size of the epilogue is the same as the maximum size of
-     * the prologue, plus 1 for the RET instruction. */
-    if (UNLIKELY(!binrec_ensure_code_space(handle, 108))) {
-        return false;
-    }
-
-    CodeBuffer code = {.buffer = handle->code_buffer,
-                       .buffer_size = handle->code_buffer_size,
-                       .len = handle->code_len};
-
-    int sp_offset = ctx->frame_size + 16 * popcnt32(regs_saved >> 16);
-    for (int reg = 31; reg >= 16; reg--) {
-        if (regs_saved & (1u << reg)) {
-            sp_offset -= 16;
-            if (reg & 8) {
-                append_rex_opcode(&code, X86OP_REX_R, X86OP_MOVAPS_V_W);
-            } else {
-                append_opcode(&code, X86OP_MOVAPS_V_W);
-            }
-            if (sp_offset >= 128) {
-                append_ModRM_SIB(&code, X86MOD_DISP32, reg & 7,
-                                 0, X86SIB_NOINDEX, X86_SP);
-                append_imm32(&code, sp_offset);
-            } else if (sp_offset > 0) {
-                append_ModRM_SIB(&code, X86MOD_DISP8, reg & 7,
-                                 0, X86SIB_NOINDEX, X86_SP);
-                append_imm8(&code, sp_offset);
-            } else {
-                append_ModRM_SIB(&code, X86MOD_DISP0, reg & 7,
-                                 0, X86SIB_NOINDEX, X86_SP);
-            }
-        }
-    }
-
-    if (stack_alloc >= 128) {
-        append_opcode(&code, X86OP_REX_W);
-        append_opcode(&code, X86OP_IMM_Ev_Iz);
-        append_ModRM(&code, X86MOD_REG, X86OP_IMM_ADD, X86_SP);
-        append_imm32(&code, stack_alloc);
-    } else if (stack_alloc > 0) {
-        append_opcode(&code, X86OP_REX_W);
-        append_opcode(&code, X86OP_IMM_Ev_Ib);
-        append_ModRM(&code, X86MOD_REG, X86OP_IMM_ADD, X86_SP);
-        append_imm8(&code, stack_alloc);
-    }
-
-    for (int reg = 15; reg >= 0; reg--) {
-        if (regs_saved & (1u << reg)) {
-            append_insn_R(&code, false, X86OP_POP_rAX, reg);
-        }
-    }
-
-    append_opcode(&code, X86OP_RET);
-
-    handle->code_len = code.len;
-
-    return true;
-}
-
-/*-----------------------------------------------------------------------*/
 
 /**
  * resolve_branches:  Resolve forward branches in the generated code.
@@ -2835,7 +3006,6 @@ static void resolve_branches(HostX86Context *ctx)
 static bool translate_unit(HostX86Context *ctx)
 {
     ASSERT(ctx);
-    ASSERT(ctx->handle);
     ASSERT(ctx->unit);
 
     if (!append_prologue(ctx)) {
@@ -2850,7 +3020,7 @@ static bool translate_unit(HostX86Context *ctx)
         }
     }
 
-    if (!append_epilogue(ctx)) {
+    if (!append_epilogue(ctx, true)) {
         return false;
     }
 

@@ -154,10 +154,13 @@ static inline void mark_reserve_changed(GuestPPCBlockInfo *block) {
 static void update_used_changed(GuestPPCBlockInfo *block, const uint32_t insn)
 {
     switch (get_OPCD(insn)) {
-      case OPCD_TWI:
       case OPCD_SC:
       case OPCD_B:
         /* No registers touched. */
+        break;
+
+      case OPCD_TWI:
+        mark_gpr_used(block, get_rA(insn));
         break;
 
       case OPCD_BC:
@@ -193,8 +196,15 @@ static void update_used_changed(GuestPPCBlockInfo *block, const uint32_t insn)
       case OPCD_ANDI_:
       case OPCD_ANDIS_:
         mark_cr_changed(block, 0);
-        /* fall through */
+        mark_gpr_used(block, get_rS(insn));
+        mark_gpr_changed(block, get_rA(insn));
+        break;
+
       case OPCD_ORI:
+        if (insn == 0x60000000) {  // nop
+            break;
+        }
+        /* fall through */
       case OPCD_ORIS:
       case OPCD_XORI:
       case OPCD_XORIS:

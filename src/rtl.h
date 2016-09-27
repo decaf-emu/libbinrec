@@ -280,8 +280,13 @@ typedef enum RTLOpcode {
     RTLOP_GOTO_IF_Z,    // if (src1 == 0) goto LABEL(other)
     RTLOP_GOTO_IF_NZ,   // if (src1 != 0) goto LABEL(other)
 
-    /* Generated code terminator (returns to caller; the return value is
-     * optional) */
+    /* Call to arbitrary host address.  src1 must be of ADDRESS type.
+     * dest, src2, and other are optional, but must be integer type if
+     * given; if src2 is omitted, other must also be omitted. */
+    RTLOP_CALL_ADDR,    // dest = (*src1)(src2, other)
+
+    /* Terminator for generated code (returns to caller; the return value
+     * is optional) */
     RTLOP_RETURN,       // return src1
 
     /* Explicit illegal instruction (will trigger an illegal-instruction

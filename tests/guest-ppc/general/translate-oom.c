@@ -68,7 +68,7 @@ int main(void)
                  "    3: LOAD_IMM   r2, 4\n"
                  "    4: SET_ALIAS  a1, r2\n"
                  "    5: LABEL      L2\n"
-                 "    6: RETURN     r1\n"
+                 "    6: RETURN\n"
                  "\n"
                  "Alias 1: int32 @ 956(r1)\n"
                  "\n"

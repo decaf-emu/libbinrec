@@ -288,6 +288,17 @@ typedef enum PPCExtendedOpcode04_750CL {
 } PPCExtendedOpcode04_750CL;
 
 /*************************************************************************/
+/****************** Other instruction-related constants ******************/
+/*************************************************************************/
+
+/* Constants for the TO (trap operation) field. */
+#define TO_LTS  (1 << 4)  // Signed less-than
+#define TO_GTS  (1 << 3)  // Signed greater-than
+#define TO_EQ   (1 << 2)  // Equal
+#define TO_LTU  (1 << 1)  // Unsigned less-than
+#define TO_GTU  (1 << 0)  // Unsigned greater-than
+
+/*************************************************************************/
 /******************** Instruction decoding functions *********************/
 /*************************************************************************/
 

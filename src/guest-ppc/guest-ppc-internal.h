@@ -103,7 +103,30 @@ typedef struct GuestPPCContext {
 /*************************************************************************/
 
 /**
- * guest_ppc_translate_block: Generate RTL for the selected basic block.
+ * guest_ppc_flush_state:  Flush all cached state (in RTL aliases) to the
+ * processor state block.
+ *
+ * [Parameters]
+ *     ctx: Translation context.
+ */
+#define guest_ppc_flush_state INTERNAL(guest_ppc_flush_state)
+extern void guest_ppc_flush_state(GuestPPCContext *ctx);
+
+/**
+ * guest_ppc_scan:  Scan guest memory to find the range of addresses to
+ * translate.
+ *
+ * [Parameters]
+ *     ctx: Translation context.
+ *     limit: Upper address bound for scanning.
+ * [Return value]
+ *     True on success, false on error.
+ */
+#define guest_ppc_scan INTERNAL(guest_ppc_scan)
+extern bool guest_ppc_scan(GuestPPCContext *ctx, uint32_t limit);
+
+/**
+ * guest_ppc_translate_block:  Generate RTL for the selected basic block.
  *
  * [Parameters]
  *     context: Translation context.
@@ -113,19 +136,6 @@ typedef struct GuestPPCContext {
  */
 #define guest_ppc_translate_block INTERNAL(guest_ppc_translate_block)
 extern bool guest_ppc_translate_block(GuestPPCContext *ctx, int index);
-
-/**
- * guest_ppc_scan: Scan guest memory to find the range of addresses to
- * translate.
- *
- * [Parameters]
- *     context: Translation context.
- *     limit: Upper address bound for scanning.
- * [Return value]
- *     True on success, false on error.
- */
-#define guest_ppc_scan INTERNAL(guest_ppc_scan)
-extern bool guest_ppc_scan(GuestPPCContext *ctx, uint32_t limit);
 
 /*************************************************************************/
 /*************************************************************************/

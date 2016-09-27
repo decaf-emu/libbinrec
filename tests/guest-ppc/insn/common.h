@@ -25,6 +25,8 @@ static const binrec_setup_t setup = {
     .state_offset_reserve_flag = 0x3B4,
     .state_offset_reserve_address = 0x3B8,
     .state_offset_nia = 0x3BC,
+    .state_offset_sc_handler = 0x3C0,
+    .state_offset_trap_handler = 0x3C8,
 };
 
 #endif  // TESTS_GUEST_PPC_INSN_COMMON_H

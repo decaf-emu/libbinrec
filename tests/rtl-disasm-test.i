@@ -67,6 +67,8 @@ int main(void)
              expected_success ? "succeed" : "fail");
     }
 
+    EXPECT(rtl_finalize_unit(unit));
+
     const char *disassembly;
     if (expected_success) {
         EXPECT(disassembly = rtl_disassemble_unit(unit, false));

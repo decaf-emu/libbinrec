@@ -30,6 +30,8 @@ typedef struct PPCState {
     uint8_t reserve_flag;
     uint32_t reserve_address;
     uint32_t nia;
+    void (*sc_handler)(struct PPCState *);
+    void (*trap_handler)(struct PPCState *);
 } PPCState;
 
 /*-----------------------------------------------------------------------*/

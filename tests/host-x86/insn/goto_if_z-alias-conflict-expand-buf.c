@@ -9,7 +9,6 @@
 
 #include "tests/common.h"
 #include "tests/host-x86/common.h"
-#include "tests/mem-wrappers.h"
 
 
 static const binrec_setup_t setup = {

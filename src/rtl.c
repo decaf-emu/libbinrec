@@ -189,6 +189,7 @@ static NOINLINE bool rtl_add_insn_with_new_block(
  * written string fits within the supplied buffer.  Helper for
  * rtl_decode_insn(), rtl_describe_alias(), and rtl_describe_block().
  */
+FORMAT(3, 4)
 static int snprintf_assert(char *buf, size_t size, const char *format, ...)
 {
     va_list args;
@@ -461,6 +462,9 @@ static void rtl_describe_register(const RTLRegister *reg,
                      reg->result.src1, reg->result.src2,
                      reg->result.start, reg->result.count);
             break;
+          case RTLOP_CALL_ADDR:
+            snprintf(buf, bufsize, "call(...)");
+            break;
           default:
             ASSERT(!"Invalid result opcode");
             break;
@@ -561,6 +565,7 @@ static void rtl_decode_insn(const RTLUnit *unit, uint32_t index,
         [RTLOP_GOTO      ] = "GOTO",
         [RTLOP_GOTO_IF_Z ] = "GOTO_IF_Z",
         [RTLOP_GOTO_IF_NZ] = "GOTO_IF_NZ",
+        [RTLOP_CALL_ADDR ] = "CALL_ADDR",
         [RTLOP_RETURN    ] = "RETURN",
         [RTLOP_ILLEGAL   ] = "ILLEGAL",
     };
@@ -757,6 +762,28 @@ static void rtl_decode_insn(const RTLUnit *unit, uint32_t index,
         s += snprintf_assert(s, top - s, "%-10s r%d, L%d\n",
                              name, src1, insn->label);
         APPEND_REG_DESC(src1);
+        return;
+
+      case RTLOP_CALL_ADDR:
+        s += snprintf_assert(s, top - s, "%-10s ", name);
+        if (dest) {
+            s += snprintf_assert(s, top - s, "r%d, ", dest);
+        }
+        s += snprintf_assert(s, top - s, "@r%d", src1);
+        if (src2) {
+            s += snprintf_assert(s, top - s, ", r%d", src2);
+            if (insn->src3) {
+                s += snprintf_assert(s, top - s, ", r%d", insn->src3);
+            }
+        }
+        s += snprintf_assert(s, top - s, "\n");
+        APPEND_REG_DESC(src1);
+        if (src2) {
+            APPEND_REG_DESC(src2);
+            if (insn->src3) {
+                APPEND_REG_DESC(insn->src3);
+            }
+        }
         return;
 
       case RTLOP_RETURN:

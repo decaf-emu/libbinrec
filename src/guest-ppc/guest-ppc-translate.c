@@ -191,54 +191,8 @@ static bool add_epilogue(GuestPPCContext *ctx)
     RTLUnit * const unit = ctx->unit;
 
     rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, ctx->epilogue_label);
-
-    if (ctx->cr_changed) {
-        int cr;
-        cr = rtl_alloc_register(unit, RTLTYPE_INT32);
-        if (ctx->cr_changed != 0xFF) {
-            rtl_add_insn(unit, RTLOP_LOAD, cr, ctx->psb_reg, 0,
-                         ctx->handle->setup.state_offset_cr);
-            uint32_t mask = 0;
-            for (int i = 0; i < 8; i++) {
-                if (!(ctx->cr_changed & (1 << i))) {
-                    mask |= 0xF << ((7 - i) * 4);
-                }
-            }
-            const int new_cr = rtl_alloc_register(unit, RTLTYPE_INT32);
-            rtl_add_insn(unit, RTLOP_ANDI, new_cr, cr, 0, (int32_t)mask);
-            cr = new_cr;
-        }
-        for (int i = 0; i < 8; i++) {
-            if (ctx->cr_changed & (1 << i)) {
-                const int crN = rtl_alloc_register(unit, RTLTYPE_INT32);
-                rtl_add_insn(unit, RTLOP_GET_ALIAS,
-                             crN, 0, 0, ctx->alias.cr[i]);
-                int shifted_crN;
-                if (i == 7) {
-                    shifted_crN = crN;
-                } else {
-                    shifted_crN = rtl_alloc_register(unit, RTLTYPE_INT32);
-                    rtl_add_insn(unit, RTLOP_SLLI,
-                                 shifted_crN, crN, 0, (7 - i) * 4);
-                }
-                const int new_cr = rtl_alloc_register(unit, RTLTYPE_INT32);
-                rtl_add_insn(unit, RTLOP_OR, new_cr, cr, shifted_crN, 0);
-                cr = new_cr;
-            }
-        }
-        rtl_add_insn(unit, RTLOP_STORE, 0, ctx->psb_reg, cr,
-                     ctx->handle->setup.state_offset_cr);
-    }
-
-    if (ctx->reserve_changed) {
-        const int flag = rtl_alloc_register(unit, RTLTYPE_INT32);
-        rtl_add_insn(unit, RTLOP_GET_ALIAS,
-                     flag, 0, 0, ctx->alias.reserve_flag);
-        rtl_add_insn(unit, RTLOP_STORE_I8, 0, ctx->psb_reg, flag,
-                     ctx->handle->setup.state_offset_reserve_flag);
-    }
-
-    rtl_add_insn(unit, RTLOP_RETURN, 0, ctx->psb_reg, 0, 0);
+    guest_ppc_flush_state(ctx);
+    rtl_add_insn(unit, RTLOP_RETURN, 0, 0, 0, 0);
 
     if (UNLIKELY(rtl_get_error_state(unit))) {
         log_ice(ctx->handle, "Failed to generate epilogue");

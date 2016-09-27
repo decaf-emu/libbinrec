@@ -31,9 +31,9 @@
  * call:  Call the given buffer as a native function.  Handles setting
  * memory protections as needed.
  */
-static void *call(void *code, long code_size, void *arg)
+static void call(void *code, long code_size, void *arg)
 {
-    void *(*func)(void *);
+    void (*func)(void *);
 
 #if defined(__linux__)
     func = mmap(NULL, code_size, PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS,
@@ -51,15 +51,13 @@ static void *call(void *code, long code_size, void *arg)
     func = code;  // Assume it can be called directly.
 #endif
 
-    void *retval = (*func)(arg);
+    (*func)(arg);
 
 #if defined(__linux__)
     munmap(func, code_size);
 #elif defined(_WIN32)
     VirtualFree(func, 0, MEM_RELEASE);
 #endif
-
-    return retval;
 }
 
 /*-----------------------------------------------------------------------*/
@@ -85,6 +83,8 @@ bool call_guest_code(binrec_arch_t arch, void *state, void *memory,
     setup.state_offset_reserve_flag = offsetof(PPCState,reserve_flag);
     setup.state_offset_reserve_address = offsetof(PPCState,reserve_address);
     setup.state_offset_nia = offsetof(PPCState,nia);
+    setup.state_offset_sc_handler = offsetof(PPCState,sc_handler);
+    setup.state_offset_trap_handler = offsetof(PPCState,trap_handler);
     setup.log = log_capture;
 
     binrec_t *handle;
@@ -105,7 +105,7 @@ bool call_guest_code(binrec_arch_t arch, void *state, void *memory,
             binrec_destroy_handle(handle);
             return false;
         }
-        state_ppc = call(code, code_size, state_ppc);
+        call(code, code_size, state_ppc);
         free(code);
         break;  // FIXME: temp until we implement blr
     }
