@@ -176,6 +176,7 @@ static void update_used_changed(GuestPPCBlockInfo *block, const uint32_t insn)
       case OPCD_CMPLI:
       case OPCD_CMPI:
         mark_gpr_used(block, get_rA(insn));
+        mark_xer_used(block);
         mark_cr_changed(block, get_crfD(insn));
         break;
 
@@ -188,16 +189,15 @@ static void update_used_changed(GuestPPCBlockInfo *block, const uint32_t insn)
         mark_xer_changed(block);
         /* fall through */
       case OPCD_MULLI:
-      case OPCD_ADDIS:
         mark_gpr_used(block, get_rA(insn));
         mark_gpr_changed(block, get_rD(insn));
         break;
 
-      case OPCD_ANDI_:
-      case OPCD_ANDIS_:
-        mark_cr_changed(block, 0);
-        mark_gpr_used(block, get_rS(insn));
-        mark_gpr_changed(block, get_rA(insn));
+      case OPCD_ADDIS:
+        if (get_rA(insn) != 0) {
+            mark_gpr_used(block, get_rA(insn));
+        }
+        mark_gpr_changed(block, get_rD(insn));
         break;
 
       case OPCD_ORI:
@@ -208,6 +208,14 @@ static void update_used_changed(GuestPPCBlockInfo *block, const uint32_t insn)
       case OPCD_ORIS:
       case OPCD_XORI:
       case OPCD_XORIS:
+        mark_gpr_used(block, get_rS(insn));
+        mark_gpr_changed(block, get_rA(insn));
+        break;
+
+      case OPCD_ANDI_:
+      case OPCD_ANDIS_:
+        mark_xer_used(block);
+        mark_cr_changed(block, 0);
         mark_gpr_used(block, get_rS(insn));
         mark_gpr_changed(block, get_rA(insn));
         break;
@@ -474,8 +482,8 @@ static void update_used_changed(GuestPPCBlockInfo *block, const uint32_t insn)
       case OPCD_x1F:
         switch (get_XO_5(insn)) {
           case 0x00:  // cmp, cmpl, mcrxr
+            mark_xer_used(block);
             if (get_XO_10(insn) == XO_MCRXR) {
-                mark_xer_used(block);
                 mark_xer_changed(block);
             } else {
                 mark_gpr_used(block, get_rA(insn));

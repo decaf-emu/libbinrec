@@ -38,6 +38,7 @@ static inline int get_gpr(GuestPPCContext * const ctx, int index)
     } else {
         RTLUnit * const unit = ctx->unit;
         const int reg = rtl_alloc_register(unit, RTLTYPE_INT32);
+        ASSERT(ctx->alias.gpr[index]);
         rtl_add_insn(unit, RTLOP_GET_ALIAS, reg, 0, 0, ctx->alias.gpr[index]);
         ctx->live.gpr[index] = reg;
         return reg;
@@ -51,6 +52,7 @@ static inline int get_fpr(GuestPPCContext * const ctx, int index)
     } else {
         RTLUnit * const unit = ctx->unit;
         const int reg = rtl_alloc_register(unit, RTLTYPE_V2_DOUBLE);
+        ASSERT(ctx->alias.fpr[index]);
         rtl_add_insn(unit, RTLOP_GET_ALIAS, reg, 0, 0, ctx->alias.fpr[index]);
         ctx->live.fpr[index] = reg;
         return reg;
@@ -64,6 +66,7 @@ static inline int get_cr(GuestPPCContext * const ctx, int index)
     } else {
         RTLUnit * const unit = ctx->unit;
         const int reg = rtl_alloc_register(unit, RTLTYPE_INT32);
+        ASSERT(ctx->alias.cr[index]);
         rtl_add_insn(unit, RTLOP_GET_ALIAS, reg, 0, 0, ctx->alias.cr[index]);
         ctx->live.cr[index] = reg;
         return reg;
@@ -77,6 +80,7 @@ static inline int get_lr(GuestPPCContext * const ctx)
     } else {
         RTLUnit * const unit = ctx->unit;
         const int reg = rtl_alloc_register(unit, RTLTYPE_INT32);
+        ASSERT(ctx->alias.lr);
         rtl_add_insn(unit, RTLOP_GET_ALIAS, reg, 0, 0, ctx->alias.lr);
         ctx->live.lr = reg;
         return reg;
@@ -90,6 +94,7 @@ static inline int get_ctr(GuestPPCContext * const ctx)
     } else {
         RTLUnit * const unit = ctx->unit;
         const int reg = rtl_alloc_register(unit, RTLTYPE_INT32);
+        ASSERT(ctx->alias.ctr);
         rtl_add_insn(unit, RTLOP_GET_ALIAS, reg, 0, 0, ctx->alias.ctr);
         ctx->live.ctr = reg;
         return reg;
@@ -103,6 +108,7 @@ static inline int get_xer(GuestPPCContext * const ctx)
     } else {
         RTLUnit * const unit = ctx->unit;
         const int reg = rtl_alloc_register(unit, RTLTYPE_INT32);
+        ASSERT(ctx->alias.xer);
         rtl_add_insn(unit, RTLOP_GET_ALIAS, reg, 0, 0, ctx->alias.xer);
         ctx->live.xer = reg;
         return reg;
@@ -116,6 +122,7 @@ static inline int get_fpscr(GuestPPCContext * const ctx)
     } else {
         RTLUnit * const unit = ctx->unit;
         const int reg = rtl_alloc_register(unit, RTLTYPE_INT32);
+        ASSERT(ctx->alias.fpscr);
         rtl_add_insn(unit, RTLOP_GET_ALIAS, reg, 0, 0, ctx->alias.fpscr);
         ctx->live.fpscr = reg;
         return reg;
@@ -283,8 +290,6 @@ static void update_cr0(GuestPPCContext *ctx, int result)
 {
     RTLUnit * const unit = ctx->unit;
 
-    const int xer = get_xer(ctx);
-
     const int lt = rtl_alloc_register(unit, RTLTYPE_INT32);
     rtl_add_insn(unit, RTLOP_SLTSI, lt, result, 0, 0);
     const int gt = rtl_alloc_register(unit, RTLTYPE_INT32);
@@ -292,7 +297,7 @@ static void update_cr0(GuestPPCContext *ctx, int result)
     const int eq = rtl_alloc_register(unit, RTLTYPE_INT32);
     rtl_add_insn(unit, RTLOP_SEQI, eq, result, 0, 0);
     const int so = rtl_alloc_register(unit, RTLTYPE_INT32);
-    rtl_add_insn(unit, RTLOP_BFEXT, so, xer, 0, 31 | 1<<8);
+    rtl_add_insn(unit, RTLOP_BFEXT, so, get_xer(ctx), 0, 31 | 1<<8);
 
     const int eq_shifted = rtl_alloc_register(unit, RTLTYPE_INT32);
     rtl_add_insn(unit, RTLOP_SLLI, eq_shifted, eq, 0, 1);
@@ -316,7 +321,7 @@ static void update_cr0(GuestPPCContext *ctx, int result)
 
 /**
  * translate_arith_imm:  Translate an integer register-immediate arithmetic
- * instruction.  For addi, rA is assumed to be nonzero.
+ * instruction.  For addi and addis, rA is assumed to be nonzero.
  *
  * [Parameters]
  *     ctx: Translation context.
@@ -326,7 +331,7 @@ static void update_cr0(GuestPPCContext *ctx, int result)
  *     set_ca: True if XER[CA] should be set according to the result.
  *     set_cr0: True if CR0 should be set according to the result.
  */
-static void translate_arith_imm(
+static inline void translate_arith_imm(
     GuestPPCContext *ctx, uint32_t insn, RTLOpcode rtlop, bool shift_imm,
     bool set_ca, bool set_cr0)
 {
@@ -422,6 +427,80 @@ static void translate_branch_terminal(
 
     if (skip_label) {
         rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, skip_label);
+    }
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
+ * translate_compare_imm:  Translate an integer register-immediate comapre
+ * instruction.
+ *
+ * [Parameters]
+ *     ctx: Translation context.
+ *     insn: Instruction word.
+ *     is_signed: True for a signed compare, false for an unsigned compare.
+ */
+static inline void translate_compare_imm(
+    GuestPPCContext *ctx, uint32_t insn, bool is_signed)
+{
+    RTLUnit * const unit = ctx->unit;
+
+    const int rA = get_gpr(ctx, get_rA(insn));
+    const int32_t imm = is_signed ? get_SIMM(insn) : (int32_t)get_UIMM(insn);
+
+    const int lt = rtl_alloc_register(unit, RTLTYPE_INT32);
+    rtl_add_insn(unit, is_signed ? RTLOP_SLTSI : RTLOP_SLTUI, lt, rA, 0, imm);
+    const int gt = rtl_alloc_register(unit, RTLTYPE_INT32);
+    rtl_add_insn(unit, is_signed ? RTLOP_SGTSI : RTLOP_SGTUI, gt, rA, 0, imm);
+    const int eq = rtl_alloc_register(unit, RTLTYPE_INT32);
+    rtl_add_insn(unit, RTLOP_SEQI, eq, rA, 0, imm);
+    const int so = rtl_alloc_register(unit, RTLTYPE_INT32);
+    rtl_add_insn(unit, RTLOP_BFEXT, so, get_xer(ctx), 0, 31 | 1<<8);
+
+    const int eq_shifted = rtl_alloc_register(unit, RTLTYPE_INT32);
+    rtl_add_insn(unit, RTLOP_SLLI, eq_shifted, eq, 0, 1);
+    const int crN_2 = rtl_alloc_register(unit, RTLTYPE_INT32);
+    rtl_add_insn(unit, RTLOP_OR, crN_2, so, eq_shifted, 0);
+    const int gt_shifted = rtl_alloc_register(unit, RTLTYPE_INT32);
+    rtl_add_insn(unit, RTLOP_SLLI, gt_shifted, gt, 0, 2);
+    const int crN_3 = rtl_alloc_register(unit, RTLTYPE_INT32);
+    rtl_add_insn(unit, RTLOP_OR, crN_3, crN_2, gt_shifted, 0);
+    const int lt_shifted = rtl_alloc_register(unit, RTLTYPE_INT32);
+    rtl_add_insn(unit, RTLOP_SLLI, lt_shifted, lt, 0, 3);
+    const int crN = rtl_alloc_register(unit, RTLTYPE_INT32);
+    rtl_add_insn(unit, RTLOP_OR, crN, crN_3, lt_shifted, 0);
+
+    set_cr(ctx, get_crfD(insn), crN);
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
+ * translate_logic_imm:  Translate an integer register-immediate logic
+ * instruction.
+ *
+ * [Parameters]
+ *     ctx: Translation context.
+ *     insn: Instruction word.
+ *     rtlop: RTL register-immediate instruction to perform the operation.
+ *     shift_imm: True if the immediate value should be shifted left 16 bits.
+ *     set_cr0: True if CR0 should be set according to the result.
+ */
+static inline void translate_logic_imm(
+    GuestPPCContext *ctx, uint32_t insn, RTLOpcode rtlop, bool shift_imm,
+    bool set_cr0)
+{
+    RTLUnit * const unit = ctx->unit;
+
+    const int rS = get_gpr(ctx, get_rS(insn));
+    const uint32_t imm = shift_imm ? get_UIMM(insn)<<16 : get_UIMM(insn);
+    const int result = rtl_alloc_register(unit, RTLTYPE_INT32);
+    rtl_add_insn(unit, rtlop, result, rS, 0, (int32_t)imm);
+    set_gpr(ctx, get_rA(insn), result);
+
+    if (set_cr0) {
+        update_cr0(ctx, result);
     }
 }
 
@@ -691,6 +770,14 @@ static inline void translate_insn(
         return;
       }  // case OPCD_SUBFIC
 
+      case OPCD_CMPLI:
+        translate_compare_imm(ctx, insn, false);
+        return;
+
+      case OPCD_CMPI:
+        translate_compare_imm(ctx, insn, true);
+        return;
+
       case OPCD_ADDIC:
         translate_arith_imm(ctx, insn, RTLOP_ADDI, false, true, false);
         return;
@@ -700,7 +787,7 @@ static inline void translate_insn(
         return;
 
       case OPCD_ADDI:
-        if (get_rA(insn) == 0) {
+        if (get_rA(insn) == 0) {  // li
             const int result = rtl_alloc_register(unit, RTLTYPE_INT32);
             rtl_add_insn(unit, RTLOP_LOAD_IMM,
                          result, 0, 0, (uint32_t)get_SIMM(insn));
@@ -711,7 +798,14 @@ static inline void translate_insn(
         return;
 
       case OPCD_ADDIS:
-        translate_arith_imm(ctx, insn, RTLOP_ADDI, true, false, false);
+        if (get_rA(insn) == 0) {  // lis
+            const int result = rtl_alloc_register(unit, RTLTYPE_INT32);
+            rtl_add_insn(unit, RTLOP_LOAD_IMM,
+                         result, 0, 0, (uint32_t)get_SIMM(insn) << 16);
+            set_gpr(ctx, get_rD(insn), result);
+        } else {
+            translate_arith_imm(ctx, insn, RTLOP_ADDI, true, false, false);
+        }
         return;
 
       case OPCD_SC: {
@@ -762,7 +856,27 @@ static inline void translate_insn(
         if (insn == 0x60000000) {  // nop
             return;
         }
-        // FIXME: not yet implemented
+        translate_logic_imm(ctx, insn, RTLOP_ORI, false, false);
+        return;
+
+      case OPCD_ORIS:
+        translate_logic_imm(ctx, insn, RTLOP_ORI, true, false);
+        return;
+
+      case OPCD_XORI:
+        translate_logic_imm(ctx, insn, RTLOP_XORI, false, false);
+        return;
+
+      case OPCD_XORIS:
+        translate_logic_imm(ctx, insn, RTLOP_XORI, true, false);
+        return;
+
+      case OPCD_ANDI_:
+        translate_logic_imm(ctx, insn, RTLOP_ANDI, false, true);
+        return;
+
+      case OPCD_ANDIS_:
+        translate_logic_imm(ctx, insn, RTLOP_ANDI, true, true);
         return;
 
       case OPCD_x1F:

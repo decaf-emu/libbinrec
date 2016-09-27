@@ -686,8 +686,8 @@ static void rtl_decode_insn(const RTLUnit *unit, uint32_t index,
       case RTLOP_SLTSI:
       case RTLOP_SGTUI:
       case RTLOP_SGTSI:
-        s += snprintf_assert(s, top - s, "%-10s r%d, r%d, %d\n",
-                             name, dest, src1, (int32_t)insn->src_imm);
+        s += snprintf_assert(s, top - s, "%-10s r%d, r%d, %"PRId64"\n",
+                             name, dest, src1, insn->src_imm);
         APPEND_REG_DESC(src1);
         return;
 
