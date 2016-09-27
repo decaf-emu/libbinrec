@@ -454,6 +454,9 @@ static void update_used_changed(GuestPPCBlockInfo *block, const uint32_t insn)
                     mark_ctr_changed(block);
                 }
             }
+            if (!(get_BO(insn) & 0x10)) {
+                mark_cr_used(block, get_BI(insn) >> 2);
+            }
             if (get_LK(insn)) {
                 mark_lr_changed(block);
             }
@@ -898,8 +901,9 @@ bool guest_ppc_scan(GuestPPCContext *ctx, uint32_t limit)
 
     GuestPPCBlockInfo *block = NULL;
 
-    for (uint32_t i = 0; i < max_insns; i++) {
-        const uint32_t address = start + i*4;
+    uint32_t insn_count;
+    for (insn_count = 0; insn_count < max_insns; insn_count++) {
+        const uint32_t address = start + insn_count*4;
         const uint32_t insn = bswap_be32(memory_base[address/4]);
         const bool is_invalid = !is_valid_insn(insn);
 
@@ -979,9 +983,12 @@ bool guest_ppc_scan(GuestPPCContext *ctx, uint32_t limit)
             }
         }
     }
-
-    if (block) {
-        block->len = (aligned_limit + 4) - block->start;
+    if (insn_count < max_insns) {
+        ASSERT(!block);
+    } else {
+        if (block) {
+            block->len = (aligned_limit + 4) - block->start;
+        }
         if (aligned_limit + 3 >= limit) {
             log_info(ctx->handle, "Scanning terminated at requested limit"
                      " 0x%X", limit);
