@@ -89,16 +89,17 @@ include deliberately invalid instruction encodings, such as to take
 advantage of undocumented behavior of a specific architecture
 implementation.
 
-libbinrec is intended as a pure translator rather than a full-fledged
-architecture emulator, and consequently it does not support translation
-of privileged instructions in the input program.  Non-privileged
-instructions which explicitly transfer control to a privileged handler,
-such as the PowerPC sc (system call) instruction, are translated by
-inserting a call to a handler function supplied by the library user.
-Similarly, libbinrec has no facility for handling memory-mapped I/O; if
-such support is needed, the client program should mark relevant regions
-of the guest memory space as unmapped on the host system and use
-unmapped-access host exceptions to detect and handle such accesses.
+libbinrec is intended as a pure program translator rather than a
+full-fledged architecture emulator, and consequently it does not support
+translation of privileged instructions in the input program.
+Non-privileged instructions which explicitly transfer control to a
+privileged handler, such as the PowerPC sc (system call) instruction,
+are translated by inserting a call to a handler function supplied by the
+library user. Similarly, libbinrec has no facility for handling
+memory-mapped I/O; if such support is needed, the client program should
+ relevant regions of the guest memory space as unmapped on the host
+system and use unmapped-access host exceptions to detect and handle such
+accesses.
 
 
 Reporting bugs
