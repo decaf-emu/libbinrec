@@ -661,7 +661,8 @@ static inline void translate_insn(
     switch (get_OPCD(insn)) {
       case OPCD_TWI: {
         const int imm = rtl_alloc_register(unit, RTLTYPE_INT32);
-        rtl_add_insn(unit, RTLOP_LOAD_IMM, imm, 0, 0, get_SIMM(insn));
+        rtl_add_insn(unit, RTLOP_LOAD_IMM, imm, 0, 0,
+                     (uint32_t)get_SIMM(insn));
         translate_trap(ctx, block, address, insn, imm);
         return;
       }  // case OPCD_TWI
