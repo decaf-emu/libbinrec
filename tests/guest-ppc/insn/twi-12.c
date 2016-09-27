@@ -29,7 +29,7 @@ static const char expected[] =
     "    9: SET_ALIAS  a1, r7\n"
     "   10: LOAD       r8, 968(r1)\n"
     "   11: CALL_ADDR  @r8, r1\n"
-    "   12: RETURN\n"
+    "   12: GOTO       L2\n"
     "   13: LABEL      L3\n"
     "   14: LOAD_IMM   r9, 4\n"
     "   15: SET_ALIAS  a1, r9\n"
@@ -41,9 +41,9 @@ static const char expected[] =
     "\n"
     "Block 0: <none> --> [0,0] --> 1\n"
     "Block 1: 0 --> [1,7] --> 2,3\n"
-    "Block 2: 1 --> [8,12] --> <none>\n"
+    "Block 2: 1 --> [8,12] --> 4\n"
     "Block 3: 1 --> [13,15] --> 4\n"
-    "Block 4: 3 --> [16,17] --> <none>\n"
+    "Block 4: 3,2 --> [16,17] --> <none>\n"
     ;
 
 #include "tests/rtl-disasm-test.i"
