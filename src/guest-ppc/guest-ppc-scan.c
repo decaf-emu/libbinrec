@@ -155,7 +155,6 @@ static void update_used_changed(GuestPPCBlockInfo *block, const uint32_t insn)
 {
     switch (get_OPCD(insn)) {
       case OPCD_SC:
-      case OPCD_B:
         /* No registers touched. */
         break;
 
@@ -170,6 +169,11 @@ static void update_used_changed(GuestPPCBlockInfo *block, const uint32_t insn)
         }
         if (!(get_BO(insn) & 0x10)) {
             mark_cr_used(block, get_BI(insn) >> 2);
+        }
+        /* fall through */
+      case OPCD_B:
+        if (get_LK(insn)) {
+            mark_lr_changed(block);
         }
         break;
 
@@ -453,9 +457,10 @@ static void update_used_changed(GuestPPCBlockInfo *block, const uint32_t insn)
             break;
 
           case 0x10:  // bclr/bcctr
-            if (get_XO_10(insn) & 0x200) {
+            if (get_XO_10(insn) & 0x200) {  // bcctr
                 mark_ctr_used(block);
-            } else {
+                // FIXME: try to detect jump tables
+            } else {  // bclr
                 mark_lr_used(block);
                 if (!(get_BO(insn) & 0x04)) {
                     mark_ctr_used(block);
@@ -946,7 +951,7 @@ bool guest_ppc_scan(GuestPPCContext *ctx, uint32_t limit)
          * Also terminate the entire unit if this looks like the end of a
          * function. */
         const PPCOpcode opcd = get_OPCD(insn);
-        const bool is_direct_branch = ((opcd & ~0x02) == OPCD_B);
+        const bool is_direct_branch = ((opcd & ~0x02) == OPCD_BC);
         const bool is_indirect_branch =
             (opcd == OPCD_x13 && (get_XO_10(insn) == XO_BCLR
                                   || get_XO_10(insn) == XO_BCCTR));
@@ -976,14 +981,23 @@ bool guest_ppc_scan(GuestPPCContext *ctx, uint32_t limit)
                 }
             }
 
-            /* Functions typically end with an unconditional branch of some
+            /*
+             * Functions typically end with an unconditional branch of some
              * sort, most often BLR but possibly a branch to the entry
              * point of some other function (a tail call).  However, a
              * function might have several copies of its epilogue as a
              * result of optimization, so we only treat an unconditional
              * branch (or invalid instruction) as end-of-unit if there are
-             * no branch targets we haven't yet reached. */
-            if (is_invalid || (get_BO(insn) & 0x14) == 0x14) {
+             * no branch targets we haven't yet reached.
+             *
+             * Note that we don't check LK here because we currently return
+             * from translated code on a subroutine branch.  If we add
+             * support for translating LK=1 branches to native calls, those
+             * should not be treated as terminal here.
+             */
+            const int is_unconditional_branch =
+                (opcd == OPCD_B || (get_BO(insn) & 0x14) == 0x14);
+            if (is_invalid || is_unconditional_branch) {
                 ASSERT(ctx->num_blocks > 0);
                 if (ctx->blocks[ctx->num_blocks-1].start <= address) {
                     break;  // Reached the end of the function.

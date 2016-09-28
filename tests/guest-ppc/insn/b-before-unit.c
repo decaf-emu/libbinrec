@@ -7,31 +7,35 @@
  * NO WARRANTY is provided with this software.
  */
 
-/*
- * This source file implements a test which passes an instruction sequence
- * to an input translator and compares the disassembly of the resulting RTL
- * unit to an expected output string.  It is intended to be #included into
- * a source file which defines the parameters of the test.
- *
- * The test source file should define the following variables before
- * including this file:
- *
- * - static const binrec_setup_t setup
- *      Define this to a setup structure which will be passed to
- *      binrec_create_handle().
- *
- * - static const uint8_t input[]
- *      Define this to an array containing the machine code to translate.
- *
- * - static const bool expected_success
- *      Define this to the expected return value from the translation
- *      function.
- *
- * - static const char expected[]
- *      Define this to a string containing the expected log messages (if
- *      any) followed by the expected RTL disassembly (if disassembly was
- *      successful).
- */
+#include "tests/guest-ppc/insn/common.h"
+
+static const uint8_t input[] = {
+    0x60,0x00,0x00,0x00,  // nop
+    0x4B,0xFF,0xF0,0x00,  // b 0x4
+};
+
+static const bool expected_success = true;
+
+static const char expected[] =
+    "    0: LOAD_ARG   r1, 0\n"
+    "    1: LABEL      L1\n"
+    "    2: LOAD_IMM   r2, 4\n"
+    "    3: SET_ALIAS  a1, r2\n"
+    "    4: GOTO       L2\n"
+    "    5: LOAD_IMM   r3, 4104\n"
+    "    6: SET_ALIAS  a1, r3\n"
+    "    7: LABEL      L2\n"
+    "    8: RETURN\n"
+    "\n"
+    "Alias 1: int32 @ 956(r1)\n"
+    "\n"
+    "Block 0: <none> --> [0,0] --> 1\n"
+    "Block 1: 0 --> [1,4] --> 3\n"
+    "Block 2: <none> --> [5,6] --> 3\n"
+    "Block 3: 2,1 --> [7,8] --> <none>\n"
+    ;
+
+/* Tweaked version of tests/rtl-disasm-test.i to start at a nonzero address. */
 
 #include "src/common.h"
 #include "src/guest-ppc.h"
@@ -42,9 +46,11 @@
 
 int main(void)
 {
+    const uint32_t start = 0x1000;
+
     void *aligned_input;
-    ASSERT(aligned_input = malloc(sizeof(input)));
-    memcpy(aligned_input, input, sizeof(input));
+    ASSERT(aligned_input = malloc(start + sizeof(input)));
+    memcpy((uint8_t *)aligned_input + start, input, sizeof(input));
 
     binrec_setup_t final_setup = setup;
     final_setup.memory_base = aligned_input;
@@ -52,19 +58,19 @@ int main(void)
     binrec_t *handle;
     EXPECT(handle = binrec_create_handle(&final_setup));
 
-    binrec_set_code_range(handle, 0, sizeof(input) - 1);
+    binrec_set_code_range(handle, start, start + sizeof(input) - 1);
 
     RTLUnit *unit;
     EXPECT(unit = rtl_create_unit(handle));
 
-    if (guest_ppc_translate(handle, 0, sizeof(input) - 1,
+    if (guest_ppc_translate(handle, start, start + sizeof(input) - 1,
                             unit) != expected_success) {
         const char *log_messages = get_log_messages();
         if (log_messages) {
             fputs(log_messages, stderr);
         }
-        FAIL("guest_ppc_translate(handle, 0, 0x%X, unit) did not %s as"
-             " expected", (int)sizeof(input) - 1,
+        FAIL("guest_ppc_translate(handle, 0x%X, 0x%X, unit) did not %s as"
+             " expected", start, start + (int)sizeof(input) - 1,
              expected_success ? "succeed" : "fail");
     }
 

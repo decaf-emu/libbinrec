@@ -452,7 +452,7 @@ static inline bool is_valid_insn(uint32_t insn)
             case 0x01: return TEST_BIT(0x000063D3, get_XO_10(insn) >> 5);
             case 0x10: return get_XO_10(insn) == XO_BCLR
                            || (get_XO_10(insn) == XO_BCCTR
-                               && !(get_BO(insn) & 0x04));
+                               && (get_BO(insn) & 0x04));
             case 0x12: return get_XO_10(insn) == XO_RFI;
             case 0x16: return get_XO_10(insn) == XO_ISYNC;
             default:   return false;

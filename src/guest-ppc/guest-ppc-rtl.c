@@ -361,6 +361,67 @@ static inline void translate_arith_imm(
 /*-----------------------------------------------------------------------*/
 
 /**
+ * translate_branch_label:  Translate a branch to another block within the
+ * current unit.
+ *
+ * [Parameters]
+ *     ctx: Translation context.
+ *     block: Basic block being translated.
+ *     address: Address of instruction being translated.
+ *     BO: BO field of instruction word (0x14 for an unconditional branch).
+ *     BI: BI field of instruction word (ignored if an unconditional branch).
+ *     target_label: RTL label for the target block.
+ */
+static void translate_branch_label(
+    GuestPPCContext *ctx, GuestPPCBlockInfo *block, uint32_t address,
+    int BO, int BI, int target_label)
+{
+    RTLUnit * const unit = ctx->unit;
+
+    int skip_label;
+    if ((BO & 0x14) == 0) {
+        /* Need an extra label in case the first half of the test fails. */
+        skip_label = rtl_alloc_label(unit);
+    } else {
+        skip_label = 0;
+    }
+
+    RTLOpcode branch_op = RTLOP_GOTO;
+    int test_reg = 0;
+
+    if (!(BO & 0x04)) {
+        const int ctr = get_ctr(ctx);
+        const int new_ctr = rtl_alloc_register(unit, RTLTYPE_INT32);
+        rtl_add_insn(unit, RTLOP_ADDI, new_ctr, ctr, 0, -1);
+        set_ctr(ctx, new_ctr);
+        if (skip_label) {
+            rtl_add_insn(unit, BO & 0x02 ? RTLOP_GOTO_IF_NZ : RTLOP_GOTO_IF_Z,
+                         0, new_ctr, 0, skip_label);
+        } else {
+            branch_op = BO & 0x02 ? RTLOP_GOTO_IF_Z : RTLOP_GOTO_IF_NZ;
+            test_reg = new_ctr;
+        }
+    }
+
+    if (!(BO & 0x10)) {
+        const int crN = get_cr(ctx, BI >> 2);
+        const int test = rtl_alloc_register(unit, RTLTYPE_INT32);
+        rtl_add_insn(unit, RTLOP_ANDI, test, crN, 0, 1 << (3 - (BI & 3)));
+        branch_op = BO & 0x08 ? RTLOP_GOTO_IF_NZ : RTLOP_GOTO_IF_Z;
+        test_reg = test;
+    }
+
+    store_live_regs(ctx, block);
+    rtl_add_insn(unit, branch_op, 0, test_reg, 0, target_label);
+
+    if (skip_label) {
+        rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, skip_label);
+    }
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
  * translate_branch_terminal:  Translate a branch which terminates
  * execution of the current unit.
  *
@@ -368,14 +429,16 @@ static inline void translate_arith_imm(
  *     ctx: Translation context.
  *     block: Basic block being translated.
  *     address: Address of instruction being translated.
- *     insn: Instruction word (assumed to be bc, bclr, or bcctr)
+ *     BO: BO field of instruction word (0x14 for an unconditional branch).
+ *     BI: BI field of instruction word (ignored if an unconditional branch).
+ *     LK: LK bit of instruction word.
  *     target: RTL register containing the branch target address.
  *     clear_low_bits: True to clear the low 2 bits of the target address
  *         (as for BCLR/BCCTR), false if the low bits are known to be 0b00.
  */
 static void translate_branch_terminal(
     GuestPPCContext *ctx, GuestPPCBlockInfo *block, uint32_t address,
-    uint32_t insn, int target, bool clear_low_bits)
+    int BO, int BI, int LK, int target, bool clear_low_bits)
 {
     RTLUnit * const unit = ctx->unit;
 
@@ -384,8 +447,6 @@ static void translate_branch_terminal(
         rtl_add_insn(unit, RTLOP_ANDI, new_target, target, 0, -4);
         target = new_target;
     }
-
-    const int BO = get_BO(insn);
 
     int skip_label;
     if ((BO & 0x14) == 0x14) {
@@ -404,7 +465,6 @@ static void translate_branch_terminal(
     }
 
     if (!(BO & 0x10)) {
-        const int BI = get_BI(insn);
         const int crN = get_cr(ctx, BI >> 2);
         const int test = rtl_alloc_register(unit, RTLTYPE_INT32);
         rtl_add_insn(unit, RTLOP_ANDI, test, crN, 0, 1 << (3 - (BI & 3)));
@@ -415,7 +475,7 @@ static void translate_branch_terminal(
     /* Save the current value of LR before (possibly) modifying it so we
      * don't leak the modified LR to the not-taken code path. */
     int current_lr = ctx->live.lr;
-    if (get_LK(insn)) {
+    if (LK) {
         const int new_lr = rtl_alloc_register(unit, RTLTYPE_INT32);
         rtl_add_insn(unit, RTLOP_LOAD_IMM, new_lr, 0, 0, address + 4);
         set_lr(ctx, new_lr);
@@ -427,6 +487,77 @@ static void translate_branch_terminal(
 
     if (skip_label) {
         rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, skip_label);
+    }
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
+ * translate_branch:  Translate an immediate-displacement branch instruction.
+ *
+ * [Parameters]
+ *     ctx: Translation context.
+ *     block: Basic block being translated.
+ *     address: Address of instruction being translated.
+ *     BO: BO field of instruction word (0x14 for an unconditional branch).
+ *     BI: BI field of instruction word (ignored if an unconditional branch).
+ *     disp: Displacement field of instruction word.
+ *     AA: AA bit of instruction word.
+ *     LK: LK bit of instruction word.
+ */
+static inline void translate_branch(
+    GuestPPCContext *ctx, GuestPPCBlockInfo *block, uint32_t address,
+    int BO, int BI, int32_t disp, int AA, int LK)
+{
+    ASSERT((address & 3) == 0);
+    ASSERT((disp & 3) == 0);
+
+    RTLUnit * const unit = ctx->unit;
+
+    uint32_t target;
+    if (AA) {
+        target = (uint32_t)disp;
+    } else {
+        target = address + disp;
+    }
+
+    int target_label = 0;
+    if (!LK) {
+        ASSERT(ctx->num_blocks > 0);
+        const uint32_t unit_start = ctx->blocks[0].start;
+        const uint32_t unit_end = (ctx->blocks[ctx->num_blocks-1].start
+                                   + ctx->blocks[ctx->num_blocks-1].len - 1);
+        if (target >= unit_start && target <= unit_end) {
+            int lo = 0, hi = ctx->num_blocks - 1;
+            /* We break blocks at all branch targets, so this search should
+             * always terminate at a match. */
+            while (!target_label) {
+                ASSERT(lo <= hi);
+                const int mid = (lo + hi + 1) / 2;
+                const GuestPPCBlockInfo *mid_block = &ctx->blocks[mid];
+                const uint32_t mid_start = mid_block->start;
+                if (target == mid_start) {
+                    target_label = mid_block->label;
+                } else if (target < mid_start) {
+                    hi = mid - 1;
+                } else {
+                    /* The target should never be in the middle of a block,
+                     * since we split blocks at branch targets during
+                     * scanning. */
+                    ASSERT(target > mid_start + mid_block->len - 1);
+                    lo = mid + 1;
+                }
+            }
+        }
+    }
+
+    if (target_label) {
+        translate_branch_label(ctx, block, address, BO, BI, target_label);
+    } else {
+        const int target_reg = rtl_alloc_register(unit, RTLTYPE_INT32);
+        rtl_add_insn(unit, RTLOP_LOAD_IMM, target_reg, 0, 0, target);
+        translate_branch_terminal(ctx, block, address, BO, BI, LK,
+                                  target_reg, false);
     }
 }
 
@@ -808,6 +939,11 @@ static inline void translate_insn(
         }
         return;
 
+      case OPCD_BC:
+        translate_branch(ctx, block, address, get_BO(insn), get_BI(insn),
+                         get_BD(insn), get_AA(insn), get_LK(insn));
+        return;
+
       case OPCD_SC: {
         /* Special case: translate sc followed by blr in a single step, to
          * avoid having to return to caller and call a new unit containing
@@ -836,15 +972,27 @@ static inline void translate_insn(
         return;
       }  // case OPCD_SC
 
+      case OPCD_B:
+        translate_branch(ctx, block, address, 0x14, 0, get_LI(insn),
+                         get_AA(insn), get_LK(insn));
+        return;
+
       case OPCD_x13:
         switch ((PPCExtendedOpcode13)get_XO_10(insn)) {
           case XO_BCLR:
-            translate_branch_terminal(ctx, block, address, insn,
+            translate_branch_terminal(ctx, block, address, get_BO(insn),
+                                      get_BI(insn), get_LK(insn),
                                       get_lr(ctx), true);
             return;
 
           case XO_RFI:  // rfi
             translate_unimplemented_insn(ctx, address, insn);
+            return;
+
+          case XO_BCCTR:
+            translate_branch_terminal(ctx, block, address, get_BO(insn),
+                                      get_BI(insn), get_LK(insn),
+                                      get_ctr(ctx), true);
             return;
 
           default:
