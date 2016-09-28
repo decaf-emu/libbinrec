@@ -505,7 +505,8 @@ static void update_used_changed(GuestPPCBlockInfo *block, const uint32_t insn)
           case 0x08:  // sub*
           case 0x0A:  // add*
             mark_gpr_used(block, get_rA(insn));
-            if ((get_XO_10(insn) & 0x3C0) != 0x0C0) {  // sub/addze, sub/addme
+            if ((get_XO_10(insn) & 0x1C0) != 0x0C0  // sub/addze, sub/addme
+             && (get_XO_10(insn) & 0x1FF) != XO_NEG) {
                 mark_gpr_used(block, get_rB(insn));
             }
             mark_gpr_changed(block, get_rD(insn));
@@ -537,9 +538,11 @@ static void update_used_changed(GuestPPCBlockInfo *block, const uint32_t insn)
 
           case 0x10:  // mtcrf
             mark_gpr_used(block, get_rS(insn));
-            for (int i = 0; i < 8; i++) {
-                if (get_CRM(insn) & (1 << (7 - i))) {
-                    mark_cr_changed(block, i);
+            if (get_CRM(insn) != 0xFF) {  // Special handling, see -rtl.c
+                for (int i = 0; i < 8; i++) {
+                    if (get_CRM(insn) & (1 << (7 - i))) {
+                        mark_cr_changed(block, i);
+                    }
                 }
             }
             break;
@@ -558,9 +561,8 @@ static void update_used_changed(GuestPPCBlockInfo *block, const uint32_t insn)
                 mark_gpr_used(block, get_rS(insn));
             } else {
                 if (get_XO_10(insn) == XO_MFCR) {
-                    for (int i = 0; i < 8; i++) {
-                        mark_cr_used(block, i);
-                    }
+                    /* Leave CR used/changed bits alone; we translate MFCR
+                     * without needing aliases (see -rtl.c). */
                 } else if (get_XO_10(insn) == XO_MFSRIN) {
                     mark_gpr_used(block, get_rB(insn));
                 }

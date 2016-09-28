@@ -92,24 +92,38 @@ typedef enum PPCExtendedOpcode1F {
 
     XO_TW     = 0x004,
 
-    XO_SUBFC  = 0x008,  // 9 bits + OE
-    XO_SUBF   = 0x028,  // 9 bits + OE
-    XO_NEG    = 0x068,  // 9 bits + OE
-    XO_SUBFE  = 0x088,  // 9 bits + OE
-    XO_SUBFZE = 0x0C8,  // 9 bits + OE
-    XO_SUBFME = 0x0E8,  // 9 bits + OE
+    XO_SUBFC  = 0x008,
+    XO_SUBF   = 0x028,
+    XO_NEG    = 0x068,
+    XO_SUBFE  = 0x088,
+    XO_SUBFZE = 0x0C8,
+    XO_SUBFME = 0x0E8,
+    XO_SUBFCO = 0x208,
+    XO_SUBFO  = 0x228,
+    XO_NEGO   = 0x268,
+    XO_SUBFEO = 0x288,
+    XO_SUBFZEO = 0x2C8,
+    XO_SUBFMEO = 0x2E8,
 
-    XO_ADDC   = 0x00A,  // 9 bits + OE
-    XO_ADDE   = 0x08A,  // 9 bits + OE
-    XO_ADDZE  = 0x0CA,  // 9 bits + OE
-    XO_ADDME  = 0x0EA,  // 9 bits + OE
-    XO_ADD    = 0x10A,  // 9 bits + OE
+    XO_ADDC   = 0x00A,
+    XO_ADDE   = 0x08A,
+    XO_ADDZE  = 0x0CA,
+    XO_ADDME  = 0x0EA,
+    XO_ADD    = 0x10A,
+    XO_ADDCO  = 0x20A,
+    XO_ADDEO  = 0x28A,
+    XO_ADDZEO = 0x2CA,
+    XO_ADDMEO = 0x2EA,
+    XO_ADDO   = 0x30A,
 
     XO_MULHWU = 0x00B,
     XO_MULHW  = 0x04B,
-    XO_MULLW  = 0x0EB,  // 9 bits + OE
-    XO_DIVWU  = 0x1CB,  // 9 bits + OE
-    XO_DIVW   = 0x1EB,  // 9 bits + OE
+    XO_MULLW  = 0x0EB,
+    XO_DIVWU  = 0x1CB,
+    XO_DIVW   = 0x1EB,
+    XO_MULLWO = 0x2EB,
+    XO_DIVWUO = 0x3CB,
+    XO_DIVWO  = 0x3EB,
 
     XO_MTCRF  = 0x090,
 
@@ -184,7 +198,7 @@ typedef enum PPCExtendedOpcode1F {
     XO_EXTSH  = 0x39A,
     XO_EXTSB  = 0x3BA,
 
-    XO_ANDX   = 0x01C,
+    XO_AND    = 0x01C,
     XO_ANDC   = 0x03C,
     XO_NOR    = 0x07C,
     XO_EQV    = 0x11C,

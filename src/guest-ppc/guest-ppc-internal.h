@@ -14,6 +14,75 @@
 #include "src/rtl.h"
 
 /*************************************************************************/
+/************************ Register bit constants *************************/
+/*************************************************************************/
+
+#define XER_SO_SHIFT  31
+#define XER_OV_SHIFT  30
+#define XER_CA_SHIFT  29
+#define XER_SO  (1u << XER_SO_SHIFT)
+#define XER_OV  (1u << XER_OV_SHIFT)
+#define XER_CA  (1u << XER_CA_SHIFT)
+
+#define FPSCR_FX_SHIFT      31
+#define FPSCR_FEX_SHIFT     30
+#define FPSCR_VX_SHIFT      29
+#define FPSCR_OX_SHIFT      28
+#define FPSCR_UX_SHIFT      27
+#define FPSCR_ZX_SHIFT      26
+#define FPSCR_XX_SHIFT      25
+#define FPSCR_VXSNAN_SHIFT  24
+#define FPSCR_VXISI_SHIFT   23
+#define FPSCR_VXIDI_SHIFT   22
+#define FPSCR_VXZDZ_SHIFT   21
+#define FPSCR_VXIMZ_SHIFT   20
+#define FPSCR_VXVC_SHIFT    19
+#define FPSCR_FR_SHIFT      18
+#define FPSCR_FI_SHIFT      17
+#define FPSCR_FPRF_SHIFT    12
+#define FPSCR_VXSOFT_SHIFT  10
+#define FPSCR_VXSQRT_SHIFT   9
+#define FPSCR_VXCVI_SHIFT    8
+#define FPSCR_VE_SHIFT       7
+#define FPSCR_OE_SHIFT       6
+#define FPSCR_UE_SHIFT       5
+#define FPSCR_ZE_SHIFT       4
+#define FPSCR_XE_SHIFT       3
+#define FPSCR_NI_SHIFT       2
+#define FPSCR_RN_SHIFT       0
+#define FPSCR_FX      (1u << FPSCR_FX_SHIFT)
+#define FPSCR_FEX     (1u << FPSCR_FEX_SHIFT)
+#define FPSCR_VX      (1u << FPSCR_VX_SHIFT)
+#define FPSCR_OX      (1u << FPSCR_OX_SHIFT)
+#define FPSCR_UX      (1u << FPSCR_UX_SHIFT)
+#define FPSCR_ZX      (1u << FPSCR_ZX_SHIFT)
+#define FPSCR_XX      (1u << FPSCR_XX_SHIFT)
+#define FPSCR_VXSNAN  (1u << FPSCR_VXSNAN_SHIFT)
+#define FPSCR_VXISI   (1u << FPSCR_VXISI_SHIFT)
+#define FPSCR_VXIDI   (1u << FPSCR_VXIDI_SHIFT)
+#define FPSCR_VXZDZ   (1u << FPSCR_VXZDZ_SHIFT)
+#define FPSCR_VXIMZ   (1u << FPSCR_VXIMZ_SHIFT)
+#define FPSCR_VXVC    (1u << FPSCR_VXVC_SHIFT)
+#define FPSCR_FR      (1u << FPSCR_FR_SHIFT)
+#define FPSCR_FI      (1u << FPSCR_FI_SHIFT)
+#define FPSCR_FPRF    (31u << FPSCR_FPRF_SHIFT)
+#define FPSCR_VXSOFT  (1u << FPSCR_VXSOFT_SHIFT)
+#define FPSCR_VXSQRT  (1u << FPSCR_VXSQRT_SHIFT)
+#define FPSCR_VXCVI   (1u << FPSCR_VXCVI_SHIFT)
+#define FPSCR_VE      (1u << FPSCR_VE_SHIFT)
+#define FPSCR_OE      (1u << FPSCR_OE_SHIFT)
+#define FPSCR_UE      (1u << FPSCR_UE_SHIFT)
+#define FPSCR_ZE      (1u << FPSCR_ZE_SHIFT)
+#define FPSCR_XE      (1u << FPSCR_XE_SHIFT)
+#define FPSCR_NI      (1u << FPSCR_NI_SHIFT)
+#define FPSCR_RN      (3u << FPSCR_RN_SHIFT)
+
+#define FPSCR_RN_N    0  // Round to nearest.
+#define FPSCR_RN_Z    1  // Round toward zero.
+#define FPSCR_RN_P    2  // Round toward plus infinity.
+#define FPSCR_RN_M    3  // Round toward minus infinity.
+
+/*************************************************************************/
 /*********************** Internal data structures ************************/
 /*************************************************************************/
 
