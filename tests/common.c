@@ -92,7 +92,7 @@ void _diff_strings(FILE *f, const char *from, const char *to)
                 if (match_count > 3) {
                     /* Print the matching lines we skipped over at the
                      * previous tentative end of the hunk. */
-                    for (int i = match_count - 1; i >= 1; i--) {
+                    for (int i = match_count - 3; i >= 1; i--) {
                         ASSERT(from_bol[i-1][-1] == '\n');
                         const int line_len = from_bol[i-1] - from_bol[i] - 1;
                         fprintf(f, " %.*s\n", line_len, from_bol[i]);
