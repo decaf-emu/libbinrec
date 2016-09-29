@@ -1576,13 +1576,14 @@ static inline void translate_x1F(
         } else {
             addr32 = get_gpr(ctx, get_rB(insn));
         }
-        const int addr32_aligned = rtl_alloc_register(unit, RTLTYPE_ADDRESS);
+        const int addr32_aligned = rtl_alloc_register(unit, RTLTYPE_INT32);
         rtl_add_insn(unit, RTLOP_ANDI, addr32_aligned, addr32, 0, -32);
         const int addr_aligned = rtl_alloc_register(unit, RTLTYPE_ADDRESS);
         rtl_add_insn(unit, RTLOP_ZCAST, addr_aligned, addr32_aligned, 0, 0);
         const int host_address = rtl_alloc_register(unit, RTLTYPE_ADDRESS);
         rtl_add_insn(unit, RTLOP_ADD,
-                     host_address, ctx->membase_reg, address, 0);
+                     host_address, ctx->membase_reg, addr_aligned, 0);
+        // FIXME: use V2_DOUBLE when we have a way to create one
         const int zero = rtl_imm32(unit, 0);
         for (int i = 0; i < 32; i += 4) {
             rtl_add_insn(unit, RTLOP_STORE, 0, host_address, zero, i);
