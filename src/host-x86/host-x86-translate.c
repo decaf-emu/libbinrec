@@ -1596,7 +1596,7 @@ static bool translate_block(HostX86Context *ctx, int block_index)
             const bool is64 = (unit->regs[src1].type == RTLTYPE_ADDRESS);
 
             /* Set the x86 condition flags based on the condition register. */
-            append_test_reg(ctx, unit, insn_index, &code, insn->cond);
+            append_test_reg(ctx, unit, insn_index, &code, insn->src3);
 
             /* Put one of the source values in the destination register, if
              * necessary.  Note that MOV does not alter flags. */
@@ -2808,6 +2808,115 @@ static bool translate_block(HostX86Context *ctx, int block_index)
             }
             break;
           }  // case RTLOP_STORE_I16_BR
+
+          case RTLOP_ATOMIC_INC: {
+            const X86Register host_dest = ctx->regs[dest].host_reg;
+            const X86Register host_base =
+                reload_base_reg(&code, ctx, insn_index, src1,
+                                ctx->regs[dest].host_temp);
+            const bool is64 = (unit->regs[dest].type == RTLTYPE_ADDRESS);
+            append_insn_R(&code, false, X86OP_MOV_rAX_Iv, host_dest);
+            append_imm32(&code, 1);
+            append_insn_ModRM_mem(&code, is64, X86OP_XADD_Ev_Gv,
+                                  host_dest, host_base, 0);
+            break;
+          }  // case RTLOP_ATOMIC_INC
+
+          case RTLOP_CMPXCHG: {
+            const X86Register host_dest = ctx->regs[dest].host_reg;
+            ASSERT(host_dest != X86_AX);
+            X86Register host_src1 = ctx->regs[src1].host_reg;
+            X86Register host_src2 = ctx->regs[src2].host_reg;
+            X86Register host_src3 = ctx->regs[insn->src3].host_reg;
+            X86Register host_temp;
+            int temp_index = 0;
+            const bool is64 = (unit->regs[dest].type == RTLTYPE_ADDRESS);
+
+            /* If we have a temporary, we need to save RAX.  However, we
+             * want to save the allocated temporary (a GPR) for a CMPXCHG
+             * operand, so we save RAX to R15, or to XMM15 if R15 was
+             * allocated as the temporary. */
+            if (ctx->regs[dest].temp_allocated) {
+                if (ctx->regs[dest].host_temp == X86_R15) {
+                    append_insn_ModRM_reg(&code, true, X86OP_MOVD_V_E,
+                                          X86_XMM15, X86_AX);
+                } else {
+                    append_insn_ModRM_reg(&code, true, X86OP_MOV_Gv_Ev,
+                                          X86_R15, X86_AX);
+                }
+                host_temp = ctx->regs[dest].host_temp;
+            } else {
+                host_temp = X86_R15;
+            }
+
+            /* Reload src1 and src3, if needed. */
+            if (is_spilled(ctx, src1, insn_index)) {
+                append_load_gpr(&code, RTLTYPE_ADDRESS, host_temp,
+                                X86_SP, ctx->regs[src1].spill_offset);
+                host_src1 = host_temp;
+                host_temp = host_dest;
+                temp_index++;
+            }
+            if (is_spilled(ctx, insn->src3, insn_index)) {
+                if (host_temp == host_src2 && !is_spilled(ctx, src2, insn_index)) {
+                    /* We'd move src2 to rAX eventually, but do it now so
+                     * we don't overwrite it when reloading src3. */
+                    append_insn_ModRM_reg(&code, is64, X86OP_MOV_Gv_Ev,
+                                          X86_AX, host_src2);
+                    host_src2 = X86_AX;
+                }
+                append_load_gpr(&code, RTLTYPE_ADDRESS, host_temp,
+                                X86_SP, ctx->regs[insn->src3].spill_offset);
+                host_src3 = host_temp;
+                temp_index++;
+            }
+
+            /* Free up rAX for src2, if needed. */
+            if (host_src2 != X86_AX) {
+                if (host_src1 == X86_AX) {
+                    append_insn_ModRM_reg(&code, true, X86OP_XCHG_Ev_Gv,
+                                          host_src2, X86_AX);
+                    host_src1 = host_src2;
+                    host_src2 = X86_AX;
+                    if (host_src3 == X86_AX) {
+                        host_src3 = host_src2;
+                    }
+                } else if (host_src3 == X86_AX) {
+                    append_insn_ModRM_reg(&code, is64, X86OP_XCHG_Ev_Gv,
+                                          host_src2, X86_AX);
+                    host_src3 = host_src2;
+                    host_src2 = X86_AX;
+                }
+            }
+
+            /* Load src2 (the compare value) into rAX. */
+            append_move_or_load_gpr(&code, ctx, unit, insn_index,
+                                    X86_AX, src2);
+
+            /* Do the actual compare-and-swap. */
+            append_opcode(&code, X86OP_LOCK);
+            append_insn_ModRM_mem(&code, is64, X86OP_CMPXCHG_Ev_Gv,
+                                  host_src3, host_src1, 0);
+
+            /* Move the result to the destination.  The instruction
+             * description says that the value of the compare target is
+             * only written to the result register (rAX) if the compare
+             * fails, but if the compare succeeds, rAX already has the
+             * correct value, so we can use it unconditionally. */
+            append_insn_ModRM_reg(&code, true, X86OP_MOV_Gv_Ev,
+                                  host_dest, X86_AX);
+
+            /* Restore RAX if necessary. */
+            if (ctx->regs[dest].temp_allocated) {
+                if (ctx->regs[dest].host_temp == X86_R15) {
+                    append_insn_ModRM_reg(&code, true, X86OP_MOVD_E_V,
+                                          X86_XMM15, X86_AX);
+                } else {
+                    append_insn_ModRM_reg(&code, true, X86OP_MOV_Gv_Ev,
+                                          X86_AX, X86_R15);
+                }
+            }
+          }  // case RTLOP_SELECT
 
           case RTLOP_LABEL:
             ASSERT(insn->label > 0);

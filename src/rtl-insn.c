@@ -256,22 +256,22 @@ static bool make_select(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
     insn->dest = dest;
     insn->src1 = src1;
     insn->src2 = src2;
-    insn->cond = (uint16_t)other;
+    insn->src3 = (uint16_t)other;
 
     RTLRegister * const destreg = &unit->regs[dest];
     RTLRegister * const src1reg = &unit->regs[src1];
     RTLRegister * const src2reg = &unit->regs[src2];
-    RTLRegister * const condreg = &unit->regs[other];
+    RTLRegister * const src3reg = &unit->regs[other];
     const int insn_index = unit->num_insns;
     destreg->source = RTLREG_RESULT;
     destreg->result.opcode = insn->opcode;
     destreg->result.src1 = src1;
     destreg->result.src2 = src2;
-    destreg->result.cond = (uint16_t)other;
+    destreg->result.src3 = (uint16_t)other;
     mark_live(unit, insn_index, destreg, dest);
     mark_live(unit, insn_index, src1reg, src1);
     mark_live(unit, insn_index, src2reg, src2);
-    mark_live(unit, insn_index, condreg, other);
+    mark_live(unit, insn_index, src3reg, other);
 
     return true;
 }
@@ -728,7 +728,6 @@ static bool make_load(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
     destreg->memory.addr_reg = src1;
     destreg->memory.offset = (int16_t)other;
     destreg->memory.byterev = (insn->opcode == RTLOP_LOAD_BR);
-    destreg->memory.size = 0;
     mark_live(unit, insn_index, destreg, dest);
     mark_live(unit, insn_index, src1reg, src1);
 
@@ -864,6 +863,99 @@ static bool make_store_narrow(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
     const int insn_index = unit->num_insns;
     mark_live(unit, insn_index, destreg, dest);
     mark_live(unit, insn_index, src1reg, src1);
+
+    return true;
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
+ * make_atomic_inc:  Encode an ATOMIC_INC instruction.
+ */
+static bool make_atomic_inc(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
+                            int src2, uint64_t other)
+{
+    ASSERT(unit != NULL);
+    ASSERT(unit->regs != NULL);
+    ASSERT(insn != NULL);
+    ASSERT(dest >= 0 && dest < unit->next_reg);
+    ASSERT(src1 >= 0 && src1 < unit->next_reg);
+
+#ifdef ENABLE_OPERAND_SANITY_CHECKS
+    OPERAND_ASSERT(dest != 0);
+    OPERAND_ASSERT(src1 != 0);
+    OPERAND_ASSERT(unit->regs[dest].source == RTLREG_UNDEFINED);
+    OPERAND_ASSERT(unit->regs[src1].source != RTLREG_UNDEFINED);
+    OPERAND_ASSERT(rtl_register_is_int(&unit->regs[dest]));
+    OPERAND_ASSERT(unit->regs[src1].type == RTLTYPE_ADDRESS);
+#endif
+
+    insn->dest = dest;
+    insn->src1 = src1;
+    insn->offset = (int16_t)other;
+
+    RTLRegister * const destreg = &unit->regs[dest];
+    RTLRegister * const src1reg = &unit->regs[src1];
+    const int insn_index = unit->num_insns;
+    destreg->source = RTLREG_RESULT;
+    destreg->result.opcode = insn->opcode;
+    destreg->result.src1 = src1;
+    mark_live(unit, insn_index, destreg, dest);
+    mark_live(unit, insn_index, src1reg, src1);
+
+    return true;
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
+ * make_cmpxchg:  Encode a CMPXCHG instruction.
+ */
+static bool make_cmpxchg(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
+                         int src2, uint64_t other)
+{
+    ASSERT(unit != NULL);
+    ASSERT(unit->regs != NULL);
+    ASSERT(insn != NULL);
+    ASSERT(dest >= 0 && dest < unit->next_reg);
+    ASSERT(src1 >= 0 && src1 < unit->next_reg);
+    ASSERT(src2 >= 0 && src2 < unit->next_reg);
+    ASSERT(other < unit->next_reg);
+
+#ifdef ENABLE_OPERAND_SANITY_CHECKS
+    OPERAND_ASSERT(dest != 0);
+    OPERAND_ASSERT(src1 != 0);
+    OPERAND_ASSERT(src2 != 0);
+    OPERAND_ASSERT(other != 0);
+    OPERAND_ASSERT(unit->regs[dest].source == RTLREG_UNDEFINED);
+    OPERAND_ASSERT(unit->regs[src1].source != RTLREG_UNDEFINED);
+    OPERAND_ASSERT(unit->regs[src2].source != RTLREG_UNDEFINED);
+    OPERAND_ASSERT(unit->regs[other].source != RTLREG_UNDEFINED);
+    OPERAND_ASSERT(rtl_register_is_int(&unit->regs[dest]));
+    OPERAND_ASSERT(unit->regs[src1].type == RTLTYPE_ADDRESS);
+    OPERAND_ASSERT(unit->regs[src2].type == unit->regs[dest].type);
+    OPERAND_ASSERT(unit->regs[other].type == unit->regs[dest].type);
+#endif
+
+    insn->dest = dest;
+    insn->src1 = src1;
+    insn->src2 = src2;
+    insn->src3 = (uint16_t)other;
+
+    RTLRegister * const destreg = &unit->regs[dest];
+    RTLRegister * const src1reg = &unit->regs[src1];
+    RTLRegister * const src2reg = &unit->regs[src2];
+    RTLRegister * const src3reg = &unit->regs[other];
+    const int insn_index = unit->num_insns;
+    destreg->source = RTLREG_RESULT;
+    destreg->result.opcode = insn->opcode;
+    destreg->result.src1 = src1;
+    destreg->result.src2 = src2;
+    destreg->result.src3 = (uint16_t)other;
+    mark_live(unit, insn_index, destreg, dest);
+    mark_live(unit, insn_index, src1reg, src1);
+    mark_live(unit, insn_index, src2reg, src2);
+    mark_live(unit, insn_index, src3reg, other);
 
     return true;
 }
@@ -1154,6 +1246,8 @@ bool (* const makefunc_table[])(RTLUnit *, RTLInsn *, int, int, int,
     [RTLOP_LOAD_S16_BR] = make_load_narrow,
     [RTLOP_STORE_BR  ] = make_store,
     [RTLOP_STORE_I16_BR] = make_store_narrow,
+    [RTLOP_ATOMIC_INC] = make_atomic_inc,
+    [RTLOP_CMPXCHG   ] = make_cmpxchg,
     [RTLOP_LABEL     ] = make_label,
     [RTLOP_GOTO      ] = make_goto,
     [RTLOP_GOTO_IF_Z ] = make_goto_cond,

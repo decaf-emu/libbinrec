@@ -46,12 +46,12 @@ int main(void)
     EXPECT_EQ(unit->insns[4].dest, reg4);
     EXPECT_EQ(unit->insns[4].src1, reg1);
     EXPECT_EQ(unit->insns[4].src2, reg2);
-    EXPECT_EQ(unit->insns[4].cond, reg3);
+    EXPECT_EQ(unit->insns[4].src3, reg3);
     EXPECT_EQ(unit->insns[5].opcode, RTLOP_SELECT);
     EXPECT_EQ(unit->insns[5].dest, reg6);
     EXPECT_EQ(unit->insns[5].src1, reg3);
     EXPECT_EQ(unit->insns[5].src2, reg5);
-    EXPECT_EQ(unit->insns[5].cond, reg4);
+    EXPECT_EQ(unit->insns[5].src3, reg4);
     EXPECT(unit->have_block);
     EXPECT_FALSE(unit->error);
 

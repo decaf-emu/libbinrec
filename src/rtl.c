@@ -244,6 +244,23 @@ static int format_double(char *buf, int bufsize, double value)
 /*-----------------------------------------------------------------------*/
 
 /**
+ * type_suffix:  Return an appropriate suffix for the given data type.
+ */
+static const char *type_suffix(RTLDataType type)
+{
+    switch (type) {
+        case RTLTYPE_INT32:     return "i32";
+        case RTLTYPE_ADDRESS:   return "addr";
+        case RTLTYPE_FLOAT:     return "f32";
+        case RTLTYPE_DOUBLE:    return "f64";
+        case RTLTYPE_V2_DOUBLE: return "f64x2";
+    }
+    ASSERT(!"Invalid type");
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
  * rtl_describe_register:  Generate a string describing the contents of the
  * given RTL register.
  *
@@ -298,28 +315,14 @@ static void rtl_describe_register(const RTLRegister *reg,
         return;
 
       case RTLREG_MEMORY: {
-        const char *type = NULL;
-        switch ((RTLDataType)reg->type) {
-          case RTLTYPE_INT32:
-            type = (reg->memory.size == 0 ? "i32" :
-                    reg->memory.size == 2
-                        ? (reg->memory.is_signed ? "s16" : "u16")
-                        : (reg->memory.is_signed ? "s8" : "u8"));
-            break;
-          case RTLTYPE_ADDRESS:
-            type = "addr";
-            break;
-          case RTLTYPE_FLOAT:
-            type = "f32";
-            break;
-          case RTLTYPE_DOUBLE:
-            type = "f64";
-            break;
-          case RTLTYPE_V2_DOUBLE:
-            type = "f64x2";
-            break;
+        const char *type;
+        if (reg->type == RTLTYPE_INT32 && reg->memory.size != 0) {
+            type = (reg->memory.size == 2
+                    ? (reg->memory.is_signed ? "s16" : "u16")
+                    : (reg->memory.is_signed ? "s8" : "u8"));
+        } else {
+            type = type_suffix(reg->type);
         }
-        ASSERT(type);
         snprintf(buf, bufsize, "@%d(r%d).%s%s",
                  reg->memory.offset, reg->memory.addr_reg, type,
                  reg->memory.byterev ? ".br" : "");
@@ -389,7 +392,7 @@ static void rtl_describe_register(const RTLRegister *reg,
             snprintf(buf, bufsize, "r%d", reg->result.src1);
             break;
           case RTLOP_SELECT:
-            snprintf(buf, bufsize, "r%d ? r%d : r%d", reg->result.cond,
+            snprintf(buf, bufsize, "r%d ? r%d : r%d", reg->result.src3,
                      reg->result.src1, reg->result.src2);
             break;
           case RTLOP_NEG:
@@ -461,6 +464,15 @@ static void rtl_describe_register(const RTLRegister *reg,
             snprintf(buf, bufsize, "bfins(r%d, r%d, %d, %d)",
                      reg->result.src1, reg->result.src2,
                      reg->result.start, reg->result.count);
+            break;
+          case RTLOP_ATOMIC_INC:
+            snprintf(buf, bufsize, "atomic_inc((r%d).%s)",
+                     reg->result.src1, type_suffix(reg->type));
+            break;
+          case RTLOP_CMPXCHG:
+            snprintf(buf, bufsize, "cmpxchg((r%d).%s, r%d, r%d)",
+                     reg->result.src1, type_suffix(reg->type),
+                     reg->result.src2, reg->result.src3);
             break;
           case RTLOP_CALL_ADDR:
             snprintf(buf, bufsize, "call(...)");
@@ -561,6 +573,8 @@ static void rtl_decode_insn(const RTLUnit *unit, uint32_t index,
         [RTLOP_LOAD_S16_BR] = "LOAD_S16_BR",
         [RTLOP_STORE_BR  ] = "STORE_BR",
         [RTLOP_STORE_I16_BR] = "STORE_I16_BR",
+        [RTLOP_ATOMIC_INC] = "ATOMIC_INC",
+        [RTLOP_CMPXCHG   ] = "CMPXCHG",
         [RTLOP_LABEL     ] = "LABEL",
         [RTLOP_GOTO      ] = "GOTO",
         [RTLOP_GOTO_IF_Z ] = "GOTO_IF_Z",
@@ -624,10 +638,10 @@ static void rtl_decode_insn(const RTLUnit *unit, uint32_t index,
 
       case RTLOP_SELECT:
         s += snprintf_assert(s, top - s, "%-10s r%d, r%d, r%d, r%d\n",
-                             name, dest, src1, src2, insn->cond);
+                             name, dest, src1, src2, insn->src3);
         APPEND_REG_DESC(src1);
         APPEND_REG_DESC(src2);
-        APPEND_REG_DESC(insn->cond);
+        APPEND_REG_DESC(insn->src3);
         return;
 
       case RTLOP_ADD:
@@ -750,6 +764,20 @@ static void rtl_decode_insn(const RTLUnit *unit, uint32_t index,
                              name, insn->offset, src1, src2);
         APPEND_REG_DESC(src1);
         APPEND_REG_DESC(src2);
+        return;
+
+      case RTLOP_ATOMIC_INC:
+        s += snprintf_assert(s, top - s, "%-10s r%d, (r%d)\n",
+                             name, dest, src1);
+        APPEND_REG_DESC(src1);
+        return;
+
+      case RTLOP_CMPXCHG:
+        s += snprintf_assert(s, top - s, "%-10s r%d, (r%d), r%d, r%d\n",
+                             name, dest, src1, src2, insn->src3);
+        APPEND_REG_DESC(src1);
+        APPEND_REG_DESC(src2);
+        APPEND_REG_DESC(insn->src3);
         return;
 
       case RTLOP_LABEL:

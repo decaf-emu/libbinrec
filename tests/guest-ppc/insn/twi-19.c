@@ -26,7 +26,7 @@ static const char expected[] =
     "    6: GOTO_IF_NZ r5, L3\n"
     "    7: LOAD_IMM   r6, 0\n"
     "    8: SET_ALIAS  a1, r6\n"
-    "    9: LOAD       r7, 968(r1)\n"
+    "    9: LOAD       r7, 984(r1)\n"
     "   10: CALL_ADDR  @r7, r1\n"
     "   11: RETURN\n"
     "   12: LABEL      L3\n"

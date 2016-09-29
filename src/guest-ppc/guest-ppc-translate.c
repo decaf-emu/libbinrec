@@ -161,10 +161,10 @@ static bool init_unit(GuestPPCContext *ctx)
     if (reserve_used || reserve_changed) {
         ctx->alias.reserve_flag =
             rtl_alloc_alias_register(unit, RTLTYPE_INT32);
-        ctx->alias.reserve_address =
+        ctx->alias.reserve_state =
             rtl_alloc_alias_register(unit, RTLTYPE_INT32);
-        rtl_set_alias_storage(unit, ctx->alias.reserve_address, ctx->psb_reg,
-                              ctx->handle->setup.state_offset_reserve_address);
+        rtl_set_alias_storage(unit, ctx->alias.reserve_state, ctx->psb_reg,
+                              ctx->handle->setup.state_offset_reserve_state);
         if (reserve_used) {
             const int flag = rtl_alloc_register(unit, RTLTYPE_INT32);
             rtl_add_insn(unit, RTLOP_LOAD_U8, flag, ctx->psb_reg, 0,

@@ -28,8 +28,10 @@ typedef struct PPCState {
     uint32_t xer;
     uint32_t fpscr;
     uint8_t reserve_flag;
-    uint32_t reserve_address;
+    uint32_t reserve_state;
     uint32_t nia;
+    uint32_t *reserve_counter_ptr;
+    uint64_t (*timebase_handler)(struct PPCState *);
     void (*sc_handler)(struct PPCState *);
     void (*trap_handler)(struct PPCState *);
 } PPCState;

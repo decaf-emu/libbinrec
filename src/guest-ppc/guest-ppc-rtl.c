@@ -321,7 +321,7 @@ static void store_live_regs(GuestPPCContext *ctx,
                      0, ctx->live.fpscr, 0, ctx->alias.fpscr);
     }
 
-    /* reserve_flag and reserve_address are set directly when used. */
+    /* reserve_flag and reserve_state are set directly when used. */
 }
 
 /*-----------------------------------------------------------------------*/

@@ -21,8 +21,12 @@ typedef struct PPCState {
     uint32_t xer;
     uint32_t fpscr;
     uint8_t reserve_flag;
-    uint32_t reserve_address;
+    uint32_t reserve_state;
     uint32_t nia;
+    uint32_t *reserve_counter_ptr;
+    uint64_t (*timebase_handler)(struct PPCState *);
+    void (*sc_handler)(struct PPCState *);
+    void (*trap_handler)(struct PPCState *);
 } PPCState;
 
 static uint8_t memory[0x10000];
@@ -44,8 +48,12 @@ int main(void)
     setup.state_offset_xer = offsetof(PPCState,xer);
     setup.state_offset_fpscr = offsetof(PPCState,fpscr);
     setup.state_offset_reserve_flag = offsetof(PPCState,reserve_flag);
-    setup.state_offset_reserve_address = offsetof(PPCState,reserve_address);
+    setup.state_offset_reserve_state = offsetof(PPCState,reserve_state);
     setup.state_offset_nia = offsetof(PPCState,nia);
+    setup.state_offset_reserve_counter_ptr = offsetof(PPCState,reserve_counter_ptr);
+    setup.state_offset_timebase_handler = offsetof(PPCState,timebase_handler);
+    setup.state_offset_sc_handler = offsetof(PPCState,sc_handler);
+    setup.state_offset_trap_handler = offsetof(PPCState,trap_handler);
     setup.log = log_capture;
 
     binrec_t *handle;

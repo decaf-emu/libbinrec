@@ -24,41 +24,31 @@ int main(void)
     RTLUnit *unit;
     EXPECT(unit = rtl_create_unit(handle));
 
-    int reg1, reg2, reg3, reg4, reg5;
-    EXPECT(reg1 = rtl_alloc_register(unit, RTLTYPE_INT32));
+    int reg1, reg2, reg3;
+    EXPECT(reg1 = rtl_alloc_register(unit, RTLTYPE_ADDRESS));
     EXPECT(reg2 = rtl_alloc_register(unit, RTLTYPE_INT32));
     EXPECT(reg3 = rtl_alloc_register(unit, RTLTYPE_INT32));
-    EXPECT(reg4 = rtl_alloc_register(unit, RTLTYPE_INT32));
-    EXPECT(reg5 = rtl_alloc_register(unit, RTLTYPE_INT32));
 
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg1, 0, 0, 10));
-    EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg2, 0, 0, 20));
-    EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg3, 0, 0, 30));
-    EXPECT(rtl_add_insn(unit, RTLOP_SELECT, reg4, reg1, reg2, reg3));
-    EXPECT(rtl_add_insn(unit, RTLOP_MOVE, reg5, reg4, 0, 0));
-    EXPECT_EQ(unit->num_insns, 5);
-    EXPECT_EQ(unit->insns[3].opcode, RTLOP_SELECT);
-    EXPECT_EQ(unit->insns[3].dest, reg4);
-    EXPECT_EQ(unit->insns[3].src1, reg1);
-    EXPECT_EQ(unit->insns[3].src2, reg2);
-    EXPECT_EQ(unit->insns[3].src3, reg3);
+    EXPECT(rtl_add_insn(unit, RTLOP_ATOMIC_INC, reg2, reg1, 0, 0));
+    EXPECT(rtl_add_insn(unit, RTLOP_MOVE, reg3, reg2, 0, 0));
+    EXPECT_EQ(unit->num_insns, 3);
+    EXPECT_EQ(unit->insns[1].opcode, RTLOP_ATOMIC_INC);
+    EXPECT_EQ(unit->insns[1].dest, reg2);
+    EXPECT_EQ(unit->insns[1].src1, reg1);
     EXPECT(unit->have_block);
     EXPECT_FALSE(unit->error);
 
     EXPECT(rtl_finalize_unit(unit));
 
     const char *disassembly =
-        "    0: LOAD_IMM   r1, 10\n"
-        "    1: LOAD_IMM   r2, 20\n"
-        "    2: LOAD_IMM   r3, 30\n"
-        "    3: SELECT     r4, r1, r2, r3\n"
-        "           r1: 10\n"
-        "           r2: 20\n"
-        "           r3: 30\n"
-        "    4: MOVE       r5, r4\n"
-        "           r4: r3 ? r1 : r2\n"
+        "    0: LOAD_IMM   r1, 0xA\n"
+        "    1: ATOMIC_INC r2, (r1)\n"
+        "           r1: 0xA\n"
+        "    2: MOVE       r3, r2\n"
+        "           r2: atomic_inc((r1).i32)\n"
         "\n"
-        "Block 0: <none> --> [0,4] --> <none>\n"
+        "Block 0: <none> --> [0,2] --> <none>\n"
         ;
     EXPECT_STREQ(rtl_disassemble_unit(unit, true), disassembly);
 

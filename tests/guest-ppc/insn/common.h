@@ -26,10 +26,12 @@ static const binrec_setup_t setup = {
     .state_offset_xer = 0x3AC,
     .state_offset_fpscr = 0x3B0,
     .state_offset_reserve_flag = 0x3B4,
-    .state_offset_reserve_address = 0x3B8,
+    .state_offset_reserve_state = 0x3B8,
     .state_offset_nia = 0x3BC,
-    .state_offset_sc_handler = 0x3C0,
-    .state_offset_trap_handler = 0x3C8,
+    .state_offset_reserve_counter_ptr = 0x3C0,
+    .state_offset_timebase_handler = 0x3C8,
+    .state_offset_sc_handler = 0x3D0,
+    .state_offset_trap_handler = 0x3D8,
 };
 
 #endif  // TESTS_GUEST_PPC_INSN_COMMON_H

@@ -26,40 +26,44 @@ int main(void)
     RTLUnit *unit;
     EXPECT(unit = rtl_create_unit(handle));
 
-    int reg1, reg2, reg3, reg4, reg5, reg6;
-    EXPECT(reg1 = rtl_alloc_register(unit, RTLTYPE_INT32));
+    int reg1, reg2, reg3, reg4, reg5;
+    EXPECT(reg1 = rtl_alloc_register(unit, RTLTYPE_ADDRESS));
     EXPECT(reg2 = rtl_alloc_register(unit, RTLTYPE_INT32));
     EXPECT(reg3 = rtl_alloc_register(unit, RTLTYPE_INT32));
-    EXPECT(reg4 = rtl_alloc_register(unit, RTLTYPE_ADDRESS));
-    EXPECT(reg5 = rtl_alloc_register(unit, RTLTYPE_ADDRESS));
-    EXPECT(reg6 = rtl_alloc_register(unit, RTLTYPE_FLOAT));
+    EXPECT(reg4 = rtl_alloc_register(unit, RTLTYPE_INT32));
+    EXPECT(reg5 = rtl_alloc_register(unit, RTLTYPE_FLOAT));
 
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg1, 0, 0, 10));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg2, 0, 0, 20));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg3, 0, 0, 30));
-    EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg4, 0, 0, 40));
-    EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg6, 0, 0, 0x40C00000));
-    EXPECT_EQ(unit->num_insns, 5);
+    EXPECT_EQ(unit->num_insns, 3);
     EXPECT_FALSE(unit->error);
 
-    EXPECT_FALSE(rtl_add_insn(unit, RTLOP_SELECT, reg5, reg1, reg4, reg3));
+    EXPECT_FALSE(rtl_add_insn(unit, RTLOP_CMPXCHG, reg5, reg1, reg2, reg3));
     EXPECT_ICE("Operand constraint violated:"
-               " unit->regs[src1].type == unit->regs[dest].type");
-    EXPECT_EQ(unit->num_insns, 5);
+               " rtl_register_is_int(&unit->regs[dest])");
+    EXPECT_EQ(unit->num_insns, 3);
     EXPECT(unit->error);
     unit->error = false;
 
-    EXPECT_FALSE(rtl_add_insn(unit, RTLOP_SELECT, reg5, reg4, reg2, reg3));
+    EXPECT_FALSE(rtl_add_insn(unit, RTLOP_CMPXCHG, reg4, reg2, reg2, reg3));
+    EXPECT_ICE("Operand constraint violated:"
+               " unit->regs[src1].type == RTLTYPE_ADDRESS");
+    EXPECT_EQ(unit->num_insns, 3);
+    EXPECT(unit->error);
+    unit->error = false;
+
+    EXPECT_FALSE(rtl_add_insn(unit, RTLOP_CMPXCHG, reg4, reg1, reg1, reg3));
     EXPECT_ICE("Operand constraint violated:"
                " unit->regs[src2].type == unit->regs[dest].type");
-    EXPECT_EQ(unit->num_insns, 5);
+    EXPECT_EQ(unit->num_insns, 3);
     EXPECT(unit->error);
     unit->error = false;
 
-    EXPECT_FALSE(rtl_add_insn(unit, RTLOP_SELECT, reg5, reg4, reg4, reg6));
+    EXPECT_FALSE(rtl_add_insn(unit, RTLOP_CMPXCHG, reg4, reg1, reg2, reg1));
     EXPECT_ICE("Operand constraint violated:"
-               " rtl_register_is_int(&unit->regs[other])");
-    EXPECT_EQ(unit->num_insns, 5);
+               " unit->regs[other].type == unit->regs[dest].type");
+    EXPECT_EQ(unit->num_insns, 3);
     EXPECT(unit->error);
     unit->error = false;
 

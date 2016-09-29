@@ -274,6 +274,12 @@ typedef enum RTLOpcode {
     RTLOP_STORE_BR,     // *(typeof(src2) *)(src1 + other) = bswap(src2)
     RTLOP_STORE_I16_BR, // *(uint16_t *)(src1 + other) = bswap16(src2)
 
+    /* Integer atomic operations.  Address operands (src1) must be of
+     * ADDRESS type; other operands may be of any integral type, but they
+     * must all match. */
+    RTLOP_ATOMIC_INC,   // dest = (*src1)++
+    RTLOP_CMPXCHG,      // dest = (*src1==src2 ? (*src1 = other, src2) : *src1)
+
     /* Branch operations ("other" is a label number) */
     RTLOP_LABEL,        // LABEL(other):
     RTLOP_GOTO,         // goto LABEL(other)

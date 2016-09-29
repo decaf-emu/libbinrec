@@ -168,7 +168,7 @@ typedef struct GuestPPCRegSet {
     uint16_t xer;
     uint16_t fpscr;
     uint16_t reserve_flag;
-    uint16_t reserve_address;
+    uint16_t reserve_state;
     uint16_t nia;
 } GuestPPCRegSet;
 

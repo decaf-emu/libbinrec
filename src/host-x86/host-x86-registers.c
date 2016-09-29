@@ -416,14 +416,15 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
         }
     }
 
-    if (insn->opcode == RTLOP_SELECT) {
-        ASSERT(insn->cond < unit->next_reg);
-        const RTLRegister * const cond_reg = &unit->regs[insn->cond];
-        const HostX86RegInfo * const cond_info = &ctx->regs[insn->cond];
-        ASSERT((cond_reg->source != RTLREG_UNDEFINED)
-               == cond_info->host_allocated);
-        if (cond_reg->death == insn_index) {
-            unassign_register(ctx, insn->cond, cond_info);
+    if (insn->opcode == RTLOP_SELECT || insn->opcode == RTLOP_CMPXCHG
+     || (insn->opcode == RTLOP_CALL_ADDR && insn->src3 != 0)) {
+        ASSERT(insn->src3 < unit->next_reg);
+        const RTLRegister * const src3_reg = &unit->regs[insn->src3];
+        const HostX86RegInfo * const src3_info = &ctx->regs[insn->src3];
+        ASSERT((src3_reg->source != RTLREG_UNDEFINED)
+               == src3_info->host_allocated);
+        if (src3_reg->death == insn_index) {
+            unassign_register(ctx, insn->src3, src3_info);
         }
     }
 
@@ -625,6 +626,17 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
          * gives no benefit.  In the case of division (DIV[US]/MOD[US]),
          * we actually need to avoid reusing src2 because of all the fixed
          * register clobbering.
+         *
+         * CMPXCHG is also a special case, both because of fixed output and
+         * due to the number of registers the operation requires.  In the
+         * pathological case of all three input operands spilled and all
+         * other GPRs except rAX full, we need a total of three temporary
+         * GPRs; in that case, we need the output to _not_ be in rAX so we
+         * have two distinct registers available for reloading the spilled
+         * operands and thus only need to allocate one additional temporary
+         * register (which will be R15).  For this reason, we deliberately
+         * avoid rAX for the output register even though doing so requires
+         * an additional MOV after the CMPXCHG completes.
          */
         if (!host_allocated) {
             switch (insn->opcode) {
@@ -661,6 +673,9 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
                                 | 1u << X86_DX
                                 | 1u << src2_info->host_reg;
                 }
+                break;
+              case RTLOP_CMPXCHG:
+                avoid_regs |= 1u << X86_AX;
                 break;
               default:
                 if (src1 && !src1_info->spilled
@@ -743,8 +758,8 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
         /* If none of the special cases apply, allocate a register normally. */
         if (!host_allocated) {
             /* Be careful not to allocate an unclobberable input register.
-             * (Effectively this just means RCX in shift/rotate instructions,
-             * since the fixed inputs RAX to MUL/IMUL and rDX:rAX to DIV/IDIV
+             * (Effectively this just means rCX in shift/rotate instructions,
+             * since the fixed inputs rAX to MUL/IMUL and rDX:rAX to DIV/IDIV
              * are also outputs.) */
             if (insn->opcode == RTLOP_SLL || insn->opcode == RTLOP_SRL
              || insn->opcode == RTLOP_SRA || insn->opcode == RTLOP_ROR) {
@@ -824,6 +839,26 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
             /* Temporary needed if loading a nonzero floating-point value. */
             need_temp = (!rtl_register_is_int(dest_reg) && insn->src_imm != 0);
             break;
+          case RTLOP_ATOMIC_INC:
+            /* Temporary needed if src1 is spilled. */
+            need_temp = src1_info->spilled;
+            break;
+          case RTLOP_CMPXCHG:
+            /* CMPXCHG can require up to two temporaries.  It can be tricky
+             * to work out the proper number, so we play it safe: we
+             * allocate one temporary (not in rAX) unconditionally and
+             * another to save rAX if it's live across this instruction,
+             * which (along with rAX and the output register) gives us the
+             * GPRs we need for the instruction.  We use the temp_allocated
+             * flag to indicate to the translator whether to save rAX, but
+             * we actually save rAX in R15 or XMM15; see the translation
+             * logic for details. */
+            need_temp = (ctx->reg_map[X86_AX] != 0);
+            temp_avoid |= 1u << X86_AX
+                        | 1u << ctx->regs[src1].host_reg
+                        | 1u << ctx->regs[src2].host_reg
+                        | 1u << ctx->regs[insn->src3].host_reg;
+            break;
           default:
             need_temp = false;
             break;
@@ -836,6 +871,13 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
             dest_info->host_temp = (uint8_t)temp_reg;
             dest_info->temp_allocated = true;
             ctx->block_regs_touched |= 1u << temp_reg;
+        }
+        if (insn->opcode == RTLOP_CMPXCHG) {
+            if (dest_info->temp_allocated && dest_info->host_temp == X86_R15) {
+                ctx->block_regs_touched |= 1u << X86_XMM15;
+            } else {
+                ctx->block_regs_touched |= 1u << X86_R15;
+            }
         }
 
         /* If the register isn't referenced again, immediately free it.
@@ -1139,6 +1181,28 @@ static void first_pass_for_block(HostX86Context *ctx, int block_index)
             ctx->regs[insn->dest].avoid_regs |= 1u << X86_CX;
             break;
           }  // case RTLOP_{SLL,SRL,SRA,ROR}
+
+          case RTLOP_CMPXCHG: {
+            if (!do_fixed_regs) {
+                break;
+            }
+            const RTLRegister *src2_reg = &unit->regs[insn->src2];
+            HostX86RegInfo *src2_info = &ctx->regs[insn->src2];
+            if (!src2_info->host_allocated
+             && !(src2_info->avoid_regs & (1u << X86_AX))
+             && src2_reg->birth >= ctx->last_ax_death) {
+                src2_info->host_allocated = true;
+                src2_info->host_reg = X86_AX;
+                ctx->last_cx_death = src2_reg->death;
+            }
+            HostX86RegInfo *src3_info = &ctx->regs[insn->src3];
+            if (insn->src3 != insn->src2 && !src3_info->host_allocated) {
+                src3_info->avoid_regs |= 1u << X86_AX;
+            }
+            /* We never allocate CMPXCHG ouptuts in rAX (see earlier notes). */
+            ctx->regs[insn->dest].avoid_regs |= 1u << X86_AX;
+            break;
+          }  // case RTLOP_CMPXCHG
 
           default:
             break;  // Nothing to do in this pass.

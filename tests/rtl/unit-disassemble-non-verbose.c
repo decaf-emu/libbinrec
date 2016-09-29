@@ -24,7 +24,8 @@ int main(void)
     RTLUnit *unit;
     EXPECT(unit = rtl_create_unit(handle));
 
-    int reg1, reg2, reg3, reg4, reg5, reg6, reg7, reg8, reg9, label;
+    int reg1, reg2, reg3, reg4, reg5, reg6, reg7, reg8, reg9, reg10, reg11;
+    int label;
     EXPECT(reg1 = rtl_alloc_register(unit, RTLTYPE_INT32));
     EXPECT(reg2 = rtl_alloc_register(unit, RTLTYPE_INT32));
     EXPECT(reg3 = rtl_alloc_register(unit, RTLTYPE_INT32));
@@ -34,6 +35,8 @@ int main(void)
     EXPECT(reg7 = rtl_alloc_register(unit, RTLTYPE_INT32));
     EXPECT(reg8 = rtl_alloc_register(unit, RTLTYPE_ADDRESS));
     EXPECT(reg9 = rtl_alloc_register(unit, RTLTYPE_INT32));
+    EXPECT(reg10 = rtl_alloc_register(unit, RTLTYPE_INT32));
+    EXPECT(reg11 = rtl_alloc_register(unit, RTLTYPE_INT32));
     EXPECT(label = rtl_alloc_label(unit));
 
     EXPECT(rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, label));
@@ -46,9 +49,11 @@ int main(void)
     EXPECT(rtl_add_insn(unit, RTLOP_BFINS, reg6, reg4, reg5, 6 | 8<<8));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD, reg7, reg8, 0, 0));
     EXPECT(rtl_add_insn(unit, RTLOP_STORE, 0, reg8, reg6, 0));
-    EXPECT(rtl_add_insn(unit, RTLOP_CALL_ADDR, reg9, reg8, reg6, reg7));
-    EXPECT(rtl_add_insn(unit, RTLOP_GOTO_IF_NZ, 0, reg9, 0, label));
-    EXPECT(rtl_add_insn(unit, RTLOP_RETURN, 0, reg9, 0, 0));
+    EXPECT(rtl_add_insn(unit, RTLOP_ATOMIC_INC, reg9, reg8, 0, 0));
+    EXPECT(rtl_add_insn(unit, RTLOP_CMPXCHG, reg10, reg8, reg6, reg7));
+    EXPECT(rtl_add_insn(unit, RTLOP_CALL_ADDR, reg11, reg8, reg6, reg7));
+    EXPECT(rtl_add_insn(unit, RTLOP_GOTO_IF_NZ, 0, reg11, 0, label));
+    EXPECT(rtl_add_insn(unit, RTLOP_RETURN, 0, reg11, 0, 0));
 
     EXPECT(rtl_finalize_unit(unit));
 
@@ -65,12 +70,14 @@ int main(void)
                  "    7: BFINS      r6, r4, r5, 6, 8\n"
                  "    8: LOAD       r7, 0(r8)\n"
                  "    9: STORE      0(r8), r6\n"
-                 "   10: CALL_ADDR  r9, @r8, r6, r7\n"
-                 "   11: GOTO_IF_NZ r9, L1\n"
-                 "   12: RETURN     r9\n"
+                 "   10: ATOMIC_INC r9, (r8)\n"
+                 "   11: CMPXCHG    r10, (r8), r6, r7\n"
+                 "   12: CALL_ADDR  r11, @r8, r6, r7\n"
+                 "   13: GOTO_IF_NZ r11, L1\n"
+                 "   14: RETURN     r11\n"
                  "\n"
-                 "Block 0: 0 --> [0,11] --> 1,0\n"
-                 "Block 1: 0 --> [12,12] --> <none>\n");
+                 "Block 0: 0 --> [0,13] --> 1,0\n"
+                 "Block 1: 0 --> [14,14] --> <none>\n");
 
     rtl_destroy_unit(unit);
     binrec_destroy_handle(handle);

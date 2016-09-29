@@ -34,7 +34,7 @@ static int add_rtl(RTLUnit *unit)
     unit->insns[unit->num_insns-1].opcode = RTLOP_SELECT;
     unit->insns[unit->num_insns-1].src1 = reg1;
     unit->insns[unit->num_insns-1].src2 = reg2;
-    unit->insns[unit->num_insns-1].cond = reg3;
+    unit->insns[unit->num_insns-1].src3 = reg3;
 
     return EXIT_SUCCESS;
 }

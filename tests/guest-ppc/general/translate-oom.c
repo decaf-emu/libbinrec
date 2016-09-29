@@ -31,8 +31,12 @@ int main(void)
     setup.state_offset_xer = 0x3AC;
     setup.state_offset_fpscr = 0x3B0;
     setup.state_offset_reserve_flag = 0x3B4;
-    setup.state_offset_reserve_address = 0x3B8;
+    setup.state_offset_reserve_state = 0x3B8;
     setup.state_offset_nia = 0x3BC;
+    setup.state_offset_reserve_counter_ptr = 0x3C0;
+    setup.state_offset_timebase_handler = 0x3C8;
+    setup.state_offset_sc_handler = 0x3D0;
+    setup.state_offset_trap_handler = 0x3D8;
     setup.malloc = mem_wrap_malloc;
     setup.realloc = mem_wrap_realloc;
     setup.free = mem_wrap_free;
