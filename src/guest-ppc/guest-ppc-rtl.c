@@ -875,6 +875,54 @@ static inline void translate_compare(
 /*-----------------------------------------------------------------------*/
 
 /**
+ * translate_logic_cr:  Translate a logic instruction operating on CR bits.
+ *
+ * [Parameters]
+ *     ctx: Translation context.
+ *     insn: Instruction word.
+ *     rtlop: RTL register-register instruction to perform the operation.
+ *     invert_crbB: True if the value of crbB should be inverted.
+ *     invert_result: True if the result should be inverted.
+ */
+static inline void translate_logic_cr(
+    GuestPPCContext *ctx, uint32_t insn, RTLOpcode rtlop, bool invert_crbB,
+    bool invert_result)
+{
+    RTLUnit * const unit = ctx->unit;
+
+    const int crfA = get_cr(ctx, get_crbA(insn) >> 2);
+    const int crbA = rtl_alloc_register(unit, RTLTYPE_INT32);
+    rtl_add_insn(unit, RTLOP_BFEXT,
+                 crbA, crfA, 0, (3 - (get_crbA(insn) & 3)) | 1<<8);
+
+    const int crfB = get_cr(ctx, get_crbB(insn) >> 2);
+    int crbB = rtl_alloc_register(unit, RTLTYPE_INT32);
+    rtl_add_insn(unit, RTLOP_BFEXT,
+                 crbB, crfB, 0, (3 - (get_crbB(insn) & 3)) | 1<<8);
+    if (invert_crbB) {
+        const int inverted = rtl_alloc_register(unit, RTLTYPE_INT32);
+        rtl_add_insn(unit, RTLOP_XORI, inverted, crbB, 0, 1);
+        crbB = inverted;
+    }
+
+    int result = rtl_alloc_register(unit, RTLTYPE_INT32);
+    rtl_add_insn(unit, rtlop, result, crbA, crbB, 0);
+    if (invert_result) {
+        const int inverted = rtl_alloc_register(unit, RTLTYPE_INT32);
+        rtl_add_insn(unit, RTLOP_XORI, inverted, result, 0, 1);
+        result = inverted;
+    }
+
+    const int crfD = get_cr(ctx, get_crbD(insn) >> 2);
+    const int new_crfD = rtl_alloc_register(unit, RTLTYPE_INT32);
+    rtl_add_insn(unit, RTLOP_BFINS,
+                 new_crfD, crfD, result, (3 - (get_crbD(insn) & 3)) | 1<<8);
+    set_cr(ctx, get_crbD(insn) >> 2, new_crfD);
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
  * translate_logic_imm:  Translate an integer register-immediate logic
  * instruction.
  *
@@ -911,7 +959,7 @@ static inline void translate_logic_imm(
  * [Parameters]
  *     ctx: Translation context.
  *     insn: Instruction word.
- *     rtlop: RTL register-immediate instruction to perform the operation.
+ *     rtlop: RTL register-register instruction to perform the operation.
  *     invert_rB: True if the value of rB should be inverted.
  *     invert_result: True if the result should be inverted.
  */
@@ -1757,24 +1805,50 @@ static inline void translate_insn(
 
       case OPCD_x13:
         switch ((PPCExtendedOpcode13)get_XO_10(insn)) {
+          case XO_MCRF:
+            set_cr(ctx, get_crfD(insn), get_cr(ctx, get_crfS(insn)));
+            return;
           case XO_BCLR:
             translate_branch_terminal(ctx, block, address, get_BO(insn),
                                       get_BI(insn), get_LK(insn),
                                       get_lr(ctx), true);
             return;
-
+          case XO_CRNOR:
+            translate_logic_cr(ctx, insn, RTLOP_OR, false, true);
+            return;
           case XO_RFI:  // rfi
             translate_unimplemented_insn(ctx, address, insn);
             return;
-
+          case XO_CRANDC:
+            translate_logic_cr(ctx, insn, RTLOP_AND, true, false);
+            return;
+          case XO_ISYNC:
+            // FIXME: We currently act as if all instructions are sequential.
+            return;
+          case XO_CRXOR:
+            translate_logic_cr(ctx, insn, RTLOP_XOR, false, false);
+            return;
+          case XO_CRNAND:
+            translate_logic_cr(ctx, insn, RTLOP_AND, false, true);
+            return;
+          case XO_CRAND:
+            translate_logic_cr(ctx, insn, RTLOP_AND, false, false);
+            return;
+          case XO_CREQV:
+            // See note at XO_EQV under opcode 0x1F.
+            translate_logic_cr(ctx, insn, RTLOP_XOR, true, false);
+            return;
+          case XO_CRORC:
+            translate_logic_cr(ctx, insn, RTLOP_OR, true, false);
+            return;
+          case XO_CROR:
+            translate_logic_cr(ctx, insn, RTLOP_OR, false, false);
+            return;
           case XO_BCCTR:
             translate_branch_terminal(ctx, block, address, get_BO(insn),
                                       get_BI(insn), get_LK(insn),
                                       get_ctr(ctx), true);
             return;
-
-          default:
-            return;  // FIXME: not yet implemented
         }
         ASSERT(!"Missing 0x13 extended opcode handler");
 

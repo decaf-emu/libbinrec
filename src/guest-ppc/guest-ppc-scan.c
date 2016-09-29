@@ -453,6 +453,7 @@ static void update_used_changed(GuestPPCBlockInfo *block, const uint32_t insn)
           case 0x01:  // crand, etc.
             mark_cr_used(block, get_crbA(insn) >> 2);
             mark_cr_used(block, get_crbB(insn) >> 2);
+            mark_cr_used(block, get_crbD(insn) >> 2);
             mark_cr_changed(block, get_crbD(insn) >> 2);
             break;
 
