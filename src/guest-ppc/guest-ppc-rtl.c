@@ -19,10 +19,10 @@
 /*************************************************************************/
 
 /**
- * rtl_imm:  Allocate and return a new RTL register of INT32 type
+ * rtl_imm32:  Allocate and return a new RTL register of INT32 type
  * containing the given immediate value.
  */
-static inline int rtl_imm(RTLUnit * const unit, uint32_t value)
+static inline int rtl_imm32(RTLUnit * const unit, uint32_t value)
 {
     const int reg = rtl_alloc_register(unit, RTLTYPE_INT32);
     rtl_add_insn(unit, RTLOP_LOAD_IMM, reg, 0, 0, value);
@@ -192,6 +192,56 @@ static inline void set_fpscr(GuestPPCContext * const ctx, int reg)
 /*-----------------------------------------------------------------------*/
 
 /**
+ * get_ea_base:  Allocate and return a new RTL register of ADDRESS type
+ * containing the host address for the base EA (without offset) in the
+ * given D-form instruction.
+ */
+static inline int get_ea_base(GuestPPCContext *ctx, uint32_t insn)
+{
+    RTLUnit * const unit = ctx->unit;
+
+    if (get_rA(insn)) {
+        const int rA = get_gpr(ctx, get_rA(insn));
+        const int address = rtl_alloc_register(unit, RTLTYPE_ADDRESS);
+        rtl_add_insn(unit, RTLOP_ZCAST, address, rA, 0, 0);
+        const int host_address = rtl_alloc_register(unit, RTLTYPE_ADDRESS);
+        rtl_add_insn(unit, RTLOP_ADD,
+                     host_address, ctx->membase_reg, address, 0);
+        return host_address;
+    } else {
+        return ctx->membase_reg;
+    }
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
+ * get_ea_indexed:  Allocate and return a new RTL register of ADDRESS type
+ * containing the host address for the EA in the given X-form instruction.
+ */
+static inline int get_ea_indexed(GuestPPCContext *ctx, uint32_t insn)
+{
+    RTLUnit * const unit = ctx->unit;
+
+    int addr32;
+    if (get_rA(insn)) {
+        const int rA = get_gpr(ctx, get_rA(insn));
+        const int rB = get_gpr(ctx, get_rB(insn));
+        addr32 = rtl_alloc_register(unit, RTLTYPE_INT32);
+        rtl_add_insn(unit, RTLOP_ADD, addr32, rA, rB, 0);
+    } else {
+        addr32 = get_gpr(ctx, get_rB(insn));
+    }
+    const int address = rtl_alloc_register(unit, RTLTYPE_ADDRESS);
+    rtl_add_insn(unit, RTLOP_ZCAST, address, addr32, 0, 0);
+    const int host_address = rtl_alloc_register(unit, RTLTYPE_ADDRESS);
+    rtl_add_insn(unit, RTLOP_ADD, host_address, ctx->membase_reg, address, 0);
+    return host_address;
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
  * store_live_regs:  Copy live shadow registers to their respective aliases.
  *
  * [Parameters]
@@ -336,7 +386,7 @@ static inline void set_nia(GuestPPCContext *ctx, int reg)
  */
 static inline void set_nia_imm(GuestPPCContext *ctx, uint32_t nia)
 {
-    set_nia(ctx, rtl_imm(ctx->unit, nia));
+    set_nia(ctx, rtl_imm32(ctx->unit, nia));
 }
 
 /*-----------------------------------------------------------------------*/
@@ -554,7 +604,7 @@ static void translate_addsub_reg(
         const int xer = get_xer(ctx);
         const int masked_xer = rtl_alloc_register(unit, RTLTYPE_INT32);
         rtl_add_insn(unit, RTLOP_ANDI, masked_xer, xer, 0, (int32_t)~XER_OV);
-        const int SO_OV = rtl_imm(unit, XER_SO | XER_OV);
+        const int SO_OV = rtl_imm32(unit, XER_SO | XER_OV);
         const int bits_to_set = rtl_alloc_register(unit, RTLTYPE_INT32);
         rtl_add_insn(unit, RTLOP_SELECT, bits_to_set, SO_OV, ov, ov);
         const int new_xer = rtl_alloc_register(unit, RTLTYPE_INT32);
@@ -685,7 +735,7 @@ static void translate_branch_terminal(
      * don't leak the modified LR to the not-taken code path. */
     int current_lr = ctx->live.lr;
     if (LK) {
-        set_lr(ctx, rtl_imm(unit, address + 4));
+        set_lr(ctx, rtl_imm32(unit, address + 4));
     }
     store_live_regs(ctx, block);
     ctx->live.lr = current_lr;
@@ -762,7 +812,7 @@ static inline void translate_branch(
         translate_branch_label(ctx, block, address, BO, BI, target_label);
     } else {
         translate_branch_terminal(ctx, block, address, BO, BI, LK,
-                                  rtl_imm(unit, target), false);
+                                  rtl_imm32(unit, target), false);
     }
 }
 
@@ -945,7 +995,7 @@ static inline void translate_move_spr(
             rtl_add_insn(unit, RTLOP_ILLEGAL, 0, 0, 0, 0);
         } else {
             // FIXME: callout to handler not yet implemented
-            set_gpr(ctx, get_rD(insn), rtl_imm(unit, 0));
+            set_gpr(ctx, get_rD(insn), rtl_imm32(unit, 0));
         }
         break;
 
@@ -1033,7 +1083,7 @@ static inline void translate_muldiv_reg(
         if (rtlop == RTLOP_MUL) {
             const int result_hi = rtl_alloc_register(unit, RTLTYPE_INT32);
             rtl_add_insn(unit, RTLOP_MULHU, result_hi, rA, rB, 0);
-            const int SO_OV = rtl_imm(unit, XER_SO | XER_OV);
+            const int SO_OV = rtl_imm32(unit, XER_SO | XER_OV);
             const int bits_to_set = rtl_alloc_register(unit, RTLTYPE_INT32);
             rtl_add_insn(unit, RTLOP_SELECT,
                          bits_to_set, SO_OV, result_hi, result_hi);
@@ -1481,6 +1531,65 @@ static inline void translate_x1F(
         translate_unimplemented_insn(ctx, address, insn);
         return;
 
+      /* XO_5 = 0x16 */
+      case XO_DCBST:
+      case XO_DCBF:
+      case XO_DCBTST:
+      case XO_DCBT:
+      case XO_DCBI:
+        // FIXME: We currently act as if there is no data cache.
+        return;
+      case XO_STWCX_:
+        return; // FIXME: not yet implemented
+      case XO_ECIWX:
+      case XO_ECOWX:
+      case XO_TLBSYNC:
+        translate_unimplemented_insn(ctx, address, insn);
+        return;
+      case XO_LWBRX:
+        return; // FIXME: not yet implemented
+      case XO_SYNC:
+      case XO_EIEIO:
+        // FIXME: We currently act as if all loads and stores are sequential.
+        return;
+      case XO_STWBRX:
+        return; // FIXME: not yet implemented
+      case XO_LHBRX:
+        return; // FIXME: not yet implemented
+      case XO_STHBRX:
+        return; // FIXME: not yet implemented
+      case XO_ICBI:
+        /* icbi implies that already-translated code may have changed, so
+         * unconditionally return from this unit.  We currently don't
+         * bother checking the invalidation address. */
+        store_live_regs(ctx, block);
+        set_nia_imm(ctx, address + 4);
+        rtl_add_insn(unit, RTLOP_GOTO, 0, 0, 0, ctx->epilogue_label);
+        return;
+      case XO_DCBZ: {
+        int addr32;
+        if (get_rA(insn)) {
+            const int rA = get_gpr(ctx, get_rA(insn));
+            const int rB = get_gpr(ctx, get_rB(insn));
+            addr32 = rtl_alloc_register(unit, RTLTYPE_INT32);
+            rtl_add_insn(unit, RTLOP_ADD, addr32, rA, rB, 0);
+        } else {
+            addr32 = get_gpr(ctx, get_rB(insn));
+        }
+        const int addr32_aligned = rtl_alloc_register(unit, RTLTYPE_ADDRESS);
+        rtl_add_insn(unit, RTLOP_ANDI, addr32_aligned, addr32, 0, -32);
+        const int addr_aligned = rtl_alloc_register(unit, RTLTYPE_ADDRESS);
+        rtl_add_insn(unit, RTLOP_ZCAST, addr_aligned, addr32_aligned, 0, 0);
+        const int host_address = rtl_alloc_register(unit, RTLTYPE_ADDRESS);
+        rtl_add_insn(unit, RTLOP_ADD,
+                     host_address, ctx->membase_reg, address, 0);
+        const int zero = rtl_imm32(unit, 0);
+        for (int i = 0; i < 32; i += 4) {
+            rtl_add_insn(unit, RTLOP_STORE, 0, host_address, zero, i);
+        }
+        return;
+      }  // case XO_DCBZ
+
       /* XO_5 = 0x1C */
       case XO_AND:
         translate_logic_reg(ctx, insn, RTLOP_AND, false, false);
@@ -1551,7 +1660,7 @@ static inline void translate_insn(
     switch (get_OPCD(insn)) {
       case OPCD_TWI:
         translate_trap(ctx, block, address, insn,
-                       rtl_imm(unit, get_SIMM(insn)));
+                       rtl_imm32(unit, get_SIMM(insn)));
         return;
 
       case OPCD_MULLI:
@@ -1560,7 +1669,7 @@ static inline void translate_insn(
 
       case OPCD_SUBFIC: {
         const int rA = get_gpr(ctx, get_rA(insn));
-        const int imm = rtl_imm(unit, get_SIMM(insn));
+        const int imm = rtl_imm32(unit, get_SIMM(insn));
         const int result = rtl_alloc_register(unit, RTLTYPE_INT32);
         rtl_add_insn(unit, RTLOP_SUB, result, imm, rA, 0);
         set_gpr(ctx, get_rD(insn), result);
@@ -1593,7 +1702,7 @@ static inline void translate_insn(
 
       case OPCD_ADDI:
         if (get_rA(insn) == 0) {  // li
-            set_gpr(ctx, get_rD(insn), rtl_imm(unit, get_SIMM(insn)));
+            set_gpr(ctx, get_rD(insn), rtl_imm32(unit, get_SIMM(insn)));
         } else {
             translate_arith_imm(ctx, insn, RTLOP_ADDI, false, false, false);
         }
@@ -1601,7 +1710,7 @@ static inline void translate_insn(
 
       case OPCD_ADDIS:
         if (get_rA(insn) == 0) {  // lis
-            set_gpr(ctx, get_rD(insn), rtl_imm(unit, get_SIMM(insn) << 16));
+            set_gpr(ctx, get_rD(insn), rtl_imm32(unit, get_SIMM(insn) << 16));
         } else {
             translate_arith_imm(ctx, insn, RTLOP_ADDI, true, false, false);
         }

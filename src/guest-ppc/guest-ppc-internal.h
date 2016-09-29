@@ -186,9 +186,10 @@ typedef struct GuestPPCContext {
 
     /* RTL label for the unit epilogue. */
     uint16_t epilogue_label;
-
     /* RTL register holding the processor state block. */
     uint16_t psb_reg;
+    /* RTL register holding the guest memory base address. */
+    uint16_t membase_reg;
 
     /* Alias registers for guest CPU state. */
     GuestPPCRegSet alias;

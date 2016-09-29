@@ -969,15 +969,16 @@ bool guest_ppc_scan(GuestPPCContext *ctx, uint32_t limit)
             update_used_changed(block, insn);
         }
 
-        /* Terminate the block if this is a branch or invalid instruction.
-         * Also terminate the entire unit if this looks like the end of a
-         * function. */
+        /* Terminate the block if this is a branch or invalid instruction,
+         * or at icbi.  Also terminate the entire unit if this looks like
+         * the end of a function. */
         const PPCOpcode opcd = get_OPCD(insn);
         const bool is_direct_branch = ((opcd & ~0x02) == OPCD_BC);
         const bool is_indirect_branch =
             (opcd == OPCD_x13 && (get_XO_10(insn) == XO_BCLR
                                   || get_XO_10(insn) == XO_BCCTR));
-        if (is_direct_branch || is_indirect_branch || is_invalid) {
+        const bool is_icbi = (opcd == OPCD_x1F && get_XO_10(insn) == XO_ICBI);
+        if (is_direct_branch || is_indirect_branch || is_invalid || is_icbi) {
             block->len = (address + 4) - block->start;
             block = NULL;
 
@@ -1016,10 +1017,13 @@ bool guest_ppc_scan(GuestPPCContext *ctx, uint32_t limit)
              * from translated code on a subroutine branch.  If we add
              * support for translating LK=1 branches to native calls, those
              * should not be treated as terminal here.
+             *
+             * icbi instructions always cause a return from translated code,
+             * so they can potentially end the unit as well.
              */
             const int is_unconditional_branch =
                 (opcd == OPCD_B || (get_BO(insn) & 0x14) == 0x14);
-            if (is_invalid || is_unconditional_branch) {
+            if (is_invalid || is_icbi || is_unconditional_branch) {
                 ASSERT(ctx->num_blocks > 0);
                 if (ctx->blocks[ctx->num_blocks-1].start <= address) {
                     break;  // Reached the end of the function.
