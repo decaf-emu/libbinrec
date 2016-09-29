@@ -1814,6 +1814,10 @@ static inline void translate_insn(
                                       get_lr(ctx), true);
             return;
           case XO_CRNOR:
+            /* "crnor crbD,crbA,crbB" is also known as "crnot crbD,crbA",
+             * but the usage frequency of crnot is probably not very high
+             * in typical code and the potential speed gain is minimal, so
+             * we don't bother with special handling. */
             translate_logic_cr(ctx, insn, RTLOP_OR, false, true);
             return;
           case XO_RFI:  // rfi
@@ -1826,7 +1830,15 @@ static inline void translate_insn(
             // FIXME: We currently act as if all instructions are sequential.
             return;
           case XO_CRXOR:
-            translate_logic_cr(ctx, insn, RTLOP_XOR, false, false);
+            if (get_crbA(insn) == get_crbB(insn)) {  // crclr
+                const int crfD = get_cr(ctx, get_crbD(insn) >> 2);
+                const int new_crfD = rtl_alloc_register(unit, RTLTYPE_INT32);
+                rtl_add_insn(unit, RTLOP_ANDI, new_crfD, crfD, 0,
+                             0xF ^ (8 >> (get_crbD(insn) & 3)));
+                set_cr(ctx, get_crbD(insn) >> 2, new_crfD);
+            } else {
+                translate_logic_cr(ctx, insn, RTLOP_XOR, false, false);
+            }
             return;
           case XO_CRNAND:
             translate_logic_cr(ctx, insn, RTLOP_AND, false, true);
@@ -1835,13 +1847,26 @@ static inline void translate_insn(
             translate_logic_cr(ctx, insn, RTLOP_AND, false, false);
             return;
           case XO_CREQV:
-            // See note at XO_EQV under opcode 0x1F.
-            translate_logic_cr(ctx, insn, RTLOP_XOR, true, false);
+            if (get_crbA(insn) == get_crbB(insn)) {  // crset
+                const int crfD = get_cr(ctx, get_crbD(insn) >> 2);
+                const int new_crfD = rtl_alloc_register(unit, RTLTYPE_INT32);
+                rtl_add_insn(unit, RTLOP_ORI, new_crfD, crfD, 0,
+                             8 >> (get_crbD(insn) & 3));
+                set_cr(ctx, get_crbD(insn) >> 2, new_crfD);
+            } else {
+                /* See note at XO_EQV under opcode 0x1F (though it's less
+                 * likely to help in this case). */
+                translate_logic_cr(ctx, insn, RTLOP_XOR, true, false);
+            }
             return;
           case XO_CRORC:
             translate_logic_cr(ctx, insn, RTLOP_OR, true, false);
             return;
           case XO_CROR:
+            /* "cror crbD,crbA,crbB" is also known as "crmove crbD,crbA",
+             * but the usage frequency of crmove is probably not very high
+             * in typical code and the potential speed gain is minimal, so
+             * we don't bother with special handling. */
             translate_logic_cr(ctx, insn, RTLOP_OR, false, false);
             return;
           case XO_BCCTR:

@@ -451,8 +451,12 @@ static void update_used_changed(GuestPPCBlockInfo *block, const uint32_t insn)
             break;
 
           case 0x01:  // crand, etc.
-            mark_cr_used(block, get_crbA(insn) >> 2);
-            mark_cr_used(block, get_crbB(insn) >> 2);
+            /* No dependency on crbA/crbB for crclr and crset. */
+            if (!((get_XO_10(insn) == XO_CRXOR || get_XO_10(insn) == XO_CREQV)
+                  && get_crbA(insn) == get_crbB(insn))) {
+                mark_cr_used(block, get_crbA(insn) >> 2);
+                mark_cr_used(block, get_crbB(insn) >> 2);
+            }
             mark_cr_used(block, get_crbD(insn) >> 2);
             mark_cr_changed(block, get_crbD(insn) >> 2);
             break;
