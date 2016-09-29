@@ -1728,7 +1728,7 @@ static inline void translate_insn(
         bool is_sc_blr = false;
         if (address + 7 <= block->start + block->len - 1) {
             const uint32_t *memory_base =
-                (const uint32_t *)ctx->handle->setup.memory_base;
+                (const uint32_t *)ctx->handle->setup.guest_memory_base;
             const uint32_t next_insn = bswap_be32(memory_base[(address+4)/4]);
             if (next_insn == 0x4E800020) {
                 is_sc_blr = true;
@@ -1829,7 +1829,7 @@ bool guest_ppc_translate_block(GuestPPCContext *ctx, int index)
     GuestPPCBlockInfo *block = &ctx->blocks[index];
     const uint32_t start = block->start;
     const uint32_t *memory_base =
-        (const uint32_t *)ctx->handle->setup.memory_base;
+        (const uint32_t *)ctx->handle->setup.guest_memory_base;
 
     rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, block->label);
     if (UNLIKELY(rtl_get_error_state(unit))) {

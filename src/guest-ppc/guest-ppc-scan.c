@@ -932,7 +932,7 @@ bool guest_ppc_scan(GuestPPCContext *ctx, uint32_t limit)
     const uint32_t aligned_limit = min(limit, ctx->handle->code_range_end) - 3;
     const uint32_t max_insns = (aligned_limit - ctx->start) / 4 + 1;
     const uint32_t *memory_base =
-        (const uint32_t *)ctx->handle->setup.memory_base;
+        (const uint32_t *)ctx->handle->setup.guest_memory_base;
 
     GuestPPCBlockInfo *block = NULL;
 

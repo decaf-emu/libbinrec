@@ -17,18 +17,19 @@ static const bool expected_success = true;
 
 static const char expected[] =
     "    0: LOAD_ARG   r1, 0\n"
-    "    1: LABEL      L1\n"
-    "    2: ILLEGAL\n"
-    "    3: LOAD_IMM   r2, 4\n"
-    "    4: SET_ALIAS  a1, r2\n"
-    "    5: LABEL      L2\n"
-    "    6: RETURN\n"
+    "    1: LOAD_IMM   r2, 0x100000000\n"
+    "    2: LABEL      L1\n"
+    "    3: ILLEGAL\n"
+    "    4: LOAD_IMM   r3, 4\n"
+    "    5: SET_ALIAS  a1, r3\n"
+    "    6: LABEL      L2\n"
+    "    7: RETURN\n"
     "\n"
     "Alias 1: int32 @ 956(r1)\n"
     "\n"
-    "Block 0: <none> --> [0,0] --> 1\n"
-    "Block 1: 0 --> [1,4] --> 2\n"
-    "Block 2: 1 --> [5,6] --> <none>\n"
+    "Block 0: <none> --> [0,1] --> 1\n"
+    "Block 1: 0 --> [2,5] --> 2\n"
+    "Block 2: 1 --> [6,7] --> <none>\n"
     ;
 
 #include "tests/rtl-disasm-test.i"

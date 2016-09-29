@@ -47,7 +47,7 @@ int main(void)
     memcpy(aligned_input, input, sizeof(input));
 
     binrec_setup_t final_setup = setup;
-    final_setup.memory_base = aligned_input;
+    final_setup.guest_memory_base = aligned_input;
     final_setup.log = log_capture;
     binrec_t *handle;
     EXPECT(handle = binrec_create_handle(&final_setup));

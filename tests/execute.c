@@ -63,7 +63,7 @@ static void call(void *code, long code_size, void *arg)
 /*-----------------------------------------------------------------------*/
 
 bool call_guest_code(binrec_arch_t arch, void *state, void *memory,
-                    uint32_t address)
+                     uint32_t address)
 {
     ASSERT(arch == BINREC_ARCH_PPC_7XX);
     PPCState *state_ppc = state;
@@ -72,7 +72,8 @@ bool call_guest_code(binrec_arch_t arch, void *state, void *memory,
     memset(&setup, 0, sizeof(setup));
     setup.guest = arch;
     setup.host = binrec_native_arch();
-    setup.memory_base = memory;
+    setup.guest_memory_base = memory;
+    setup.host_memory_base = (uintptr_t)memory;
     setup.state_offset_gpr = offsetof(PPCState,gpr);
     setup.state_offset_fpr = offsetof(PPCState,fpr);
     setup.state_offset_gqr = offsetof(PPCState,gqr);

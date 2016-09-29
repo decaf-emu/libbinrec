@@ -34,7 +34,8 @@ int main(void)
     memset(&setup, 0, sizeof(setup));
     setup.guest = BINREC_ARCH_PPC_7XX;
     setup.host = BINREC_ARCH_X86_64_SYSV;
-    setup.memory_base = memory;
+    setup.guest_memory_base = memory;
+    setup.host_memory_base = UINT64_C(0x100000000);
     setup.state_offset_gpr = offsetof(PPCState,gpr);
     setup.state_offset_fpr = offsetof(PPCState,fpr);
     setup.state_offset_gqr = offsetof(PPCState,gqr);
@@ -68,6 +69,8 @@ int main(void)
 
     static const uint8_t x86_expected[] = {
         0x48,0x83,0xEC,0x08,            // sub $8,%rsp
+        0x48,0xB8,0x00,0x00,0x00,0x00,  // mov $0x100000000,%rax
+          0x01,0x00,0x00,0x00,
         0xB8,0x01,0x00,0x00,0x00,       // mov $1,%eax
         0x89,0x47,0x0C,                 // mov %eax,12(%rdi)
         0xB8,0x04,0x10,0x00,0x00,       // mov $0x1004,%eax

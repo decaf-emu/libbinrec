@@ -190,16 +190,30 @@ typedef struct binrec_setup_t {
     unsigned int host_features;
 
     /**
-     * memory_base:  Pointer to a region of host memory reserved as the
-     * address space of the guest code.  binrec_translate() calls will read
-     * source machine instructions from this region, and generated native
-     * machine code will perform loads and stores by adding the target
-     * address to this pointer.  Client code is responsible for mapping the
-     * parts of this region corresponding to valid guest memory and for
-     * handling any invalid-access exceptions which occur during execution
-     * (due to code reading from an invalid address).
+     * guest_memory_base:  Pointer to a region of host memory reserved as
+     * the address space of the guest code.  binrec_translate() calls will
+     * read source machine instructions and constand data from this region.
+     * Memory accesses within the translated code itself will use the
+     * address in host_memory_base, defined below.
      */
-    void *memory_base;
+    void *guest_memory_base;
+
+    /**
+     * host_memory_base:  Base address in the host environment of the
+     * memory region reserved as the address space of the guest code.
+     * Generated host machine code will perform loads and stores by adding
+     * the target address to this value.  The program calling the
+     * translated code is responsible for correctly mapping the parts of
+     * this region corresponding to valid guest memory and for handling
+     * any invalid-access exceptions which occur during execution (such as
+     * loads or stores with an invalid address).
+     *
+     * In a typical JIT translation environment, this will have the same
+     * numeric value as guest_memory_base, but in certain usage patterns
+     * it can be useful to set a different address here than the pointer
+     * used to read instructions at translation time.
+     */
+    uint64_t host_memory_base;
 
     /**
      * state_offset_*:  Offsets from the beginning of the processor state

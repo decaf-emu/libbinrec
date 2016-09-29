@@ -18,21 +18,22 @@ static const bool expected_success = true;
 
 static const char expected[] =
     "    0: LOAD_ARG   r1, 0\n"
-    "    1: LABEL      L1\n"
-    "    2: LOAD_IMM   r2, 4\n"
-    "    3: SET_ALIAS  a1, r2\n"
-    "    4: GOTO       L2\n"
-    "    5: LOAD_IMM   r3, 4104\n"
-    "    6: SET_ALIAS  a1, r3\n"
-    "    7: LABEL      L2\n"
-    "    8: RETURN\n"
+    "    1: LOAD_IMM   r2, 0x100000000\n"
+    "    2: LABEL      L1\n"
+    "    3: LOAD_IMM   r3, 4\n"
+    "    4: SET_ALIAS  a1, r3\n"
+    "    5: GOTO       L2\n"
+    "    6: LOAD_IMM   r4, 4104\n"
+    "    7: SET_ALIAS  a1, r4\n"
+    "    8: LABEL      L2\n"
+    "    9: RETURN\n"
     "\n"
     "Alias 1: int32 @ 956(r1)\n"
     "\n"
-    "Block 0: <none> --> [0,0] --> 1\n"
-    "Block 1: 0 --> [1,4] --> 3\n"
-    "Block 2: <none> --> [5,6] --> 3\n"
-    "Block 3: 2,1 --> [7,8] --> <none>\n"
+    "Block 0: <none> --> [0,1] --> 1\n"
+    "Block 1: 0 --> [2,5] --> 3\n"
+    "Block 2: <none> --> [6,7] --> 3\n"
+    "Block 3: 2,1 --> [8,9] --> <none>\n"
     ;
 
 /* Tweaked version of tests/rtl-disasm-test.i to start at a nonzero address. */
@@ -53,7 +54,7 @@ int main(void)
     memcpy((uint8_t *)aligned_input + start, input, sizeof(input));
 
     binrec_setup_t final_setup = setup;
-    final_setup.memory_base = aligned_input;
+    final_setup.guest_memory_base = aligned_input;
     final_setup.log = log_capture;
     binrec_t *handle;
     EXPECT(handle = binrec_create_handle(&final_setup));

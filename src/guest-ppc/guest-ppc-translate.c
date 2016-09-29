@@ -40,6 +40,12 @@ static bool init_unit(GuestPPCContext *ctx)
     rtl_make_unique_pointer(unit, ctx->psb_reg);
     rtl_add_insn(unit, RTLOP_LOAD_ARG, ctx->psb_reg, 0, 0, 0);
 
+    /* Allocate and initialize a register for the host memory base. */
+    ctx->membase_reg = rtl_alloc_register(unit, RTLTYPE_ADDRESS);
+    rtl_make_unique_pointer(unit, ctx->membase_reg);
+    rtl_add_insn(unit, RTLOP_LOAD_IMM, ctx->membase_reg, 0, 0,
+                 ctx->handle->setup.host_memory_base);
+
     /* Allocate an alias register for the output NIA. */
     ctx->alias.nia = rtl_alloc_alias_register(unit, RTLTYPE_INT32);
     rtl_set_alias_storage(unit, ctx->alias.nia, ctx->psb_reg,
