@@ -195,6 +195,12 @@ static inline void set_fpscr(GuestPPCContext * const ctx, int reg)
  * get_ea_base:  Allocate and return a new RTL register of ADDRESS type
  * containing the host address for the base EA (without offset) in the
  * given D-form instruction.
+ *
+ * [Parameters]
+ *     ctx: Translation context.
+ *     insn: Instruction word.
+ * [Return value]
+ *     RTL register containing the host address corresponding to (rA|0).
  */
 static inline int get_ea_base(GuestPPCContext *ctx, uint32_t insn)
 {
@@ -218,8 +224,17 @@ static inline int get_ea_base(GuestPPCContext *ctx, uint32_t insn)
 /**
  * get_ea_indexed:  Allocate and return a new RTL register of ADDRESS type
  * containing the host address for the EA in the given X-form instruction.
+ *
+ * [Parameters]
+ *     ctx: Translation context.
+ *     insn: Instruction word.
+ *     guest_ea_ret: Pointer to variable to receive the RTL register
+ *         containing ((rA|0) + rB), or NULL if not needed.
+ * [Return value]
+ *     RTL register containing the host address corresponding to ((rA|0) + rB).
  */
-static inline int get_ea_indexed(GuestPPCContext *ctx, uint32_t insn)
+static inline int get_ea_indexed(GuestPPCContext *ctx, uint32_t insn,
+                                 int *guest_ea_ret)
 {
     RTLUnit * const unit = ctx->unit;
 
@@ -231,6 +246,9 @@ static inline int get_ea_indexed(GuestPPCContext *ctx, uint32_t insn)
         rtl_add_insn(unit, RTLOP_ADD, addr32, rA, rB, 0);
     } else {
         addr32 = get_gpr(ctx, get_rB(insn));
+    }
+    if (guest_ea_ret) {
+        *guest_ea_ret = addr32;
     }
     const int address = rtl_alloc_register(unit, RTLTYPE_ADDRESS);
     rtl_add_insn(unit, RTLOP_ZCAST, address, addr32, 0, 0);
@@ -870,6 +888,87 @@ static inline void translate_compare(
     rtl_add_insn(unit, RTLOP_OR, crN, crN_3, lt_shifted, 0);
 
     set_cr(ctx, get_crfD(insn), crN);
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
+ * translate_load_store_gpr:  Translate an integer load or store instruction.
+ *
+ * [Parameters]
+ *     ctx: Translation context.
+ *     insn: Instruction word.
+ *     rtlop: RTL instruction to perform the operation (assuming a
+ *         same-endian host).
+ *     is_store: True if the instruction is a store instruction.
+ *     is_indexed: True if the access is an indexed access (like lwx or stwx).
+ *     update: True if register rA should be updated with the final EA.
+ */
+static inline void translate_load_store_gpr(
+    GuestPPCContext *ctx, uint32_t insn, RTLOpcode rtlop, bool is_store,
+    bool is_indexed, bool update)
+{
+    RTLUnit * const unit = ctx->unit;
+
+    if (ctx->handle->host_little_endian) {
+        switch (rtlop) {
+            case RTLOP_LOAD:         rtlop = RTLOP_LOAD_BR;      break;
+            case RTLOP_LOAD_U16:     rtlop = RTLOP_LOAD_U16_BR;  break;
+            case RTLOP_LOAD_S16:     rtlop = RTLOP_LOAD_S16_BR;  break;
+            case RTLOP_STORE:        rtlop = RTLOP_STORE_BR;     break;
+            case RTLOP_STORE_I16:    rtlop = RTLOP_STORE_I16_BR; break;
+            case RTLOP_LOAD_BR:      rtlop = RTLOP_LOAD;         break;
+            case RTLOP_LOAD_U16_BR:  rtlop = RTLOP_LOAD_U16;     break;
+            case RTLOP_LOAD_S16_BR:  rtlop = RTLOP_LOAD_S16;     break;
+            case RTLOP_STORE_BR:     rtlop = RTLOP_STORE;        break;
+            case RTLOP_STORE_I16_BR: rtlop = RTLOP_STORE_I16;    break;
+            default: break;
+        }
+    }
+
+    int ea, host_address, disp;
+    if (update) {
+        ASSERT(get_rA(insn) != 0);
+        if (is_indexed) {
+            host_address = get_ea_indexed(ctx, insn, &ea);
+        } else {
+            const int rA = get_gpr(ctx, get_rA(insn));
+            if (get_d(insn)) {
+                ea = rtl_alloc_register(unit, RTLTYPE_INT32);
+                rtl_add_insn(unit, RTLOP_ADDI, rA, 0, 0, get_d(insn));
+            } else {
+                ea = rA;
+            }
+            const int ea_zcast = rtl_alloc_register(unit, RTLTYPE_ADDRESS);
+            rtl_add_insn(unit, RTLOP_ZCAST, ea_zcast, ea, 0, 0);
+            host_address = rtl_alloc_register(unit, RTLTYPE_ADDRESS);
+            rtl_add_insn(unit, RTLOP_ADD,
+                         host_address, ctx->membase_reg, ea_zcast, 0);
+        }
+        disp = 0;
+    } else {
+        ea = 0;  // Not used, but required to avoid an "uninitialized" warning.
+        if (is_indexed) {
+            host_address = get_ea_indexed(ctx, insn, NULL);
+            disp = 0;
+        } else {
+            host_address = get_ea_base(ctx, insn);
+            disp = get_d(insn);
+        }
+    }
+
+    if (is_store) {
+        const int value = get_gpr(ctx, get_rS(insn));
+        rtl_add_insn(unit, rtlop, 0, host_address, value, disp);
+    } else {
+        const int value = rtl_alloc_register(unit, RTLTYPE_INT32);
+        rtl_add_insn(unit, rtlop, value, host_address, 0, disp);
+        set_gpr(ctx, get_rD(insn), value);
+    }
+
+    if (update) {
+        set_gpr(ctx, get_rA(insn), ea);
+    }
 }
 
 /*-----------------------------------------------------------------------*/
@@ -1595,17 +1694,23 @@ static inline void translate_x1F(
         translate_unimplemented_insn(ctx, address, insn);
         return;
       case XO_LWBRX:
-        return; // FIXME: not yet implemented
+        translate_load_store_gpr(ctx, insn, RTLOP_LOAD_BR, false, true, false);
+        return;
       case XO_SYNC:
       case XO_EIEIO:
         // FIXME: We currently act as if all loads and stores are sequential.
         return;
       case XO_STWBRX:
-        return; // FIXME: not yet implemented
+        translate_load_store_gpr(ctx, insn, RTLOP_STORE_BR, true, true, false);
+        return;
       case XO_LHBRX:
-        return; // FIXME: not yet implemented
+        translate_load_store_gpr(ctx, insn, RTLOP_LOAD_U16_BR,
+                                 false, true, false);
+        return;
       case XO_STHBRX:
-        return; // FIXME: not yet implemented
+        translate_load_store_gpr(ctx, insn, RTLOP_STORE_I16_BR,
+                                 true, true, false);
+        return;
       case XO_ICBI:
         /* icbi implies that already-translated code may have changed, so
          * unconditionally return from this unit.  We currently don't

@@ -14,6 +14,8 @@
 #include <stdbool.h>
 
 static const binrec_setup_t setup = {
+    .guest = BINREC_ARCH_PPC_7XX,
+    .host = BINREC_ARCH_X86_64_SYSV,
     .host_memory_base = UINT64_C(0x100000000),
     .state_offset_gpr = 0x100,
     .state_offset_fpr = 0x180,
