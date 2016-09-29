@@ -14,9 +14,10 @@
 #include "src/rtl.h"
 
 /*************************************************************************/
-/************************ Register bit constants *************************/
+/*********************** Architectural constants *************************/
 /*************************************************************************/
 
+/* XER register bits. */
 #define XER_SO_SHIFT  31
 #define XER_OV_SHIFT  30
 #define XER_CA_SHIFT  29
@@ -24,6 +25,7 @@
 #define XER_OV  (1u << XER_OV_SHIFT)
 #define XER_CA  (1u << XER_CA_SHIFT)
 
+/* FPSCR register bits. */
 #define FPSCR_FX_SHIFT      31
 #define FPSCR_FEX_SHIFT     30
 #define FPSCR_VX_SHIFT      29
@@ -77,10 +79,49 @@
 #define FPSCR_NI      (1u << FPSCR_NI_SHIFT)
 #define FPSCR_RN      (3u << FPSCR_RN_SHIFT)
 
+/* Rounding modes for FPSCR[RN]. */
 #define FPSCR_RN_N    0  // Round to nearest.
 #define FPSCR_RN_Z    1  // Round toward zero.
 #define FPSCR_RN_P    2  // Round toward plus infinity.
 #define FPSCR_RN_M    3  // Round toward minus infinity.
+
+/*
+ * SPR numbers.
+ *
+ * TBL and TBU are the time base registers read by the mftb instruction.
+ * These can also be retrieved with mfspr, and indeed the manuals of
+ * various 32-bit PowerPC CPUs state that "Some implementations may
+ * implement mftb and mfspr identically" (750CL) or even "The 603e ignores
+ * the extended opcode differences between mftb and mfspr by ignoring bit
+ * 25 of both instructions and treating them both identically" (603e), so
+ * we treat the time base registers as ordinary SPRs which are read-only to
+ * user-mode programs.
+ *
+ * GQR0-7, the "graphics quantization registers", are specific to the 750CL
+ * processor.  These registers are supervisor-mode registers, so as with
+ * other supervisor-mode instructions, we treat them as illegal operations.
+ *
+ * UGQR0-7, which use the same SPR numbers as GQR0-7 with bit 0x10 (the
+ * "supervisor-mode register" bit) cleared, are not documented in the
+ * PowerPC 750CL manual, but at least some implementations [1] treat them
+ * as user-mode equivalents to GQR0-7, allowing user-mode programs to
+ * access those registers.  It is not known whether a stock 750CL supports
+ * these registers, but we assume that a program which accesses the UGQRs
+ * is intended to run on an implementation of the architecture which
+ * supports them, so we don't use a subarchitecture identifier or feature
+ * flag to explicitly enable them.
+ *
+ * [1] Notably the "Broadway" and "Espresso" processors used in the
+ *     Nintendo Wii and Wii U game systems, respectively.  The GQRs (though
+ *     possibly not the UGQRs) are also present in the "Gekko" processor, a
+ *     customized 750CXe, used in the earlier Nintendo GameCube game system.
+ */
+#define SPR_XER     1
+#define SPR_LR      8
+#define SPR_CTR     9
+#define SPR_TBL     268
+#define SPR_TBU     269
+#define SPR_UGQR(n) (896 + (n))
 
 /*************************************************************************/
 /*********************** Internal data structures ************************/

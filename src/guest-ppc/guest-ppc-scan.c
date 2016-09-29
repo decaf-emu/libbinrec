@@ -538,7 +538,8 @@ static void update_used_changed(GuestPPCBlockInfo *block, const uint32_t insn)
 
           case 0x10:  // mtcrf
             mark_gpr_used(block, get_rS(insn));
-            if (get_CRM(insn) != 0xFF) {  // Special handling, see -rtl.c
+            /* CRM==0xFF is handled specially, see guest-ppc-rtl.c. */
+            if (get_CRM(insn) != 0xFF) {
                 for (int i = 0; i < 8; i++) {
                     if (get_CRM(insn) & (1 << (7 - i))) {
                         mark_cr_changed(block, i);
@@ -562,11 +563,30 @@ static void update_used_changed(GuestPPCBlockInfo *block, const uint32_t insn)
             } else {
                 if (get_XO_10(insn) == XO_MFCR) {
                     /* Leave CR used/changed bits alone; we translate MFCR
-                     * without needing aliases (see -rtl.c). */
+                     * without needing aliases (see guest-ppc-rtl.c). */
                 } else if (get_XO_10(insn) == XO_MFSRIN) {
                     mark_gpr_used(block, get_rB(insn));
                 }
                 mark_gpr_changed(block, get_rD(insn));
+            }
+            if (get_XO_10(insn) == XO_MFSPR) {
+                const int spr = get_spr(insn);
+                if (spr == SPR_XER) {
+                    mark_xer_used(block);
+                } else if (spr == SPR_LR) {
+                    mark_lr_used(block);
+                } else if (spr == SPR_CTR) {
+                    mark_ctr_used(block);
+                }
+            } else if (get_XO_10(insn) == XO_MTSPR) {
+                const int spr = get_spr(insn);
+                if (spr == SPR_XER) {
+                    mark_xer_changed(block);
+                } else if (spr == SPR_LR) {
+                    mark_lr_changed(block);
+                } else if (spr == SPR_CTR) {
+                    mark_ctr_changed(block);
+                }
             }
             break;
 

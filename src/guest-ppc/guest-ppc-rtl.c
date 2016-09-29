@@ -897,6 +897,90 @@ static inline void translate_logic_reg(
 /*-----------------------------------------------------------------------*/
 
 /**
+ * translate_move_spr:  Translate an mfspr or mtspr instruction.
+ *
+ * [Parameters]
+ *     ctx: Translation context.
+ *     address: Address of instruction being translated.
+ *     insn: Instruction word.
+ *     to_spr: True for mtspr, false for mfspr.
+ */
+static inline void translate_move_spr(
+    GuestPPCContext *ctx, uint32_t address, uint32_t insn, bool to_spr)
+{
+    RTLUnit * const unit = ctx->unit;
+
+    const int spr = get_spr(insn);
+
+    switch (spr) {
+      case SPR_XER:
+        if (to_spr) {
+            set_xer(ctx, get_gpr(ctx, get_rS(insn)));
+        } else {
+            set_gpr(ctx, get_rD(insn), get_xer(ctx));
+        }
+        break;
+
+      case SPR_LR:
+        if (to_spr) {
+            set_lr(ctx, get_gpr(ctx, get_rS(insn)));
+        } else {
+            set_gpr(ctx, get_rD(insn), get_lr(ctx));
+        }
+        break;
+
+      case SPR_CTR:
+        if (to_spr) {
+            set_ctr(ctx, get_gpr(ctx, get_rS(insn)));
+        } else {
+            set_gpr(ctx, get_rD(insn), get_ctr(ctx));
+        }
+        break;
+
+      case SPR_TBL:
+      case SPR_TBU:
+        if (to_spr) {
+            log_warning(ctx->handle, "0x%X: Invalid attempt to write TB%c",
+                        address, spr==SPR_TBU ? 'U' : 'L');
+            rtl_add_insn(unit, RTLOP_ILLEGAL, 0, 0, 0, 0);
+        } else {
+            // FIXME: callout to handler not yet implemented
+            set_gpr(ctx, get_rD(insn), rtl_imm(unit, 0));
+        }
+        break;
+
+      case SPR_UGQR(0):
+      case SPR_UGQR(1):
+      case SPR_UGQR(2):
+      case SPR_UGQR(3):
+      case SPR_UGQR(4):
+      case SPR_UGQR(5):
+      case SPR_UGQR(6):
+      case SPR_UGQR(7):
+        if (to_spr) {
+            const int rS = get_gpr(ctx, get_rS(insn));
+            rtl_add_insn(unit, RTLOP_STORE, 0, ctx->psb_reg, rS,
+                         ctx->handle->setup.state_offset_gqr + 4 * (spr & 7));
+            // FIXME: this should stop GQR optimization when that's implemented
+        } else {
+            const int value = rtl_alloc_register(unit, RTLTYPE_INT32);
+            rtl_add_insn(unit, RTLOP_LOAD, value, ctx->psb_reg, 0,
+                         ctx->handle->setup.state_offset_gqr + 4 * (spr & 7));
+            set_gpr(ctx, get_rD(insn), value);
+        }
+        break;
+
+      default:
+        log_warning(ctx->handle, "0x%X: %s on invalid SPR %d", address,
+                    to_spr ? "mtspr" : "mfspr/mftb", spr);
+        rtl_add_insn(unit, RTLOP_ILLEGAL, 0, 0, 0, 0);
+        break;
+    }
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
  * translate_muldiv_reg:  Translate an integer register-register multiply
  * or divide instruction.
  *
@@ -1384,15 +1468,14 @@ static inline void translate_x1F(
       case XO_MFCR:
         set_gpr(ctx, get_rD(insn), merge_cr(ctx));
         return;
-      case XO_MFMSR:
-        translate_unimplemented_insn(ctx, address, insn);
-        return;
-      case XO_MFSPR:
-        return;  // FIXME: not yet implemented
       case XO_MFTB:
-        return;  // FIXME: not yet implemented
+      case XO_MFSPR:
+        translate_move_spr(ctx, address, insn, false);
+        return;
       case XO_MTSPR:
-        return;  // FIXME: not yet implemented
+        translate_move_spr(ctx, address, insn, true);
+        return;
+      case XO_MFMSR:
       case XO_MFSR:
       case XO_MFSRIN:
         translate_unimplemented_insn(ctx, address, insn);

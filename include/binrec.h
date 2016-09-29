@@ -63,13 +63,24 @@ extern "C" {
  * _following_ the sc instruction for system call exceptions (however, the
  * sequence "sc; blr" is optimized by setting NIA to the value of LR when
  * calling the system call handler).  The translated code will return
- * immediately to its caller when the handler returns.
+ * immediately to its caller when the handler returns.  The translated
+ * code does not check for NULL function pointers, so it will crash if an
+ * exception occurs and the associated function pointer is not set.
  *
  * All instruction words with the primary opcode of the sc instruction
  * (0x11) are decoded as that instruction.  This deviates from the PowerPC
  * specification, in which only the instruction 0x4400_0002 is a valid sc
  * instruction, but is done to allow the use of that instruction as (for
  * example) a callout to native code in a PowerPC system emulator.
+ *
+ * Access to the time base registers via the mftb instruction is
+ * implemented by calling a host-side callback function, a pointer to
+ * which should be stored in the PSB at the offset indicated by
+ * state_offset_timebase_handler.  The signature of the function is
+ * "uint64_t handler(PSB *)", taking the pointer to the PSB which was
+ * passed to the translated code and returning the current 64-bit time
+ * base value.  If the function pointer is NULL, reads of the time base
+ * registers will always return zero.
  */
 
 /*************************************************************************/
@@ -221,6 +232,8 @@ typedef struct binrec_setup_t {
     int state_offset_sc_handler;
     /* Pointer to function to handle trap exceptions */
     int state_offset_trap_handler;
+    /* Pointer to function to handle time base reads */
+    int state_offset_timebase_handler;
 
     /**
      * userdata:  Opaque pointer which is passed to all callback functions.
