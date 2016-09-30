@@ -419,11 +419,11 @@ static APPEND_INLINE void append_move(
       case RTLTYPE_INT32:
         append_insn_ModRM_reg(code, false, X86OP_MOV_Gv_Ev,
                               host_dest, host_src);
-        break;
+        return;
       case RTLTYPE_ADDRESS:
         append_insn_ModRM_reg(code, true, X86OP_MOV_Gv_Ev,
                               host_dest, host_src);
-        break;
+        return;
       case RTLTYPE_FLOAT:
       case RTLTYPE_DOUBLE:
       case RTLTYPE_V2_DOUBLE:
@@ -433,8 +433,9 @@ static APPEND_INLINE void append_move(
          * bitwise-equivalent (thus MOVAPS even for double-precision types). */
         append_insn_ModRM_reg(code, false, X86OP_MOVAPS_V_W,
                               host_dest, host_src);
-        break;
+        return;
     }
+    ASSERT(!"Invalid type to append_move()");
 }
 
 /*-----------------------------------------------------------------------*/
@@ -475,26 +476,27 @@ static APPEND_INLINE void append_load(
       case RTLTYPE_INT32:
         append_insn_ModRM_mem(code, false, X86OP_MOV_Gv_Ev,
                               host_dest, host_base, offset);
-        break;
+        return;
       case RTLTYPE_ADDRESS:
         append_insn_ModRM_mem(code, true, X86OP_MOV_Gv_Ev,
                               host_dest, host_base, offset);
-        break;
+        return;
       case RTLTYPE_FLOAT:
         append_insn_ModRM_mem(code, false, X86OP_MOVSS_V_W,
                               host_dest, host_base, offset);
-        break;
+        return;
       case RTLTYPE_DOUBLE:
         append_insn_ModRM_mem(code, false, X86OP_MOVSD_V_W,
                               host_dest, host_base, offset);
-        break;
+        return;
       case RTLTYPE_V2_DOUBLE:
         /* MOVAPS instead of MOVAPD for optimization purposes (see note in
          * append_move()). */
         append_insn_ModRM_mem(code, false, X86OP_MOVAPS_V_W,
                               host_dest, host_base, offset);
-        break;
+        return;
     }
+    ASSERT(!"Invalid type to append_load()");
 }
 
 /*-----------------------------------------------------------------------*/
@@ -536,26 +538,27 @@ static APPEND_INLINE void append_store(
       case RTLTYPE_INT32:
         append_insn_ModRM_mem(code, false, X86OP_MOV_Ev_Gv,
                               host_src, host_base, offset);
-        break;
+        return;
       case RTLTYPE_ADDRESS:
         append_insn_ModRM_mem(code, true, X86OP_MOV_Ev_Gv,
                               host_src, host_base, offset);
-        break;
+        return;
       case RTLTYPE_FLOAT:
         append_insn_ModRM_mem(code, false, X86OP_MOVSS_W_V,
                               host_src, host_base, offset);
-        break;
+        return;
       case RTLTYPE_DOUBLE:
         append_insn_ModRM_mem(code, false, X86OP_MOVSD_W_V,
                               host_src, host_base, offset);
-        break;
+        return;
       case RTLTYPE_V2_DOUBLE:
         /* MOVAPS instead of MOVAPD for optimization purposes (see note in
          * append_move()). */
         append_insn_ModRM_mem(code, false, X86OP_MOVAPS_W_V,
                               host_src, host_base, offset);
-        break;
+        return;
     }
+    ASSERT(!"Invalid type to append_store()");
 }
 
 /*-----------------------------------------------------------------------*/
@@ -2826,7 +2829,6 @@ static bool translate_block(HostX86Context *ctx, int block_index)
             const X86Register host_dest = ctx->regs[dest].host_reg;
             ASSERT(host_dest != X86_AX);
             X86Register host_src1 = ctx->regs[src1].host_reg;
-            X86Register host_src2 = ctx->regs[src2].host_reg;
             X86Register host_src3 = ctx->regs[insn->src3].host_reg;
             X86Register host_temp;
             int temp_index = 0;
@@ -2846,52 +2848,63 @@ static bool translate_block(HostX86Context *ctx, int block_index)
                 }
                 host_temp = ctx->regs[dest].host_temp;
             } else {
+                /* RAX is free (or already in use by an operand), so our
+                 * temporary is R15. */
                 host_temp = X86_R15;
             }
 
             /* Reload src1 and src3, if needed. */
+            bool moved_src2 = false;
             if (is_spilled(ctx, src1, insn_index)) {
                 append_load_gpr(&code, RTLTYPE_ADDRESS, host_temp,
                                 X86_SP, ctx->regs[src1].spill_offset);
                 host_src1 = host_temp;
                 host_temp = host_dest;
+                /* temp_index is only used to check the assertion below
+                 * that no more than two temporary registers are used. */
                 temp_index++;
             }
             if (is_spilled(ctx, insn->src3, insn_index)) {
+                const X86Register host_src2 = ctx->regs[src2].host_reg;
                 if (host_temp == host_src2 && !is_spilled(ctx, src2, insn_index)) {
                     /* We'd move src2 to rAX eventually, but do it now so
                      * we don't overwrite it when reloading src3. */
                     append_insn_ModRM_reg(&code, is64, X86OP_MOV_Gv_Ev,
                                           X86_AX, host_src2);
-                    host_src2 = X86_AX;
+                    moved_src2 = true;
                 }
-                append_load_gpr(&code, RTLTYPE_ADDRESS, host_temp,
+                append_load_gpr(&code, unit->regs[insn->src3].type, host_temp,
                                 X86_SP, ctx->regs[insn->src3].spill_offset);
                 host_src3 = host_temp;
                 temp_index++;
             }
 
-            /* Free up rAX for src2, if needed. */
-            if (host_src2 != X86_AX) {
+            /* Load src2 (the compare value) into rAX.  If any other
+             * operand is in rAX, save it in the destination register;
+             * note that we don't need to restore it from dest later,
+             * since if it's live past this instruction, it will already
+             * have been saved in (and be restored from) R15 or XMM15. */
+            if (host_src1 == X86_AX || host_src3 == X86_AX) {
+                ASSERT(temp_index < 2);
+                /* If we saved RAX to R15 above, this MOV is technically
+                 * unnecessary, but the logic to use R15 in that specific
+                 * case (which will probably be fairly rare) is more
+                 * complex than it's worth.  Likewise, we don't try to
+                 * omit this MOV if src2 is also in rAX (due to being the
+                 * same RTL register as src1 or src3). */
+                append_insn_ModRM_reg(&code, is64 || host_src1 == X86_AX,
+                                      X86OP_MOV_Gv_Ev, host_dest, X86_AX);
                 if (host_src1 == X86_AX) {
-                    append_insn_ModRM_reg(&code, true, X86OP_XCHG_Ev_Gv,
-                                          host_src2, X86_AX);
-                    host_src1 = host_src2;
-                    host_src2 = X86_AX;
-                    if (host_src3 == X86_AX) {
-                        host_src3 = host_src2;
-                    }
-                } else if (host_src3 == X86_AX) {
-                    append_insn_ModRM_reg(&code, is64, X86OP_XCHG_Ev_Gv,
-                                          host_src2, X86_AX);
-                    host_src3 = host_src2;
-                    host_src2 = X86_AX;
+                    host_src1 = host_dest;
+                }
+                if (host_src3 == X86_AX) {
+                    host_src3 = host_dest;
                 }
             }
-
-            /* Load src2 (the compare value) into rAX. */
-            append_move_or_load_gpr(&code, ctx, unit, insn_index,
-                                    X86_AX, src2);
+            if (!moved_src2) {
+                append_move_or_load_gpr(&code, ctx, unit, insn_index,
+                                        X86_AX, src2);
+            }
 
             /* Do the actual compare-and-swap. */
             append_opcode(&code, X86OP_LOCK);
@@ -2903,7 +2916,7 @@ static bool translate_block(HostX86Context *ctx, int block_index)
              * only written to the result register (rAX) if the compare
              * fails, but if the compare succeeds, rAX already has the
              * correct value, so we can use it unconditionally. */
-            append_insn_ModRM_reg(&code, true, X86OP_MOV_Gv_Ev,
+            append_insn_ModRM_reg(&code, is64, X86OP_MOV_Gv_Ev,
                                   host_dest, X86_AX);
 
             /* Restore RAX if necessary. */
@@ -2916,7 +2929,9 @@ static bool translate_block(HostX86Context *ctx, int block_index)
                                           X86_AX, X86_R15);
                 }
             }
-          }  // case RTLOP_SELECT
+
+            break;
+          }  // case RTLOP_CMPXCHG
 
           case RTLOP_LABEL:
             ASSERT(insn->label > 0);
