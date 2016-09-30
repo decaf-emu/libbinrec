@@ -1678,6 +1678,11 @@ static inline void translate_x1F(
         translate_unimplemented_insn(ctx, address, insn);
         return;
 
+      /* XO_5 = 0x14 */
+      case XO_LWARX: {
+        return; // FIXME: not yet implemented
+      }  // case XO_LWARX
+
       /* XO_5 = 0x16 */
       case XO_DCBST:
       case XO_DCBF:
@@ -1686,8 +1691,9 @@ static inline void translate_x1F(
       case XO_DCBI:
         // FIXME: We currently act as if there is no data cache.
         return;
-      case XO_STWCX_:
+      case XO_STWCX_: {
         return; // FIXME: not yet implemented
+      }  // case XO_STWCX
       case XO_ECIWX:
       case XO_ECOWX:
       case XO_TLBSYNC:

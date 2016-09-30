@@ -53,27 +53,23 @@ extern "C" {
  * --------------------------------------------------
  * The conditional load/store instructions (lwarx and stwcx.) rely on
  * hardware support for their behavior.  Since such hardware support is
- * not necessarily available in the host environment, these instructions
- * are implemented by treating any store operation as invalidating a
- * pending reservation, which may cause significant performance
- * degradation in a multiprocessor environment but ensures correct
- * behavior.  (This is equivalent to the PowerPC architecture description
- * with the entire address space treated as a single reservation granule.)
- * Translated code for lwarx and stwcx makes use of three PSB fields:
- * reserve_flag (an 8-bit Boolean value), reserve_state (a 32-bit integer
- * value), and reserve_counter_ptr (a pointer to a 32-bit integer).
- * reserve_counter_ptr should point to a single value which is shared
- * across all guest processors in a simulated system.  The value is copied
- * to reserve_state when lwarx is executed; stwcx performs an atomic
- * compare-and-exchange on the counter to replace reserve_state with
- * (reserve_state + 1), and performs the store if and only if the the
- * compare-and-exchange is successful.  (The reserve_flag field is simply
- * used to track whether an lwarx has been executed; it is set by lwarx and
- * cleared by stwcx, and if it is not set, stwcx skips the write without
- * incrementing or checking the counter.)  Unconditional store operations
- * increment the counter before performing the store; thus, a conditional
- * store will succeed as long as no other guest processor executes a store
- * of its own.
+ * not necessarily available in the host environment, and since a correct
+ * implementation requires knowledge of that environment which is not
+ * available to libbinrec, these instructions are implemented using a
+ * compare-and-swap heuristic: an stwcx. after a lwarx succeeds if the
+ * value at the target address is unchanged from the value it had when the
+ * lwarx was executed.  Translated code for lwarx and stwcx makes use of
+ * two PSB fields: reserve_flag (an 8-bit Boolean value), which records
+ * whether an lwarx is pending, and reserve_state (a 32-bit integer value),
+ * which stores the value loaded by the most recent lwarx.  This can result
+ * in incorrect behavior if the guest code expects the store to fail due to
+ * writes of an identical value or writes a new value using a regular store
+ * between the conditional load and store, but this heuristic should
+ * suffice for typical programs.  Note that the address of the lwarx is
+ * _not_ saved; a stwcx. to a different address will still succeed if that
+ * address contains the same value as was loaded by the lwarx instruction.
+ * (This matches the behavior of actual PowerPC CPUs in the sense that
+ * address mismatches between lwarx and stwcx. are ignored.)
  *
  * Access to the time base registers via the mftb instruction is
  * implemented by calling a host-side callback function, a pointer to
