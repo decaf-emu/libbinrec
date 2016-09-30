@@ -1221,9 +1221,25 @@ static void first_pass_for_block(HostX86Context *ctx, int block_index)
             break;
           }  // case RTLOP_CMPXCHG
 
+          case RTLOP_RETURN:
+            if (!do_fixed_regs) {
+                break;
+            }
+            if (insn->src1) {
+                const RTLRegister *src1_reg = &unit->regs[insn->src1];
+                HostX86RegInfo *src1_info = &ctx->regs[insn->src1];
+                if (!src1_info->host_allocated
+                 && !(src1_info->avoid_regs & (1u << X86_AX))
+                 && src1_reg->birth >= ctx->last_ax_death) {
+                    src1_info->host_allocated = true;
+                    src1_info->host_reg = X86_AX;
+                    ctx->last_ax_death = src1_reg->death;
+                }
+            }
+            break;
+
           default:
             break;  // Nothing to do in this pass.
-            // FIXME: try to move return values to rAX
         }
     }
 
