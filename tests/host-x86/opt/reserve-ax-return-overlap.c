@@ -48,7 +48,7 @@ static const uint8_t expected_code[] = {
     0x8B,0xC8,                          // mov %eax,%ecx
     0x49,0x8B,0xC7,                     // mov %r15,%rax
     0xB9,0x05,0x00,0x00,0x00,           // mov $5,%ecx
-    0x8B,0xC1,                          // mov %esi,%eax
+    0x8B,0xC1,                          // mov %ecx,%eax
     0xE9,0x00,0x00,0x00,0x00,           // jmp epilogue
     0x41,0x5F,                          // epilogue: pop %r15
     0xC3,                               // ret
