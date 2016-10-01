@@ -1001,8 +1001,8 @@ bool guest_ppc_scan(GuestPPCContext *ctx, uint32_t limit)
                 if (target >= start && target <= aligned_limit) {
                     if (UNLIKELY(!get_block(ctx, target))) {
                         log_error(ctx->handle, "Out of memory expanding basic"
-                                  " block table for branch target 0x%X",
-                                  address);
+                                  " block table for branch target 0x%X at"
+                                  " 0x%X", target, address);
                         return false;
                     }
                 }
