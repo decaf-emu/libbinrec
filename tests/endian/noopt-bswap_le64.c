@@ -16,6 +16,7 @@ int main(int argc, char **argv)
 {
     static const union {uint8_t b[8]; uint64_t i;} value = {
         .b = {0x12, 0x34, 0x56, 0x78, 0x9A, 0xBC, 0xDE, 0xF0}};
-    EXPECT_EQ(bswap_le64(value.i), UINT64_C(0xF0DEBC9A78563412));
+    volatile uint64_t test = value.i;
+    EXPECT_EQ(bswap_le64(test), UINT64_C(0xF0DEBC9A78563412));
     return EXIT_SUCCESS;
 }

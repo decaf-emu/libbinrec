@@ -14,5 +14,9 @@
 int main(int argc, char **argv)
 {
     EXPECT_EQ(bswap32(0x12345678), 0x78563412);
+
+    volatile uint32_t test = 0x12345678;
+    EXPECT_EQ(bswap32(test), 0x78563412);
+
     return EXIT_SUCCESS;
 }

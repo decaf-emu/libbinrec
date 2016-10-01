@@ -15,5 +15,9 @@
 int main(int argc, char **argv)
 {
     EXPECT_EQ(bswap16(0x1234), 0x3412);
+
+    volatile uint16_t test = 0x1234;
+    EXPECT_EQ(bswap16(test), 0x3412);
+
     return EXIT_SUCCESS;
 }

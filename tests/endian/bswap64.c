@@ -15,5 +15,9 @@ int main(int argc, char **argv)
 {
     EXPECT_EQ(bswap64(UINT64_C(0x123456789ABCDEF0)),
               UINT64_C(0xF0DEBC9A78563412));
+
+    volatile uint64_t test = UINT64_C(0x123456789ABCDEF0);
+    EXPECT_EQ(bswap64(test), UINT64_C(0xF0DEBC9A78563412));
+
     return EXIT_SUCCESS;
 }

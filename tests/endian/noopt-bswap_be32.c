@@ -16,6 +16,7 @@ int main(int argc, char **argv)
 {
     static const union {uint8_t b[4]; uint32_t i;} value = {
         .b = {0x12, 0x34, 0x56, 0x78}};
-    EXPECT_EQ(bswap_be32(value.i), 0x12345678);
+    volatile uint32_t test = value.i;
+    EXPECT_EQ(bswap_be32(test), 0x12345678);
     return EXIT_SUCCESS;
 }
