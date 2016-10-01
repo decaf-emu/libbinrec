@@ -163,6 +163,10 @@ typedef enum RTLOpcode {
     /* Integer operations */
     RTLOP_SCAST,        // dest = (typeof(dest))(signed)src1
     RTLOP_ZCAST,        // dest = (typeof(dest))(unsigned)src1
+    RTLOP_SEXT8,        // dest = (int8_t)src1
+    RTLOP_SEXT16,       // dest = (int16_t)src1
+                        //    [signed casts with explicit size since we
+                        //     don't have 8-bit or 16-bit types]
     RTLOP_ADD,          // dest = src1 + src2
     RTLOP_SUB,          // dest = src1 - src2
     RTLOP_NEG,          // dest = -src1

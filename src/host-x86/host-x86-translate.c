@@ -1662,6 +1662,17 @@ static bool translate_block(HostX86Context *ctx, int block_index)
             break;
           }  // case RTLOP_SCAST, RTLOP_ZCAST
 
+          case RTLOP_SEXT8:
+          case RTLOP_SEXT16: {
+            const X86Register host_dest = ctx->regs[dest].host_reg;
+            const bool is64 = (unit->regs[dest].type == RTLTYPE_ADDRESS);
+            const X86Opcode opcode = (insn->opcode == RTLOP_SEXT8
+                                      ? X86OP_MOVSX_Gv_Eb : X86OP_MOVSX_Gv_Ew);
+            append_insn_ModRM_ctx(&code, is64, opcode, host_dest,
+                                  ctx, insn_index, src1);
+            break;
+          }  // case RTLOP_SEXT8, RTLOP_SEXT16
+
           case RTLOP_NEG:
           case RTLOP_NOT: {
             const X86Register host_dest = ctx->regs[dest].host_reg;

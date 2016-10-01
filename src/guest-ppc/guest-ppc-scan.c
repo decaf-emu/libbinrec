@@ -720,6 +720,10 @@ static void update_used_changed(GuestPPCBlockInfo *block, const uint32_t insn)
                 mark_gpr_used(block, get_rB(insn));
             }
             mark_gpr_changed(block, get_rA(insn));
+            if (get_XO_10(insn) == XO_SRAW || get_XO_10(insn) == XO_SRAWI) {
+                mark_xer_used(block);
+                mark_xer_changed(block);
+            }
             if (get_Rc(insn)) {
                 mark_xer_used(block);
                 mark_cr_changed(block, 0);

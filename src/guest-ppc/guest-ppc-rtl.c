@@ -2063,6 +2063,29 @@ static inline void translate_x1F(
         return;
       }  // case XO_DCBZ
 
+      /* XO_5 = 0x1A */
+      case XO_CNTLZW: {
+        const int rS = get_gpr(ctx, get_rS(insn));
+        const int result = rtl_alloc_register(unit, RTLTYPE_INT32);
+        rtl_add_insn(unit, RTLOP_CLZ, result, rS, 0, 0);
+        set_gpr(ctx, get_rA(insn), result);
+        return;
+      }  // case XO_CNTLZW
+      case XO_EXTSH: {
+        const int rS = get_gpr(ctx, get_rS(insn));
+        const int result = rtl_alloc_register(unit, RTLTYPE_INT32);
+        rtl_add_insn(unit, RTLOP_SEXT16, result, rS, 0, 0);
+        set_gpr(ctx, get_rA(insn), result);
+        return;
+      }  // case XO_EXTSH
+      case XO_EXTSB: {
+        const int rS = get_gpr(ctx, get_rS(insn));
+        const int result = rtl_alloc_register(unit, RTLTYPE_INT32);
+        rtl_add_insn(unit, RTLOP_SEXT8, result, rS, 0, 0);
+        set_gpr(ctx, get_rA(insn), result);
+        return;
+      }  // case XO_EXTSB
+
       /* XO_5 = 0x1C */
       case XO_AND:
         translate_logic_reg(ctx, insn, RTLOP_AND, false, false);

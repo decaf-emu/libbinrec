@@ -748,8 +748,9 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
                          * they move to different bytes. */
                         0,
                         1<<(RTLOP_SUB-8),
-                        1<<(RTLOP_SLL-16) | 1<<(RTLOP_SRL-16),
-                        1<<(RTLOP_SRA-24) | 1<<(RTLOP_ROR-24),
+                        0,
+                        1<<(RTLOP_SLL-24) | 1<<(RTLOP_SRL-24)
+                            | 1<<(RTLOP_SRA-24) | 1<<(RTLOP_ROR-24),
                         1<<(RTLOP_BFINS-32),
                     };
                     ASSERT(insn->opcode >= RTLOP__FIRST
