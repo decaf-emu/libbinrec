@@ -32,6 +32,20 @@ static inline int rtl_imm32(RTLUnit * const unit, uint32_t value)
 /*-----------------------------------------------------------------------*/
 
 /**
+ * rtl_imm64:  Allocate and return a new RTL register of ADDRESS type
+ * containing the given immediate value.
+ * FIXME: Use a real INT64 type instead of assuming ADDRESS is 64 bits.
+ */
+static inline int rtl_imm64(RTLUnit * const unit, uint32_t value)
+{
+    const int reg = rtl_alloc_register(unit, RTLTYPE_ADDRESS);
+    rtl_add_insn(unit, RTLOP_LOAD_IMM, reg, 0, 0, value);
+    return reg;
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
  * get_gpr, get_fpr, get_cr, get_lr, get_ctr, get_xer, get_fpscr:  Return
  * an RTL register containing the value of the given PowerPC register.
  * This will either be the register last used in a corresponding set or get
@@ -1519,6 +1533,81 @@ static inline void translate_muldiv_reg(
 /*-----------------------------------------------------------------------*/
 
 /**
+ * translate_shift:  Translate a shift instruction.
+ *
+ * [Parameters]
+ *     ctx: Translation context.
+ *     insn: Instruction word.
+ *     rtlop: RTL register-immediate instruction to perform the operation.
+ *     is_imm: True if the shift count is an immediate value, false if rB.
+ *     is_sra: True if the shift is an arithmetic right shift (sets XER[CA]).
+ */
+static void translate_shift(
+    GuestPPCContext *ctx, uint32_t insn, RTLOpcode rtlop, int is_imm,
+    int is_sra)
+{
+    RTLUnit * const unit = ctx->unit;
+
+    int rS = get_gpr(ctx, get_rS(insn));
+    int count, result;
+    if (is_imm) {
+        count = 0;  // Not used, but avoid a "may be uninitialized" warning.
+        result = rtl_alloc_register(unit, RTLTYPE_INT32);
+        rtl_add_insn(unit, rtlop, result, rS, 0, get_SH(insn));
+    } else {
+        const int rB = get_gpr(ctx, get_rB(insn));
+        count = rtl_alloc_register(unit, RTLTYPE_INT32);
+        rtl_add_insn(unit, RTLOP_ANDI, count, rB, 0, 63);
+        // FIXME: use a real INT64 type instead of assuming sizeof(ADDRESS)==8
+        const int rS_64 = rtl_alloc_register(unit, RTLTYPE_ADDRESS);
+        if (is_sra) {
+            rtl_add_insn(unit, RTLOP_SCAST, rS_64, rS, 0, 0);
+        } else {
+            rtl_add_insn(unit, RTLOP_ZCAST, rS_64, rS, 0, 0);
+        }
+        rS = rS_64;
+        const int result_64 = rtl_alloc_register(unit, RTLTYPE_ADDRESS);
+        rtl_add_insn(unit, rtlop, result_64, rS, count, 0);
+        result = rtl_alloc_register(unit, RTLTYPE_INT32);
+        rtl_add_insn(unit, RTLOP_ZCAST, result, result_64, 0, 0);
+    }
+    set_gpr(ctx, get_rA(insn), result);
+
+    if (is_sra) {
+        int test;
+        if (is_imm) {
+            const int32_t mask = (int32_t)((1u << get_SH(insn)) - 1);
+            test = rtl_alloc_register(unit, RTLTYPE_INT32);
+            rtl_add_insn(unit, RTLOP_ANDI, test, rS, 0, mask);
+        } else {
+            const int one = rtl_imm64(unit, 1);
+            const int shifted_one = rtl_alloc_register(unit, RTLTYPE_ADDRESS);
+            rtl_add_insn(unit, RTLOP_SLL, shifted_one, one, count, 0);
+            const int mask = rtl_alloc_register(unit, RTLTYPE_ADDRESS);
+            rtl_add_insn(unit, RTLOP_ADDI, mask, shifted_one, 0, -1);
+            test = rtl_alloc_register(unit, RTLTYPE_ADDRESS);
+            rtl_add_insn(unit, RTLOP_AND, test, rS, mask, 0);
+        }
+        const int has_bits = rtl_alloc_register(unit, RTLTYPE_INT32);
+        rtl_add_insn(unit, RTLOP_SGTUI, has_bits, test, 0, 0);
+        const int is_neg = rtl_alloc_register(unit, RTLTYPE_INT32);
+        rtl_add_insn(unit, RTLOP_SLTSI, is_neg, rS, 0, 0);
+        const int ca = rtl_alloc_register(unit, RTLTYPE_INT32);
+        rtl_add_insn(unit, RTLOP_AND, ca, has_bits, is_neg, 0);
+        const int xer = get_xer(ctx);
+        const int new_xer = rtl_alloc_register(unit, RTLTYPE_INT32);
+        rtl_add_insn(unit, RTLOP_BFINS, new_xer, xer, ca, XER_CA_SHIFT | 1<<8);
+        set_xer(ctx, new_xer);
+    }
+
+    if (get_Rc(insn)) {
+        update_cr0(ctx, result);
+    }
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
  * translate_trap:  Translate a TW or TWI instruction.
  *
  * [Parameters]
@@ -2062,6 +2151,20 @@ static inline void translate_x1F(
         }
         return;
       }  // case XO_DCBZ
+
+      /* XO_5 = 0x18 */
+      case XO_SLW:
+        translate_shift(ctx, insn, RTLOP_SLL, false, false);
+        return;
+      case XO_SRW:
+        translate_shift(ctx, insn, RTLOP_SRL, false, false);
+        return;
+      case XO_SRAW:
+        translate_shift(ctx, insn, RTLOP_SRA, false, true);
+        return;
+      case XO_SRAWI:
+        translate_shift(ctx, insn, RTLOP_SRAI, true, true);
+        return;
 
       /* XO_5 = 0x1A */
       case XO_CNTLZW: {

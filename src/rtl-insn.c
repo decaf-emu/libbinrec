@@ -399,6 +399,52 @@ static bool make_alu_2op(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
 /*-----------------------------------------------------------------------*/
 
 /**
+ * make_shift:  Encode a shift/rotate instruction.
+ */
+static bool make_shift(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
+                       int src2, uint64_t other)
+{
+    ASSERT(unit != NULL);
+    ASSERT(unit->regs != NULL);
+    ASSERT(insn != NULL);
+    ASSERT(dest >= 0 && dest < unit->next_reg);
+    ASSERT(src1 >= 0 && src1 < unit->next_reg);
+    ASSERT(src2 >= 0 && src2 < unit->next_reg);
+
+#ifdef ENABLE_OPERAND_SANITY_CHECKS
+    OPERAND_ASSERT(dest != 0);
+    OPERAND_ASSERT(src1 != 0);
+    OPERAND_ASSERT(src2 != 0);
+    OPERAND_ASSERT(unit->regs[dest].source == RTLREG_UNDEFINED);
+    OPERAND_ASSERT(unit->regs[src1].source != RTLREG_UNDEFINED);
+    OPERAND_ASSERT(unit->regs[src2].source != RTLREG_UNDEFINED);
+    OPERAND_ASSERT(rtl_register_is_int(&unit->regs[dest]));
+    OPERAND_ASSERT(unit->regs[src1].type == unit->regs[dest].type);
+    OPERAND_ASSERT(rtl_register_is_int(&unit->regs[src2]));
+#endif
+
+    insn->dest = dest;
+    insn->src1 = src1;
+    insn->src2 = src2;
+
+    RTLRegister * const destreg = &unit->regs[dest];
+    RTLRegister * const src1reg = &unit->regs[src1];
+    RTLRegister * const src2reg = &unit->regs[src2];
+    const int insn_index = unit->num_insns;
+    destreg->source = RTLREG_RESULT;
+    destreg->result.opcode = insn->opcode;
+    destreg->result.src1 = src1;
+    destreg->result.src2 = src2;
+    mark_live(unit, insn_index, destreg, dest);
+    mark_live(unit, insn_index, src1reg, src1);
+    mark_live(unit, insn_index, src2reg, src2);
+
+    return true;
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
  * make_alu_imm:  Encode a register-immediate ALU-type instruction.
  */
 static bool make_alu_imm(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
@@ -1206,10 +1252,10 @@ bool (* const makefunc_table[])(RTLUnit *, RTLInsn *, int, int, int,
     [RTLOP_OR        ] = make_alu_2op,
     [RTLOP_XOR       ] = make_alu_2op,
     [RTLOP_NOT       ] = make_alu_1op,
-    [RTLOP_SLL       ] = make_alu_2op,
-    [RTLOP_SRL       ] = make_alu_2op,
-    [RTLOP_SRA       ] = make_alu_2op,
-    [RTLOP_ROR       ] = make_alu_2op,
+    [RTLOP_SLL       ] = make_shift,
+    [RTLOP_SRL       ] = make_shift,
+    [RTLOP_SRA       ] = make_shift,
+    [RTLOP_ROR       ] = make_shift,
     [RTLOP_CLZ       ] = make_clz,
     [RTLOP_BSWAP     ] = make_alu_1op,
     [RTLOP_SEQ       ] = make_cmp,
