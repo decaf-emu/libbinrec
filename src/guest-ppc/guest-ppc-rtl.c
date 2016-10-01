@@ -972,6 +972,7 @@ static inline void translate_load_store_gpr(
     RTLUnit * const unit = ctx->unit;
 
     if (ctx->handle->host_little_endian) {
+        ASSERT(rtlop != RTLOP_LOAD_S16_BR);  // No such PowerPC instruction.
         switch (rtlop) {
             case RTLOP_LOAD:         rtlop = RTLOP_LOAD_BR;      break;
             case RTLOP_LOAD_U16:     rtlop = RTLOP_LOAD_U16_BR;  break;
@@ -980,7 +981,6 @@ static inline void translate_load_store_gpr(
             case RTLOP_STORE_I16:    rtlop = RTLOP_STORE_I16_BR; break;
             case RTLOP_LOAD_BR:      rtlop = RTLOP_LOAD;         break;
             case RTLOP_LOAD_U16_BR:  rtlop = RTLOP_LOAD_U16;     break;
-            case RTLOP_LOAD_S16_BR:  rtlop = RTLOP_LOAD_S16;     break;
             case RTLOP_STORE_BR:     rtlop = RTLOP_STORE;        break;
             case RTLOP_STORE_I16_BR: rtlop = RTLOP_STORE_I16;    break;
             default: break;
@@ -994,9 +994,9 @@ static inline void translate_load_store_gpr(
             host_address = get_ea_indexed(ctx, insn, &ea);
         } else {
             const int rA = get_gpr(ctx, insn_rA(insn));
-            if (insn_d(insn)) {
+            if (insn_d(insn) != 0) {
                 ea = rtl_alloc_register(unit, RTLTYPE_INT32);
-                rtl_add_insn(unit, RTLOP_ADDI, rA, 0, 0, insn_d(insn));
+                rtl_add_insn(unit, RTLOP_ADDI, ea, rA, 0, insn_d(insn));
             } else {
                 ea = rA;
             }
@@ -1013,8 +1013,18 @@ static inline void translate_load_store_gpr(
             host_address = get_ea_indexed(ctx, insn, NULL);
             disp = 0;
         } else {
-            host_address = get_ea_base(ctx, insn);
-            disp = insn_d(insn);
+            if (insn_rA(insn) != 0 || insn_d(insn) >= 0) {
+                host_address = get_ea_base(ctx, insn);
+                disp = insn_d(insn);
+            } else {
+                const int offset = rtl_alloc_register(unit, RTLTYPE_ADDRESS);
+                rtl_add_insn(unit, RTLOP_LOAD_IMM,
+                             offset, 0, 0, (uint32_t)insn_d(insn));
+                host_address = rtl_alloc_register(unit, RTLTYPE_ADDRESS);
+                rtl_add_insn(unit, RTLOP_ADD,
+                             host_address, ctx->membase_reg, offset, 0);
+                disp = 0;
+            }
         }
     }
 
@@ -1028,7 +1038,9 @@ static inline void translate_load_store_gpr(
     }
 
     if (update) {
-        set_gpr(ctx, insn_rA(insn), ea);
+        if (is_indexed || insn_d(insn) != 0) {
+            set_gpr(ctx, insn_rA(insn), ea);
+        }
     }
 }
 
@@ -2287,6 +2299,60 @@ static inline void translate_x1F(
         return;
       }  // case XO_DCBZ
 
+      /* XO_5 = 0x17 */
+      case XO_LWZX:
+        translate_load_store_gpr(ctx, insn, RTLOP_LOAD, false, true, false);
+        return;
+      case XO_LWZUX:
+        translate_load_store_gpr(ctx, insn, RTLOP_LOAD, false, true, true);
+        return;
+      case XO_LBZX:
+        translate_load_store_gpr(ctx, insn, RTLOP_LOAD_U8, false, true, false);
+        return;
+      case XO_LBZUX:
+        translate_load_store_gpr(ctx, insn, RTLOP_LOAD_U8, false, true, true);
+        return;
+      case XO_STWX:
+        translate_load_store_gpr(ctx, insn, RTLOP_STORE, true, true, false);
+        return;
+      case XO_STWUX:
+        translate_load_store_gpr(ctx, insn, RTLOP_STORE, true, true, true);
+        return;
+      case XO_STBX:
+        translate_load_store_gpr(ctx, insn, RTLOP_STORE_I8, true, true, false);
+        return;
+      case XO_STBUX:
+        translate_load_store_gpr(ctx, insn, RTLOP_STORE_I8, true, true, true);
+        return;
+      case XO_LHZX:
+        translate_load_store_gpr(ctx, insn, RTLOP_LOAD_U16, false, true, false);
+        return;
+      case XO_LHZUX:
+        translate_load_store_gpr(ctx, insn, RTLOP_LOAD_U16, false, true, true);
+        return;
+      case XO_LHAX:
+        translate_load_store_gpr(ctx, insn, RTLOP_LOAD_S16, false, true, false);
+        return;
+      case XO_LHAUX:
+        translate_load_store_gpr(ctx, insn, RTLOP_LOAD_S16, false, true, true);
+        return;
+      case XO_STHX:
+        translate_load_store_gpr(ctx, insn, RTLOP_STORE_I16, true, true, false);
+        return;
+      case XO_STHUX:
+        translate_load_store_gpr(ctx, insn, RTLOP_STORE_I16, true, true, true);
+        return;
+      case XO_LFSX:
+      case XO_LFSUX:
+      case XO_LFDX:
+      case XO_LFDUX:
+      case XO_STFSX:
+      case XO_STFSUX:
+      case XO_STFDX:
+      case XO_STFDUX:
+      case XO_STFIWX:
+        return;  // FIXME: not yet implemented
+
       /* XO_5 = 0x18 */
       case XO_SLW:
         translate_shift(ctx, insn, RTLOP_SLL, false, false);
@@ -2348,8 +2414,6 @@ static inline void translate_x1F(
       case XO_NAND:
         translate_logic_reg(ctx, insn, RTLOP_AND, false, true);
         return;
-
-      default: return;  // FIXME: not yet implemented
     }
 
     ASSERT(!"Missing 0x1F extended opcode handler");
@@ -2591,6 +2655,72 @@ static inline void translate_insn(
 
       case OPCD_x1F:
         translate_x1F(ctx, block, address, insn);
+        return;
+
+      case OPCD_LWZ:
+        translate_load_store_gpr(ctx, insn, RTLOP_LOAD, false, false, false);
+        return;
+
+      case OPCD_LWZU:
+        translate_load_store_gpr(ctx, insn, RTLOP_LOAD, false, false, true);
+        return;
+
+      case OPCD_LBZ:
+        translate_load_store_gpr(ctx, insn, RTLOP_LOAD_U8,
+                                 false, false, false);
+        return;
+
+      case OPCD_LBZU:
+        translate_load_store_gpr(ctx, insn, RTLOP_LOAD_U8,
+                                 false, false, true);
+        return;
+
+      case OPCD_STW:
+        translate_load_store_gpr(ctx, insn, RTLOP_STORE, true, false, false);
+        return;
+
+      case OPCD_STWU:
+        translate_load_store_gpr(ctx, insn, RTLOP_STORE, true, false, true);
+        return;
+
+      case OPCD_STB:
+        translate_load_store_gpr(ctx, insn, RTLOP_STORE_I8,
+                                 true, false, false);
+        return;
+
+      case OPCD_STBU:
+        translate_load_store_gpr(ctx, insn, RTLOP_STORE_I8,
+                                 true, false, true);
+        return;
+
+      case OPCD_LHZ:
+        translate_load_store_gpr(ctx, insn, RTLOP_LOAD_U16,
+                                 false, false, false);
+        return;
+
+      case OPCD_LHZU:
+        translate_load_store_gpr(ctx, insn, RTLOP_LOAD_U16,
+                                 false, false, true);
+        return;
+
+      case OPCD_LHA:
+        translate_load_store_gpr(ctx, insn, RTLOP_LOAD_S16,
+                                 false, false, false);
+        return;
+
+      case OPCD_LHAU:
+        translate_load_store_gpr(ctx, insn, RTLOP_LOAD_S16,
+                                 false, false, true);
+        return;
+
+      case OPCD_STH:
+        translate_load_store_gpr(ctx, insn, RTLOP_STORE_I16,
+                                 true, false, false);
+        return;
+
+      case OPCD_STHU:
+        translate_load_store_gpr(ctx, insn, RTLOP_STORE_I16,
+                                 true, false, true);
         return;
 
       default: return;  // FIXME: not yet implemented

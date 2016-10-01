@@ -101,6 +101,12 @@ extern "C" {
  * specification, in which only the instruction 0x4400_0002 is a valid sc
  * instruction, but is done to allow the use of that instruction as (for
  * example) a callout to native code in a PowerPC system emulator.
+ *
+ * D-form (immediate offset) load and store instructions which wrap around
+ * the 32-bit address space, such as lwz rD,16(rS) where the value of rS
+ * is 0xFFFFFFF0 or greater, are not supported; such accesses will "leak"
+ * outside the guest memory region.  However, accesses to the top of 32k
+ * of memory using D-form instructions with rA = 0 are handled correctly.
  */
 
 /*************************************************************************/
