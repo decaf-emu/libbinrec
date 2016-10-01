@@ -598,7 +598,9 @@ static void update_used_changed(GuestPPCBlockInfo *block, const uint32_t insn)
           case 0x15: {  // lsw*, stsw*
             const bool is_immediate = (get_XO_10(insn) & 0x040) != 0;
             const bool is_store = (get_XO_10(insn) & 0x080) != 0;
-            mark_gpr_used(block, get_rA(insn));
+            if (get_rA(insn)) {
+                mark_gpr_used(block, get_rA(insn));
+            }
             if (is_immediate) {
                 const int n = get_NB(insn) ? get_NB(insn) : 32;
                 int rD = get_rD(insn);
@@ -616,16 +618,15 @@ static void update_used_changed(GuestPPCBlockInfo *block, const uint32_t insn)
                  * will be transferred, so we essentially have to say
                  * "we no longer have any idea about GPRs in this block".
                  * We mark all GPRs as used so their values are available
-                 * if needed by later instructions, then for lswx we mark
-                 * all GPRs as changed to ensure that whatever registers
-                 * were modified get written back to the processor state
-                 * block.  RTL optimization should be able to clear out
-                 * some of the unnecessary loads and stores, but this is
-                 * probably an example of how (from the PowerPC manual)
-                 * "this instruction is likely to ... take longer to
-                 * execute, perhaps much longer, than a sequence of
-                 * individual load or store instructions that produce the
-                 * same results." */
+                 * if needed, then for lswx we mark all GPRs as changed to
+                 * ensure that whatever registers were modified get written
+                 * back to the processor state block.  RTL optimization
+                 * should be able to clear out some of the unnecessary
+                 * loads and stores, but this is probably an example of
+                 * how (from the PowerPC manual) "this instruction is
+                 * likely to ... take longer to execute, perhaps much
+                 * longer, than a sequence of individual load or store
+                 * instructions that produce the same results." */
                 for (int i = 0; i < 32; i++) {
                     mark_gpr_used(block, i);
                     if (!is_store) {

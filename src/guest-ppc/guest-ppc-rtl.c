@@ -265,9 +265,11 @@ static inline int get_ea_indexed(GuestPPCContext *ctx, uint32_t insn,
  * [Parameters]
  *     ctx: Translation context.
  *     block: Block which is being or was just translated.
+ *     clear: True to clear all live registers after storing them; false
+ *         to leave them live.
  */
 static void store_live_regs(GuestPPCContext *ctx,
-                            const GuestPPCBlockInfo *block)
+                            const GuestPPCBlockInfo *block, bool clear)
 {
     RTLUnit * const unit = ctx->unit;
 
@@ -280,6 +282,9 @@ static void store_live_regs(GuestPPCContext *ctx,
         if (ctx->live.gpr[index]) {
             rtl_add_insn(unit, RTLOP_SET_ALIAS,
                          0, ctx->live.gpr[index], 0, ctx->alias.gpr[index]);
+            if (clear) {
+                ctx->live.gpr[index] = 0;
+            }
         }
     }
 
@@ -289,6 +294,9 @@ static void store_live_regs(GuestPPCContext *ctx,
         if (ctx->live.fpr[index]) {
             rtl_add_insn(unit, RTLOP_SET_ALIAS,
                          0, ctx->live.fpr[index], 0, ctx->alias.fpr[index]);
+            if (clear) {
+                ctx->live.fpr[index] = 0;
+            }
         }
     }
 
@@ -298,27 +306,42 @@ static void store_live_regs(GuestPPCContext *ctx,
         if (ctx->live.cr[index]) {
             rtl_add_insn(unit, RTLOP_SET_ALIAS,
                          0, ctx->live.cr[index], 0, ctx->alias.cr[index]);
+            if (clear) {
+                ctx->live.cr[index] = 0;
+            }
         }
     }
 
     if (block->lr_changed && ctx->live.lr) {
         rtl_add_insn(unit, RTLOP_SET_ALIAS,
                      0, ctx->live.lr, 0, ctx->alias.lr);
+        if (clear) {
+            ctx->live.lr = 0;
+        }
     }
 
     if (block->ctr_changed && ctx->live.ctr) {
         rtl_add_insn(unit, RTLOP_SET_ALIAS,
                      0, ctx->live.ctr, 0, ctx->alias.ctr);
+        if (clear) {
+            ctx->live.ctr = 0;
+        }
     }
 
     if (block->xer_changed && ctx->live.xer) {
         rtl_add_insn(unit, RTLOP_SET_ALIAS,
                      0, ctx->live.xer, 0, ctx->alias.xer);
+        if (clear) {
+            ctx->live.xer = 0;
+        }
     }
 
     if (block->fpscr_changed && ctx->live.fpscr) {
         rtl_add_insn(unit, RTLOP_SET_ALIAS,
                      0, ctx->live.fpscr, 0, ctx->alias.fpscr);
+        if (clear) {
+            ctx->live.fpscr = 0;
+        }
     }
 }
 
@@ -686,7 +709,7 @@ static void translate_branch_label(
         test_reg = test;
     }
 
-    store_live_regs(ctx, block);
+    store_live_regs(ctx, block, false);
     rtl_add_insn(unit, branch_op, 0, test_reg, 0, target_label);
 
     if (skip_label) {
@@ -753,7 +776,7 @@ static void translate_branch_terminal(
     if (LK) {
         set_lr(ctx, rtl_imm32(unit, address + 4));
     }
-    store_live_regs(ctx, block);
+    store_live_regs(ctx, block, false);
     ctx->live.lr = current_lr;
     set_nia(ctx, target);
     rtl_add_insn(unit, RTLOP_GOTO, 0, 0, 0, ctx->epilogue_label);
@@ -966,6 +989,226 @@ static inline void translate_load_store_gpr(
 
     if (update) {
         set_gpr(ctx, get_rA(insn), ea);
+    }
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
+ * translate_load_store_string:  Translate a string load or store
+ * instruction (lswi/lswx/stswi/stswx).
+ *
+ * [Parameters]
+ *     ctx: Translation context.
+ *     block: Basic block being translated.
+ *     insn: Instruction word.
+ *     is_store: True if the instruction is a store instruction (stswi/stswx).
+ *     is_imm: True if the instruction has an immediate count (lswi/stswi).
+ */
+static inline void translate_load_store_string(
+    GuestPPCContext *ctx, GuestPPCBlockInfo *block, uint32_t insn,
+    bool is_store, bool is_imm)
+{
+    RTLUnit * const unit = ctx->unit;
+
+    /* We implement the string move instructions by loading or storing
+     * directly to/from the PSB, so make sure it's up to date, and make
+     * sure no future code tries to store stale values. */
+    store_live_regs(ctx, block, true);
+
+    int base_address, host_address;
+    if (get_rA(insn)) {
+        const int rA = rtl_alloc_register(unit, RTLTYPE_INT32);
+        rtl_add_insn(unit, RTLOP_GET_ALIAS,
+                     rA, 0, 0, ctx->alias.gpr[get_rA(insn)]);
+        const int rA_zcast = rtl_alloc_register(unit, RTLTYPE_ADDRESS);
+        rtl_add_insn(unit, RTLOP_ZCAST, rA_zcast, rA, 0, 0);
+        base_address = rtl_alloc_register(unit, RTLTYPE_ADDRESS);
+        rtl_add_insn(unit, RTLOP_ADD,
+                     base_address, ctx->membase_reg, rA_zcast, 0);
+    } else {
+        base_address = ctx->membase_reg;
+    }
+    if (is_imm) {
+        host_address = base_address;
+    } else {
+        const int rB = rtl_alloc_register(unit, RTLTYPE_INT32);
+        rtl_add_insn(unit, RTLOP_GET_ALIAS,
+                     rB, 0, 0, ctx->alias.gpr[get_rB(insn)]);
+        const int rB_zcast = rtl_alloc_register(unit, RTLTYPE_ADDRESS);
+        rtl_add_insn(unit, RTLOP_ZCAST, rB_zcast, rB, 0, 0);
+        host_address = rtl_alloc_register(unit, RTLTYPE_ADDRESS);
+        rtl_add_insn(unit, RTLOP_ADD,
+                     host_address, base_address, rB_zcast, 0);
+    }
+
+    const int psb_reg = ctx->psb_reg;
+    const int gpr_base = ctx->handle->setup.state_offset_gpr;
+    const int endian_flip = ctx->handle->host_little_endian ? 3 : 0;
+
+    if (is_imm) {
+
+        const int n = get_NB(insn) ? get_NB(insn) : 32;
+
+        /* Unroll into units of 4 bytes, both to try and hide load latency
+         * and since each GPR is 4 bytes wide anyway. */
+        int rD = get_rD(insn);
+        for (int i = 0; i+4 <= n; i += 4, rD = (rD + 1) & 31) {
+            int byte_reg[4];
+            for (int byte = 0; byte < 4; byte++) {
+                byte_reg[byte] = rtl_alloc_register(unit, RTLTYPE_INT32);
+            }
+            const int gpr_offset = gpr_base + 4*rD;
+            if (is_store) {
+                for (int byte = 0; byte < 4; byte++) {
+                    rtl_add_insn(unit, RTLOP_LOAD_U8,
+                                 byte_reg[byte], psb_reg, 0,
+                                 gpr_offset + (byte ^ endian_flip));
+                }
+                for (int byte = 0; byte < 4; byte++) {
+                    rtl_add_insn(unit, RTLOP_STORE_I8,
+                                 0, host_address, byte_reg[byte], i + byte);
+                }
+            } else {
+                for (int byte = 0; byte < 4; byte++) {
+                    rtl_add_insn(unit, RTLOP_LOAD_U8,
+                                 byte_reg[byte], host_address, 0, i + byte);
+                }
+                for (int byte = 0; byte < 4; byte++) {
+                    rtl_add_insn(unit, RTLOP_STORE_I8,
+                                 0, psb_reg, byte_reg[byte],
+                                 gpr_offset + (byte ^ endian_flip));
+                }
+            }
+        }
+
+        if ((n & 3) != 0) {
+            const int i = n & ~3;
+            int byte_reg[4];
+            for (int byte = 0; byte < (n & 3); byte++) {
+                byte_reg[byte] = rtl_alloc_register(unit, RTLTYPE_INT32);
+            }
+            const int gpr_offset = gpr_base + 4*rD;
+            if (is_store) {
+                for (int byte = 0; byte < (n & 3); byte++) {
+                    rtl_add_insn(unit, RTLOP_LOAD_U8,
+                                 byte_reg[byte], psb_reg, 0,
+                                 gpr_offset + (byte ^ endian_flip));
+                }
+                for (int byte = 0; byte < (n & 3); byte++) {
+                    rtl_add_insn(unit, RTLOP_STORE_I8,
+                                 0, host_address, byte_reg[byte], i + byte);
+                }
+            } else {
+                for (int byte = 0; byte < (n & 3); byte++) {
+                    rtl_add_insn(unit, RTLOP_LOAD_U8,
+                                 byte_reg[byte], host_address, 0, i + byte);
+                }
+                const int zero = rtl_imm32(unit, 0);
+                for (int byte = (n & 3); byte < 4; byte++) {
+                    byte_reg[byte] = zero;
+                }
+                for (int byte = 0; byte < 4; byte++) {
+                    rtl_add_insn(unit, RTLOP_STORE_I8,
+                                 0, psb_reg, byte_reg[byte],
+                                 gpr_offset + (byte ^ endian_flip));
+                }
+            }
+        }
+
+    } else {  // !is_imm
+
+        /* We don't even attempt to optimize this because it's way too
+         * complicated already.  Hopefully nobody actually uses lswx/stswx
+         * anymore.  ( */
+
+        const int xer = get_xer(ctx);
+        const int xer_count = rtl_alloc_register(unit, RTLTYPE_INT32);
+        rtl_add_insn(unit, RTLOP_ANDI, xer_count, xer, 0, 127);
+        const int count_mod_4 = rtl_alloc_register(unit, RTLTYPE_INT32);
+        rtl_add_insn(unit, RTLOP_ANDI, count_mod_4, xer_count, 0, 3);
+        const int start_label = rtl_alloc_label(unit);
+        rtl_add_insn(unit, RTLOP_GOTO_IF_Z, 0, count_mod_4, 0, start_label);
+
+        const int last_gpr_temp = rtl_alloc_register(unit, RTLTYPE_INT32);
+        rtl_add_insn(unit, RTLOP_ADDI, last_gpr_temp, xer_count, 0,
+                     4 * get_rD(insn));
+        const int last_gpr_offset = rtl_alloc_register(unit, RTLTYPE_INT32);
+        rtl_add_insn(unit, RTLOP_ANDI,
+                     last_gpr_offset, last_gpr_temp, 0, 31<<2);
+        const int last_gpr_offset_zcast =
+            rtl_alloc_register(unit, RTLTYPE_ADDRESS);
+        rtl_add_insn(unit, RTLOP_ZCAST,
+                     last_gpr_offset_zcast, last_gpr_offset, 0, 0);
+        const int last_gpr_address = rtl_alloc_register(unit, RTLTYPE_ADDRESS);
+        rtl_add_insn(unit, RTLOP_ADD,
+                     last_gpr_address, psb_reg, last_gpr_offset_zcast, 0);
+        rtl_add_insn(unit, RTLOP_STORE,
+                     0, last_gpr_address, rtl_imm32(unit, 0), gpr_base);
+
+        rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, start_label);
+
+        /* We use ADDRESS type for the count and GPR offset aliases so we
+         * can add them directly to the base addresses without an
+         * intermediate ZCAST. */
+        const int init_count = rtl_alloc_register(unit, RTLTYPE_ADDRESS);
+        rtl_add_insn(unit, RTLOP_ZCAST, init_count, xer_count, 0, 0);
+        const int alias_count =
+            rtl_alloc_alias_register(unit, RTLTYPE_ADDRESS);
+        rtl_add_insn(unit, RTLOP_SET_ALIAS, 0, init_count, 0, alias_count);
+        const int init_gpr_offset = rtl_alloc_register(unit, RTLTYPE_ADDRESS);
+        rtl_add_insn(unit, RTLOP_LOAD_IMM,
+                     init_gpr_offset, 0, 0, 4 * get_rD(insn));
+        const int alias_gpr_offset =
+            rtl_alloc_alias_register(unit, RTLTYPE_ADDRESS);
+        rtl_add_insn(unit, RTLOP_SET_ALIAS,
+                     0, init_gpr_offset, 0, alias_gpr_offset);
+
+        const int loop_label = rtl_alloc_label(unit);
+        rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, loop_label);
+        const int count = rtl_alloc_register(unit, RTLTYPE_ADDRESS);
+        rtl_add_insn(unit, RTLOP_GET_ALIAS, count, 0, 0, alias_count);
+        const int end_label = rtl_alloc_label(unit);
+        rtl_add_insn(unit, RTLOP_GOTO_IF_Z, 0, count, 0, end_label);
+        const int gpr_offset = rtl_alloc_register(unit, RTLTYPE_ADDRESS);
+        rtl_add_insn(unit, RTLOP_GET_ALIAS,
+                     gpr_offset, 0, 0, alias_gpr_offset);
+
+        const int mem_address = rtl_alloc_register(unit, RTLTYPE_ADDRESS);
+        rtl_add_insn(unit, RTLOP_ADD, mem_address, host_address, count, 0);
+
+        int real_offset = gpr_offset;
+        if (endian_flip) {
+            real_offset = rtl_alloc_register(unit, RTLTYPE_ADDRESS);
+            rtl_add_insn(unit, RTLOP_XORI,
+                         real_offset, gpr_offset, 0, endian_flip);
+        }
+        int gpr_address = rtl_alloc_register(unit, RTLTYPE_ADDRESS);
+        rtl_add_insn(unit, RTLOP_ADD, gpr_address, psb_reg, real_offset, 0);
+
+        const int value = rtl_alloc_register(unit, RTLTYPE_INT32);
+        if (is_store) {
+            rtl_add_insn(unit, RTLOP_LOAD_U8, value, gpr_address, 0, gpr_base);
+            rtl_add_insn(unit, RTLOP_STORE_I8, 0, mem_address, value, 0);
+        } else {
+            rtl_add_insn(unit, RTLOP_LOAD_U8, value, mem_address, 0, 0);
+            rtl_add_insn(unit, RTLOP_STORE_I8, 0, gpr_address, value, gpr_base);
+        }
+
+        int new_count = rtl_alloc_register(unit, RTLTYPE_ADDRESS);
+        rtl_add_insn(unit, RTLOP_ADDI, new_count, count, 0, 1);
+        rtl_add_insn(unit, RTLOP_SET_ALIAS, 0, new_count, 0, alias_count);
+        const int gpr_offset_temp = rtl_alloc_register(unit, RTLTYPE_ADDRESS);
+        rtl_add_insn(unit, RTLOP_ADDI, gpr_offset_temp, gpr_offset, 0, 1);
+        int new_gpr_offset = rtl_alloc_register(unit, RTLTYPE_ADDRESS);
+        rtl_add_insn(unit, RTLOP_ANDI,
+                     new_gpr_offset, gpr_offset_temp, 0, 127);
+        rtl_add_insn(unit, RTLOP_SET_ALIAS,
+                     0, new_gpr_offset, 0, alias_gpr_offset);
+        rtl_add_insn(unit, RTLOP_GOTO, 0, 0, 0, loop_label);
+
+        rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, end_label);
+
     }
 }
 
@@ -1450,7 +1693,7 @@ static void translate_trap(
         rtl_add_insn(unit, skip_op, 0, result, 0, label);
     }
 
-    store_live_regs(ctx, block);
+    store_live_regs(ctx, block, false);
     set_nia_imm(ctx, address);
     guest_ppc_flush_state(ctx);
     const int trap_handler = rtl_alloc_register(unit, RTLTYPE_ADDRESS);
@@ -1693,6 +1936,20 @@ static inline void translate_x1F(
         return;
       }  // case XO_LWARX
 
+      /* XO_5 = 0x15 */
+      case XO_LSWX:
+        translate_load_store_string(ctx, block, insn, false, false);
+        return;
+      case XO_LSWI:
+        translate_load_store_string(ctx, block, insn, false, true);
+        return;
+      case XO_STSWX:
+        translate_load_store_string(ctx, block, insn, true, false);
+        return;
+      case XO_STSWI:
+        translate_load_store_string(ctx, block, insn, true, true);
+        return;
+
       /* XO_5 = 0x16 */
       case XO_DCBST:
       case XO_DCBF:
@@ -1777,7 +2034,7 @@ static inline void translate_x1F(
         /* icbi implies that already-translated code may have changed, so
          * unconditionally return from this unit.  We currently don't
          * bother checking the invalidation address. */
-        store_live_regs(ctx, block);
+        store_live_regs(ctx, block, false);
         set_nia_imm(ctx, address + 4);
         rtl_add_insn(unit, RTLOP_GOTO, 0, 0, 0, ctx->epilogue_label);
         return;
@@ -1950,7 +2207,7 @@ static inline void translate_insn(
                 is_sc_blr = true;
             }
         }
-        store_live_regs(ctx, block);
+        store_live_regs(ctx, block, false);
         if (is_sc_blr) {
             set_nia(ctx, get_lr(ctx));
         } else {
@@ -2123,7 +2380,9 @@ bool guest_ppc_translate_block(GuestPPCContext *ctx, int index)
         }
     }
 
-    store_live_regs(ctx, block);
+    /* No need to explicitly clear live registers here since we won't
+     * reference the structure again while translating this block. */
+    store_live_regs(ctx, block, false);
     set_nia_imm(ctx, start + block->len);
     if (UNLIKELY(rtl_get_error_state(unit))) {
         log_ice(ctx->handle, "Failed to update registers after block end 0x%X",
