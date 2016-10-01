@@ -228,6 +228,8 @@ static void update_used_changed(GuestPPCBlockInfo *block, const uint32_t insn)
         break;
 
       case OPCD_RLWIMI:
+        mark_gpr_used(block, insn_rA(insn));
+        /* fall through */
       case OPCD_RLWINM:
         mark_gpr_used(block, insn_rS(insn));
         mark_gpr_changed(block, insn_rA(insn));
@@ -264,9 +266,9 @@ static void update_used_changed(GuestPPCBlockInfo *block, const uint32_t insn)
         break;
 
       case OPCD_RLWNM:
-        mark_gpr_used(block, insn_rA(insn));
+        mark_gpr_used(block, insn_rS(insn));
         mark_gpr_used(block, insn_rB(insn));
-        mark_gpr_changed(block, insn_rD(insn));
+        mark_gpr_changed(block, insn_rA(insn));
         if (insn_Rc(insn)) {
             mark_xer_used(block);
             mark_cr_changed(block, 0);

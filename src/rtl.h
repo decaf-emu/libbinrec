@@ -196,6 +196,8 @@ typedef enum RTLOpcode {
     RTLOP_SRA,          // dest = (signed)src1 >> src2
                         //    [src2 may be any integer type; result is
                         //     undefined when src2 >= #bits(src1)]
+    RTLOP_ROL,          // dest = src1 ROL (src2 % #bits(src1))
+                        //    [src2 may be any integer type]
     RTLOP_ROR,          // dest = src1 ROR (src2 % #bits(src1))
                         //    [src2 may be any integer type]
     RTLOP_CLZ,          // dest = [number of leading zeros in src1]
@@ -236,6 +238,7 @@ typedef enum RTLOpcode {
     RTLOP_SRAI,         // dest = (signed)src1 >> IMMEDIATE(other)
                         //    [result is undefined when other >= #bits(src1)]
     RTLOP_RORI,         // dest = src1 ROR (IMMEDIATE(other) % #bits(src1))
+                        //    [to rotate left, use count = #bits(src1) - count]
     RTLOP_SEQI,         // dest = src1 == src2 ? 1 : 0
                         //    [dest may be any integer type]
     RTLOP_SLTUI,        // dest = (unsigned)src1 < IMMEDIATE(other) ? 1 : 0

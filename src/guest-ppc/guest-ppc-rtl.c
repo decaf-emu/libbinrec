@@ -1559,6 +1559,115 @@ static inline void translate_muldiv_reg(
 /*-----------------------------------------------------------------------*/
 
 /**
+ * translate_rotate_mask:  Translate a rlwinm, rlwnm, or rlwimi instruction.
+ *
+ * [Parameters]
+ *     ctx: Translation context.
+ *     insn: Instruction word.
+ *     is_imm: True if the shift count is an immediate value, false if rB.
+ *     insert: True for a rlwimi instruction.
+ */
+static void translate_rotate_mask(
+    GuestPPCContext *ctx, uint32_t insn, bool is_imm, bool insert)
+{
+    RTLUnit * const unit = ctx->unit;
+
+    const int SH = insn_SH(insn);
+    const int MB = insn_MB(insn);
+    const int ME = insn_ME(insn);
+
+    const int rS = get_gpr(ctx, insn_rS(insn));
+    int result;
+
+    if (MB == ((ME + 1) & 31)) {  // rotlw/rotlwi
+        if (is_imm) {
+            if (SH == 0) {
+                result = rS;
+            } else {
+                result = rtl_alloc_register(unit, RTLTYPE_INT32);
+                rtl_add_insn(unit, RTLOP_RORI, result, rS, 0, 32-SH);
+            }
+        } else {
+            const int rB = get_gpr(ctx, insn_rB(insn));
+            result = rtl_alloc_register(unit, RTLTYPE_INT32);
+            rtl_add_insn(unit, RTLOP_ROL, result, rS, rB, 0);
+        }
+
+    } else if (is_imm && !insert && MB == 0 && ME == 31-SH) {  // slwi
+        result = rtl_alloc_register(unit, RTLTYPE_INT32);
+        rtl_add_insn(unit, RTLOP_SLLI, result, rS, 0, SH);
+
+    } else if (is_imm && !insert && MB == 32-SH && ME == 31) {  // srwi
+        result = rtl_alloc_register(unit, RTLTYPE_INT32);
+        rtl_add_insn(unit, RTLOP_SRLI, result, rS, 0, 32-SH);
+
+    } else if (insert) {
+        ASSERT(is_imm);
+        const int rA = get_gpr(ctx, insn_rA(insn));
+        int start, count, base, value;
+        if (MB <= ME) {
+            start = 31 - ME;
+            count = ME - MB + 1;
+            base = rA;
+            if (SH == start) {
+                value = rS;
+            } else {
+                value = rtl_alloc_register(unit, RTLTYPE_INT32);
+                rtl_add_insn(unit, RTLOP_RORI,
+                             value, rS, 0, ((32-SH) + start) & 31);
+            }
+        } else {
+            start = 32 - MB;
+            count = MB - ME - 1;
+            ASSERT(count > 0);  // Or else it would be rotlwi.
+            if (SH == 0) {
+                base = rS;
+            } else {
+                base = rtl_alloc_register(unit, RTLTYPE_INT32);
+                rtl_add_insn(unit, RTLOP_RORI, base, rS, 0, 32-SH);
+            }
+            value = rA;
+        }
+        result = rtl_alloc_register(unit, RTLTYPE_INT32);
+        rtl_add_insn(unit, RTLOP_BFINS, result, base, value, start | count<<8);
+
+    } else {
+        /* MASK function for little-endian bit numbering.  Assumes mb >= me. */
+        #define MASK_LE(mb, me) \
+            ((uint32_t)((UINT64_C(1) << ((mb)-(me)+1)) - 1) << (me))
+        const int mb = 31 - MB;
+        const int me = 31 - ME;
+        const uint32_t mask =
+            (mb < me ? ~MASK_LE((me-1) & 31, (mb+1) & 31) : MASK_LE(mb, me));
+        #undef MASK_LE
+
+        int rotated;
+        if (is_imm) {
+            if (SH == 0) {
+                rotated = rS;
+            } else {
+                rotated = rtl_alloc_register(unit, RTLTYPE_INT32);
+                rtl_add_insn(unit, RTLOP_RORI, rotated, rS, 0, 32-SH);
+            }
+        } else {
+            const int rB = get_gpr(ctx, insn_rB(insn));
+            rotated = rtl_alloc_register(unit, RTLTYPE_INT32);
+            rtl_add_insn(unit, RTLOP_ROL, rotated, rS, rB, 0);
+        }
+        result = rtl_alloc_register(unit, RTLTYPE_INT32);
+        rtl_add_insn(unit, RTLOP_ANDI, result, rotated, 0, (int32_t)mask);
+    }
+
+    set_gpr(ctx, insn_rA(insn), result);
+
+    if (insn_Rc(insn)) {
+        update_cr0(ctx, result);
+    }
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
  * translate_shift:  Translate a shift instruction.
  *
  * [Parameters]
@@ -1569,8 +1678,8 @@ static inline void translate_muldiv_reg(
  *     is_sra: True if the shift is an arithmetic right shift (sets XER[CA]).
  */
 static void translate_shift(
-    GuestPPCContext *ctx, uint32_t insn, RTLOpcode rtlop, int is_imm,
-    int is_sra)
+    GuestPPCContext *ctx, uint32_t insn, RTLOpcode rtlop, bool is_imm,
+    bool is_sra)
 {
     RTLUnit * const unit = ctx->unit;
 
@@ -2440,6 +2549,18 @@ static inline void translate_insn(
             return;
         }
         ASSERT(!"Missing 0x13 extended opcode handler");
+
+      case OPCD_RLWIMI:
+        translate_rotate_mask(ctx, insn, true, true);
+        return;
+
+      case OPCD_RLWINM:
+        translate_rotate_mask(ctx, insn, true, false);
+        return;
+
+      case OPCD_RLWNM:
+        translate_rotate_mask(ctx, insn, false, false);
+        return;
 
       case OPCD_ORI:
         if (insn == 0x60000000) {  // nop

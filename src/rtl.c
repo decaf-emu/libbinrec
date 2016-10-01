@@ -363,6 +363,7 @@ static void rtl_describe_register(const RTLRegister *reg,
             [RTLOP_SRLI  ] = ">>",
             [RTLOP_SRA   ] = ">>",
             [RTLOP_SRAI  ] = ">>",
+            [RTLOP_ROL   ] = "rol",
             [RTLOP_ROR   ] = "ror",
             [RTLOP_RORI  ] = "ror",
             [RTLOP_CLZ   ] = "clz",
@@ -424,6 +425,7 @@ static void rtl_describe_register(const RTLRegister *reg,
           case RTLOP_SLL:
           case RTLOP_SRL:
           case RTLOP_SRA:
+          case RTLOP_ROL:
           case RTLOP_ROR:
           case RTLOP_SEQ:
           case RTLOP_SLTU:
@@ -540,6 +542,7 @@ static void rtl_decode_insn(const RTLUnit *unit, uint32_t index,
         [RTLOP_SLL       ] = "SLL",
         [RTLOP_SRL       ] = "SRL",
         [RTLOP_SRA       ] = "SRA",
+        [RTLOP_ROL       ] = "ROL",
         [RTLOP_ROR       ] = "ROR",
         [RTLOP_CLZ       ] = "CLZ",
         [RTLOP_BSWAP     ] = "BSWAP",
@@ -667,6 +670,7 @@ static void rtl_decode_insn(const RTLUnit *unit, uint32_t index,
       case RTLOP_SLL:
       case RTLOP_SRL:
       case RTLOP_SRA:
+      case RTLOP_ROL:
       case RTLOP_ROR:
       case RTLOP_SEQ:
       case RTLOP_SLTU:

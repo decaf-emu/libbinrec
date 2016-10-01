@@ -707,6 +707,7 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
                       case RTLOP_SLL:
                       case RTLOP_SRL:
                       case RTLOP_SRA:
+                      case RTLOP_ROL:
                       case RTLOP_ROR:
                         /* src1==src2 should normally never happen (unless
                          * the input is doing something bizarre), but if it
@@ -750,7 +751,8 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
                         1<<(RTLOP_SUB-8),
                         0,
                         1<<(RTLOP_SLL-24) | 1<<(RTLOP_SRL-24)
-                            | 1<<(RTLOP_SRA-24) | 1<<(RTLOP_ROR-24),
+                            | 1<<(RTLOP_SRA-24) | 1<<(RTLOP_ROL-24)
+                            | 1<<(RTLOP_ROR-24),
                         1<<(RTLOP_BFINS-32),
                     };
                     ASSERT(insn->opcode >= RTLOP__FIRST
@@ -779,7 +781,8 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
              * since the fixed inputs rAX to MUL/IMUL and rDX:rAX to DIV/IDIV
              * are also outputs.) */
             if (insn->opcode == RTLOP_SLL || insn->opcode == RTLOP_SRL
-             || insn->opcode == RTLOP_SRA || insn->opcode == RTLOP_ROR) {
+             || insn->opcode == RTLOP_SRA || insn->opcode == RTLOP_ROL
+             || insn->opcode == RTLOP_ROR) {
                 avoid_regs |= 1u << X86_CX;
             }
             dest_info->host_reg =
@@ -821,6 +824,7 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
           case RTLOP_SLL:
           case RTLOP_SRL:
           case RTLOP_SRA:
+          case RTLOP_ROL:
           case RTLOP_ROR:
             /* Temporary needed if rCX is live and src2 is spilled. */
             need_temp = (ctx->reg_map[X86_CX] != 0 && ctx->regs[src2].spilled);
@@ -1183,6 +1187,7 @@ static void first_pass_for_block(HostX86Context *ctx, int block_index)
           case RTLOP_SLL:
           case RTLOP_SRL:
           case RTLOP_SRA:
+          case RTLOP_ROL:
           case RTLOP_ROR: {
             if (!do_fixed_regs) {
                 break;
@@ -1201,7 +1206,7 @@ static void first_pass_for_block(HostX86Context *ctx, int block_index)
              * translator doesn't support rCX as a shift destination. */
             ctx->regs[insn->dest].avoid_regs |= 1u << X86_CX;
             break;
-          }  // case RTLOP_{SLL,SRL,SRA,ROR}
+          }  // case RTLOP_{SLL,SRL,SRA,ROL,ROR}
 
           case RTLOP_CMPXCHG: {
             if (!do_fixed_regs) {

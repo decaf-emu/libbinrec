@@ -1983,6 +1983,7 @@ static bool translate_block(HostX86Context *ctx, int block_index)
           case RTLOP_SLL:
           case RTLOP_SRL:
           case RTLOP_SRA:
+          case RTLOP_ROL:
           case RTLOP_ROR: {
             const X86Register host_dest = ctx->regs[dest].host_reg;
             const X86Register host_src2 = ctx->regs[src2].host_reg;
@@ -1994,6 +1995,7 @@ static bool translate_block(HostX86Context *ctx, int block_index)
                 insn->opcode == RTLOP_SLL ? X86OP_SHIFT_SHL :
                 insn->opcode == RTLOP_SRL ? X86OP_SHIFT_SHR :
                 insn->opcode == RTLOP_SRA ? X86OP_SHIFT_SAR :
+                insn->opcode == RTLOP_ROL ? X86OP_SHIFT_ROL :
                              /* RTLOP_ROR */ X86OP_SHIFT_ROR);
 
             append_move_or_load_gpr(&code, ctx, unit, insn_index,
@@ -2043,7 +2045,7 @@ static bool translate_block(HostX86Context *ctx, int block_index)
                 }
             }
             break;
-          }  // case RTLOP_{SLL,SRL,SRA,ROR}
+          }  // case RTLOP_{SLL,SRL,SRA,ROL,ROR}
 
           case RTLOP_CLZ: {
             const X86Register host_dest = ctx->regs[dest].host_reg;
