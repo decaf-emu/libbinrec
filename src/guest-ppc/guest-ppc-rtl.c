@@ -320,8 +320,6 @@ static void store_live_regs(GuestPPCContext *ctx,
         rtl_add_insn(unit, RTLOP_SET_ALIAS,
                      0, ctx->live.fpscr, 0, ctx->alias.fpscr);
     }
-
-    /* reserve_flag and reserve_state are set directly when used. */
 }
 
 /*-----------------------------------------------------------------------*/
@@ -428,7 +426,7 @@ static void update_cr0(GuestPPCContext *ctx, int result)
     const int eq = rtl_alloc_register(unit, RTLTYPE_INT32);
     rtl_add_insn(unit, RTLOP_SEQI, eq, result, 0, 0);
     const int so = rtl_alloc_register(unit, RTLTYPE_INT32);
-    rtl_add_insn(unit, RTLOP_BFEXT, so, get_xer(ctx), 0, 31 | 1<<8);
+    rtl_add_insn(unit, RTLOP_BFEXT, so, get_xer(ctx), 0, XER_SO_SHIFT | 1<<8);
 
     const int eq_shifted = rtl_alloc_register(unit, RTLTYPE_INT32);
     rtl_add_insn(unit, RTLOP_SLLI, eq_shifted, eq, 0, 1);
@@ -872,7 +870,7 @@ static inline void translate_compare(
     }
 
     const int so = rtl_alloc_register(unit, RTLTYPE_INT32);
-    rtl_add_insn(unit, RTLOP_BFEXT, so, get_xer(ctx), 0, 31 | 1<<8);
+    rtl_add_insn(unit, RTLOP_BFEXT, so, get_xer(ctx), 0, XER_SO_SHIFT | 1<<8);
 
     const int eq_shifted = rtl_alloc_register(unit, RTLTYPE_INT32);
     rtl_add_insn(unit, RTLOP_SLLI, eq_shifted, eq, 0, 1);
@@ -1680,7 +1678,19 @@ static inline void translate_x1F(
 
       /* XO_5 = 0x14 */
       case XO_LWARX: {
-        return; // FIXME: not yet implemented
+        const binrec_t *handle = ctx->handle;
+        const int psb_reg = ctx->psb_reg;
+        const RTLOpcode rtlop =
+            handle->host_little_endian ? RTLOP_LOAD_BR : RTLOP_LOAD;
+        const int host_address = get_ea_indexed(ctx, insn, NULL);
+        const int value = rtl_alloc_register(unit, RTLTYPE_INT32);
+        rtl_add_insn(unit, rtlop, value, host_address, 0, 0);
+        set_gpr(ctx, get_rD(insn), value);
+        rtl_add_insn(unit, RTLOP_STORE_I8, 0, psb_reg, rtl_imm32(unit, 1),
+                     handle->setup.state_offset_reserve_flag);
+        rtl_add_insn(unit, RTLOP_STORE, 0, psb_reg, value,
+                     handle->setup.state_offset_reserve_state);
+        return;
       }  // case XO_LWARX
 
       /* XO_5 = 0x16 */
@@ -1692,7 +1702,53 @@ static inline void translate_x1F(
         // FIXME: We currently act as if there is no data cache.
         return;
       case XO_STWCX_: {
-        return; // FIXME: not yet implemented
+        const binrec_t *handle = ctx->handle;
+        const int psb_reg = ctx->psb_reg;
+
+        const int skip_label = rtl_alloc_label(unit);
+        const int flag = rtl_alloc_register(unit, RTLTYPE_INT32);
+        rtl_add_insn(unit, RTLOP_LOAD_U8, flag, psb_reg, 0,
+                     handle->setup.state_offset_reserve_flag);
+        const int xer = get_xer(ctx);
+        const int so = rtl_alloc_register(unit, RTLTYPE_INT32);
+        rtl_add_insn(unit, RTLOP_BFEXT, so, xer, 0, XER_SO_SHIFT | 1<<8);
+        /* Can't use set_cr() because of the conditional branch. */
+        rtl_add_insn(unit, RTLOP_SET_ALIAS, 0, so, 0, ctx->alias.cr[0]);
+        ctx->live.cr[0] = 0;
+        rtl_add_insn(unit, RTLOP_GOTO_IF_Z, 0, flag, 0, skip_label);
+        rtl_add_insn(unit, RTLOP_STORE_I8, 0, psb_reg, rtl_imm32(unit, 0),
+                     handle->setup.state_offset_reserve_flag);
+
+        int old_value = rtl_alloc_register(unit, RTLTYPE_INT32);
+        rtl_add_insn(unit, RTLOP_LOAD, old_value, psb_reg, 0,
+                     handle->setup.state_offset_reserve_state);
+        if (handle->host_little_endian) {
+            const int temp = old_value;
+            old_value = rtl_alloc_register(unit, RTLTYPE_INT32);
+            rtl_add_insn(unit, RTLOP_BSWAP, old_value, temp, 0, 0);
+        }
+
+        int new_value = get_gpr(ctx, get_rS(insn));
+        if (handle->host_little_endian) {
+            const int temp = new_value;
+            new_value = rtl_alloc_register(unit, RTLTYPE_INT32);
+            rtl_add_insn(unit, RTLOP_BSWAP, new_value, temp, 0, 0);
+        }
+        const int host_address = get_ea_indexed(ctx, insn, NULL);
+        const int result = rtl_alloc_register(unit, RTLTYPE_INT32);
+        rtl_add_insn(unit, RTLOP_CMPXCHG,
+                     result, host_address, old_value, new_value);
+        const int success = rtl_alloc_register(unit, RTLTYPE_INT32);
+        rtl_add_insn(unit, RTLOP_SEQ, success, result, old_value, 0);
+        rtl_add_insn(unit, RTLOP_GOTO_IF_Z, 0, success, 0, skip_label);
+
+        const int cr0 = rtl_alloc_register(unit, RTLTYPE_INT32);
+        rtl_add_insn(unit, RTLOP_ORI, cr0, so, 0, 1<<1);
+        rtl_add_insn(unit, RTLOP_SET_ALIAS, 0, cr0, 0, ctx->alias.cr[0]);
+
+        rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, skip_label);
+
+        return;
       }  // case XO_STWCX
       case XO_ECIWX:
       case XO_ECOWX:
@@ -2092,14 +2148,6 @@ void guest_ppc_flush_state(GuestPPCContext *ctx)
         const int cr = merge_cr(ctx);
         rtl_add_insn(unit, RTLOP_STORE, 0, ctx->psb_reg, cr,
                      ctx->handle->setup.state_offset_cr);
-    }
-
-    if (ctx->reserve_changed) {
-        const int flag = rtl_alloc_register(unit, RTLTYPE_INT32);
-        rtl_add_insn(unit, RTLOP_GET_ALIAS,
-                     flag, 0, 0, ctx->alias.reserve_flag);
-        rtl_add_insn(unit, RTLOP_STORE_I8, 0, ctx->psb_reg, flag,
-                     ctx->handle->setup.state_offset_reserve_flag);
     }
 }
 

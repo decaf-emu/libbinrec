@@ -66,12 +66,10 @@ static bool init_unit(GuestPPCContext *ctx)
     bool ctr_used = false;
     bool xer_used = false;
     bool fpscr_used = false;
-    bool reserve_used = false;
     bool lr_changed = false;
     bool ctr_changed = false;
     bool xer_changed = false;
     bool fpscr_changed = false;
-    bool reserve_changed = false;
     for (int i = 0; i < ctx->num_blocks; i++) {
         gpr_used |= ctx->blocks[i].gpr_used;
         gpr_changed |= ctx->blocks[i].gpr_changed;
@@ -87,8 +85,6 @@ static bool init_unit(GuestPPCContext *ctx)
         xer_changed |= ctx->blocks[i].xer_changed;
         fpscr_used |= ctx->blocks[i].fpscr_used;
         fpscr_changed |= ctx->blocks[i].fpscr_changed;
-        reserve_used |= ctx->blocks[i].reserve_used;
-        reserve_changed |= ctx->blocks[i].reserve_changed;
     }
     ctx->gpr_changed = gpr_changed;
     ctx->fpr_changed = fpr_changed;
@@ -156,22 +152,6 @@ static bool init_unit(GuestPPCContext *ctx)
         ctx->alias.fpscr = rtl_alloc_alias_register(unit, RTLTYPE_INT32);
         rtl_set_alias_storage(unit, ctx->alias.fpscr, ctx->psb_reg,
                               ctx->handle->setup.state_offset_fpscr);
-    }
-
-    if (reserve_used || reserve_changed) {
-        ctx->alias.reserve_flag =
-            rtl_alloc_alias_register(unit, RTLTYPE_INT32);
-        ctx->alias.reserve_state =
-            rtl_alloc_alias_register(unit, RTLTYPE_INT32);
-        rtl_set_alias_storage(unit, ctx->alias.reserve_state, ctx->psb_reg,
-                              ctx->handle->setup.state_offset_reserve_state);
-        if (reserve_used) {
-            const int flag = rtl_alloc_register(unit, RTLTYPE_INT32);
-            rtl_add_insn(unit, RTLOP_LOAD_U8, flag, ctx->psb_reg, 0,
-                         ctx->handle->setup.state_offset_reserve_flag);
-            rtl_add_insn(unit, RTLOP_SET_ALIAS,
-                         0, flag, 0, ctx->alias.reserve_flag);
-        }
     }
 
     if (UNLIKELY(rtl_get_error_state(unit))) {

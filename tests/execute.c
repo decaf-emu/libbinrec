@@ -84,6 +84,7 @@ bool call_guest_code(binrec_arch_t arch, void *state, void *memory,
     setup.state_offset_reserve_flag = offsetof(PPCState,reserve_flag);
     setup.state_offset_reserve_state = offsetof(PPCState,reserve_state);
     setup.state_offset_nia = offsetof(PPCState,nia);
+    setup.state_offset_timebase_handler = offsetof(PPCState,timebase_handler);
     setup.state_offset_sc_handler = offsetof(PPCState,sc_handler);
     setup.state_offset_trap_handler = offsetof(PPCState,trap_handler);
     setup.log = log_capture;

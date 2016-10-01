@@ -48,8 +48,6 @@ int main(void)
 
     PPCState state;
     memset(&state, 0, sizeof(state));
-    uint32_t reserve_counter;
-    state.reserve_counter_ptr = &reserve_counter;
     state.sc_handler = sc_handler;
 
     if (!call_guest_code(BINREC_ARCH_PPC_7XX, &state, memory, start_address)) {

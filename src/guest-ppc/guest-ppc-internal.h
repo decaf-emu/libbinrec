@@ -145,14 +145,12 @@ typedef struct GuestPPCBlockInfo {
         lr_used : 1,
         ctr_used : 1,
         xer_used : 1,
-        fpscr_used : 1,
-        reserve_used : 1;
+        fpscr_used : 1;
     uint8_t
         lr_changed : 1,
         ctr_changed : 1,
         xer_changed : 1,
-        fpscr_changed : 1,
-        reserve_changed : 1;
+        fpscr_changed : 1;
 
     /* RTL label for this block, or 0 if none has been allocated yet. */
     int label;
@@ -167,8 +165,6 @@ typedef struct GuestPPCRegSet {
     uint16_t ctr;
     uint16_t xer;
     uint16_t fpscr;
-    uint16_t reserve_flag;
-    uint16_t reserve_state;
     uint16_t nia;
 } GuestPPCRegSet;
 
@@ -205,8 +201,7 @@ typedef struct GuestPPCContext {
         lr_changed : 1,
         ctr_changed : 1,
         xer_changed : 1,
-        fpscr_changed : 1,
-        reserve_changed : 1;
+        fpscr_changed : 1;
 } GuestPPCContext;
 
 /*************************************************************************/

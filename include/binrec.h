@@ -256,13 +256,10 @@ typedef struct binrec_setup_t {
     int state_offset_cr;
     int state_offset_xer;
     int state_offset_fpscr;
-    /* lwarx/stwcx reservation flag (uint8_t) */
+    /* lwarx/stwcx. reservation flag (uint8_t) */
     int state_offset_reserve_flag;
-    /* lwarx/stwcx reservation state (uint32_t) */
+    /* lwarx/stwcx. reservation state (uint32_t) */
     int state_offset_reserve_state;
-    /* lwarx/stwcx reservation counter (pointer to uint32_t, shared by all
-     * processors) */
-    int state_offset_reserve_counter_ptr;
     /* Next instruction address (updated on return from translated code) */
     int state_offset_nia;
     /* Pointer to function to handle time base reads */

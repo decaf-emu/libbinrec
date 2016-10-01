@@ -136,14 +136,6 @@ static inline void mark_fpscr_changed(GuestPPCBlockInfo *block) {
     block->fpscr_changed = 1;
 }
 
-static inline void mark_reserve_used(GuestPPCBlockInfo *block) {
-    if (!block->reserve_changed) block->reserve_used = 1;
-}
-
-static inline void mark_reserve_changed(GuestPPCBlockInfo *block) {
-    block->reserve_changed = 1;
-}
-
 /*-----------------------------------------------------------------------*/
 
 /**
@@ -596,10 +588,11 @@ static void update_used_changed(GuestPPCBlockInfo *block, const uint32_t insn)
             break;
 
           case 0x14:  // lwarx
-            mark_gpr_used(block, get_rA(insn));
+            if (get_rA(insn) != 0) {
+                mark_gpr_used(block, get_rA(insn));
+            }
             mark_gpr_used(block, get_rB(insn));
             mark_gpr_changed(block, get_rD(insn));
-            mark_reserve_changed(block);
             break;
 
           case 0x15: {  // lsw*, stsw*
@@ -658,14 +651,13 @@ static void update_used_changed(GuestPPCBlockInfo *block, const uint32_t insn)
                 mark_gpr_used(block, get_rB(insn));
                 break;
               case XO_STWCX_:
-                mark_reserve_used(block);
                 if (get_rA(insn) != 0) {
                     mark_gpr_used(block, get_rA(insn));
                 }
                 mark_gpr_used(block, get_rB(insn));
                 mark_gpr_used(block, get_rS(insn));
+                mark_xer_used(block);
                 mark_cr_changed(block, 0);
-                mark_reserve_changed(block);
                 break;
               case XO_ECIWX:
               case XO_LWBRX:
