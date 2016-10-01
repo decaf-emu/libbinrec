@@ -673,6 +673,32 @@ static void translate_addsub_reg(
 /*-----------------------------------------------------------------------*/
 
 /**
+ * translate_bitmisc:  Translate the miscellaneous bit manipulation
+ * instructions (cntlzw, extsh, extsb).
+ *
+ * [Parameters]
+ *     ctx: Translation context.
+ *     insn: Instruction word.
+ *     rtlop: RTL instruction to perform the operation.
+ */
+static inline void translate_bitmisc(
+    GuestPPCContext *ctx, uint32_t insn, RTLOpcode rtlop)
+{
+    RTLUnit * const unit = ctx->unit;
+
+    const int rS = get_gpr(ctx, get_rS(insn));
+    const int result = rtl_alloc_register(unit, RTLTYPE_INT32);
+    rtl_add_insn(unit, rtlop, result, rS, 0, 0);
+    set_gpr(ctx, get_rA(insn), result);
+
+    if (get_Rc(insn)) {
+        update_cr0(ctx, result);
+    }
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
  * translate_branch_label:  Translate a branch to another block within the
  * current unit.
  *
@@ -2167,27 +2193,15 @@ static inline void translate_x1F(
         return;
 
       /* XO_5 = 0x1A */
-      case XO_CNTLZW: {
-        const int rS = get_gpr(ctx, get_rS(insn));
-        const int result = rtl_alloc_register(unit, RTLTYPE_INT32);
-        rtl_add_insn(unit, RTLOP_CLZ, result, rS, 0, 0);
-        set_gpr(ctx, get_rA(insn), result);
+      case XO_CNTLZW:
+        translate_bitmisc(ctx, insn, RTLOP_CLZ);
         return;
-      }  // case XO_CNTLZW
-      case XO_EXTSH: {
-        const int rS = get_gpr(ctx, get_rS(insn));
-        const int result = rtl_alloc_register(unit, RTLTYPE_INT32);
-        rtl_add_insn(unit, RTLOP_SEXT16, result, rS, 0, 0);
-        set_gpr(ctx, get_rA(insn), result);
+      case XO_EXTSH:
+        translate_bitmisc(ctx, insn, RTLOP_SEXT16);
         return;
-      }  // case XO_EXTSH
-      case XO_EXTSB: {
-        const int rS = get_gpr(ctx, get_rS(insn));
-        const int result = rtl_alloc_register(unit, RTLTYPE_INT32);
-        rtl_add_insn(unit, RTLOP_SEXT8, result, rS, 0, 0);
-        set_gpr(ctx, get_rA(insn), result);
+      case XO_EXTSB:
+        translate_bitmisc(ctx, insn, RTLOP_SEXT8);
         return;
-      }  // case XO_EXTSB
 
       /* XO_5 = 0x1C */
       case XO_AND:
