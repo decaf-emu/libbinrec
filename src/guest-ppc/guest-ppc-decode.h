@@ -326,103 +326,103 @@ typedef enum PPCExtendedOpcode04_750CL {
  */
 
 /* Primary and secondary opcodes */
-static inline CONST_FUNCTION PPCOpcode get_OPCD(const uint32_t insn)
+static inline CONST_FUNCTION PPCOpcode insn_OPCD(const uint32_t insn)
     {return (PPCOpcode)(insn >> 26);}
-static inline CONST_FUNCTION unsigned int get_XO_10(const uint32_t insn)
+static inline CONST_FUNCTION unsigned int insn_XO_10(const uint32_t insn)
     {return (insn >> 1) & 0x3FF;}
-static inline CONST_FUNCTION unsigned int get_XO_5(const uint32_t insn)
+static inline CONST_FUNCTION unsigned int insn_XO_5(const uint32_t insn)
     {return (insn >> 1) & 0x1F;}
 
 /* Generic source/destination registers */
-static inline CONST_FUNCTION unsigned int get_rD(const uint32_t insn)
+static inline CONST_FUNCTION unsigned int insn_rD(const uint32_t insn)
     {return (insn >> 21) & 0x1F;}
-static inline CONST_FUNCTION unsigned int get_rS(const uint32_t insn)
+static inline CONST_FUNCTION unsigned int insn_rS(const uint32_t insn)
     {return (insn >> 21) & 0x1F;}
-static inline CONST_FUNCTION unsigned int get_frD(const uint32_t insn)
+static inline CONST_FUNCTION unsigned int insn_frD(const uint32_t insn)
     {return (insn >> 21) & 0x1F;}
-static inline CONST_FUNCTION unsigned int get_frS(const uint32_t insn)
+static inline CONST_FUNCTION unsigned int insn_frS(const uint32_t insn)
     {return (insn >> 21) & 0x1F;}
-static inline CONST_FUNCTION unsigned int get_crbD(const uint32_t insn)
+static inline CONST_FUNCTION unsigned int insn_crbD(const uint32_t insn)
     {return (insn >> 21) & 0x1F;}
-static inline CONST_FUNCTION unsigned int get_crfD(const uint32_t insn)
+static inline CONST_FUNCTION unsigned int insn_crfD(const uint32_t insn)
     {return (insn >> 23) & 0x7;}
 
-static inline CONST_FUNCTION unsigned int get_rA(const uint32_t insn)
+static inline CONST_FUNCTION unsigned int insn_rA(const uint32_t insn)
     {return (insn >> 16) & 0x1F;}
-static inline CONST_FUNCTION unsigned int get_frA(const uint32_t insn)
+static inline CONST_FUNCTION unsigned int insn_frA(const uint32_t insn)
     {return (insn >> 16) & 0x1F;}
-static inline CONST_FUNCTION unsigned int get_crbA(const uint32_t insn)
+static inline CONST_FUNCTION unsigned int insn_crbA(const uint32_t insn)
     {return (insn >> 16) & 0x1F;}
-static inline CONST_FUNCTION unsigned int get_crfS(const uint32_t insn)
+static inline CONST_FUNCTION unsigned int insn_crfS(const uint32_t insn)
     {return (insn >> 18) & 0x7;}
 
-static inline CONST_FUNCTION unsigned int get_rB(const uint32_t insn)
+static inline CONST_FUNCTION unsigned int insn_rB(const uint32_t insn)
     {return (insn >> 11) & 0x1F;}
-static inline CONST_FUNCTION unsigned int get_frB(const uint32_t insn)
+static inline CONST_FUNCTION unsigned int insn_frB(const uint32_t insn)
     {return (insn >> 11) & 0x1F;}
-static inline CONST_FUNCTION unsigned int get_crbB(const uint32_t insn)
+static inline CONST_FUNCTION unsigned int insn_crbB(const uint32_t insn)
     {return (insn >> 11) & 0x1F;}
 
-static inline CONST_FUNCTION unsigned int get_frC(const uint32_t insn)
+static inline CONST_FUNCTION unsigned int insn_frC(const uint32_t insn)
     {return (insn >> 6) & 0x1F;}
 
 /* Shift/mask fields */
-static inline CONST_FUNCTION unsigned int get_SH(const uint32_t insn)
+static inline CONST_FUNCTION unsigned int insn_SH(const uint32_t insn)
     {return (insn >> 11) & 0x1F;}
-static inline CONST_FUNCTION unsigned int get_MB(const uint32_t insn)
+static inline CONST_FUNCTION unsigned int insn_MB(const uint32_t insn)
     {return (insn >> 6) & 0x1F;}
-static inline CONST_FUNCTION unsigned int get_ME(const uint32_t insn)
+static inline CONST_FUNCTION unsigned int insn_ME(const uint32_t insn)
     {return (insn >> 1) & 0x1F;}
 
 /* Immediate/offset operands */
-static inline CONST_FUNCTION int get_SIMM(const uint32_t insn)
+static inline CONST_FUNCTION int insn_SIMM(const uint32_t insn)
     {return (int16_t)insn;}
-static inline CONST_FUNCTION unsigned int get_UIMM(const uint32_t insn)
+static inline CONST_FUNCTION unsigned int insn_UIMM(const uint32_t insn)
     {return (uint16_t)insn;}
-static inline CONST_FUNCTION int get_d(const uint32_t insn)
+static inline CONST_FUNCTION int insn_d(const uint32_t insn)
     {return (int16_t)insn;}
 
 /* Branch fields (note that displacements are returned as byte offsets,
  * not raw field values) */
-static inline CONST_FUNCTION unsigned int get_BO(const uint32_t insn)
+static inline CONST_FUNCTION unsigned int insn_BO(const uint32_t insn)
     {return (insn >> 21) & 0x1F;}
-static inline CONST_FUNCTION unsigned int get_BI(const uint32_t insn)
+static inline CONST_FUNCTION unsigned int insn_BI(const uint32_t insn)
     {return (insn >> 16) & 0x1F;}
-static inline CONST_FUNCTION int get_BD(const uint32_t insn)
+static inline CONST_FUNCTION int insn_BD(const uint32_t insn)
     {return (int16_t)(insn & ~3);}
-static inline CONST_FUNCTION int32_t get_LI(const uint32_t insn)
+static inline CONST_FUNCTION int32_t insn_LI(const uint32_t insn)
     {return (int32_t)((insn & ~3) << 6) >> 6;}
-static inline CONST_FUNCTION unsigned int get_AA(const uint32_t insn)
+static inline CONST_FUNCTION unsigned int insn_AA(const uint32_t insn)
     {return (insn >> 1) & 0x1;}
-static inline CONST_FUNCTION unsigned int get_LK(const uint32_t insn)
+static inline CONST_FUNCTION unsigned int insn_LK(const uint32_t insn)
     {return insn & 0x1;}
 
 /* Paired-single instruction fields */
-static inline CONST_FUNCTION unsigned int get_I_17(const uint32_t insn)
+static inline CONST_FUNCTION unsigned int insn_I_17(const uint32_t insn)
     {return (insn >> 12) & 0x7;}
-static inline CONST_FUNCTION unsigned int get_I_22(const uint32_t insn)
+static inline CONST_FUNCTION unsigned int insn_I_22(const uint32_t insn)
     {return (insn >> 7) & 0x7;}
 
 /* SPR/TBR fields */
-static inline CONST_FUNCTION unsigned int get_spr(const uint32_t insn)
+static inline CONST_FUNCTION unsigned int insn_spr(const uint32_t insn)
     {return ((insn >> (11-5)) & 0x3E0) | ((insn >> 16) & 0x1F);}
-static inline CONST_FUNCTION unsigned int get_tbr(const uint32_t insn)
+static inline CONST_FUNCTION unsigned int insn_tbr(const uint32_t insn)
     {return ((insn >> (11-5)) & 0x3E0) | ((insn >> 16) & 0x1F);}
 
 /* Miscellaneous fields */
-static inline CONST_FUNCTION unsigned int get_CRM(const uint32_t insn)
+static inline CONST_FUNCTION unsigned int insn_CRM(const uint32_t insn)
     {return (insn >> 12) & 0xFF;}
-static inline CONST_FUNCTION unsigned int get_IMM(const uint32_t insn)
+static inline CONST_FUNCTION unsigned int insn_IMM(const uint32_t insn)
     {return (insn >> 12) & 0xF;}
-static inline CONST_FUNCTION unsigned int get_L(const uint32_t insn)
+static inline CONST_FUNCTION unsigned int insn_L(const uint32_t insn)
     {return (insn >> 21) & 0x1;}
-static inline CONST_FUNCTION unsigned int get_NB(const uint32_t insn)
+static inline CONST_FUNCTION unsigned int insn_NB(const uint32_t insn)
     {return (insn >> 11) & 0x1F;}
-static inline CONST_FUNCTION unsigned int get_OE(const uint32_t insn)
+static inline CONST_FUNCTION unsigned int insn_OE(const uint32_t insn)
     {return (insn >> 10) & 0x1;}
-static inline CONST_FUNCTION unsigned int get_Rc(const uint32_t insn)
+static inline CONST_FUNCTION unsigned int insn_Rc(const uint32_t insn)
     {return insn & 0x1;}
-static inline CONST_FUNCTION unsigned int get_TO(const uint32_t insn)
+static inline CONST_FUNCTION unsigned int insn_TO(const uint32_t insn)
     {return (insn >> 21) & 0x1F;}
 
 /*************************************************************************/
@@ -448,27 +448,27 @@ static inline bool is_valid_insn(uint32_t insn)
 {
     #define TEST_BIT(mask, bit)  (((mask) & (1 << (bit))) != 0)
 
-    const PPCOpcode opcd = get_OPCD(insn);
+    const PPCOpcode opcd = insn_OPCD(insn);
     switch (opcd) {
       case OPCD_x04:
-        switch (get_XO_5(insn)) {
-            case 0x00: return !(get_XO_10(insn) & 0x380);
-            case 0x08: return TEST_BIT(0x00000116, get_XO_10(insn) >> 5);
-            case 0x10: return TEST_BIT(0x000F0000, get_XO_10(insn) >> 5);
-            case 0x16: return get_XO_10(insn) == XO_DCBZ_L;
-            default:   return TEST_BIT(0xF7B4FCC0, get_XO_5(insn));
+        switch (insn_XO_5(insn)) {
+            case 0x00: return !(insn_XO_10(insn) & 0x380);
+            case 0x08: return TEST_BIT(0x00000116, insn_XO_10(insn) >> 5);
+            case 0x10: return TEST_BIT(0x000F0000, insn_XO_10(insn) >> 5);
+            case 0x16: return insn_XO_10(insn) == XO_DCBZ_L;
+            default:   return TEST_BIT(0xF7B4FCC0, insn_XO_5(insn));
         }
         break;
 
       case OPCD_x13:
-        switch (get_XO_5(insn)) {
-            case 0x00: return get_XO_10(insn) == XO_MCRF;
-            case 0x01: return TEST_BIT(0x000063D3, get_XO_10(insn) >> 5);
-            case 0x10: return get_XO_10(insn) == XO_BCLR
-                           || (get_XO_10(insn) == XO_BCCTR
-                               && (get_BO(insn) & 0x04));
-            case 0x12: return get_XO_10(insn) == XO_RFI;
-            case 0x16: return get_XO_10(insn) == XO_ISYNC;
+        switch (insn_XO_5(insn)) {
+            case 0x00: return insn_XO_10(insn) == XO_MCRF;
+            case 0x01: return TEST_BIT(0x000063D3, insn_XO_10(insn) >> 5);
+            case 0x10: return insn_XO_10(insn) == XO_BCLR
+                           || (insn_XO_10(insn) == XO_BCCTR
+                               && (insn_BO(insn) & 0x04));
+            case 0x12: return insn_XO_10(insn) == XO_RFI;
+            case 0x16: return insn_XO_10(insn) == XO_ISYNC;
             default:   return false;
         }
         break;
@@ -484,24 +484,24 @@ static inline bool is_valid_insn(uint32_t insn)
             0x03010001, 0x00000000, 0x30000001, 0x00000000,  // 0x18
             0x0000730B, 0x00000000, 0x00000000, 0x00000000,  // 0x1C
         };
-        return TEST_BIT(valid_insns_x1F[get_XO_5(insn)], get_XO_10(insn) >> 5);
+        return TEST_BIT(valid_insns_x1F[insn_XO_5(insn)], insn_XO_10(insn) >> 5);
       }
 
       case OPCD_x3B:
-        return TEST_BIT(0xF3340000, get_XO_5(insn));
+        return TEST_BIT(0xF3340000, insn_XO_5(insn));
 
       case OPCD_x3F:
-        switch (get_XO_5(insn)) {
-            case 0x00: return get_XO_10(insn) <= 0x040;
-            case 0x06: return TEST_BIT(0x00000016, get_XO_10(insn) >> 5);
-            case 0x07: return TEST_BIT(0x00440000, get_XO_10(insn) >> 5);
-            case 0x08: return TEST_BIT(0x00000116, get_XO_10(insn) >> 5);
+        switch (insn_XO_5(insn)) {
+            case 0x00: return insn_XO_10(insn) <= 0x040;
+            case 0x06: return TEST_BIT(0x00000016, insn_XO_10(insn) >> 5);
+            case 0x07: return TEST_BIT(0x00440000, insn_XO_10(insn) >> 5);
+            case 0x08: return TEST_BIT(0x00000116, insn_XO_10(insn) >> 5);
             case 0x0C: // fall through
             case 0x0E: // fall through
-            case 0x0F: return (get_XO_10(insn) & 0x3E0) == 0;
-            case 0x10: return TEST_BIT(0x000F0000, get_XO_10(insn) >> 5);
-            case 0x16: return get_XO_10(insn) == XO_DCBZ_L;
-            default:   return TEST_BIT(0xF6B40000, get_XO_5(insn));
+            case 0x0F: return (insn_XO_10(insn) & 0x3E0) == 0;
+            case 0x10: return TEST_BIT(0x000F0000, insn_XO_10(insn) >> 5);
+            case 0x16: return insn_XO_10(insn) == XO_DCBZ_L;
+            default:   return TEST_BIT(0xF6B40000, insn_XO_5(insn));
         }
         break;
 
