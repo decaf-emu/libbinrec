@@ -370,8 +370,11 @@ static int merge_cr(GuestPPCContext *ctx)
 {
     RTLUnit * const unit = ctx->unit;
 
-    int cr = rtl_alloc_register(unit, RTLTYPE_INT32);
-    if (ctx->cr_changed != 0xFF) {
+    int cr;
+    if (ctx->cr_changed == 0xFF) {
+        cr = 0;
+    } else {
+        cr = rtl_alloc_register(unit, RTLTYPE_INT32);
         rtl_add_insn(unit, RTLOP_LOAD, cr, ctx->psb_reg, 0,
                      ctx->handle->setup.state_offset_cr);
         if (ctx->cr_changed != 0) {
@@ -389,8 +392,7 @@ static int merge_cr(GuestPPCContext *ctx)
 
     for (int i = 0; i < 8; i++) {
         if (ctx->cr_changed & (1 << i)) {
-            const int crN = rtl_alloc_register(unit, RTLTYPE_INT32);
-            rtl_add_insn(unit, RTLOP_GET_ALIAS, crN, 0, 0, ctx->alias.cr[i]);
+            const int crN = get_cr(ctx, i);
             int shifted_crN;
             if (i == 7) {
                 shifted_crN = crN;
@@ -399,9 +401,13 @@ static int merge_cr(GuestPPCContext *ctx)
                 rtl_add_insn(unit, RTLOP_SLLI,
                              shifted_crN, crN, 0, (7 - i) * 4);
             }
-            const int new_cr = rtl_alloc_register(unit, RTLTYPE_INT32);
-            rtl_add_insn(unit, RTLOP_OR, new_cr, cr, shifted_crN, 0);
-            cr = new_cr;
+            if (cr) {
+                const int new_cr = rtl_alloc_register(unit, RTLTYPE_INT32);
+                rtl_add_insn(unit, RTLOP_OR, new_cr, cr, shifted_crN, 0);
+                cr = new_cr;
+            } else {
+                cr = shifted_crN;
+            }
         }
     }
 
@@ -2875,9 +2881,7 @@ bool guest_ppc_translate_block(GuestPPCContext *ctx, int index)
         }
     }
 
-    /* No need to explicitly clear live registers here since we won't
-     * reference the structure again while translating this block. */
-    store_live_regs(ctx, block, false);
+    store_live_regs(ctx, block, true);
     set_nia_imm(ctx, start + block->len);
     if (UNLIKELY(rtl_get_error_state(unit))) {
         log_ice(ctx->handle, "Failed to update registers after block end 0x%X",
