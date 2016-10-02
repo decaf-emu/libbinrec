@@ -1265,7 +1265,7 @@ static inline void translate_load_store_string(
 
         /* We don't even attempt to optimize this because it's way too
          * complicated already.  Hopefully nobody actually uses lswx/stswx
-         * anymore.  ( */
+         * anymore. */
 
         const int xer = get_xer(ctx);
         const int xer_count = rtl_alloc_register(unit, RTLTYPE_INT32);
@@ -1296,11 +1296,12 @@ static inline void translate_load_store_string(
         /* We use ADDRESS type for the count and GPR offset aliases so we
          * can add them directly to the base addresses without an
          * intermediate ZCAST. */
-        const int init_count = rtl_alloc_register(unit, RTLTYPE_ADDRESS);
-        rtl_add_insn(unit, RTLOP_ZCAST, init_count, xer_count, 0, 0);
-        const int alias_count =
-            rtl_alloc_alias_register(unit, RTLTYPE_ADDRESS);
-        rtl_add_insn(unit, RTLOP_SET_ALIAS, 0, init_count, 0, alias_count);
+        const int count = rtl_alloc_register(unit, RTLTYPE_ADDRESS);
+        rtl_add_insn(unit, RTLOP_ZCAST, count, xer_count, 0, 0);
+        const int init_i = rtl_alloc_register(unit, RTLTYPE_ADDRESS);
+        rtl_add_insn(unit, RTLOP_LOAD_IMM, init_i, 0, 0, 0);
+        const int alias_i = rtl_alloc_alias_register(unit, RTLTYPE_ADDRESS);
+        rtl_add_insn(unit, RTLOP_SET_ALIAS, 0, init_i, 0, alias_i);
         const int init_gpr_offset = rtl_alloc_register(unit, RTLTYPE_ADDRESS);
         rtl_add_insn(unit, RTLOP_LOAD_IMM,
                      init_gpr_offset, 0, 0, 4 * insn_rD(insn));
@@ -1311,16 +1312,18 @@ static inline void translate_load_store_string(
 
         const int loop_label = rtl_alloc_label(unit);
         rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, loop_label);
-        const int count = rtl_alloc_register(unit, RTLTYPE_ADDRESS);
-        rtl_add_insn(unit, RTLOP_GET_ALIAS, count, 0, 0, alias_count);
+        const int i = rtl_alloc_register(unit, RTLTYPE_ADDRESS);
+        rtl_add_insn(unit, RTLOP_GET_ALIAS, i, 0, 0, alias_i);
+        const int i_test = rtl_alloc_register(unit, RTLTYPE_INT32);
+        rtl_add_insn(unit, RTLOP_SLTU, i_test, i, count, 0);
         const int end_label = rtl_alloc_label(unit);
-        rtl_add_insn(unit, RTLOP_GOTO_IF_Z, 0, count, 0, end_label);
+        rtl_add_insn(unit, RTLOP_GOTO_IF_Z, 0, i_test, 0, end_label);
         const int gpr_offset = rtl_alloc_register(unit, RTLTYPE_ADDRESS);
         rtl_add_insn(unit, RTLOP_GET_ALIAS,
                      gpr_offset, 0, 0, alias_gpr_offset);
 
         const int mem_address = rtl_alloc_register(unit, RTLTYPE_ADDRESS);
-        rtl_add_insn(unit, RTLOP_ADD, mem_address, host_address, count, 0);
+        rtl_add_insn(unit, RTLOP_ADD, mem_address, host_address, i, 0);
 
         int real_offset = gpr_offset;
         if (endian_flip) {
@@ -1340,9 +1343,9 @@ static inline void translate_load_store_string(
             rtl_add_insn(unit, RTLOP_STORE_I8, 0, gpr_address, value, gpr_base);
         }
 
-        int new_count = rtl_alloc_register(unit, RTLTYPE_ADDRESS);
-        rtl_add_insn(unit, RTLOP_ADDI, new_count, count, 0, 1);
-        rtl_add_insn(unit, RTLOP_SET_ALIAS, 0, new_count, 0, alias_count);
+        int new_i = rtl_alloc_register(unit, RTLTYPE_ADDRESS);
+        rtl_add_insn(unit, RTLOP_ADDI, new_i, i, 0, 1);
+        rtl_add_insn(unit, RTLOP_SET_ALIAS, 0, new_i, 0, alias_i);
         const int gpr_offset_temp = rtl_alloc_register(unit, RTLTYPE_ADDRESS);
         rtl_add_insn(unit, RTLOP_ADDI, gpr_offset_temp, gpr_offset, 0, 1);
         int new_gpr_offset = rtl_alloc_register(unit, RTLTYPE_ADDRESS);
