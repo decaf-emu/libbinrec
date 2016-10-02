@@ -23,6 +23,7 @@ typedef struct PPCState {
     uint32_t gpr[32];
     double fpr[32][2];
     uint32_t gqr[8];
+    uint32_t cr;
     uint32_t lr;
     uint32_t ctr;
     uint32_t xer;

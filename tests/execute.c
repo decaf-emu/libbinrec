@@ -78,6 +78,7 @@ bool call_guest_code(binrec_arch_t arch, void *state, void *memory,
     setup.state_offset_gpr = offsetof(PPCState,gpr);
     setup.state_offset_fpr = offsetof(PPCState,fpr);
     setup.state_offset_gqr = offsetof(PPCState,gqr);
+    setup.state_offset_cr = offsetof(PPCState,cr);
     setup.state_offset_lr = offsetof(PPCState,lr);
     setup.state_offset_ctr = offsetof(PPCState,ctr);
     setup.state_offset_xer = offsetof(PPCState,xer);
