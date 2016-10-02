@@ -62,7 +62,11 @@ typedef enum PPCOpcode {
     OPCD_STFSU  = 0x35,
     OPCD_STFD   = 0x36,
     OPCD_STFDU  = 0x37,
+    OPCD_PSQ_L  = 0x38,
+    OPCD_PSQ_LU = 0x39,
     OPCD_x3B    = 0x3B,
+    OPCD_PSQ_ST = 0x3C,
+    OPCD_PSQ_STU= 0x3D,
     OPCD_x3F    = 0x3F,
 
     /* 750CL-specific opcodes */
@@ -437,7 +441,7 @@ static inline CONST_FUNCTION unsigned int insn_TO(const uint32_t insn)
  */
 static inline bool is_valid_opcode(PPCOpcode opcd)
 {
-    const uint64_t valid_opcodes = UINT64_C(0x88FFFFFFBFBFFD88);
+    const uint64_t valid_opcodes = UINT64_C(0xBBFFFFFFBFBFFD88);
     return (valid_opcodes & (UINT64_C(1) << opcd)) != 0;
 }
 

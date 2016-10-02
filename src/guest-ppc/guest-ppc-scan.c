@@ -295,6 +295,7 @@ static void update_used_changed(GuestPPCBlockInfo *block, const uint32_t insn)
 
       case OPCD_LFS:
       case OPCD_LFD:
+      case OPCD_PSQ_L:
         if (insn_rA(insn)) {
             mark_gpr_used(block, insn_rA(insn));
         }
@@ -303,6 +304,7 @@ static void update_used_changed(GuestPPCBlockInfo *block, const uint32_t insn)
 
       case OPCD_LFSU:
       case OPCD_LFDU:
+      case OPCD_PSQ_LU:
         mark_gpr_used(block, insn_rA(insn));
         mark_gpr_changed(block, insn_rA(insn));
         mark_fpr_changed(block, insn_frD(insn));
@@ -310,6 +312,7 @@ static void update_used_changed(GuestPPCBlockInfo *block, const uint32_t insn)
 
       case OPCD_STFS:
       case OPCD_STFD:
+      case OPCD_PSQ_ST:
         if (insn_rA(insn)) {
             mark_gpr_used(block, insn_rA(insn));
         }
@@ -318,6 +321,7 @@ static void update_used_changed(GuestPPCBlockInfo *block, const uint32_t insn)
 
       case OPCD_STFSU:
       case OPCD_STFDU:
+      case OPCD_PSQ_STU:
         mark_gpr_used(block, insn_rA(insn));
         mark_fpr_used(block, insn_frD(insn));
         mark_gpr_changed(block, insn_rA(insn));
@@ -406,6 +410,7 @@ static void update_used_changed(GuestPPCBlockInfo *block, const uint32_t insn)
             }
             break;
           case XO_PS_RES:
+          case XO_PS_RSQRTE:
             mark_fpscr_used(block);
             mark_fpr_used(block, insn_frB(insn));
             mark_fpr_changed(block, insn_frD(insn));
