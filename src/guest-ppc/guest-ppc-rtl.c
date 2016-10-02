@@ -2216,9 +2216,7 @@ static inline void translate_x1F(
             if ((insn_CRM(insn) & (1 << bit)) && ctx->alias.cr[i]) {
                 const int crN = rtl_alloc_register(unit, RTLTYPE_INT32);
                 rtl_add_insn(unit, RTLOP_BFEXT, crN, rS, 0, (4*bit) | 4<<8);
-                rtl_add_insn(unit, RTLOP_SET_ALIAS,
-                             0, crN, 0, ctx->alias.cr[i]);
-                ctx->live.cr[i] = 0;
+                set_cr(ctx, i, crN);
             }
         }
         return;
