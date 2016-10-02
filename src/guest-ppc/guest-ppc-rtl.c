@@ -2183,9 +2183,11 @@ static inline void translate_x1F(
 
       /* XO_5 = 0x0B */
       case XO_MULHWU:
+      case XO_UNDOCUMENTED_MULHWUO:  // OE is ignored.
         translate_muldiv_reg(ctx, insn, RTLOP_MULHU, false);
         return;
       case XO_MULHW:
+      case XO_UNDOCUMENTED_MULHWO:  // OE is ignored.
         translate_muldiv_reg(ctx, insn, RTLOP_MULHS, false);
         return;
       case XO_MULLW:

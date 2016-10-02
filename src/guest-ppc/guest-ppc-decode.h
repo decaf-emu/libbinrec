@@ -121,6 +121,8 @@ typedef enum PPCExtendedOpcode1F {
     XO_MULLW  = 0x0EB,
     XO_DIVWU  = 0x1CB,
     XO_DIVW   = 0x1EB,
+    XO_UNDOCUMENTED_MULHWUO = 0x20B,  // OE is ignored.
+    XO_UNDOCUMENTED_MULHWO = 0x24B,  // OE is ignored.
     XO_MULLWO = 0x2EB,
     XO_DIVWUO = 0x3CB,
     XO_DIVWO  = 0x3EB,
@@ -477,7 +479,7 @@ static inline bool is_valid_insn(uint32_t insn)
         static const uint32_t valid_insns_x1F[32] = {
             0x00010003, 0x00000000, 0x00000000, 0x00000000,  // 0x00
             0x00000001, 0x00000000, 0x00000000, 0x00000000,  // 0x04
-            0x00DB00DB, 0x00000000, 0x01D101D1, 0xC080C085,  // 0x08
+            0x00DB00DB, 0x00000000, 0x01D101D1, 0xC085C085,  // 0x08
             0x00000000, 0x00000000, 0x00000000, 0x00000000,  // 0x0C
             0x00000010, 0x00000000, 0x000002D0, 0x00144C05,  // 0x10
             0x00000001, 0x00550000, 0xD5176396, 0x40FF3FFF,  // 0x14
