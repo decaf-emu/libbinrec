@@ -456,10 +456,8 @@ extern int rtl_alloc_alias_register(RTLUnit *unit, RTLDataType type);
  * stored in the alias when the generated code returns to its caller is
  * discarded.
  *
- * The caller is responsible for ensuring that the register remains live at
- * all references to the alias, such as by using it as a return value at
- * the end of the unit or appending a final NOP with that register as a
- * source.
+ * Calling this function on an alias which has already been used in a
+ * GET_ALIAS or SET_ALIAS instruction results in undefined behavior.
  *
  * The number of distinct base registers used for aliases should be kept to
  * a minimum; host code generators may fail at register allocation if too

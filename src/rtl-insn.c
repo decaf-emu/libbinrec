@@ -147,8 +147,12 @@ static bool make_set_alias(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
     insn->alias = (uint16_t)other;
 
     RTLRegister * const src1reg = &unit->regs[src1];
+    RTLAlias * const alias = &unit->aliases[other];
     const int insn_index = unit->num_insns;
     mark_live(unit, insn_index, src1reg, src1);
+    if (alias->base) {
+        mark_live(unit, insn_index, &unit->regs[alias->base], alias->base);
+    }
 
     return true;
 }
@@ -178,10 +182,14 @@ static bool make_get_alias(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
     insn->alias = (uint16_t)other;
 
     RTLRegister * const destreg = &unit->regs[dest];
+    RTLAlias * const alias = &unit->aliases[other];
     const int insn_index = unit->num_insns;
     destreg->source = RTLREG_ALIAS;
     destreg->alias.src = (uint16_t)other;
     mark_live(unit, insn_index, destreg, dest);
+    if (alias->base) {
+        mark_live(unit, insn_index, &unit->regs[alias->base], alias->base);
+    }
 
     return true;
 }
