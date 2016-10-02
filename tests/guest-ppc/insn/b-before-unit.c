@@ -68,7 +68,7 @@ int main(void)
                             unit) != expected_success) {
         const char *log_messages = get_log_messages();
         if (log_messages) {
-            fputs(log_messages, stderr);
+            fputs(log_messages, stdout);
         }
         FAIL("guest_ppc_translate(handle, 0x%X, 0x%X, unit) did not %s as"
              " expected", start, start + (int)sizeof(input) - 1,

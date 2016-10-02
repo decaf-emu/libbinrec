@@ -38,7 +38,7 @@ int main(void)
     if (!call_guest_code(BINREC_ARCH_PPC_7XX, &state, memory, start_address)) {
         const char *log_messages = get_log_messages();
         if (log_messages) {
-            fputs(log_messages, stderr);
+            fputs(log_messages, stdout);
         }
         FAIL("Failed to execute guest code");
     }

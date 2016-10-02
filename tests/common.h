@@ -33,9 +33,9 @@
  * for printf().
  */
 #define FAIL(...)  do {                                                 \
-    fprintf(stderr, "%s:%d: ", __FILE__, __LINE__);                     \
-    fprintf(stderr, __VA_ARGS__);                                       \
-    fputc('\n', stderr);                                                \
+    printf("%s:%d: ", __FILE__, __LINE__);                              \
+    printf(__VA_ARGS__);                                                \
+    putchar('\n');                                                      \
     return EXIT_FAILURE;                                                \
 } while (0)
 
@@ -138,9 +138,9 @@ extern void _diff_strings(FILE *f, const char *from, const char *to);
         FAIL("%s was NULL but should have been \"%s\"", #expr, _value); \
     } else if (_expr && _value && strcmp(_expr, _value) != 0) {         \
         if (strchr(_value, '\n')) {                                     \
-            fprintf(stderr, "%s:%d: %s differed from the expected text:\n", \
-                    __FILE__, __LINE__, #expr);                         \
-            _diff_strings(stderr, _value, _expr);                       \
+            printf("%s:%d: %s differed from the expected text:\n",      \
+                   __FILE__, __LINE__, #expr);                          \
+            _diff_strings(stdout, _value, _expr);                       \
             return EXIT_FAILURE;                                        \
         } else {                                                        \
             FAIL("%s was \"%s\" but should have been \"%s\"",           \
@@ -170,9 +170,9 @@ extern void _diff_mem(FILE *f, const uint8_t *from, const uint8_t *to,
     } else if (!_buf && _expected) {                                    \
         FAIL("%s was NULL but should not have been", #buf);             \
     } else if (_buf && _expected && memcmp(_buf, _expected, _len) != 0) { \
-        fprintf(stderr, "%s:%d: %s differed from the expected data:\n", \
-                    __FILE__, __LINE__, #buf);                          \
-        _diff_mem(stderr, _expected, _buf, _len);                       \
+        printf("%s:%d: %s differed from the expected data:\n",          \
+               __FILE__, __LINE__, #buf);                               \
+        _diff_mem(stdout, _expected, _buf, _len);                       \
         return EXIT_FAILURE;                                            \
     }                                                                   \
 } while (0)

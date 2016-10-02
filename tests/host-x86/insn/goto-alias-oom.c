@@ -56,9 +56,9 @@ int main(void)
     if (add_rtl(unit) != EXIT_SUCCESS) {
         const int line = __LINE__ - 1;
         const char *log_messages = get_log_messages();
-        fprintf(stderr, "%s:%d: add_rtl(unit) failed (%s)\n%s", __FILE__, line,
-                log_messages ? "log follows" : "no errors logged",
-                log_messages ? log_messages : "");
+        printf("%s:%d: add_rtl(unit) failed (%s)\n%s", __FILE__, line,
+               log_messages ? "log follows" : "no errors logged",
+               log_messages ? log_messages : "");
         return EXIT_FAILURE;
     }
 
