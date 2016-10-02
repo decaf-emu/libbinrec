@@ -867,11 +867,11 @@ static bool make_store(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
     insn->src2 = src2;
     insn->offset = (int16_t)other;
 
-    RTLRegister * const destreg = &unit->regs[dest];
     RTLRegister * const src1reg = &unit->regs[src1];
+    RTLRegister * const src2reg = &unit->regs[src2];
     const int insn_index = unit->num_insns;
-    mark_live(unit, insn_index, destreg, dest);
     mark_live(unit, insn_index, src1reg, src1);
+    mark_live(unit, insn_index, src2reg, src2);
 
     return true;
 }
@@ -904,11 +904,11 @@ static bool make_store_narrow(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
     insn->src2 = src2;
     insn->offset = (int16_t)other;
 
-    RTLRegister * const destreg = &unit->regs[dest];
     RTLRegister * const src1reg = &unit->regs[src1];
+    RTLRegister * const src2reg = &unit->regs[src2];
     const int insn_index = unit->num_insns;
-    mark_live(unit, insn_index, destreg, dest);
     mark_live(unit, insn_index, src1reg, src1);
+    mark_live(unit, insn_index, src2reg, src2);
 
     return true;
 }
@@ -1204,6 +1204,12 @@ static bool make_return(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
 #endif
 
     insn->src1 = src1;
+
+    if (src1) {
+        RTLRegister * const src1reg = &unit->regs[src1];
+        const int insn_index = unit->num_insns;
+        mark_live(unit, insn_index, src1reg, src1);
+    }
 
     /* Terminate the current basic block, like GOTO. */
     unit->blocks[unit->cur_block].last_insn = unit->num_insns;

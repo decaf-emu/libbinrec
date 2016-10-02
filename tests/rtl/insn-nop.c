@@ -42,7 +42,6 @@ int main(void)
     EXPECT_EQ(unit->insns[3].src1, reg1);
     EXPECT_EQ(unit->insns[3].src2, reg2);
     EXPECT_EQ(unit->insns[3].src_imm, UINT64_C(0x123456789));
-    EXPECT(unit->have_block);
     EXPECT_EQ(unit->regs[reg1].birth, 1);
     EXPECT_EQ(unit->regs[reg1].death, 3);
     EXPECT_EQ(unit->regs[reg2].birth, 2);
@@ -51,6 +50,7 @@ int main(void)
     EXPECT_EQ(unit->regs[reg3].death, 3);
     EXPECT_EQ(unit->regs[reg3].source, RTLREG_RESULT);
     EXPECT_EQ(unit->regs[reg3].result.opcode, RTLOP_NOP);
+    EXPECT(unit->have_block);
     EXPECT_FALSE(unit->error);
 
     EXPECT(rtl_finalize_unit(unit));

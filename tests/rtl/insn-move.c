@@ -46,6 +46,16 @@ int main(void)
     EXPECT_EQ(unit->insns[4].opcode, RTLOP_MOVE);
     EXPECT_EQ(unit->insns[4].dest, reg5);
     EXPECT_EQ(unit->insns[4].src1, reg4);
+    EXPECT_EQ(unit->regs[reg1].birth, 0);
+    EXPECT_EQ(unit->regs[reg1].death, 1);
+    EXPECT_EQ(unit->regs[reg2].birth, 1);
+    EXPECT_EQ(unit->regs[reg2].death, 2);
+    EXPECT_EQ(unit->regs[reg3].birth, 2);
+    EXPECT_EQ(unit->regs[reg3].death, 2);
+    EXPECT_EQ(unit->regs[reg4].birth, 3);
+    EXPECT_EQ(unit->regs[reg4].death, 4);
+    EXPECT_EQ(unit->regs[reg5].birth, 4);
+    EXPECT_EQ(unit->regs[reg5].death, 4);
     EXPECT(unit->have_block);
     EXPECT_FALSE(unit->error);
 

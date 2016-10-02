@@ -30,25 +30,31 @@ int main(void)
     EXPECT(reg3 = rtl_alloc_register(unit, RTLTYPE_INT32));
 
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg1, 0, 0, 10));
-    EXPECT(rtl_add_insn(unit, RTLOP_BFEXT, reg2, reg1, 0, 2 | 5<<8));
-    EXPECT(rtl_add_insn(unit, RTLOP_MOVE, reg3, reg2, 0, 0));
-    EXPECT_EQ(unit->num_insns, 3);
+    EXPECT(rtl_add_insn(unit, RTLOP_BFEXT, reg2, reg1, 0, 4 | 5<<8));
+    EXPECT_EQ(unit->num_insns, 2);
     EXPECT_EQ(unit->insns[1].opcode, RTLOP_BFEXT);
     EXPECT_EQ(unit->insns[1].dest, reg2);
     EXPECT_EQ(unit->insns[1].src1, reg1);
-    EXPECT_EQ(unit->insns[1].bitfield.start, 2);
+    EXPECT_EQ(unit->insns[1].bitfield.start, 4);
     EXPECT_EQ(unit->insns[1].bitfield.count, 5);
+    EXPECT_EQ(unit->regs[reg1].birth, 0);
+    EXPECT_EQ(unit->regs[reg1].death, 1);
+    EXPECT_EQ(unit->regs[reg2].birth, 1);
+    EXPECT_EQ(unit->regs[reg2].death, 1);
     EXPECT(unit->have_block);
+    EXPECT_FALSE(unit->error);
+
+    EXPECT(rtl_add_insn(unit, RTLOP_MOVE, reg3, reg2, 0, 0));
     EXPECT_FALSE(unit->error);
 
     EXPECT(rtl_finalize_unit(unit));
 
     const char *disassembly =
         "    0: LOAD_IMM   r1, 10\n"
-        "    1: BFEXT      r2, r1, 2, 5\n"
+        "    1: BFEXT      r2, r1, 4, 5\n"
         "           r1: 10\n"
         "    2: MOVE       r3, r2\n"
-        "           r2: bfext(r1, 2, 5)\n"
+        "           r2: bfext(r1, 4, 5)\n"
         "\n"
         "Block 0: <none> --> [0,2] --> <none>\n"
         ;

@@ -36,6 +36,10 @@ int main(void)
     EXPECT_EQ(unit->insns[2].src1, reg1);
     EXPECT_EQ(unit->insns[2].src2, reg2);
     EXPECT_EQ(unit->insns[2].offset, 32);
+    EXPECT_EQ(unit->regs[reg1].birth, 0);
+    EXPECT_EQ(unit->regs[reg1].death, 2);
+    EXPECT_EQ(unit->regs[reg2].birth, 1);
+    EXPECT_EQ(unit->regs[reg2].death, 2);
     EXPECT(unit->have_block);
     EXPECT_FALSE(unit->error);
 

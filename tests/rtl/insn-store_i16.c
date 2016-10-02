@@ -30,9 +30,9 @@ int main(void)
 
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg1, 0, 0, 10));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg2, 0, 0, 20));
-    EXPECT(rtl_add_insn(unit, RTLOP_STORE_BR, 0, reg1, reg2, 32));
+    EXPECT(rtl_add_insn(unit, RTLOP_STORE_I16, 0, reg1, reg2, 32));
     EXPECT_EQ(unit->num_insns, 3);
-    EXPECT_EQ(unit->insns[2].opcode, RTLOP_STORE_BR);
+    EXPECT_EQ(unit->insns[2].opcode, RTLOP_STORE_I16);
     EXPECT_EQ(unit->insns[2].src1, reg1);
     EXPECT_EQ(unit->insns[2].src2, reg2);
     EXPECT_EQ(unit->insns[2].offset, 32);
@@ -48,7 +48,7 @@ int main(void)
     const char *disassembly =
         "    0: LOAD_IMM   r1, 0xA\n"
         "    1: LOAD_IMM   r2, 20\n"
-        "    2: STORE_BR   32(r1), r2\n"
+        "    2: STORE_I16  32(r1), r2\n"
         "           r1: 0xA\n"
         "           r2: 20\n"
         "\n"

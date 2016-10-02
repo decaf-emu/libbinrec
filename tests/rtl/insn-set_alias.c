@@ -36,6 +36,8 @@ int main(void)
     EXPECT_EQ(unit->insns[1].opcode, RTLOP_SET_ALIAS);
     EXPECT_EQ(unit->insns[1].src1, reg2);
     EXPECT_EQ(unit->insns[1].alias, alias);
+    EXPECT_EQ(unit->regs[reg2].birth, 0);
+    EXPECT_EQ(unit->regs[reg2].death, 1);
     EXPECT(unit->have_block);
     EXPECT_FALSE(unit->error);
 

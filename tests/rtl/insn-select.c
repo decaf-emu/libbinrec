@@ -35,14 +35,24 @@ int main(void)
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg2, 0, 0, 20));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg3, 0, 0, 30));
     EXPECT(rtl_add_insn(unit, RTLOP_SELECT, reg4, reg1, reg2, reg3));
-    EXPECT(rtl_add_insn(unit, RTLOP_MOVE, reg5, reg4, 0, 0));
-    EXPECT_EQ(unit->num_insns, 5);
+    EXPECT_EQ(unit->num_insns, 4);
     EXPECT_EQ(unit->insns[3].opcode, RTLOP_SELECT);
     EXPECT_EQ(unit->insns[3].dest, reg4);
     EXPECT_EQ(unit->insns[3].src1, reg1);
     EXPECT_EQ(unit->insns[3].src2, reg2);
     EXPECT_EQ(unit->insns[3].src3, reg3);
+    EXPECT_EQ(unit->regs[reg1].birth, 0);
+    EXPECT_EQ(unit->regs[reg1].death, 3);
+    EXPECT_EQ(unit->regs[reg2].birth, 1);
+    EXPECT_EQ(unit->regs[reg2].death, 3);
+    EXPECT_EQ(unit->regs[reg3].birth, 2);
+    EXPECT_EQ(unit->regs[reg3].death, 3);
+    EXPECT_EQ(unit->regs[reg4].birth, 3);
+    EXPECT_EQ(unit->regs[reg4].death, 3);
     EXPECT(unit->have_block);
+    EXPECT_FALSE(unit->error);
+
+    EXPECT(rtl_add_insn(unit, RTLOP_MOVE, reg5, reg4, 0, 0));
     EXPECT_FALSE(unit->error);
 
     EXPECT(rtl_finalize_unit(unit));

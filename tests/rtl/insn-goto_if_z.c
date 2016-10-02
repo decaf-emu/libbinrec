@@ -37,6 +37,8 @@ int main(void)
     EXPECT_EQ(unit->insns[2].opcode, RTLOP_GOTO_IF_Z);
     EXPECT_EQ(unit->insns[2].src1, reg2);
     EXPECT_EQ(unit->insns[2].label, label);
+    EXPECT_EQ(unit->regs[reg2].birth, 1);
+    EXPECT_EQ(unit->regs[reg2].death, 2);
     EXPECT(unit->have_block);
     EXPECT_FALSE(unit->error);
 

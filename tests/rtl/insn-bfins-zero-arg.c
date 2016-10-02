@@ -36,19 +36,19 @@ int main(void)
     EXPECT_EQ(unit->num_insns, 2);
     EXPECT_FALSE(unit->error);
 
-    EXPECT_FALSE(rtl_add_insn(unit, RTLOP_BFINS, 0, reg1, reg2, 2 | 5<<8));
+    EXPECT_FALSE(rtl_add_insn(unit, RTLOP_BFINS, 0, reg1, reg2, 4 | 5<<8));
     EXPECT_ICE("Operand constraint violated: dest != 0");
     EXPECT_EQ(unit->num_insns, 2);
     EXPECT(unit->error);
     unit->error = false;
 
-    EXPECT_FALSE(rtl_add_insn(unit, RTLOP_BFINS, reg3, 0, reg2, 2 | 5<<8));
+    EXPECT_FALSE(rtl_add_insn(unit, RTLOP_BFINS, reg3, 0, reg2, 4 | 5<<8));
     EXPECT_ICE("Operand constraint violated: src1 != 0");
     EXPECT_EQ(unit->num_insns, 2);
     EXPECT(unit->error);
     unit->error = false;
 
-    EXPECT_FALSE(rtl_add_insn(unit, RTLOP_BFINS, reg3, reg1, 0, 2 | 5<<8));
+    EXPECT_FALSE(rtl_add_insn(unit, RTLOP_BFINS, reg3, reg1, 0, 4 | 5<<8));
     EXPECT_ICE("Operand constraint violated: src2 != 0");
     EXPECT_EQ(unit->num_insns, 2);
     EXPECT(unit->error);

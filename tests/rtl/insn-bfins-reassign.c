@@ -33,11 +33,11 @@ int main(void)
 
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg1, 0, 0, 10));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg2, 0, 0, 20));
-    EXPECT(rtl_add_insn(unit, RTLOP_BFINS, reg3, reg1, reg2, 2 | 5<<8));
+    EXPECT(rtl_add_insn(unit, RTLOP_BFINS, reg3, reg1, reg2, 4 | 5<<8));
     EXPECT_EQ(unit->num_insns, 3);
     EXPECT_FALSE(unit->error);
 
-    EXPECT_FALSE(rtl_add_insn(unit, RTLOP_BFINS, reg3, reg1, reg2, 2 | 5<<8));
+    EXPECT_FALSE(rtl_add_insn(unit, RTLOP_BFINS, reg3, reg1, reg2, 4 | 5<<8));
     EXPECT_ICE("Operand constraint violated:"
                " unit->regs[dest].source == RTLREG_UNDEFINED");
     EXPECT_EQ(unit->num_insns, 3);

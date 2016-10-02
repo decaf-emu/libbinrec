@@ -32,16 +32,24 @@ int main(void)
 
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg1, 0, 0, 10));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg2, 0, 0, 20));
-    EXPECT(rtl_add_insn(unit, RTLOP_BFINS, reg3, reg1, reg2, 2 | 5<<8));
-    EXPECT(rtl_add_insn(unit, RTLOP_MOVE, reg4, reg3, 0, 0));
-    EXPECT_EQ(unit->num_insns, 4);
+    EXPECT(rtl_add_insn(unit, RTLOP_BFINS, reg3, reg1, reg2, 4 | 5<<8));
+    EXPECT_EQ(unit->num_insns, 3);
     EXPECT_EQ(unit->insns[2].opcode, RTLOP_BFINS);
     EXPECT_EQ(unit->insns[2].dest, reg3);
     EXPECT_EQ(unit->insns[2].src1, reg1);
     EXPECT_EQ(unit->insns[2].src2, reg2);
-    EXPECT_EQ(unit->insns[2].bitfield.start, 2);
+    EXPECT_EQ(unit->insns[2].bitfield.start, 4);
     EXPECT_EQ(unit->insns[2].bitfield.count, 5);
+    EXPECT_EQ(unit->regs[reg1].birth, 0);
+    EXPECT_EQ(unit->regs[reg1].death, 2);
+    EXPECT_EQ(unit->regs[reg2].birth, 1);
+    EXPECT_EQ(unit->regs[reg2].death, 2);
+    EXPECT_EQ(unit->regs[reg3].birth, 2);
+    EXPECT_EQ(unit->regs[reg3].death, 2);
     EXPECT(unit->have_block);
+    EXPECT_FALSE(unit->error);
+
+    EXPECT(rtl_add_insn(unit, RTLOP_MOVE, reg4, reg3, 0, 0));
     EXPECT_FALSE(unit->error);
 
     EXPECT(rtl_finalize_unit(unit));
@@ -49,11 +57,11 @@ int main(void)
     const char *disassembly =
         "    0: LOAD_IMM   r1, 10\n"
         "    1: LOAD_IMM   r2, 20\n"
-        "    2: BFINS      r3, r1, r2, 2, 5\n"
+        "    2: BFINS      r3, r1, r2, 4, 5\n"
         "           r1: 10\n"
         "           r2: 20\n"
         "    3: MOVE       r4, r3\n"
-        "           r3: bfins(r1, r2, 2, 5)\n"
+        "           r3: bfins(r1, r2, 4, 5)\n"
         "\n"
         "Block 0: <none> --> [0,3] --> <none>\n"
         ;

@@ -31,35 +31,56 @@ int main(void)
 
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg1, 0, 0, 10));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg2, 0, 0, 20));
-    EXPECT(rtl_add_insn(unit, RTLOP_CALL_ADDR, 0, reg1, 0, 0));
-    EXPECT(rtl_add_insn(unit, RTLOP_CALL_ADDR, 0, reg1, reg2, 0));
-    EXPECT(rtl_add_insn(unit, RTLOP_CALL_ADDR, reg3, reg1, 0, 0));
-    EXPECT(rtl_add_insn(unit, RTLOP_CALL_ADDR, 0, reg1, reg2, reg3));
-    EXPECT_EQ(unit->num_insns, 6);
 
+    EXPECT(rtl_add_insn(unit, RTLOP_CALL_ADDR, 0, reg1, 0, 0));
+    EXPECT_EQ(unit->num_insns, 3);
     EXPECT_EQ(unit->insns[2].opcode, RTLOP_CALL_ADDR);
     EXPECT_EQ(unit->insns[2].dest, 0);
     EXPECT_EQ(unit->insns[2].src1, reg1);
     EXPECT_EQ(unit->insns[2].src2, 0);
     EXPECT_EQ(unit->insns[2].src3, 0);
+    EXPECT_EQ(unit->regs[reg1].birth, 0);
+    EXPECT_EQ(unit->regs[reg1].death, 2);
 
+    EXPECT(rtl_add_insn(unit, RTLOP_CALL_ADDR, 0, reg1, reg2, 0));
+    EXPECT_EQ(unit->num_insns, 4);
     EXPECT_EQ(unit->insns[3].opcode, RTLOP_CALL_ADDR);
     EXPECT_EQ(unit->insns[3].dest, 0);
     EXPECT_EQ(unit->insns[3].src1, reg1);
     EXPECT_EQ(unit->insns[3].src2, reg2);
     EXPECT_EQ(unit->insns[3].src3, 0);
+    EXPECT_EQ(unit->regs[reg1].birth, 0);
+    EXPECT_EQ(unit->regs[reg1].death, 3);
+    EXPECT_EQ(unit->regs[reg2].birth, 1);
+    EXPECT_EQ(unit->regs[reg2].death, 3);
 
+    EXPECT(rtl_add_insn(unit, RTLOP_CALL_ADDR, reg3, reg1, 0, 0));
+    EXPECT_EQ(unit->num_insns, 5);
     EXPECT_EQ(unit->insns[4].opcode, RTLOP_CALL_ADDR);
     EXPECT_EQ(unit->insns[4].dest, reg3);
     EXPECT_EQ(unit->insns[4].src1, reg1);
     EXPECT_EQ(unit->insns[4].src2, 0);
     EXPECT_EQ(unit->insns[4].src3, 0);
+    EXPECT_EQ(unit->regs[reg1].birth, 0);
+    EXPECT_EQ(unit->regs[reg1].death, 4);
+    EXPECT_EQ(unit->regs[reg2].birth, 1);
+    EXPECT_EQ(unit->regs[reg2].death, 3);
+    EXPECT_EQ(unit->regs[reg3].birth, 4);
+    EXPECT_EQ(unit->regs[reg3].death, 4);
 
+    EXPECT(rtl_add_insn(unit, RTLOP_CALL_ADDR, 0, reg1, reg2, reg3));
+    EXPECT_EQ(unit->num_insns, 6);
     EXPECT_EQ(unit->insns[5].opcode, RTLOP_CALL_ADDR);
     EXPECT_EQ(unit->insns[5].dest, 0);
     EXPECT_EQ(unit->insns[5].src1, reg1);
     EXPECT_EQ(unit->insns[5].src2, reg2);
     EXPECT_EQ(unit->insns[5].src3, reg3);
+    EXPECT_EQ(unit->regs[reg1].birth, 0);
+    EXPECT_EQ(unit->regs[reg1].death, 5);
+    EXPECT_EQ(unit->regs[reg2].birth, 1);
+    EXPECT_EQ(unit->regs[reg2].death, 5);
+    EXPECT_EQ(unit->regs[reg3].birth, 4);
+    EXPECT_EQ(unit->regs[reg3].death, 5);
 
     EXPECT(unit->have_block);
     EXPECT_FALSE(unit->error);
