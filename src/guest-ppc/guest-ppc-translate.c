@@ -85,6 +85,17 @@ static bool init_unit(GuestPPCContext *ctx)
     }
     ctx->cr_changed = cr_changed;
 
+    /* If an mfcr instruction is present in this unit, preload the values
+     * of all CR fields referenced by any other instruction, even if the
+     * field is only stored to.  (We could in theory skip fields which are
+     * stored to before the first mfcr, but that requires deeper flow
+     * analysis which is probably not worth the time cost, and the RTL
+     * optimizer should be able to determine that the stores are dead in
+     * any case. */
+    if (ctx->mfcr_seen) {
+        cr_used |= cr_changed;
+    }
+
     /* Allocate alias registers for all required guest registers. */
 
     for (int i = 0; i < 32; i++) {

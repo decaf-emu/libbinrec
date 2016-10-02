@@ -579,16 +579,10 @@ static void update_used_changed(GuestPPCContext *ctx, GuestPPCBlockInfo *block,
                 mark_gpr_used(block, insn_rS(insn));
             } else {
                 if (insn_XO_10(insn) == XO_MFCR) {
-                    /* Leave CR used/changed bits alone; we translate MFCR
-                     * without needing aliases (see guest-ppc-rtl.c).
-                     * However, if this is the first MFCR in this block,
-                     * remember which CR fields have already been changed
-                     * so we can make sure to load any others which would
-                     * otherwise be store-only. */
-                    if (!ctx->mfcr_seen) {
-                        ctx->mfcr_seen = true;
-                        ctx->mfcr_cr_changed = block->cr_changed;
-                    }
+                    /* We don't blindly set all CR bits, but we need to
+                     * remember the presence of an mfcr so we can preload
+                     * all CR fields which are store-only in this unit. */
+                    ctx->mfcr_seen = true;
                 } else if (insn_XO_10(insn) == XO_MFSRIN) {
                     mark_gpr_used(block, insn_rB(insn));
                 }
@@ -992,7 +986,6 @@ bool guest_ppc_scan(GuestPPCContext *ctx, uint32_t limit)
                           " table at 0x%X", address);
                 return false;
             }
-            ctx->mfcr_seen = false;
         }
 
         /* Update register usage state for this instruction's operands. */
@@ -1010,11 +1003,6 @@ bool guest_ppc_scan(GuestPPCContext *ctx, uint32_t limit)
                                   || insn_XO_10(insn) == XO_BCCTR));
         const bool is_icbi = (opcd == OPCD_x1F && insn_XO_10(insn) == XO_ICBI);
         if (is_direct_branch || is_indirect_branch || is_invalid || is_icbi) {
-            /* Add to cr_used if needed for mfcr. */
-            if (ctx->mfcr_seen) {
-                block->cr_used |= (block->cr_changed & ~ctx->mfcr_cr_changed);
-            }
-
             block->len = (address + 4) - block->start;
             block = NULL;
 
@@ -1072,9 +1060,6 @@ bool guest_ppc_scan(GuestPPCContext *ctx, uint32_t limit)
         ASSERT(!block);
     } else {
         if (block) {
-            if (ctx->mfcr_seen) {
-                block->cr_used |= (block->cr_changed & ~ctx->mfcr_cr_changed);
-            }
             block->len = (aligned_limit + 4) - block->start;
         }
         if (aligned_limit + 3 >= limit) {

@@ -193,12 +193,8 @@ typedef struct GuestPPCContext {
     /* Combined CR field change flags from all basic blocks (used in
      * merging fields back to a single 32-bit value). */
     uint8_t cr_changed;
-    /* Has an mfcr instruction been scanned in the current block?
-     * (Temporary state for guest_ppc_scan().) */
+    /* Has an mfcr instruction been scanned in the current block? */
     bool mfcr_seen;
-    /* Value of block->cr_changed at the first mfcr found.  (Temporary
-     * state for guest_ppc_scan().) */
-    uint8_t mfcr_cr_changed;
 
     /* RTL registers for each CPU register live in the current block. */
     GuestPPCRegSet live;
