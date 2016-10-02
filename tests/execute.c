@@ -72,6 +72,7 @@ bool call_guest_code(binrec_arch_t arch, void *state, void *memory,
     memset(&setup, 0, sizeof(setup));
     setup.guest = arch;
     setup.host = binrec_native_arch();
+    setup.host_features = binrec_native_features();
     setup.guest_memory_base = memory;
     setup.host_memory_base = (uintptr_t)memory;
     setup.state_offset_gpr = offsetof(PPCState,gpr);
