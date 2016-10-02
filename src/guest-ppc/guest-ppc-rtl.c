@@ -163,6 +163,10 @@ static inline int get_fpscr(GuestPPCContext * const ctx)
  * the given RTL register to the given PowerPC register.  These functions
  * do not add a SET_ALIAS instruction.
  *
+ * Complex instructions whose translation includes conditionally-executed
+ * code paths must not call these functions from any code which is
+ * conditionally executed.
+ *
  * [Parameters]
  *     ctx: Translation context.
  *     index: PowerPC register index (get_gpr(), get_fpr(), get_cr() only).
@@ -171,36 +175,43 @@ static inline int get_fpscr(GuestPPCContext * const ctx)
 static inline void set_gpr(GuestPPCContext * const ctx, int index, int reg)
 {
     ctx->live.gpr[index] = reg;
+    ctx->gpr_dirty |= 1u << index;
 }
 
 static inline void set_fpr(GuestPPCContext * const ctx, int index, int reg)
 {
     ctx->live.fpr[index] = reg;
+    ctx->fpr_dirty |= 1u << index;
 }
 
 static inline void set_cr(GuestPPCContext * const ctx, int index, int reg)
 {
     ctx->live.cr[index] = reg;
+    ctx->cr_dirty |= 1u << index;
 }
 
 static inline void set_lr(GuestPPCContext * const ctx, int reg)
 {
     ctx->live.lr = reg;
+    ctx->lr_dirty = 1;
 }
 
 static inline void set_ctr(GuestPPCContext * const ctx, int reg)
 {
     ctx->live.ctr = reg;
+    ctx->ctr_dirty = 1;
 }
 
 static inline void set_xer(GuestPPCContext * const ctx, int reg)
 {
     ctx->live.xer = reg;
+    ctx->xer_dirty = 1;
 }
 
 static inline void set_fpscr(GuestPPCContext * const ctx, int reg)
 {
     ctx->live.fpscr = reg;
+    ctx->fpscr_dirty = 1;
 }
 
 /*-----------------------------------------------------------------------*/
@@ -287,75 +298,60 @@ static void store_live_regs(GuestPPCContext *ctx,
 {
     RTLUnit * const unit = ctx->unit;
 
-    /* We use *_changed here as a hint to speed up the search for live
-     * registers: any register without a set bit can never be dirty, so
-     * we don't need to look at it. */
-    for (uint32_t gpr_changed = block->gpr_changed; gpr_changed; ) {
-        const int index = ctz32(gpr_changed);
-        gpr_changed ^= 1u << index;
-        if (ctx->live.gpr[index]) {
-            rtl_add_insn(unit, RTLOP_SET_ALIAS,
-                         0, ctx->live.gpr[index], 0, ctx->alias.gpr[index]);
-            if (clear) {
-                ctx->live.gpr[index] = 0;
-            }
-        }
+    while (ctx->gpr_dirty) {
+        const int index = ctz32(ctx->gpr_dirty);
+        ctx->gpr_dirty ^= 1u << index;
+        ASSERT(ctx->live.gpr[index]);
+        rtl_add_insn(unit, RTLOP_SET_ALIAS,
+                     0, ctx->live.gpr[index], 0, ctx->alias.gpr[index]);
     }
 
-    for (uint32_t fpr_changed = block->fpr_changed; fpr_changed; ) {
-        const int index = ctz32(fpr_changed);
-        fpr_changed ^= 1u << index;
-        if (ctx->live.fpr[index]) {
-            rtl_add_insn(unit, RTLOP_SET_ALIAS,
-                         0, ctx->live.fpr[index], 0, ctx->alias.fpr[index]);
-            if (clear) {
-                ctx->live.fpr[index] = 0;
-            }
-        }
+    while (ctx->fpr_dirty) {
+        const int index = ctz32(ctx->fpr_dirty);
+        ctx->fpr_dirty ^= 1u << index;
+        ASSERT(ctx->live.fpr[index]);
+        rtl_add_insn(unit, RTLOP_SET_ALIAS,
+                     0, ctx->live.fpr[index], 0, ctx->alias.fpr[index]);
     }
 
-    for (uint32_t cr_changed = block->cr_changed; cr_changed; ) {
-        const int index = ctz32(cr_changed);
-        cr_changed ^= 1u << index;
-        if (ctx->live.cr[index]) {
-            rtl_add_insn(unit, RTLOP_SET_ALIAS,
-                         0, ctx->live.cr[index], 0, ctx->alias.cr[index]);
-            if (clear) {
-                ctx->live.cr[index] = 0;
-            }
-        }
+    while (ctx->cr_dirty) {
+        const int index = ctz32(ctx->cr_dirty);
+        ctx->cr_dirty ^= 1u << index;
+        ASSERT(ctx->live.cr[index]);
+        rtl_add_insn(unit, RTLOP_SET_ALIAS,
+                     0, ctx->live.cr[index], 0, ctx->alias.cr[index]);
     }
 
-    if (block->lr_changed && ctx->live.lr) {
+    if (ctx->lr_dirty) {
+        ctx->lr_dirty = 0;
+        ASSERT(ctx->live.lr);
         rtl_add_insn(unit, RTLOP_SET_ALIAS,
                      0, ctx->live.lr, 0, ctx->alias.lr);
-        if (clear) {
-            ctx->live.lr = 0;
-        }
     }
 
-    if (block->ctr_changed && ctx->live.ctr) {
+    if (ctx->ctr_dirty) {
+        ctx->ctr_dirty = 0;
+        ASSERT(ctx->live.ctr);
         rtl_add_insn(unit, RTLOP_SET_ALIAS,
                      0, ctx->live.ctr, 0, ctx->alias.ctr);
-        if (clear) {
-            ctx->live.ctr = 0;
-        }
     }
 
-    if (block->xer_changed && ctx->live.xer) {
+    if (ctx->xer_dirty) {
+        ctx->xer_dirty = 0;
+        ASSERT(ctx->live.xer);
         rtl_add_insn(unit, RTLOP_SET_ALIAS,
                      0, ctx->live.xer, 0, ctx->alias.xer);
-        if (clear) {
-            ctx->live.xer = 0;
-        }
     }
 
-    if (block->fpscr_changed && ctx->live.fpscr) {
+    if (ctx->fpscr_dirty) {
+        ctx->fpscr_dirty = 0;
+        ASSERT(ctx->live.fpscr);
         rtl_add_insn(unit, RTLOP_SET_ALIAS,
                      0, ctx->live.fpscr, 0, ctx->alias.fpscr);
-        if (clear) {
-            ctx->live.fpscr = 0;
-        }
+    }
+
+    if (clear) {
+        memset(&ctx->live, 0, sizeof(ctx->live));
     }
 }
 
@@ -732,6 +728,11 @@ static void translate_branch_label(
         const int new_ctr = rtl_alloc_register(unit, RTLTYPE_INT32);
         rtl_add_insn(unit, RTLOP_ADDI, new_ctr, ctr, 0, -1);
         set_ctr(ctx, new_ctr);
+
+        /* Store here so any update to CTR is stored along with other pending
+         * changes. */
+        store_live_regs(ctx, block, false);
+
         if (skip_label) {
             rtl_add_insn(unit, BO & 0x02 ? RTLOP_GOTO_IF_NZ : RTLOP_GOTO_IF_Z,
                          0, new_ctr, 0, skip_label);
@@ -739,6 +740,8 @@ static void translate_branch_label(
             branch_op = BO & 0x02 ? RTLOP_GOTO_IF_Z : RTLOP_GOTO_IF_NZ;
             test_reg = new_ctr;
         }
+    } else {
+        store_live_regs(ctx, block, false);
     }
 
     if (!(BO & 0x10)) {
@@ -749,7 +752,6 @@ static void translate_branch_label(
         test_reg = test;
     }
 
-    store_live_regs(ctx, block, false);
     rtl_add_insn(unit, branch_op, 0, test_reg, 0, target_label);
 
     if (skip_label) {
@@ -798,8 +800,13 @@ static void translate_branch_terminal(
         const int new_ctr = rtl_alloc_register(unit, RTLTYPE_INT32);
         rtl_add_insn(unit, RTLOP_ADDI, new_ctr, ctr, 0, -1);
         set_ctr(ctx, new_ctr);
+
+        store_live_regs(ctx, block, false);
+
         rtl_add_insn(unit, BO & 0x02 ? RTLOP_GOTO_IF_NZ : RTLOP_GOTO_IF_Z,
                      0, new_ctr, 0, skip_label);
+    } else {
+        store_live_regs(ctx, block, false);
     }
 
     if (!(BO & 0x10)) {
@@ -810,14 +817,12 @@ static void translate_branch_terminal(
                      0, test, 0, skip_label);
     }
 
-    /* Save the current value of LR before (possibly) modifying it so we
-     * don't leak the modified LR to the not-taken code path. */
-    int current_lr = ctx->live.lr;
     if (LK) {
-        set_lr(ctx, rtl_imm32(unit, address + 4));
+        /* Write LR directly rather than going through set_lr() so we don't
+         * leak the modified LR to the not-taken code path. */
+        rtl_add_insn(unit, RTLOP_SET_ALIAS,
+                     0, rtl_imm32(unit, address+4), 0, ctx->alias.lr);
     }
-    store_live_regs(ctx, block, false);
-    ctx->live.lr = current_lr;
     set_nia(ctx, target);
     rtl_add_insn(unit, RTLOP_GOTO, 0, 0, 0, ctx->epilogue_label);
 
@@ -1630,6 +1635,7 @@ static inline void translate_muldiv_reg(
             rtl_add_insn(unit, RTLOP_SET_ALIAS,
                          0, ctx->live.xer, 0, ctx->alias.xer);
             ctx->live.xer = 0;
+            ctx->xer_dirty = 0;
             div_continue_label = rtl_alloc_label(unit);
             rtl_add_insn(unit, RTLOP_GOTO, 0, 0, 0, div_continue_label);
         }
@@ -2843,6 +2849,14 @@ bool guest_ppc_translate_block(GuestPPCContext *ctx, int index)
     }
 
     memset(&ctx->live, 0, sizeof(ctx->live));
+    ctx->gpr_dirty = 0;
+    ctx->fpr_dirty = 0;
+    ctx->cr_dirty = 0;
+    ctx->lr_dirty = 0;
+    ctx->ctr_dirty = 0;
+    ctx->xer_dirty = 0;
+    ctx->fpscr_dirty = 0;
+
     bool last_was_sc = false;
     for (uint32_t ofs = 0; ofs < block->len; ofs += 4) {
         const uint32_t address = start + ofs;
