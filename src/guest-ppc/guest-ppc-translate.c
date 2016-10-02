@@ -85,17 +85,6 @@ static bool init_unit(GuestPPCContext *ctx)
     }
     ctx->cr_changed = cr_changed;
 
-    /* If an mfcr instruction is present in this unit, preload the values
-     * of all CR fields referenced by any other instruction, even if the
-     * field is only stored to.  (We could in theory skip fields which are
-     * stored to before the first mfcr, but that requires deeper flow
-     * analysis which is probably not worth the time cost, and the RTL
-     * optimizer should be able to determine that the stores are dead in
-     * any case. */
-    if (ctx->mfcr_seen) {
-        cr_used |= cr_changed;
-    }
-
     /* Allocate alias registers for all required guest registers. */
 
     for (int i = 0; i < 32; i++) {
@@ -117,18 +106,19 @@ static bool init_unit(GuestPPCContext *ctx)
     for (int i = 0; i < 8; i++) {
         if ((cr_used | cr_changed) & (1 << i)) {
             ctx->alias.cr[i] = rtl_alloc_alias_register(unit, RTLTYPE_INT32);
-            if (cr_used & (1 << i)) {
-                if (!cr) {
-                    cr = rtl_alloc_register(unit, RTLTYPE_INT32);
-                    rtl_add_insn(unit, RTLOP_LOAD, cr, ctx->psb_reg, 0,
-                                 ctx->handle->setup.state_offset_cr);
-                }
-                const int crN = rtl_alloc_register(unit, RTLTYPE_INT32);
-                rtl_add_insn(unit, RTLOP_BFEXT,
-                             crN, cr, 0, ((7 - i) * 4) | 4<<8);
-                rtl_add_insn(unit, RTLOP_SET_ALIAS,
-                             0, crN, 0, ctx->alias.cr[i]);
+            /* We have to load these aliases unconditionally because a
+             * store-only field might have the store skipped (due to a
+             * conditional branch within the unit, for example) and then
+             * we'd end up loading an uninitialized stack value when
+             * merging back into the PSB at the end of the unit. */
+            if (!cr) {
+                cr = rtl_alloc_register(unit, RTLTYPE_INT32);
+                rtl_add_insn(unit, RTLOP_LOAD, cr, ctx->psb_reg, 0,
+                             ctx->handle->setup.state_offset_cr);
             }
+            const int crN = rtl_alloc_register(unit, RTLTYPE_INT32);
+            rtl_add_insn(unit, RTLOP_BFEXT, crN, cr, 0, ((7 - i) * 4) | 4<<8);
+            rtl_add_insn(unit, RTLOP_SET_ALIAS, 0, crN, 0, ctx->alias.cr[i]);
         }
     }
 

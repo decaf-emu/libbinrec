@@ -335,6 +335,7 @@ static void update_used_changed(GuestPPCContext *ctx, GuestPPCBlockInfo *block,
             mark_fpr_used(block, insn_frA(insn));
             mark_fpr_used(block, insn_frB(insn));
             mark_fpscr_changed(block);
+            mark_cr_used(block, insn_crfD(insn));  // FIXME: temp until these insns are implemented, to avoid uninitialized values in CR merging
             mark_cr_changed(block, insn_crfD(insn));
             break;
           case 0x06:  // psq_lx, psq_lux
@@ -579,10 +580,9 @@ static void update_used_changed(GuestPPCContext *ctx, GuestPPCBlockInfo *block,
                 mark_gpr_used(block, insn_rS(insn));
             } else {
                 if (insn_XO_10(insn) == XO_MFCR) {
-                    /* We don't blindly set all CR bits, but we need to
-                     * remember the presence of an mfcr so we can preload
-                     * all CR fields which are store-only in this unit. */
-                    ctx->mfcr_seen = true;
+                    /* mfcr has special handling to load unused fields
+                     * directly from the PSB, so we don't need to mark
+                     * any fields here. */
                 } else if (insn_XO_10(insn) == XO_MFSRIN) {
                     mark_gpr_used(block, insn_rB(insn));
                 }
@@ -825,6 +825,7 @@ static void update_used_changed(GuestPPCContext *ctx, GuestPPCBlockInfo *block,
             } else if (insn_crfS(insn) <= 3 || insn_crfS(insn) == 5) {
                 mark_fpscr_changed(block);
             }
+            mark_cr_used(block, insn_crfD(insn));  // FIXME: temp until these insns are implemented, to avoid uninitialized values in CR merging
             mark_cr_changed(block, insn_crfD(insn));
             break;
 
