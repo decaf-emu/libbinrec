@@ -83,7 +83,7 @@ int main(void)
     EXPECT_STREQ(get_log_messages(), NULL);
 
     int exitcode = EXIT_SUCCESS;
-    const int expected_errors = 123456789;  // FIXME: how many?
+    const int expected_errors = 1078;
     const int result = state.gpr[3];
     if (result < 0) {
         exitcode = EXIT_FAILURE;
@@ -95,7 +95,7 @@ int main(void)
         printf("Error log follows:\n");
         const uint32_t *error_log =
             (const uint32_t *)(memory + error_log_address);
-        for (int i = 0; i < result*0; i++, error_log += 8) {
+        for (int i = 0; i < result; i++, error_log += 8) {
             printf("    %08X %08X  %08X %08X  %08X %08X\n",
                    bswap_be32(error_log[0]), bswap_be32(error_log[1]),
                    bswap_be32(error_log[2]), bswap_be32(error_log[3]),
