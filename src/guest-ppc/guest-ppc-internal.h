@@ -190,15 +190,9 @@ typedef struct GuestPPCContext {
     /* Alias registers for guest CPU state. */
     GuestPPCRegSet alias;
 
-    /* Merged register change state from all basic blocks. */
-    uint32_t gpr_changed;
-    uint32_t fpr_changed;
+    /* Combined CR field change flags from all basic blocks (used in
+     * merging fields back to a single 32-bit value). */
     uint8_t cr_changed;
-    uint8_t
-        lr_changed : 1,
-        ctr_changed : 1,
-        xer_changed : 1,
-        fpscr_changed : 1;
 
     /* RTL registers for each CPU register live in the current block. */
     GuestPPCRegSet live;

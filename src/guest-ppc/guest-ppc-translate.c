@@ -52,10 +52,7 @@ static bool init_unit(GuestPPCContext *ctx)
                           ctx->handle->setup.state_offset_nia);
 
     /* Check which guest CPU registers are referenced in the unit, to avoid
-     * creating unnecessary RTL alias registers below.  We accumulate the
-     * bitmasks in local variables to avoid writes through ctx->blocks[]
-     * causing optimization barriers, and also since we don't need the used
-     * bitmasks past the end of this function. */
+     * creating unnecessary RTL alias registers below. */
     uint32_t gpr_used = 0;
     uint32_t gpr_changed = 0;
     uint32_t fpr_used = 0;
@@ -86,13 +83,7 @@ static bool init_unit(GuestPPCContext *ctx)
         fpscr_used |= ctx->blocks[i].fpscr_used;
         fpscr_changed |= ctx->blocks[i].fpscr_changed;
     }
-    ctx->gpr_changed = gpr_changed;
-    ctx->fpr_changed = fpr_changed;
     ctx->cr_changed = cr_changed;
-    ctx->lr_changed = lr_changed;
-    ctx->ctr_changed = ctr_changed;
-    ctx->xer_changed = xer_changed;
-    ctx->fpscr_changed = fpscr_changed;
 
     /* Allocate alias registers for all required guest registers. */
 
