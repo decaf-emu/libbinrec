@@ -105,8 +105,9 @@ extern "C" {
  * D-form (immediate offset) load and store instructions which wrap around
  * the 32-bit address space, such as lwz rD,16(rS) where the value of rS
  * is 0xFFFFFFF0 or greater, are not supported; such accesses will "leak"
- * outside the guest memory region.  However, accesses to the top of 32k
- * of memory using D-form instructions with rA = 0 are handled correctly.
+ * outside the guest memory region.  However, accesses to the top 32k of
+ * memory using single-register (not lmw/stmw) D-form instructions with
+ * rA = 0 are handled correctly.
  */
 
 /*************************************************************************/

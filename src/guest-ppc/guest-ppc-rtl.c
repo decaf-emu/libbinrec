@@ -1047,6 +1047,88 @@ static inline void translate_load_store_gpr(
 /*-----------------------------------------------------------------------*/
 
 /**
+ * translate_load_store_multiple:  Translate a load or store multiple
+ * instruction (lmw/stmw).
+ *
+ * [Parameters]
+ *     ctx: Translation context.
+ *     block: Basic block being translated.
+ *     insn: Instruction word.
+ *     is_store: True if the instruction is a store instruction (stswi/stswx).
+ */
+static inline void translate_load_store_multiple(
+    GuestPPCContext *ctx, GuestPPCBlockInfo *block, uint32_t insn,
+    bool is_store)
+{
+    RTLUnit * const unit = ctx->unit;
+
+    RTLOpcode rtlop = is_store ? RTLOP_STORE : RTLOP_LOAD;
+    if (ctx->handle->host_little_endian) {
+        rtlop = (is_store ? RTLOP_STORE_BR : RTLOP_LOAD_BR);
+    }
+
+    int host_address = get_ea_base(ctx, insn);
+    int disp = insn_d(insn);
+    if (disp >= (int)(32768 - 4*(31-insn_rD(insn)))) {
+        /* Advancing the offset will wrap around to negative values!
+         * Add it into the base address as a workaround. */
+        const int base = host_address;
+        host_address = rtl_alloc_register(unit, RTLTYPE_ADDRESS);
+        rtl_add_insn(unit, RTLOP_ADDI, host_address, base, 0, disp);
+        disp = 0;
+    }
+
+    int rD = insn_rD(insn);
+    int reg[4];
+
+    /* Copy data in batches of 4 registers to minimize load stalls. */
+
+    if (is_store) {
+        for (int i = rD; i & 3; i++) {
+            reg[i & 3] = get_gpr(ctx, i);
+        }
+        for (; rD & 3; rD++, disp += 4) {
+            rtl_add_insn(unit, rtlop, 0, host_address, reg[rD & 3], disp);
+        }
+    } else {
+        for (int i = rD; i & 3; i++, disp += 4) {
+            reg[i & 3] = rtl_alloc_register(unit, RTLTYPE_INT32);
+            rtl_add_insn(unit, rtlop, reg[i & 3], host_address, 0, disp);
+        }
+        for (; rD & 3; rD++) {
+            set_gpr(ctx, rD, reg[rD & 3]);
+        }
+    }
+
+    for (; rD < 32; rD += 4) {
+        if (is_store) {
+            for (int i = 0; i < 4; i++) {
+                reg[i] = get_gpr(ctx, rD+i);
+            }
+            for (int i = 0; i < 4; i++, disp += 4) {
+                rtl_add_insn(unit, rtlop, 0, host_address, reg[i], disp);
+            }
+        } else {
+            for (int i = 0; i < 4; i++, disp += 4) {
+                reg[i] = rtl_alloc_register(unit, RTLTYPE_INT32);
+                rtl_add_insn(unit, rtlop, reg[i], host_address, 0, disp);
+            }
+            for (int i = 0; i < 4; i++) {
+                set_gpr(ctx, rD+i, reg[i]);
+            }
+        }
+    }
+
+    /* Flush loaded GPRs so we don't have a bunch of RTL registers live
+     * until the end of the block. */
+    if (!is_store) {
+        store_live_regs(ctx, block, false);
+    }
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
  * translate_load_store_string:  Translate a string load or store
  * instruction (lswi/lswx/stswi/stswx).
  *
@@ -2721,6 +2803,14 @@ static inline void translate_insn(
       case OPCD_STHU:
         translate_load_store_gpr(ctx, insn, RTLOP_STORE_I16,
                                  true, false, true);
+        return;
+
+      case OPCD_LMW:
+        translate_load_store_multiple(ctx, block, insn, false);
+        return;
+
+      case OPCD_STMW:
+        translate_load_store_multiple(ctx, block, insn, true);
         return;
 
       default: return;  // FIXME: not yet implemented

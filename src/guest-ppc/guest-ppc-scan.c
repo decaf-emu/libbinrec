@@ -276,14 +276,18 @@ static void update_used_changed(GuestPPCBlockInfo *block, const uint32_t insn)
         break;
 
       case OPCD_LMW:
-        mark_gpr_used(block, insn_rA(insn));
+        if (insn_rA(insn)) {
+            mark_gpr_used(block, insn_rA(insn));
+        }
         for (int i = insn_rD(insn); i < 32; i++) {
             mark_gpr_changed(block, i);
         }
         break;
 
       case OPCD_STMW:
-        mark_gpr_used(block, insn_rA(insn));
+        if (insn_rA(insn)) {
+            mark_gpr_used(block, insn_rA(insn));
+        }
         for (int i = insn_rD(insn); i < 32; i++) {
             mark_gpr_used(block, i);
         }
@@ -291,7 +295,9 @@ static void update_used_changed(GuestPPCBlockInfo *block, const uint32_t insn)
 
       case OPCD_LFS:
       case OPCD_LFD:
-        mark_gpr_used(block, insn_rA(insn));
+        if (insn_rA(insn)) {
+            mark_gpr_used(block, insn_rA(insn));
+        }
         mark_fpr_changed(block, insn_frD(insn));
         break;
 
@@ -304,7 +310,9 @@ static void update_used_changed(GuestPPCBlockInfo *block, const uint32_t insn)
 
       case OPCD_STFS:
       case OPCD_STFD:
-        mark_gpr_used(block, insn_rA(insn));
+        if (insn_rA(insn)) {
+            mark_gpr_used(block, insn_rA(insn));
+        }
         mark_fpr_used(block, insn_frD(insn));
         break;
 
@@ -325,7 +333,9 @@ static void update_used_changed(GuestPPCBlockInfo *block, const uint32_t insn)
             mark_cr_changed(block, insn_crfD(insn));
             break;
           case 0x06:  // psq_lx, psq_lux
-            mark_gpr_used(block, insn_rA(insn));
+            if (insn_rA(insn)) {
+                mark_gpr_used(block, insn_rA(insn));
+            }
             mark_gpr_used(block, insn_rB(insn));
             if (insn_XO_10(insn) & 0x020) {
                 mark_gpr_changed(block, insn_rA(insn));
@@ -333,7 +343,9 @@ static void update_used_changed(GuestPPCBlockInfo *block, const uint32_t insn)
             mark_fpr_changed(block, insn_frD(insn));
             break;
           case 0x07:  // psq_stx, psq_stux
-            mark_gpr_used(block, insn_rA(insn));
+            if (insn_rA(insn)) {
+                mark_gpr_used(block, insn_rA(insn));
+            }
             mark_gpr_used(block, insn_rB(insn));
             mark_fpr_used(block, insn_frD(insn));
             if (insn_XO_10(insn) & 0x020) {
