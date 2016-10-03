@@ -98,12 +98,13 @@ static void update_live_ranges(RTLUnit * const unit)
     for (block_index = 0; block_index < unit->num_blocks; block_index++) {
         const RTLBlock * const block = &unit->blocks[block_index];
         int latest_entry_block = -1;
-        for (unsigned int i = 0;
-             i < lenof(block->entries) && block->entries[i] >= 0; i++)
+        for (int entry_index = block_index; entry_index >= 0;
+             entry_index = unit->blocks[entry_index].entry_overflow)
         {
-            if (block->entries[i] > latest_entry_block) {
-                const RTLBlock *entry_block = &unit->blocks[block->entries[i]];
-                if (entry_block->last_insn >= entry_block->first_insn) {
+            const RTLBlock * const entry_block = &unit->blocks[entry_index];
+            for (int i = 0; (i < lenof(entry_block->entries)
+                             && entry_block->entries[i] >= 0); i++) {
+                if (block->entries[i] > latest_entry_block) {
                     latest_entry_block = block->entries[i];
                 }
             }
@@ -906,6 +907,7 @@ static void rtl_describe_block(const RTLUnit *unit, int index,
 {
     ASSERT(unit != NULL);
     ASSERT(unit->blocks != NULL);
+    ASSERT(index >= 0);
     ASSERT(index < unit->num_blocks);
     ASSERT(buf != NULL);
 
@@ -915,14 +917,20 @@ static void rtl_describe_block(const RTLUnit *unit, int index,
 
     s += snprintf_assert(s, top - s, "Block %d: ", index);
 
-    if (block->entries[0] < 0) {
+    if (block->entries[0] < 0 && block->entry_overflow < 0) {
         s += snprintf_assert(s, top - s, "<none>");
     } else {
-        for (int j = 0; j < lenof(block->entries) && block->entries[j] >= 0;
-             j++)
+        const char *comma = "";
+        for (int entry_index = index; entry_index >= 0;
+             entry_index = unit->blocks[entry_index].entry_overflow)
         {
-            s += snprintf_assert(s, top - s, "%s%d", j==0 ? "" : ",",
-                                 block->entries[j]);
+            const RTLBlock * const entry_block = &unit->blocks[entry_index];
+            for (int j = 0; (j < lenof(entry_block->entries)
+                             && entry_block->entries[j] >= 0); j++) {
+                s += snprintf_assert(s, top - s, "%s%d", comma,
+                                     entry_block->entries[j]);
+                comma = ",";
+            }
         }
     }
 
@@ -970,6 +978,7 @@ RTLUnit *rtl_create_unit(binrec_t *handle)
     unit->num_blocks = 0;
     unit->have_block = false;
     unit->cur_block = 0;
+    unit->last_block = -1;
 
     unit->regs = NULL;
     unit->regs_size = REGS_EXPAND_SIZE;

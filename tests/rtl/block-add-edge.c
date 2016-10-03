@@ -32,8 +32,10 @@ int main(void)
     EXPECT(rtl_block_add_edge(unit, 1, 0));
     EXPECT_EQ(unit->blocks[0].entries[0], 1);
     EXPECT_EQ(unit->blocks[0].entries[1], -1);
+    EXPECT_EQ(unit->blocks[0].entry_overflow, -1);
     EXPECT_EQ(unit->blocks[0].exits[0], -1);
     EXPECT_EQ(unit->blocks[1].entries[0], -1);
+    EXPECT_EQ(unit->blocks[0].entry_overflow, -1);
     EXPECT_EQ(unit->blocks[1].exits[0], 0);
     EXPECT_EQ(unit->blocks[1].exits[1], -1);
 

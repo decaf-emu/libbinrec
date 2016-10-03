@@ -231,10 +231,15 @@ typedef struct RTLBlock {
      * -1 if this is the first block. */
     int16_t prev_block;
     /* unit->blocks[] indices of predecessor blocks in the flow graph; -1
-     * indicates an unused slot.  Holes in the list are not permitted.  For
-     * more than 8 slots, add a dummy block on top. (rtl_block_*() functions
-     * take care of all these details.) */
-    int16_t entries[8];
+     * indicates an unused slot.  Holes in the list are not permitted.
+     * entries[0] is always the fall-through edge from the previous block
+     * if that edge exists.  (rtl_block_*() functions take care of all
+     * these details.) */
+    int16_t entries[7];
+    /* unit->blocks[] index of an extension block used to hold additional
+     * entry edges that don't fit in entries[], or -1 if none.  See
+     * RTLExtraEntryBlock for format. */
+    int16_t entry_overflow;
     /* unit->blocks[] indices of successor blocks.  Note that a terminating
      * insstruction can go at most two places (conditional GOTO: branch
      * target and fall-through path).  exits[0] is always the fall-through
@@ -260,6 +265,9 @@ struct RTLUnit {
     uint16_t num_blocks;        // Number of blocks actually in array
     bool have_block;            // True if there is a currently active block
     uint16_t cur_block;         // Current block index if have_block != 0
+    int16_t last_block;         // Most recently added block (excluding dummy
+                                //    blocks used for entry list extension),
+                                //    or -1 if none
 
     int16_t *label_blockmap;    // Label-to-block-index mapping (-1 = unset)
     uint16_t labels_size;       // Size of label-to-block map array (entries)

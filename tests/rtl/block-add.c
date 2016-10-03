@@ -39,7 +39,7 @@ int main(void)
     EXPECT_EQ(unit->blocks[0].entries[4], -1);
     EXPECT_EQ(unit->blocks[0].entries[5], -1);
     EXPECT_EQ(unit->blocks[0].entries[6], -1);
-    EXPECT_EQ(unit->blocks[0].entries[7], -1);
+    EXPECT_EQ(unit->blocks[0].entry_overflow, -1);
     EXPECT_EQ(unit->blocks[0].exits[0], -1);
     EXPECT_EQ(unit->blocks[0].exits[1], -1);
 

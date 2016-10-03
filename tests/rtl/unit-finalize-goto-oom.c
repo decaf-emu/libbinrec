@@ -38,15 +38,14 @@ int main(void)
     EXPECT(rtl_add_insn(unit, RTLOP_GOTO, 0, 0, 0, label));
     EXPECT(rtl_add_insn(unit, RTLOP_GOTO, 0, 0, 0, label));
     EXPECT(rtl_add_insn(unit, RTLOP_GOTO, 0, 0, 0, label));
-    EXPECT(rtl_add_insn(unit, RTLOP_GOTO, 0, 0, 0, label));
     EXPECT(rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, label));
-    EXPECT_EQ(unit->num_blocks, 10);
+    EXPECT_EQ(unit->num_blocks, 9);
 
-    unit->blocks_size = 10;
+    unit->blocks_size = 9;
     mem_wrap_fail_after(0);
     EXPECT_FALSE(rtl_finalize_unit(unit));
-    EXPECT_ICE("Failed to add edge 8->9 for GOTO L1 at 8");
-    EXPECT_EQ(unit->num_blocks, 10);
+    EXPECT_ICE("Failed to add edge 7->8 for GOTO L1 at 7");
+    EXPECT_EQ(unit->num_blocks, 9);
 
     rtl_destroy_unit(unit);
     binrec_destroy_handle(handle);

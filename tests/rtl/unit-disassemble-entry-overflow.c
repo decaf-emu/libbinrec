@@ -36,6 +36,7 @@ int main(void)
     EXPECT(rtl_add_insn(unit, RTLOP_GOTO_IF_NZ, 0, reg, 0, label));
     EXPECT(rtl_add_insn(unit, RTLOP_GOTO_IF_NZ, 0, reg, 0, label));
     EXPECT(rtl_add_insn(unit, RTLOP_GOTO_IF_NZ, 0, reg, 0, label));
+    EXPECT(rtl_add_insn(unit, RTLOP_GOTO_IF_NZ, 0, reg, 0, label));
     EXPECT(rtl_add_insn(unit, RTLOP_GOTO, 0, 0, 0, label));
 
     EXPECT(rtl_finalize_unit(unit));
@@ -51,15 +52,18 @@ int main(void)
                  "    5: GOTO_IF_NZ r1, L1\n"
                  "    6: GOTO_IF_NZ r1, L1\n"
                  "    7: GOTO_IF_NZ r1, L1\n"
-                 "    8: GOTO       L1\n"
+                 "    8: GOTO_IF_NZ r1, L1\n"
+                 "    9: GOTO       L1\n"
                  "\n"
-                 "Block 0: 0,1,2,3,4,5,6 --> [0,2] --> 1,0\n"
+                 "Block 0: 0,7,1,2,3,4,5,6 --> [0,2] --> 1,0\n"
                  "Block 1: 0 --> [3,3] --> 2,0\n"
                  "Block 2: 1 --> [4,4] --> 3,0\n"
                  "Block 3: 2 --> [5,5] --> 4,0\n"
                  "Block 4: 3 --> [6,6] --> 5,0\n"
                  "Block 5: 4 --> [7,7] --> 6,0\n"
-                 "Block 6: 5 --> [8,8] --> 0\n");
+                 "Block 6: 5 --> [8,8] --> 7,0\n"
+                 "Block 7: 6 --> [9,9] --> 0\n"
+                 "Block 8: 7,1,2,3,4,5,6 --> [empty] --> <none>\n");
 
     rtl_destroy_unit(unit);
     binrec_destroy_handle(handle);

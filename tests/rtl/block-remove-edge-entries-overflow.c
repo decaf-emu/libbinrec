@@ -11,16 +11,12 @@
 #include "src/rtl-internal.h"
 #include "tests/common.h"
 #include "tests/log-capture.h"
-#include "tests/mem-wrappers.h"
 
 
 int main(void)
 {
     binrec_setup_t setup;
     memset(&setup, 0, sizeof(setup));
-    setup.malloc = mem_wrap_malloc;
-    setup.realloc = mem_wrap_realloc;
-    setup.free = mem_wrap_free;
     setup.log = log_capture;
     binrec_t *handle;
     EXPECT(handle = binrec_create_handle(&setup));
@@ -46,14 +42,16 @@ int main(void)
     EXPECT(rtl_block_add_edge(unit, 4, 0));
     EXPECT(rtl_block_add_edge(unit, 5, 0));
     EXPECT(rtl_block_add_edge(unit, 6, 0));
+    EXPECT(rtl_block_add_edge(unit, 7, 0));
+    EXPECT_EQ(unit->num_blocks, 9);
     EXPECT_EQ(unit->blocks[0].entries[0], 0);
-    EXPECT_EQ(unit->blocks[0].entries[1], 1);
-    EXPECT_EQ(unit->blocks[0].entries[2], 2);
-    EXPECT_EQ(unit->blocks[0].entries[3], 3);
-    EXPECT_EQ(unit->blocks[0].entries[4], 4);
-    EXPECT_EQ(unit->blocks[0].entries[5], 5);
-    EXPECT_EQ(unit->blocks[0].entries[6], 6);
-    EXPECT_EQ(unit->blocks[0].entry_overflow, -1);
+    EXPECT_EQ(unit->blocks[0].entries[1], -1);
+    EXPECT_EQ(unit->blocks[0].entries[2], -1);
+    EXPECT_EQ(unit->blocks[0].entries[3], -1);
+    EXPECT_EQ(unit->blocks[0].entries[4], -1);
+    EXPECT_EQ(unit->blocks[0].entries[5], -1);
+    EXPECT_EQ(unit->blocks[0].entries[6], -1);
+    EXPECT_EQ(unit->blocks[0].entry_overflow, 8);
     EXPECT_EQ(unit->blocks[0].exits[0], 0);
     EXPECT_EQ(unit->blocks[0].exits[1], -1);
     EXPECT_EQ(unit->blocks[1].entries[0], -1);
@@ -61,7 +59,7 @@ int main(void)
     EXPECT_EQ(unit->blocks[1].exits[0], 0);
     EXPECT_EQ(unit->blocks[1].exits[1], -1);
     EXPECT_EQ(unit->blocks[2].entries[0], -1);
-    EXPECT_EQ(unit->blocks[2].entry_overflow, -1);
+    EXPECT_EQ(unit->blocks[1].entry_overflow, -1);
     EXPECT_EQ(unit->blocks[2].exits[0], 0);
     EXPECT_EQ(unit->blocks[2].exits[1], -1);
     EXPECT_EQ(unit->blocks[3].entries[0], -1);
@@ -82,32 +80,43 @@ int main(void)
     EXPECT_EQ(unit->blocks[6].exits[1], -1);
     EXPECT_EQ(unit->blocks[7].entries[0], -1);
     EXPECT_EQ(unit->blocks[7].entry_overflow, -1);
-    EXPECT_EQ(unit->blocks[7].exits[0], -1);
+    EXPECT_EQ(unit->blocks[7].exits[0], 0);
+    EXPECT_EQ(unit->blocks[7].exits[1], -1);
+    EXPECT_EQ(unit->blocks[8].first_insn, 0);
+    EXPECT_EQ(unit->blocks[8].last_insn, -1);
+    EXPECT_EQ(unit->blocks[8].next_block, -2);
+    EXPECT_EQ(unit->blocks[8].prev_block, -3);
+    EXPECT_EQ(unit->blocks[8].entries[0], 7);
+    EXPECT_EQ(unit->blocks[8].entries[1], 1);
+    EXPECT_EQ(unit->blocks[8].entries[2], 2);
+    EXPECT_EQ(unit->blocks[8].entries[3], 3);
+    EXPECT_EQ(unit->blocks[8].entries[4], 4);
+    EXPECT_EQ(unit->blocks[8].entries[5], 5);
+    EXPECT_EQ(unit->blocks[8].entries[6], 6);
+    EXPECT_EQ(unit->blocks[8].entry_overflow, -1);
+    EXPECT_EQ(unit->blocks[8].exits[0], -4);
+    EXPECT_EQ(unit->blocks[8].exits[1], -5);
     EXPECT_FALSE(unit->error);
     EXPECT_STREQ(get_log_messages(), NULL);
 
-    unit->blocks_size = 8;
-    mem_wrap_fail_after(0);
-    EXPECT_FALSE(rtl_block_add_edge(unit, 7, 0));
-    EXPECT_ICE("Failed to add dummy unit");
-    EXPECT_FALSE(unit->error);  // rtl_block_*() do not modify unit->error.
-    EXPECT_EQ(unit->num_blocks, 8);
+    rtl_block_remove_edge(unit, 1, 0);
+    EXPECT_EQ(unit->num_blocks, 9);
     EXPECT_EQ(unit->blocks[0].entries[0], 0);
-    EXPECT_EQ(unit->blocks[0].entries[1], 1);
-    EXPECT_EQ(unit->blocks[0].entries[2], 2);
-    EXPECT_EQ(unit->blocks[0].entries[3], 3);
-    EXPECT_EQ(unit->blocks[0].entries[4], 4);
-    EXPECT_EQ(unit->blocks[0].entries[5], 5);
-    EXPECT_EQ(unit->blocks[0].entries[6], 6);
-    EXPECT_EQ(unit->blocks[0].entry_overflow, -1);
+    EXPECT_EQ(unit->blocks[0].entries[1], -1);
+    EXPECT_EQ(unit->blocks[0].entries[2], -1);
+    EXPECT_EQ(unit->blocks[0].entries[3], -1);
+    EXPECT_EQ(unit->blocks[0].entries[4], -1);
+    EXPECT_EQ(unit->blocks[0].entries[5], -1);
+    EXPECT_EQ(unit->blocks[0].entries[6], -1);
+    EXPECT_EQ(unit->blocks[0].entry_overflow, 8);
     EXPECT_EQ(unit->blocks[0].exits[0], 0);
     EXPECT_EQ(unit->blocks[0].exits[1], -1);
     EXPECT_EQ(unit->blocks[1].entries[0], -1);
     EXPECT_EQ(unit->blocks[1].entry_overflow, -1);
-    EXPECT_EQ(unit->blocks[1].exits[0], 0);
+    EXPECT_EQ(unit->blocks[1].exits[0], -1);
     EXPECT_EQ(unit->blocks[1].exits[1], -1);
     EXPECT_EQ(unit->blocks[2].entries[0], -1);
-    EXPECT_EQ(unit->blocks[2].entry_overflow, -1);
+    EXPECT_EQ(unit->blocks[1].entry_overflow, -1);
     EXPECT_EQ(unit->blocks[2].exits[0], 0);
     EXPECT_EQ(unit->blocks[2].exits[1], -1);
     EXPECT_EQ(unit->blocks[3].entries[0], -1);
@@ -128,7 +137,24 @@ int main(void)
     EXPECT_EQ(unit->blocks[6].exits[1], -1);
     EXPECT_EQ(unit->blocks[7].entries[0], -1);
     EXPECT_EQ(unit->blocks[7].entry_overflow, -1);
-    EXPECT_EQ(unit->blocks[7].exits[0], -1);
+    EXPECT_EQ(unit->blocks[7].exits[0], 0);
+    EXPECT_EQ(unit->blocks[7].exits[1], -1);
+    EXPECT_EQ(unit->blocks[8].first_insn, 0);
+    EXPECT_EQ(unit->blocks[8].last_insn, -1);
+    EXPECT_EQ(unit->blocks[8].next_block, -2);
+    EXPECT_EQ(unit->blocks[8].prev_block, -3);
+    EXPECT_EQ(unit->blocks[8].entries[0], 7);
+    EXPECT_EQ(unit->blocks[8].entries[1], 2);
+    EXPECT_EQ(unit->blocks[8].entries[2], 3);
+    EXPECT_EQ(unit->blocks[8].entries[3], 4);
+    EXPECT_EQ(unit->blocks[8].entries[4], 5);
+    EXPECT_EQ(unit->blocks[8].entries[5], 6);
+    EXPECT_EQ(unit->blocks[8].entries[6], -1);
+    EXPECT_EQ(unit->blocks[8].entry_overflow, -1);
+    EXPECT_EQ(unit->blocks[8].exits[0], -4);
+    EXPECT_EQ(unit->blocks[8].exits[1], -5);
+    EXPECT_FALSE(unit->error);
+    EXPECT_STREQ(get_log_messages(), NULL);
 
     rtl_destroy_unit(unit);
     binrec_destroy_handle(handle);

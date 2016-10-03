@@ -43,12 +43,6 @@ int main(void)
     EXPECT_EQ(unit->regs[reg2].birth, 2);
     EXPECT_EQ(unit->regs[reg2].death, 2);
 
-    /* Add an empty block with an edge to block 1.  This should not
-     * affect extension of live ranges even though its nominal first
-     * instruction index is the latest of all block 1's predecessors. */
-    EXPECT(rtl_block_add(unit));
-    EXPECT(rtl_block_add_edge(unit, 3, 1));
-
     EXPECT(rtl_finalize_unit(unit));
     /* reg1's live range is extended to the backward branch. */
     EXPECT_EQ(unit->regs[reg1].birth, 0);

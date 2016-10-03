@@ -38,7 +38,7 @@ int main(void)
     unit->blocks[0].entries[4] = 50;
     unit->blocks[0].entries[5] = 60;
     unit->blocks[0].entries[6] = 70;
-    unit->blocks[0].entries[7] = 80;
+    unit->blocks[0].entry_overflow = 80;
     unit->blocks[0].exits[0] = 90;
     unit->blocks[0].exits[1] = 100;
 
@@ -57,7 +57,7 @@ int main(void)
     EXPECT_EQ(unit->blocks[0].entries[4], 50);
     EXPECT_EQ(unit->blocks[0].entries[5], 60);
     EXPECT_EQ(unit->blocks[0].entries[6], 70);
-    EXPECT_EQ(unit->blocks[0].entries[7], 80);
+    EXPECT_EQ(unit->blocks[0].entry_overflow, 80);
     EXPECT_EQ(unit->blocks[0].exits[0], 90);
     EXPECT_EQ(unit->blocks[0].exits[1], 100);
     EXPECT_EQ(unit->blocks[1].first_insn, 0);
@@ -71,7 +71,7 @@ int main(void)
     EXPECT_EQ(unit->blocks[1].entries[4], -1);
     EXPECT_EQ(unit->blocks[1].entries[5], -1);
     EXPECT_EQ(unit->blocks[1].entries[6], -1);
-    EXPECT_EQ(unit->blocks[1].entries[7], -1);
+    EXPECT_EQ(unit->blocks[1].entry_overflow, -1);
     EXPECT_EQ(unit->blocks[1].exits[0], -1);
     EXPECT_EQ(unit->blocks[1].exits[1], -1);
 

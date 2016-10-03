@@ -23,10 +23,19 @@
 #include <stdio.h>
 
 /*************************************************************************/
-/********************** External interface routines **********************/
+/**************************** Local routines *****************************/
 /*************************************************************************/
 
-bool rtl_block_add(RTLUnit *unit)
+/**
+ * get_new_block:  Return the index of the next unused slot in unit->blocks[],
+ * extending the block array if necessary.
+ *
+ * [Parameters]
+ *     unit: RTLUnit to operate on.
+ * [Return value]
+ *     Block array index, or -1 if out of memory.
+ */
+static int get_new_block(RTLUnit *unit)
 {
     ASSERT(unit != NULL);
 
@@ -37,25 +46,42 @@ bool rtl_block_add(RTLUnit *unit)
         if (UNLIKELY(!new_blocks)) {
             log_error(unit->handle, "No memory to expand unit to %d blocks",
                       new_blocks_size);
-            return false;
+            return -1;
         }
         unit->blocks = new_blocks;
         unit->blocks_size = new_blocks_size;
     }
 
-    const int index = unit->num_blocks++;
-    if (index > 0) {
-        unit->blocks[index-1].next_block = index;
+    return unit->num_blocks++;
+}
+
+/*************************************************************************/
+/********************** External interface routines **********************/
+/*************************************************************************/
+
+bool rtl_block_add(RTLUnit *unit)
+{
+    ASSERT(unit != NULL);
+
+    const int index = get_new_block(unit);
+    if (UNLIKELY(index < 0)) {
+        return false;
     }
+
+    unit->blocks[index].next_block = -1;
+    unit->blocks[index].prev_block = unit->last_block;
+    if (unit->last_block >= 0) {
+        unit->blocks[unit->last_block].next_block = index;
+    }
+    unit->last_block = index;
+
     unit->blocks[index].first_insn = 0;
     unit->blocks[index].last_insn = -1;
-    unit->blocks[index].next_block = -1;
-    unit->blocks[index].prev_block = index-1;
-    unsigned int i;
-    for (i = 0; i < lenof(unit->blocks[index].entries); i++) {
+    for (int i = 0; i < lenof(unit->blocks[index].entries); i++) {
         unit->blocks[index].entries[i] = -1;
     }
-    for (i = 0; i < lenof(unit->blocks[index].exits); i++) {
+    unit->blocks[index].entry_overflow = -1;
+    for (int i = 0; i < lenof(unit->blocks[index].exits); i++) {
         unit->blocks[index].exits[i] = -1;
     }
 
@@ -98,36 +124,42 @@ bool rtl_block_add_edge(RTLUnit *unit, int from_index, int to_index)
             break;
         }
     }
-    if (UNLIKELY(i >= lenof(unit->blocks[to_index].entries))) {
+    if (LIKELY(i < lenof(unit->blocks[to_index].entries))) {
+        unit->blocks[to_index].entries[i] = from_index;
+    } else {
         /* No room in the entry list, so we need to create a dummy block. */
-        if (UNLIKELY(!rtl_block_add(unit))) {
+        const int dummy_block = get_new_block(unit);
+        if (UNLIKELY(dummy_block < 0)) {
             log_ice(unit->handle, "Failed to add dummy unit");
             /* Careful not to leave a dangling edge! */
             unit->blocks[from_index].exits[exit_index] = -1;
             return false;
         }
-        const int dummy_block = unit->num_blocks - 1;
-        /* Move all the current edges over to the dummy block. */
-        for (i = 0; i < lenof(unit->blocks[to_index].entries); i++) {
-            const int other_block = unit->blocks[to_index].entries[i];
-            const int j = (unit->blocks[other_block].exits[0] == to_index
-                           ? 0 : 1);
-            ASSERT(unit->blocks[other_block].exits[j] == to_index);
-            unit->blocks[other_block].exits[j] = dummy_block;
-            unit->blocks[dummy_block].entries[i] = other_block;
-        }
-        /* Link to the original block. */
-        unit->blocks[dummy_block].exits[0] = to_index;
-        unit->blocks[dummy_block].exits[1] = -1;
-        unit->blocks[to_index].entries[0] = dummy_block;
-        /* The new entry will go into the second slot; clear out all
-         * other edges. */
-        for (i = lenof(unit->blocks[to_index].entries) - 1; i > 1; i--) {
+        unit->blocks[dummy_block].first_insn = 0;
+        unit->blocks[dummy_block].last_insn = -1;
+        /* Insert at the beginning of the target's extension block list,
+         * just for convenience (order isn't important). */
+        unit->blocks[dummy_block].entry_overflow =
+            unit->blocks[to_index].entry_overflow;
+        unit->blocks[to_index].entry_overflow = dummy_block;
+        /* The next/prev fields and exit array should never be referenced;
+         * stick unique values in them to help debugging just in case. */
+        unit->blocks[dummy_block].next_block = -2;
+        unit->blocks[dummy_block].prev_block = -3;
+        unit->blocks[dummy_block].exits[0] = -4;
+        unit->blocks[dummy_block].exits[1] = -5;
+        /* Move all the current edges over to the dummy block, except for
+         * the first one (to preserve the invariant that the first entry
+         * edge is the fallthrough edge). */
+        for (i = 1; i < lenof(unit->blocks[to_index].entries); i++) {
+            unit->blocks[dummy_block].entries[i] =
+                unit->blocks[to_index].entries[i];
             unit->blocks[to_index].entries[i] = -1;
         }
+        /* Fill in the remaining slot of the dummy block's entry array with
+         * the new edge we're adding. */
+        unit->blocks[dummy_block].entries[0] = from_index;
     }
-
-    unit->blocks[to_index].entries[i] = from_index;
 
     return true;
 }
@@ -138,13 +170,15 @@ void rtl_block_remove_edge(RTLUnit *unit, int from_index, int exit_index)
 {
     ASSERT(unit != NULL);
     ASSERT(unit->blocks != NULL);
+    ASSERT(from_index >= 0);
     ASSERT(from_index < unit->num_blocks);
+    ASSERT(exit_index >= 0);
     ASSERT(exit_index < lenof(unit->blocks[from_index].exits));
     ASSERT(unit->blocks[from_index].exits[exit_index] >= 0);
 
     RTLBlock * const from_block = &unit->blocks[from_index];
     const int to_index = from_block->exits[exit_index];
-    RTLBlock * const to_block = &unit->blocks[to_index];
+    RTLBlock *to_block = &unit->blocks[to_index];
 
     for (; exit_index < lenof(from_block->exits) - 1; exit_index++) {
         from_block->exits[exit_index] = from_block->exits[exit_index + 1];
@@ -154,7 +188,11 @@ void rtl_block_remove_edge(RTLUnit *unit, int from_index, int exit_index)
     int entry_index = 0;
     while (to_block->entries[entry_index] != from_index) {
         entry_index++;
-        ASSERT(entry_index < lenof(to_block->entries));
+        if (entry_index >= lenof(to_block->entries)) {
+            ASSERT(to_block->entry_overflow >= 0);
+            to_block = &unit->blocks[to_block->entry_overflow];
+            entry_index = 0;
+        }
     }
 
     for (; entry_index < lenof(to_block->entries) - 1; entry_index++) {

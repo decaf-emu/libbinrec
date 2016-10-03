@@ -35,13 +35,17 @@ int main(void)
     EXPECT(rtl_block_add_edge(unit, 3, 1));
     EXPECT_EQ(unit->blocks[0].entries[0], 3);
     EXPECT_EQ(unit->blocks[0].entries[1], -1);
+    EXPECT_EQ(unit->blocks[0].entry_overflow, -1);
     EXPECT_EQ(unit->blocks[0].exits[0], -1);
     EXPECT_EQ(unit->blocks[1].entries[0], 3);
     EXPECT_EQ(unit->blocks[1].entries[1], -1);
+    EXPECT_EQ(unit->blocks[1].entry_overflow, -1);
     EXPECT_EQ(unit->blocks[1].exits[0], -1);
     EXPECT_EQ(unit->blocks[2].entries[0], -1);
+    EXPECT_EQ(unit->blocks[2].entry_overflow, -1);
     EXPECT_EQ(unit->blocks[2].exits[0], -1);
     EXPECT_EQ(unit->blocks[3].entries[0], -1);
+    EXPECT_EQ(unit->blocks[3].entry_overflow, -1);
     EXPECT_EQ(unit->blocks[3].exits[0], 0);
     EXPECT_EQ(unit->blocks[3].exits[1], 1);
     EXPECT_FALSE(unit->error);
@@ -50,6 +54,21 @@ int main(void)
     EXPECT_FALSE(rtl_block_add_edge(unit, 3, 2));
     EXPECT_ICE("Too many exits from block 3");
     EXPECT_FALSE(unit->error);  // rtl_block_*() do not modify unit->error.
+    EXPECT_EQ(unit->blocks[0].entries[0], 3);
+    EXPECT_EQ(unit->blocks[0].entries[1], -1);
+    EXPECT_EQ(unit->blocks[0].entry_overflow, -1);
+    EXPECT_EQ(unit->blocks[0].exits[0], -1);
+    EXPECT_EQ(unit->blocks[1].entries[0], 3);
+    EXPECT_EQ(unit->blocks[1].entries[1], -1);
+    EXPECT_EQ(unit->blocks[1].entry_overflow, -1);
+    EXPECT_EQ(unit->blocks[1].exits[0], -1);
+    EXPECT_EQ(unit->blocks[2].entries[0], -1);
+    EXPECT_EQ(unit->blocks[2].entry_overflow, -1);
+    EXPECT_EQ(unit->blocks[2].exits[0], -1);
+    EXPECT_EQ(unit->blocks[3].entries[0], -1);
+    EXPECT_EQ(unit->blocks[3].entry_overflow, -1);
+    EXPECT_EQ(unit->blocks[3].exits[0], 0);
+    EXPECT_EQ(unit->blocks[3].exits[1], 1);
 
     rtl_destroy_unit(unit);
     binrec_destroy_handle(handle);

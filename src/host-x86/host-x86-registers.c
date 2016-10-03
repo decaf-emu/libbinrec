@@ -501,34 +501,39 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
             /* Second priority: register used by SET_ALIAS in any
              * predecessor block. */
             if (!dest_info->merge_alias) {
-                RTLBlock *block = &unit->blocks[block_index];
-                for (int i = 0;
-                     i < lenof(block->entries) && block->entries[i] >= 0; i++)
+                for (int entry_index = block_index; entry_index >= 0;
+                     entry_index = unit->blocks[entry_index].entry_overflow)
                 {
-                    if (block->entries[i] == block_index - 1) {
-                        continue;  // Already checked this block above.
-                    }
-                    const HostX86BlockInfo *predecessor =
-                        &ctx->blocks[block->entries[i]];
-                    const int store_reg = predecessor->alias_store[alias];
-                    if (store_reg) {
-                        have_preceding_store = true;
-                        /* If this block comes later in the code stream, we
-                         * won't have allocated any registers for it yet
-                         * (except possibly via fixed-regs).  But in that
-                         * case, ctx->regs[store_reg].host_reg will be 0,
-                         * i.e. rAX, which is the first register we'd choose
-                         * anyway if it's available.  So we don't bother
-                         * checking the host_allocated flag for store_reg
-                         * here. */
-                        const X86Register host_reg =
-                            ctx->regs[store_reg].host_reg;
-                        if (usable_regs & (1u << host_reg)) {
-                            dest_info->merge_alias = true;
-                            dest_info->host_merge = host_reg;
+                    RTLBlock *block = &unit->blocks[entry_index];
+                    for (int i = 0; (i < lenof(block->entries)
+                                     && block->entries[i] >= 0);  i++) {
+                        if (block->entries[i] == block_index - 1) {
+                            continue;  // Already checked this block above.
+                        }
+                        const HostX86BlockInfo *predecessor =
+                            &ctx->blocks[block->entries[i]];
+                        const int store_reg = predecessor->alias_store[alias];
+                        if (store_reg) {
+                            have_preceding_store = true;
+                            /* If this block comes later in the code stream,
+                             * we won't have allocated any registers for it
+                             * yet (except possibly via fixed-regs).  But in
+                             * that case, ctx->regs[store_reg].host_reg will
+                             * be 0 == rAX, which is the first register we'd
+                             * choose anyway if it's available.  So we don't
+                             * bother checking the host_allocated flag for
+                             * store_reg here. */
+                            const X86Register host_reg =
+                                ctx->regs[store_reg].host_reg;
+                            if (usable_regs & (1u << host_reg)) {
+                                dest_info->merge_alias = true;
+                                dest_info->host_merge = host_reg;
+                                goto found_merge_pri2;  // i.e. break 2 loops
+                            }
                         }
                     }
                 }
+              found_merge_pri2:;
             }
 
             /* Zeroth priority: If we already have a register allocated
@@ -1004,7 +1009,7 @@ static void first_pass_for_block(HostX86Context *ctx, int block_index)
      * block to try and keep the alias values in host registers. */
     const bool forward_alias_store = (
         block->entries[0] >= 0 && block->entries[0] < block_index
-        && block->entries[1] < 0);
+        && block->entries[1] < 0 && block->entry_overflow < 0);
     const uint16_t *predecessor_store = NULL;
     if (forward_alias_store) {
         predecessor_store = ctx->blocks[block->entries[0]].alias_store;
@@ -1285,7 +1290,7 @@ static void update_alias_live_ranges(HostX86Context *ctx, int block_index)
     const RTLBlock * const block = &unit->blocks[block_index];
     HostX86BlockInfo * const block_info = &ctx->blocks[block_index];
 
-    if (block->entries[0] < 0) {
+    if (block->entries[0] < 0 && block->entry_overflow < 0) {
         return;  // Nothing to do for the initial block.
     }
 
@@ -1294,15 +1299,20 @@ static void update_alias_live_ranges(HostX86Context *ctx, int block_index)
             continue;
         }
 
-        for (int i = 0;
-             i < lenof(block->entries) && block->entries[i] >= 0; i++)
+        for (int entry_index = block_index; entry_index >= 0;
+             entry_index = unit->blocks[entry_index].entry_overflow)
         {
-            const int predecessor = block->entries[i];
-            const int reg = ctx->blocks[predecessor].alias_store[alias];
-            if (reg) {
-                const int32_t last_insn = unit->blocks[predecessor].last_insn;
-                if (unit->regs[reg].death < last_insn) {
-                    unit->regs[reg].death = last_insn;
+            const RTLBlock * const entry_block = &unit->blocks[entry_index];
+            for (int i = 0; (i < lenof(entry_block->entries)
+                             && entry_block->entries[i] >= 0); i++) {
+                const int predecessor = entry_block->entries[i];
+                const int reg = ctx->blocks[predecessor].alias_store[alias];
+                if (reg) {
+                    const int32_t last_insn =
+                        unit->blocks[predecessor].last_insn;
+                    if (unit->regs[reg].death < last_insn) {
+                        unit->regs[reg].death = last_insn;
+                    }
                 }
             }
         }
