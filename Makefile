@@ -102,6 +102,16 @@ STRIP_TESTS = 1
 TESTS =
 
 
+# TESTS_EXCLUDE:  If this variable is not empty, it gives a list of tests
+# to be skipped for "make test" or "make coverage".  Tests should be
+# specified as for the TESTS variable.  If both this variable and TESTS
+# are non-empty, only tests which are both listed in TESTS and not listed
+# in this variable will be executed.  The default is empty (no tests will
+# be skipped).
+
+TESTS_EXCLUDE =
+
+
 # WARNINGS_AS_ERRORS:  If this variable is set to 1, the build will abort
 # if the compiler emits any warnings.
 #
@@ -166,10 +176,15 @@ SHARED_LIB = lib$(PACKAGE).$(if $(filter darwin%,$(OSTYPE)),dylib,$(if $(filter 
 STATIC_LIB = lib$(PACKAGE).a
 
 # Test source list, with optional overriding.
-TEST_SOURCES := $(sort $(wildcard tests/*/*.c tests/*/*/*.c))
+TEST_SOURCES_FULL := $(sort $(wildcard tests/*/*.c tests/*/*/*.c))
+TEST_SOURCES := $(TEST_SOURCES_FULL)
 ifneq ($(TESTS),)
-    TESTS := $(foreach i,$(TESTS),$(or $(filter $i.c,$(TEST_SOURCES)),$(error Test $i not found)))
+    TESTS := $(foreach i,$(TESTS),$(or $(filter $i.c,$(TEST_SOURCES_FULL)),$(error Test $i not found for TESTS)))
     TEST_SOURCES := $(TESTS:%=%.c)
+endif
+ifneq ($(TESTS_EXCLUDE),)
+    TESTS_EXCLUDE := $(foreach i,$(TESTS_EXCLUDE),$(or $(filter $i.c,$(TEST_SOURCES_FULL)),$(error Test $i not found for TESTS_EXCLUDE)))
+    TEST_SOURCES := $(filter-out $(TESTS_EXCLUDE:%=%.c),$(TEST_SOURCES))
 endif
 
 # Source and object filenames:
