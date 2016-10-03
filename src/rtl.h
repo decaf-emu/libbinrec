@@ -250,7 +250,9 @@ typedef enum RTLOpcode {
     RTLOP_SGTSI,        // dest = (signed)src1 > IMMEDIATE(other) ? 1 : 0
                         //    [dest may be any integer type]
 
-    /* Non-memory load operations */
+    /* Non-memory load operations.  If LOAD_ARG instructions are used,
+     * they must be the first instructions in the unit, or the argument
+     * values may be overwritten. */
     RTLOP_LOAD_IMM,     // dest = IMMEDIATE(other)
                         //    [dest must be a scalar type; for floating-point
                         //     types, other is assumed to be in IEEE format]

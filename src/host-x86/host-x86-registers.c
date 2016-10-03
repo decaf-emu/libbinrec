@@ -601,7 +601,6 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
          * the argument is passed in.
          */
         // FIXME: only appropriate if no non-tail calls
-        // FIXME: need more robustness wrt overwriting input regs
         if (!host_allocated && insn->opcode == RTLOP_LOAD_ARG) {
             const int target_reg =
                 host_x86_int_arg_register(ctx, insn->arg_index);
