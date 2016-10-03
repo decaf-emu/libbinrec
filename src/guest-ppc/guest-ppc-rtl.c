@@ -1065,7 +1065,7 @@ static inline void translate_load_store_gpr(
  *     ctx: Translation context.
  *     block: Basic block being translated.
  *     insn: Instruction word.
- *     is_store: True if the instruction is a store instruction (stswi/stswx).
+ *     is_store: True if the instruction is a store instruction (stmw).
  */
 static inline void translate_load_store_multiple(
     GuestPPCContext *ctx, GuestPPCBlockInfo *block, uint32_t insn,
@@ -1270,28 +1270,37 @@ static inline void translate_load_store_string(
         const int xer = get_xer(ctx);
         const int xer_count = rtl_alloc_register(unit, RTLTYPE_INT32);
         rtl_add_insn(unit, RTLOP_ANDI, xer_count, xer, 0, 127);
-        const int count_mod_4 = rtl_alloc_register(unit, RTLTYPE_INT32);
-        rtl_add_insn(unit, RTLOP_ANDI, count_mod_4, xer_count, 0, 3);
-        const int start_label = rtl_alloc_label(unit);
-        rtl_add_insn(unit, RTLOP_GOTO_IF_Z, 0, count_mod_4, 0, start_label);
 
-        const int last_gpr_temp = rtl_alloc_register(unit, RTLTYPE_INT32);
-        rtl_add_insn(unit, RTLOP_ADDI, last_gpr_temp, xer_count, 0,
-                     4 * insn_rD(insn));
-        const int last_gpr_offset = rtl_alloc_register(unit, RTLTYPE_INT32);
-        rtl_add_insn(unit, RTLOP_ANDI,
-                     last_gpr_offset, last_gpr_temp, 0, 31<<2);
-        const int last_gpr_offset_zcast =
-            rtl_alloc_register(unit, RTLTYPE_ADDRESS);
-        rtl_add_insn(unit, RTLOP_ZCAST,
-                     last_gpr_offset_zcast, last_gpr_offset, 0, 0);
-        const int last_gpr_address = rtl_alloc_register(unit, RTLTYPE_ADDRESS);
-        rtl_add_insn(unit, RTLOP_ADD,
-                     last_gpr_address, psb_reg, last_gpr_offset_zcast, 0);
-        rtl_add_insn(unit, RTLOP_STORE,
-                     0, last_gpr_address, rtl_imm32(unit, 0), gpr_base);
+        /* We need to zero out the unused bytes of the last register if
+         * not loading a multiple of four bytes.  Do this by clearing
+         * the entire register ahead of time for simplicity. */
+        if (!is_store) {
+            const int count_mod_4 = rtl_alloc_register(unit, RTLTYPE_INT32);
+            rtl_add_insn(unit, RTLOP_ANDI, count_mod_4, xer_count, 0, 3);
+            const int start_label = rtl_alloc_label(unit);
+            rtl_add_insn(unit, RTLOP_GOTO_IF_Z,
+                         0, count_mod_4, 0, start_label);
 
-        rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, start_label);
+            const int last_gpr_temp = rtl_alloc_register(unit, RTLTYPE_INT32);
+            rtl_add_insn(unit, RTLOP_ADDI, last_gpr_temp, xer_count, 0,
+                         4 * insn_rD(insn));
+            const int last_gpr_offset =
+                rtl_alloc_register(unit, RTLTYPE_INT32);
+            rtl_add_insn(unit, RTLOP_ANDI,
+                         last_gpr_offset, last_gpr_temp, 0, 31<<2);
+            const int last_gpr_offset_zcast =
+                rtl_alloc_register(unit, RTLTYPE_ADDRESS);
+            rtl_add_insn(unit, RTLOP_ZCAST,
+                         last_gpr_offset_zcast, last_gpr_offset, 0, 0);
+            const int last_gpr_address =
+                rtl_alloc_register(unit, RTLTYPE_ADDRESS);
+            rtl_add_insn(unit, RTLOP_ADD,
+                         last_gpr_address, psb_reg, last_gpr_offset_zcast, 0);
+            rtl_add_insn(unit, RTLOP_STORE,
+                         0, last_gpr_address, rtl_imm32(unit, 0), gpr_base);
+
+            rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, start_label);
+        }
 
         /* We use ADDRESS type for the count and GPR offset aliases so we
          * can add them directly to the base addresses without an
