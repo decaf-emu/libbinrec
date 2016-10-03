@@ -290,66 +290,77 @@ static inline int get_ea_indexed(GuestPPCContext *ctx, uint32_t insn,
  * [Parameters]
  *     ctx: Translation context.
  *     block: Block which is being or was just translated.
+ *     clean: True to clear all dirty flags after storing dirty registers;
+ *         false to leave dirty flags alone.
  *     clear: True to clear all live registers after storing them; false
  *         to leave them live.
  */
-static void store_live_regs(GuestPPCContext *ctx,
-                            const GuestPPCBlockInfo *block, bool clear)
+static void store_live_regs(
+    GuestPPCContext *ctx, const GuestPPCBlockInfo *block, bool clean,
+    bool clear)
 {
     RTLUnit * const unit = ctx->unit;
 
-    while (ctx->gpr_dirty) {
-        const int index = ctz32(ctx->gpr_dirty);
-        ctx->gpr_dirty ^= 1u << index;
+    uint32_t gpr_dirty = ctx->gpr_dirty;
+    while (gpr_dirty) {
+        const int index = ctz32(gpr_dirty);
+        gpr_dirty ^= 1u << index;
         ASSERT(ctx->live.gpr[index]);
         rtl_add_insn(unit, RTLOP_SET_ALIAS,
                      0, ctx->live.gpr[index], 0, ctx->alias.gpr[index]);
     }
 
-    while (ctx->fpr_dirty) {
-        const int index = ctz32(ctx->fpr_dirty);
-        ctx->fpr_dirty ^= 1u << index;
+    uint32_t fpr_dirty = ctx->fpr_dirty;
+    while (fpr_dirty) {
+        const int index = ctz32(fpr_dirty);
+        fpr_dirty ^= 1u << index;
         ASSERT(ctx->live.fpr[index]);
         rtl_add_insn(unit, RTLOP_SET_ALIAS,
                      0, ctx->live.fpr[index], 0, ctx->alias.fpr[index]);
     }
 
-    while (ctx->cr_dirty) {
-        const int index = ctz32(ctx->cr_dirty);
-        ctx->cr_dirty ^= 1u << index;
+    uint8_t cr_dirty = ctx->cr_dirty;
+    while (cr_dirty) {
+        const int index = ctz32(cr_dirty);
+        cr_dirty ^= 1u << index;
         ASSERT(ctx->live.cr[index]);
         rtl_add_insn(unit, RTLOP_SET_ALIAS,
                      0, ctx->live.cr[index], 0, ctx->alias.cr[index]);
     }
 
     if (ctx->lr_dirty) {
-        ctx->lr_dirty = 0;
         ASSERT(ctx->live.lr);
         rtl_add_insn(unit, RTLOP_SET_ALIAS,
                      0, ctx->live.lr, 0, ctx->alias.lr);
     }
 
     if (ctx->ctr_dirty) {
-        ctx->ctr_dirty = 0;
         ASSERT(ctx->live.ctr);
         rtl_add_insn(unit, RTLOP_SET_ALIAS,
                      0, ctx->live.ctr, 0, ctx->alias.ctr);
     }
 
     if (ctx->xer_dirty) {
-        ctx->xer_dirty = 0;
         ASSERT(ctx->live.xer);
         rtl_add_insn(unit, RTLOP_SET_ALIAS,
                      0, ctx->live.xer, 0, ctx->alias.xer);
     }
 
     if (ctx->fpscr_dirty) {
-        ctx->fpscr_dirty = 0;
         ASSERT(ctx->live.fpscr);
         rtl_add_insn(unit, RTLOP_SET_ALIAS,
                      0, ctx->live.fpscr, 0, ctx->alias.fpscr);
     }
 
+    if (clean) {
+        ctx->gpr_dirty = 0;
+        ctx->fpr_dirty = 0;
+        ctx->cr_dirty = 0;
+        ctx->lr_dirty = 0;
+        ctx->ctr_dirty = 0;
+        ctx->xer_dirty = 0;
+        ctx->fpscr_dirty = 0;
+    }
     if (clear) {
         memset(&ctx->live, 0, sizeof(ctx->live));
     }
@@ -737,7 +748,7 @@ static void translate_branch_label(
 
         /* Store here so any update to CTR is stored along with other pending
          * changes. */
-        store_live_regs(ctx, block, false);
+        store_live_regs(ctx, block, true, false);
 
         if (skip_label) {
             rtl_add_insn(unit, BO & 0x02 ? RTLOP_GOTO_IF_NZ : RTLOP_GOTO_IF_Z,
@@ -747,7 +758,7 @@ static void translate_branch_label(
             test_reg = new_ctr;
         }
     } else {
-        store_live_regs(ctx, block, false);
+        store_live_regs(ctx, block, true, false);
     }
 
     if (!(BO & 0x10)) {
@@ -807,12 +818,12 @@ static void translate_branch_terminal(
         rtl_add_insn(unit, RTLOP_ADDI, new_ctr, ctr, 0, -1);
         set_ctr(ctx, new_ctr);
 
-        store_live_regs(ctx, block, false);
+        store_live_regs(ctx, block, true, false);
 
         rtl_add_insn(unit, BO & 0x02 ? RTLOP_GOTO_IF_NZ : RTLOP_GOTO_IF_Z,
                      0, new_ctr, 0, skip_label);
     } else {
-        store_live_regs(ctx, block, false);
+        store_live_regs(ctx, block, true, false);
     }
 
     if (!(BO & 0x10)) {
@@ -1133,7 +1144,7 @@ static inline void translate_load_store_multiple(
     /* Flush loaded GPRs so we don't have a bunch of RTL registers live
      * until the end of the block. */
     if (!is_store) {
-        store_live_regs(ctx, block, false);
+        store_live_regs(ctx, block, true, false);
     }
 }
 
@@ -1159,7 +1170,7 @@ static inline void translate_load_store_string(
     /* We implement the string move instructions by loading or storing
      * directly to/from the PSB, so make sure it's up to date, and make
      * sure no future code tries to store stale values. */
-    store_live_regs(ctx, block, true);
+    store_live_regs(ctx, block, true, true);
 
     int base_address, host_address;
     if (insn_rA(insn)) {
@@ -2041,7 +2052,10 @@ static void translate_trap(
         rtl_add_insn(unit, skip_op, 0, result, 0, label);
     }
 
-    store_live_regs(ctx, block, false);
+    /* Don't touch dirty flags because this is only executed on the
+     * trapping path.  (We assume trapping is the exceptional case,
+     * so we don't store registers unconditionally.) */
+    store_live_regs(ctx, block, false, false);
     set_nia_imm(ctx, address);
     guest_ppc_flush_state(ctx);
     const int trap_handler = rtl_alloc_register(unit, RTLTYPE_ADDRESS);
@@ -2382,7 +2396,7 @@ static inline void translate_x1F(
         /* icbi implies that already-translated code may have changed, so
          * unconditionally return from this unit.  We currently don't
          * bother checking the invalidation address. */
-        store_live_regs(ctx, block, false);
+        store_live_regs(ctx, block, true, false);
         set_nia_imm(ctx, address + 4);
         rtl_add_insn(unit, RTLOP_GOTO, 0, 0, 0, ctx->epilogue_label);
         return;
@@ -2632,7 +2646,7 @@ static inline void translate_insn(
                 is_sc_blr = true;
             }
         }
-        store_live_regs(ctx, block, false);
+        store_live_regs(ctx, block, true, false);
         if (is_sc_blr) {
             set_nia(ctx, get_lr(ctx));
         } else {
@@ -2899,7 +2913,7 @@ bool guest_ppc_translate_block(GuestPPCContext *ctx, int index)
         }
     }
 
-    store_live_regs(ctx, block, true);
+    store_live_regs(ctx, block, true, true);
     set_nia_imm(ctx, start + block->len);
     if (UNLIKELY(rtl_get_error_state(unit))) {
         log_ice(ctx->handle, "Failed to update registers after block end 0x%X",
