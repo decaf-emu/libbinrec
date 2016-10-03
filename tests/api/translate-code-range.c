@@ -9,27 +9,11 @@
 
 #include "include/binrec.h"
 #include "tests/common.h"
+#include "tests/execute.h"
 #include "tests/log-capture.h"
 
 
-typedef struct PPCState {
-    uint32_t gpr[32];
-    double fpr[32][2];
-    uint32_t gqr[8];
-    uint32_t lr;
-    uint32_t ctr;
-    uint32_t xer;
-    uint32_t fpscr;
-    uint8_t reserve_flag;
-    uint32_t reserve_state;
-    uint32_t nia;
-    uint64_t (*timebase_handler)(struct PPCState *);
-    void (*sc_handler)(struct PPCState *);
-    void (*trap_handler)(struct PPCState *);
-} PPCState;
-
 static uint8_t memory[0x10000];
-
 
 int main(void)
 {
@@ -42,6 +26,7 @@ int main(void)
     setup.state_offset_gpr = offsetof(PPCState,gpr);
     setup.state_offset_fpr = offsetof(PPCState,fpr);
     setup.state_offset_gqr = offsetof(PPCState,gqr);
+    setup.state_offset_cr = offsetof(PPCState,cr);
     setup.state_offset_lr = offsetof(PPCState,lr);
     setup.state_offset_ctr = offsetof(PPCState,ctr);
     setup.state_offset_xer = offsetof(PPCState,xer);
@@ -80,7 +65,7 @@ int main(void)
         0xB8,0x01,0x00,0x00,0x00,       // mov $1,%eax
         0x89,0x47,0x0C,                 // mov %eax,12(%rdi)
         0xB8,0x04,0x10,0x00,0x00,       // mov $0x1004,%eax
-        0x89,0x87,0xB8,0x02,0x00,0x00,  // mov %eax,696(%rdi)
+        0x89,0x87,0xBC,0x02,0x00,0x00,  // mov %eax,700(%rdi)
         0xE9,0x00,0x00,0x00,0x00,       // jmp epilogue
         0x48,0x83,0xC4,0x08,            // epilogue: add $8,%rsp
         0xC3,                           // ret

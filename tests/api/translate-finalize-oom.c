@@ -8,21 +8,29 @@
  */
 
 #include "include/binrec.h"
+#include "src/common.h"
+#include "src/endian.h"
+#include "src/rtl-internal.h"  // For BLOCKS_EXPAND_SIZE.
 #include "tests/common.h"
 #include "tests/execute.h"
 #include "tests/log-capture.h"
-
-
-static uint8_t memory[0x10000];
+#include "tests/mem-wrappers.h"
 
 
 int main(void)
 {
+    uint32_t input[BLOCKS_EXPAND_SIZE - 3];
+    const int nop_index = lenof(input) - 1;
+    for (int i = 0; i < nop_index; i++) {
+        input[i] = bswap_be32(0x48000000 + 4 * (nop_index - i));  // b end
+    }
+    input[nop_index] = bswap_be32(0x60000000);  // end: nop
+
     binrec_setup_t setup;
     memset(&setup, 0, sizeof(setup));
     setup.guest = BINREC_ARCH_PPC_7XX;
     setup.host = BINREC_ARCH_X86_64_SYSV;
-    setup.guest_memory_base = memory;
+    setup.guest_memory_base = input;
     setup.host_memory_base = UINT64_C(0x100000000);
     setup.state_offset_gpr = offsetof(PPCState,gpr);
     setup.state_offset_fpr = offsetof(PPCState,fpr);
@@ -38,45 +46,37 @@ int main(void)
     setup.state_offset_timebase_handler = offsetof(PPCState,timebase_handler);
     setup.state_offset_sc_handler = offsetof(PPCState,sc_handler);
     setup.state_offset_trap_handler = offsetof(PPCState,trap_handler);
+    setup.malloc = mem_wrap_malloc;
+    setup.realloc = mem_wrap_realloc;
+    setup.free = mem_wrap_free;
     setup.log = log_capture;
 
     binrec_t *handle;
     EXPECT(handle = binrec_create_handle(&setup));
 
-    static const uint8_t ppc_code[] = {
-        0x38,0x60,0x00,0x01,  // li r3,1
-        0x38,0x80,0x00,0x0A,  // li r4,10
-    };
-    const uint32_t start_address = 0x1000;
-    const uint32_t end_address = start_address + sizeof(ppc_code) - 1;
-    memcpy(memory + start_address, ppc_code, sizeof(ppc_code));
+    mem_wrap_fail_after(11);
+    EXPECT_FALSE(binrec_translate(handle, 0, sizeof(input) - 1,
+                                  (void *[1]){}, (long[1]){}));
+    mem_wrap_cancel_fail();
 
-    void *x86_code;
-    long x86_code_size;
-    EXPECT(binrec_translate(handle, start_address, end_address,
-                            &x86_code, &x86_code_size));
+    const char *log_messages = get_log_messages();
+    EXPECT(log_messages);
+    const char *last_line = log_messages;
+    for (;;) {
+        const char *eol;
+        EXPECT(eol = strchr(last_line, '\n'));
+        if (!eol[1]) {
+            break;
+        }
+        last_line = eol + 1;
+    }
+    if (strcmp(last_line,
+               "[error] Failed to finalize RTL for code at 0x0\n") != 0) {
+        fputs(log_messages, stdout);
+        FAIL("binrec_translate(handle, 0x0, 0x%X, ...) did not return the"
+             " expected error", (int)sizeof(input) - 1);
+    }
 
-    static const uint8_t x86_expected[] = {
-        0x48,0x83,0xEC,0x08,            // sub $8,%rsp
-        0x48,0xB8,0x00,0x00,0x00,0x00,  // mov $0x100000000,%rax
-          0x01,0x00,0x00,0x00,
-        0xB8,0x01,0x00,0x00,0x00,       // mov $1,%eax
-        0xB9,0x0A,0x00,0x00,0x00,       // mov $10,%ecx
-        0x89,0x47,0x0C,                 // mov %eax,12(%rdi)
-        0x89,0x4F,0x10,                 // mov %ecx,16(%rdi)
-        0xB8,0x08,0x10,0x00,0x00,       // mov $0x1008,%eax
-        0x89,0x87,0xBC,0x02,0x00,0x00,  // mov %eax,700(%rdi)
-        0xE9,0x00,0x00,0x00,0x00,       // jmp epilogue
-        0x48,0x83,0xC4,0x08,            // epilogue: add $8,%rsp
-        0xC3,                           // ret
-    };
-    EXPECT_MEMEQ(x86_code, x86_expected, sizeof(x86_expected));
-    EXPECT_EQ(x86_code_size, sizeof(x86_expected));
-
-    EXPECT_STREQ(get_log_messages(), "[info] Scanning terminated at requested"
-                 " limit 0x1007\n");
-
-    free(x86_code);
     binrec_destroy_handle(handle);
     return EXIT_SUCCESS;
 }
