@@ -2895,6 +2895,21 @@ bool guest_ppc_translate_block(GuestPPCContext *ctx, int index)
         return false;
     }
 
+    if (UNLIKELY(block->len == 0)) {
+        /* This block was a backward branch target that wasn't part of a
+         * previous block (see block-splitting logic at the bottom of
+         * guest_ppc_scan()).  Update NIA and return to the caller to
+         * retranslate from the target address. */
+        set_nia_imm(ctx, start);
+        rtl_add_insn(unit, RTLOP_GOTO, 0, 0, 0, ctx->epilogue_label);
+        if (UNLIKELY(rtl_get_error_state(unit))) {
+            log_ice(ctx->handle, "Failed to translate empty block at 0x%X",
+                    start);
+            return false;
+        }
+        return true;
+    }
+
     memset(&ctx->live, 0, sizeof(ctx->live));
     ctx->gpr_dirty = 0;
     ctx->fpr_dirty = 0;
