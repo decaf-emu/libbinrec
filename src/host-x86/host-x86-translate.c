@@ -3101,8 +3101,6 @@ static bool translate_block(HostX86Context *ctx, int block_index)
  * the target instruction will be, so we use this function to fill it in
  * after code generation is complete.
  *
- * FIXME: shrink 32 bit offset -> 8 bit offset if possible; may have a recursive effect on surrounding branches as well
- *
  * [Parameters]
  *     ctx: Translation context.
  */
