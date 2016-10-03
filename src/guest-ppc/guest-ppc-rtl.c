@@ -1739,11 +1739,11 @@ static void translate_rotate_mask(
     } else if (insert) {
         ASSERT(is_imm);
         const int rA = get_gpr(ctx, insn_rA(insn));
-        int start, count, base, value;
         if (MB <= ME) {
-            start = 31 - ME;
-            count = ME - MB + 1;
-            base = rA;
+            const int start = 31 - ME;
+            const int count = ME - MB + 1;
+            const int base = rA;
+            int value;
             if (SH == start) {
                 value = rS;
             } else {
@@ -1751,20 +1751,29 @@ static void translate_rotate_mask(
                 rtl_add_insn(unit, RTLOP_RORI,
                              value, rS, 0, ((32-SH) + start) & 31);
             }
+            result = rtl_alloc_register(unit, RTLTYPE_INT32);
+            rtl_add_insn(unit, RTLOP_BFINS,
+                         result, base, value, start | count<<8);
         } else {
-            start = 32 - MB;
-            count = MB - ME - 1;
+            const int start = 32 - MB;
+            const int count = MB - ME - 1;
             ASSERT(count > 0);  // Or else it would be rotlwi.
+            int rS_rotated;
             if (SH == 0) {
-                base = rS;
+                rS_rotated = rS;
             } else {
-                base = rtl_alloc_register(unit, RTLTYPE_INT32);
-                rtl_add_insn(unit, RTLOP_RORI, base, rS, 0, 32-SH);
+                rS_rotated = rtl_alloc_register(unit, RTLTYPE_INT32);
+                rtl_add_insn(unit, RTLOP_RORI, rS_rotated, rS, 0, 32-SH);
             }
-            value = rA;
+            const uint32_t mask = ((1u << count) - 1) << start;
+            const int rS_masked = rtl_alloc_register(unit, RTLTYPE_INT32);
+            rtl_add_insn(unit, RTLOP_ANDI,
+                         rS_masked, rS_rotated, 0, (int32_t)~mask);
+            const int rA_masked = rtl_alloc_register(unit, RTLTYPE_INT32);
+            rtl_add_insn(unit, RTLOP_ANDI, rA_masked, rA, 0, (int32_t)mask);
+            result = rtl_alloc_register(unit, RTLTYPE_INT32);
+            rtl_add_insn(unit, RTLOP_OR, result, rS_masked, rA_masked, 0);
         }
-        result = rtl_alloc_register(unit, RTLTYPE_INT32);
-        rtl_add_insn(unit, RTLOP_BFINS, result, base, value, start | count<<8);
 
     } else {
         /* MASK function for little-endian bit numbering.  Assumes mb >= me. */
