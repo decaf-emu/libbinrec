@@ -1626,12 +1626,18 @@ static inline void translate_muldiv_reg(
         const int masked_xer = rtl_alloc_register(unit, RTLTYPE_INT32);
         rtl_add_insn(unit, RTLOP_ANDI, masked_xer, xer, 0, (int32_t)~XER_OV);
         if (rtlop == RTLOP_MUL) {
+            /* mullwo's overflow check is for signed integers, so we can't
+             * just check for the high word being nonzero. */
             const int result_hi = rtl_alloc_register(unit, RTLTYPE_INT32);
-            rtl_add_insn(unit, RTLOP_MULHU, result_hi, rA, rB, 0);
+            rtl_add_insn(unit, RTLOP_MULHS, result_hi, rA, rB, 0);
+            const int lo_sign = rtl_alloc_register(unit, RTLTYPE_INT32);
+            rtl_add_insn(unit, RTLOP_SRAI, lo_sign, result, 0, 31);
+            const int overflow = rtl_alloc_register(unit, RTLTYPE_INT32);
+            rtl_add_insn(unit, RTLOP_XOR, overflow, result_hi, lo_sign, 0);
             const int SO_OV = rtl_imm32(unit, XER_SO | XER_OV);
             const int bits_to_set = rtl_alloc_register(unit, RTLTYPE_INT32);
             rtl_add_insn(unit, RTLOP_SELECT,
-                         bits_to_set, SO_OV, result_hi, result_hi);
+                         bits_to_set, SO_OV, overflow, overflow);
             const int new_xer = rtl_alloc_register(unit, RTLTYPE_INT32);
             rtl_add_insn(unit, RTLOP_OR, new_xer, masked_xer, bits_to_set, 0);
             set_xer(ctx, new_xer);
