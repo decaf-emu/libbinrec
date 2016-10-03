@@ -1647,8 +1647,10 @@ static bool translate_block(HostX86Context *ctx, int block_index)
                     if (insn->opcode == RTLOP_SCAST) {
                         append_insn_ModRM_reg(&code, true, X86OP_MOVSXD_Gv_Ev,
                                               host_dest, host_src1);
-                    } else {
-                        // FIXME: this should be unneeded since all 32-bit ops clear high word
+                    } else if (host_dest != host_src1) {
+                        /* We can skip the MOV if host_dest == host_src1
+                         * because all 32-bit operations clear the high
+                         * word of the output register. */
                         append_insn_ModRM_reg(&code, false, X86OP_MOV_Ev_Gv,
                                               host_src1, host_dest);
                     }
