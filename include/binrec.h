@@ -394,6 +394,8 @@ typedef struct binrec_setup_t {
  * - Behavior-safe: optimizations which purely affect the size or speed of
  *   the generated code and have no effect on behavior.  Optimizations
  *   such as constant folding and deconditioning fall into this category.
+ *   Optimizations can be assumed to fall under this category where not
+ *   otherwise documented.
  *
  * - Specification-safe: optimizations which may change the behavior of
  *   the generated code, but only within limits prescribed by the relevant
@@ -420,15 +422,12 @@ typedef struct binrec_setup_t {
  * BINREC_OPT_BASIC:  Enable basic optimization of translated code.  This
  * includes the following transformations:
  *
- * - Load instructions which reference memory areas marked read-only
- *   (see binrec_add_readonly_region()) are replaced by load-immediate
- *   instructions using the value read from memory.
- *
- * - Dead stores (assignments to registers which are never referenced)
- *   are eliminated from the translated code.
- *
  * - Branches to other (unconditional or same-conditioned) branch
  *   instructions will be threaded through to the final branch destination.
+ *
+ * - Unreachable basic blocks will be eliminated from the code stream.
+ *
+ * - Branches to the next instruction will be eliminated.
  */
 #define BINREC_OPT_BASIC  (1<<0)
 
@@ -450,31 +449,35 @@ typedef struct binrec_setup_t {
 #define BINREC_OPT_CALLEE_SAVED_REGS_UNSAFE  (1<<1)
 
 /**
+ * BINREC_OPT_DSE:  Perform dead store elimination (DSE) on the translated
+ * code, removing instructions whose outputs are not used.
+ */
+#define BINREC_OPT_DSE  (1<<2)
+
+/**
  * BINREC_OPT_DECONDITION:  Convert conditional branches and moves with
  * constant conditions to unconditional instructions or NOPs.  This is
  * most useful in conjunction with constant folding.
  */
-#define BINREC_OPT_DECONDITION  (1<<2)
+#define BINREC_OPT_DECONDITION  (1<<3)
 
 /**
- * BINREC_OPT_DROP_DEAD_BLOCKS:  Eliminate unreachable basic blocks from
- * the code stream.  This is most useful in conjunction with deconditioning.
+ * BINREC_OPT_DEEP_DATA_FLOW:  Perform extended data flow analysis on
+ * values associated with guest architecture registers to find dead stores.
+ * This optimization by itself only finds dead stores; enable BINREC_OPT_DSE
+ * to remove them from the code stream.
  */
-#define BINREC_OPT_DROP_DEAD_BLOCKS  (1<<3)
-
-/**
- * BINREC_OPT_DROP_DEAD_BRANCHES:  Eliminate branches to the following
- * instruction.
- */
-#define BINREC_OPT_DROP_DEAD_BRANCHES  (1<<4)
+#define BINREC_OPT_DEEP_DATA_FLOW  (1<<4)
 
 /**
  * BINREC_OPT_FOLD_CONSTANTS:  Look for computations whose operands are all
  * constant, and convert them to load-immediate operations.  The computed
  * values are themselves treated as constant, so constantness can be
- * propagated through multiple instructions; intermediate values in a
- * computation sequence which end up being unused due to constant folding
- * will be removed via dead store elimination.
+ * propagated through multiple instructions.  Intermediate values in a
+ * computation sequence which end up being unused due to constant folding,
+ * as well as any other instructions whose outputs which are not used
+ * elsewhere, are removed from the code stream if BINREC_OPT_DSE is also
+ * enabled.
  */
 #define BINREC_OPT_FOLD_CONSTANTS  (1<<5)
 
@@ -838,8 +841,8 @@ extern void binrec_set_max_inline_depth(binrec_t *handle, int depth);
 /**
  * binrec_add_readonly_region:  Mark the given region of memory as
  * read-only.  Instructions which are known to load from read-only memory
- * will be translated into load-constant operations if optimizations are
- * enabled (with the BINREC_OPT_ENABLE flag).
+ * will be translated into load-constant operations if enabled by the
+ * BINREC_OPT_FOLD_CONSTANTS optimization flag.
  *
  * This function may fail if too many misaligned regions are added; in
  * that case, rebuild the library with different values of the

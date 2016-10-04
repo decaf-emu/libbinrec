@@ -48,7 +48,7 @@ int main(void)
     EXPECT_EQ(unit->regs[reg2].death, 3);
     EXPECT_EQ(unit->regs[reg3].birth, 3);
     EXPECT_EQ(unit->regs[reg3].death, 3);
-    EXPECT_EQ(unit->regs[reg3].source, RTLREG_RESULT);
+    EXPECT_EQ(unit->regs[reg3].source, RTLREG_RESULT_NOFOLD);
     EXPECT_EQ(unit->regs[reg3].result.opcode, RTLOP_NOP);
     EXPECT(unit->have_block);
     EXPECT_FALSE(unit->error);

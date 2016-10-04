@@ -290,21 +290,21 @@ static void rtl_describe_register(const RTLRegister *reg,
       case RTLREG_CONSTANT:
         switch ((RTLDataType)reg->type) {
           case RTLTYPE_INT32:
-            if (reg->value.int32 >= 0x10000
-             && reg->value.int32 < (uint32_t)-0x8000) {
-                snprintf(buf, bufsize, "0x%X", reg->value.int32);
+            if (reg->value.i64 >= 0x10000
+             && reg->value.i64 < -0x8000u) {
+                snprintf(buf, bufsize, "0x%X", (int32_t)reg->value.i64);
             } else {
-                snprintf(buf, bufsize, "%d", reg->value.int32);
+                snprintf(buf, bufsize, "%d", (int32_t)reg->value.i64);
             }
             break;
           case RTLTYPE_ADDRESS:
-            snprintf(buf, bufsize, "0x%"PRIX64, reg->value.int64);
+            snprintf(buf, bufsize, "0x%"PRIX64, reg->value.i64);
             break;
           case RTLTYPE_FLOAT:
-            format_float(buf, bufsize, reg->value.float_);
+            format_float(buf, bufsize, reg->value.f32);
             break;
           case RTLTYPE_DOUBLE:
-            format_double(buf, bufsize, reg->value.double_);
+            format_double(buf, bufsize, reg->value.f64);
             break;
           default:
             ASSERT(!"Invalid constant type");
@@ -1337,28 +1337,30 @@ bool rtl_optimize_unit(RTLUnit *unit, unsigned int flags)
     ASSERT(unit->regs != NULL);
     ASSERT(unit->label_blockmap != NULL);
 
-#if 0  // FIXME: not yet implemented
+    if (flags & BINREC_OPT_DEEP_DATA_FLOW) {
+        //FIXME: notimp: alias data flow analysis
+    }
+
     if (flags & BINREC_OPT_FOLD_CONSTANTS) {
-        if (UNLIKELY(!rtl_opt_fold_constants(unit))) {
-            log_error(unit->handle, "Constant folding failed");
-            return false;
-        }
+        rtl_opt_fold_constants(unit);
     }
 
     if (flags & BINREC_OPT_DECONDITION) {
-        if (UNLIKELY(!rtl_opt_decondition(unit))) {
-            log_error(unit->handle, "Deconditioning failed");
-            return false;
-        }
+        rtl_opt_decondition(unit);
     }
 
-    if (flags & BINREC_OPT_DROP_DEAD_BLOCKS) {
+    if (flags & BINREC_OPT_DSE) {
+        //FIXME: notimp: dead store elimination
+    }
+
+    if (flags & BINREC_OPT_BASIC) {
+        //FIXME: notimp: branch threading
         if (UNLIKELY(!rtl_opt_drop_dead_blocks(unit))) {
             log_error(unit->handle, "Dead block dropping failed");
             return false;
         }
+        rtl_opt_drop_dead_branches(unit);
     }
-#endif
 
     return true;
 }
@@ -1431,7 +1433,7 @@ const char *rtl_disassemble_unit(RTLUnit *unit, bool verbose)
         buf[buflen] = '\0';
     }
 
-    for (unsigned int index = 0; index < unit->num_blocks; index++) {
+    for (int index = 0; index != -1; index = unit->blocks[index].next_block) {
         char text[200];
         rtl_describe_block(unit, index, text, sizeof(text));
         const int text_len = strlen(text);

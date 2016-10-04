@@ -72,8 +72,7 @@ int main(void)
                  "Block 4: 3 --> [6,6] --> 5,0\n"
                  "Block 5: 4 --> [7,7] --> 6,0\n"
                  "Block 6: 5 --> [8,8] --> 7,0\n"
-                 "Block 7: 6 --> [9,9] --> 0\n"
-                 "Block 8: 7,1,2,3,4,5,6 --> [empty] --> <none>\n");
+                 "Block 7: 6 --> [9,9] --> 0\n");
 
     rtl_destroy_unit(unit);
     binrec_destroy_handle(handle);

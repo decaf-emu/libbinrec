@@ -237,6 +237,53 @@ static ALWAYS_INLINE CONST_FUNCTION int popcnt64(uint64_t x)
 /*-----------------------------------------------------------------------*/
 
 /**
+ * ror32, ror64:  Rotate the given 32-bit or 64-bit value "count" bits to
+ * the right.
+ */
+static ALWAYS_INLINE CONST_FUNCTION uint32_t ror32(uint32_t x, int count)
+{
+    #ifndef SUPPRESS_BITUTILS_INTRINSICS
+        #if defined(__GNUC__)
+            /* GCC and Clang lack rotate intrinsics and sometimes have
+             * trouble detecting the usual rotate idiom, so use raw
+             * assembly to implement the operation. */
+            #if defined(__amd64__) || defined(__x86_64__)
+                uint32_t result;
+                __asm__("rorl %2,%0"
+                        : "=r" (result) : "0" (x), "c" ((uint8_t)count));
+                return result;
+            #elif defined(__mips__)
+                uint32_t result;
+                __asm__("ror %0,%1,%2" : "=r" (result) : "r" (x), "r" (count));
+                return result;
+            #endif
+        #elif defined(_MSC_VER)
+            return _rotr(x, count);
+        #endif
+    #endif
+    return x >> (count & 31) | x << (-count & 31);
+}
+
+static ALWAYS_INLINE CONST_FUNCTION uint64_t ror64(uint64_t x, int count)
+{
+    #ifndef SUPPRESS_BITUTILS_INTRINSICS
+        #if defined(__GNUC__)
+            #if defined(__amd64__) || defined(__x86_64__)
+                uint64_t result;
+                __asm__("rorq %2,%0"
+                        : "=r" (result) : "0" (x), "c" ((uint8_t)count));
+                return result;
+            #endif
+        #elif defined(_MSC_VER)
+            return _rotr64(x, count);
+        #endif
+    #endif
+    return x >> (count & 63) | x << (-count & 63);
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
  * float_to_bits, double_to_bits:  Return the bit pattern corresponding to
  * the given floating-point value.
  */

@@ -18,8 +18,6 @@
 /************************* Configuration options *************************/
 /*************************************************************************/
 
-/*============ General options ============*/
-
 /**
  * INSNS_EXPAND_SIZE:  Specifies the number of instructions by which to
  * expand a block's instruction array when the array is full.  This value
@@ -84,6 +82,12 @@
  * expand the native code buffer as necessary when translating.
  */
 #define NATIVE_EXPAND_SIZE 8192
+
+/**
+ * RTL_DEBUG_OPTIMIZE:  If defined, optimization functions will output
+ * debugging information via log_info().
+ */
+#define RTL_DEBUG_OPTIMIZE
 
 /*************************************************************************/
 /*************************** Type declarations ***************************/
@@ -161,10 +165,9 @@ struct RTLRegister {
     /* Register value information. */
     union {
         union {                 // Value of register for RTLREG_CONSTANT
-            uint32_t int32;
-            uint64_t int64;
-            float float_;
-            double double_;
+            uint64_t i64;
+            float f32;
+            double f64;
         } value;
         uint8_t arg_index;      // Function argument index for RTLREG_FUNC_ARG
         struct {
@@ -179,7 +182,9 @@ struct RTLRegister {
             uint16_t src;       // Source alias register
         } alias;
         struct {
-            uint8_t opcode;     // Operation code for RTLREG_RESULT{,_NOFOLD}
+            uint16_t
+                opcode : 15,    // Operation code for RTLREG_RESULT{,_NOFOLD}
+                is_imm : 1;     // True if the second operand is src_imm
             uint16_t src1;      // Operand 1
             union {
                 int32_t src_imm;    // Immediate operand
@@ -409,36 +414,19 @@ static inline void rtl_free(const RTLUnit *unit, void *ptr)
 /*---------------------------- Optimization -----------------------------*/
 
 /**
- * rtl_opt_fold_constants:  Perform constant folding on the given RTL unit,
- * converting instructions that operate on constant operands into load-
- * immediate instructions that load the result of the operation.  If such
- * an operand is not used by any other instruction, the instruction that
- * loaded it is changed to a NOP.
- *
- * [Parameters]
- *     unit: RTL unit
- * [Return value]
- *     Nonzero on success, zero on error
- */
-#define rtl_opt_fold_constants INTERNAL(rtl_opt_fold_constants)
-extern int rtl_opt_fold_constants(RTLUnit *unit);
-
-/**
  * rtl_opt_decondition:  Perform "deconditioning" of conditional branches
  * with constant conditions.  For "GOTO_IF_Z (GOTO_IF_NZ) label, rN" where
  * rN is type RTLREG_CONSTANT, the instruction is changed to GOTO if the
- * value of rN is zero (nonzero) and changed to NOP otherwise.  As with
- * constant folding, if the condition register is not used anywhere else,
- * the register is eliminated and  the instruction that loaded it is
- * changed to a NOP.
+ * value of rN is zero (nonzero) and NOP otherwise.  As with constant
+ * folding, if the condition register is not used anywhere else, the
+ * register is eliminated and  the instruction that loaded it is changed
+ * to a NOP.
  *
  * [Parameters]
- *     unit: RTL unit
- * [Return value]
- *     Nonzero on success, zero on error
+ *     unit: RTL unit.
  */
 #define rtl_opt_decondition INTERNAL(rtl_opt_decondition)
-extern int rtl_opt_decondition(RTLUnit *unit);
+extern void rtl_opt_decondition(RTLUnit *unit);
 
 /**
  * rtl_opt_drop_dead_blocks:  Search an RTL unit for basic blocks which are
@@ -447,12 +435,12 @@ extern int rtl_opt_decondition(RTLUnit *unit);
  * recursively removed as well.
  *
  * [Parameters]
- *     unit: RTL unit
+ *     unit: RTL unit.
  * [Return value]
- *     Nonzero on success, zero on error
+ *     True on success, false on error.
  */
 #define rtl_opt_drop_dead_blocks INTERNAL(rtl_opt_drop_dead_blocks)
-extern int rtl_opt_drop_dead_blocks(RTLUnit *unit);
+extern bool rtl_opt_drop_dead_blocks(RTLUnit *unit);
 
 /**
  * rtl_opt_drop_dead_branches:  Search an RTL unit for branch instructions
@@ -460,12 +448,23 @@ extern int rtl_opt_drop_dead_blocks(RTLUnit *unit);
  * with NOPs.
  *
  * [Parameters]
- *     unit: RTL unit
- * [Return value]
- *     Nonzero on success, zero on error
+ *     unit: RTL unit.
  */
 #define rtl_opt_drop_dead_branches INTERNAL(rtl_opt_drop_dead_branches)
-extern int rtl_opt_drop_dead_branches(RTLUnit *unit);
+extern void rtl_opt_drop_dead_branches(RTLUnit *unit);
+
+/**
+ * rtl_opt_fold_constants:  Perform constant folding on the given RTL unit,
+ * converting instructions that operate on constant operands into load-
+ * immediate instructions that load the result of the operation.  If such
+ * an operand is not used by any other instruction, the instruction that
+ * loaded it is changed to a NOP.
+ *
+ * [Parameters]
+ *     unit: RTL unit.
+ */
+#define rtl_opt_fold_constants INTERNAL(rtl_opt_fold_constants)
+extern void rtl_opt_fold_constants(RTLUnit *unit);
 
 /*------------------------ Register information -------------------------*/
 

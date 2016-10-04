@@ -39,6 +39,8 @@ int main(void)
     EXPECT_EQ(unit->regs[reg1].death, 1);
     EXPECT_EQ(unit->regs[reg2].birth, 1);
     EXPECT_EQ(unit->regs[reg2].death, 1);
+    EXPECT_EQ(unit->regs[reg2].source, RTLREG_RESULT_NOFOLD);
+    EXPECT_EQ(unit->regs[reg2].result.opcode, RTLOP_ATOMIC_INC);
     EXPECT(unit->have_block);
     EXPECT_FALSE(unit->error);
 

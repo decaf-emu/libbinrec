@@ -67,6 +67,8 @@ int main(void)
     EXPECT_EQ(unit->regs[reg2].death, 3);
     EXPECT_EQ(unit->regs[reg3].birth, 4);
     EXPECT_EQ(unit->regs[reg3].death, 4);
+    EXPECT_EQ(unit->regs[reg3].source, RTLREG_RESULT_NOFOLD);
+    EXPECT_EQ(unit->regs[reg3].result.opcode, RTLOP_CALL_ADDR);
 
     EXPECT(rtl_add_insn(unit, RTLOP_CALL_ADDR, 0, reg1, reg2, reg3));
     EXPECT_EQ(unit->num_insns, 6);

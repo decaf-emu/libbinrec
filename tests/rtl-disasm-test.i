@@ -8,10 +8,10 @@
  */
 
 /*
- * This source file implements a test which passes an instruction sequence
- * to an input translator and compares the disassembly of the resulting RTL
- * unit to an expected output string.  It is intended to be #included into
- * a source file which defines the parameters of the test.
+ * This source file implements a test which passes a buffer containing
+ * guest machine code to an input translator and compares the disassembly
+ * of the resulting RTL unit to an expected output string.  It is intended
+ * to be #included into a source file which defines the parameters of the test.
  *
  * The test source file should define the following variables before
  * including this file:

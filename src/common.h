@@ -551,6 +551,7 @@ static inline bool binrec_ensure_code_space(binrec_t *handle, long bytes)
 /* Ensure that code always calls one of the wrappers above rather than
  * malloc()/realloc()/free() directly. */
 #define malloc  _invalid_call_to_malloc
+#define calloc  _invalid_call_to_calloc
 #define realloc _invalid_call_to_realloc
 #define free    _invalid_call_to_free
 

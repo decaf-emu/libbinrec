@@ -106,7 +106,7 @@ static bool make_nop(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
     const int insn_index = unit->num_insns;
     if (dest) {
         RTLRegister * const destreg = &unit->regs[dest];
-        unit->regs[dest].source = RTLREG_RESULT;
+        unit->regs[dest].source = RTLREG_RESULT_NOFOLD;
         unit->regs[dest].result.opcode = RTLOP_NOP;
         mark_live(unit, insn_index, destreg, dest);
     }
@@ -224,6 +224,7 @@ static bool make_move(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
     const int insn_index = unit->num_insns;
     destreg->source = RTLREG_RESULT;
     destreg->result.opcode = insn->opcode;
+    destreg->result.is_imm = 0;
     destreg->result.src1 = src1;
     mark_live(unit, insn_index, destreg, dest);
     mark_live(unit, insn_index, src1reg, src1);
@@ -273,6 +274,7 @@ static bool make_select(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
     const int insn_index = unit->num_insns;
     destreg->source = RTLREG_RESULT;
     destreg->result.opcode = insn->opcode;
+    destreg->result.is_imm = 0;
     destreg->result.src1 = src1;
     destreg->result.src2 = src2;
     destreg->result.src3 = (uint16_t)other;
@@ -315,6 +317,7 @@ static bool make_intcast(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
     const int insn_index = unit->num_insns;
     destreg->source = RTLREG_RESULT;
     destreg->result.opcode = insn->opcode;
+    destreg->result.is_imm = 0;
     destreg->result.src1 = src1;
     mark_live(unit, insn_index, destreg, dest);
     mark_live(unit, insn_index, src1reg, src1);
@@ -352,6 +355,7 @@ static bool make_alu_1op(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
     const int insn_index = unit->num_insns;
     destreg->source = RTLREG_RESULT;
     destreg->result.opcode = insn->opcode;
+    destreg->result.is_imm = 0;
     destreg->result.src1 = src1;
     mark_live(unit, insn_index, destreg, dest);
     mark_live(unit, insn_index, src1reg, src1);
@@ -395,6 +399,7 @@ static bool make_alu_2op(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
     const int insn_index = unit->num_insns;
     destreg->source = RTLREG_RESULT;
     destreg->result.opcode = insn->opcode;
+    destreg->result.is_imm = 0;
     destreg->result.src1 = src1;
     destreg->result.src2 = src2;
     mark_live(unit, insn_index, destreg, dest);
@@ -441,6 +446,7 @@ static bool make_shift(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
     const int insn_index = unit->num_insns;
     destreg->source = RTLREG_RESULT;
     destreg->result.opcode = insn->opcode;
+    destreg->result.is_imm = 0;
     destreg->result.src1 = src1;
     destreg->result.src2 = src2;
     mark_live(unit, insn_index, destreg, dest);
@@ -483,6 +489,7 @@ static bool make_alu_imm(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
     const int insn_index = unit->num_insns;
     destreg->source = RTLREG_RESULT;
     destreg->result.opcode = insn->opcode;
+    destreg->result.is_imm = 1;
     destreg->result.src1 = src1;
     destreg->result.src_imm = (int32_t)other;
     mark_live(unit, insn_index, destreg, dest);
@@ -522,6 +529,7 @@ static bool make_clz(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
     const int insn_index = unit->num_insns;
     destreg->source = RTLREG_RESULT;
     destreg->result.opcode = insn->opcode;
+    destreg->result.is_imm = 0;
     destreg->result.src1 = src1;
     mark_live(unit, insn_index, destreg, dest);
     mark_live(unit, insn_index, src1reg, src1);
@@ -565,6 +573,7 @@ static bool make_cmp(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
     const int insn_index = unit->num_insns;
     destreg->source = RTLREG_RESULT;
     destreg->result.opcode = insn->opcode;
+    destreg->result.is_imm = 0;
     destreg->result.src1 = src1;
     destreg->result.src2 = src2;
     mark_live(unit, insn_index, destreg, dest);
@@ -607,6 +616,7 @@ static bool make_cmp_imm(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
     const int insn_index = unit->num_insns;
     destreg->source = RTLREG_RESULT;
     destreg->result.opcode = insn->opcode;
+    destreg->result.is_imm = 1;
     destreg->result.src1 = src1;
     destreg->result.src_imm = (int32_t)other;
     mark_live(unit, insn_index, destreg, dest);
@@ -659,6 +669,7 @@ static bool make_bitfield(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
     const int insn_index = unit->num_insns;
     destreg->source = RTLREG_RESULT;
     destreg->result.opcode = insn->opcode;
+    destreg->result.is_imm = 0;
     destreg->result.src1 = src1;
     destreg->result.src2 = src2;
     destreg->result.start = start;
@@ -703,11 +714,11 @@ static bool make_load_imm(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
     switch (unit->regs[dest].type) {
       case RTLTYPE_INT32:
       case RTLTYPE_FLOAT:
-        destreg->value.int32 = (uint32_t)other;
+        destreg->value.i64 = (uint32_t)other;
         break;
       case RTLTYPE_ADDRESS:
       case RTLTYPE_DOUBLE:
-        destreg->value.int64 = other;
+        destreg->value.i64 = other;
         break;
       default:
         UNREACHABLE;
@@ -951,8 +962,9 @@ static bool make_atomic_inc(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
     RTLRegister * const destreg = &unit->regs[dest];
     RTLRegister * const src1reg = &unit->regs[src1];
     const int insn_index = unit->num_insns;
-    destreg->source = RTLREG_RESULT;
+    destreg->source = RTLREG_RESULT_NOFOLD;
     destreg->result.opcode = insn->opcode;
+    destreg->result.is_imm = 0;
     destreg->result.src1 = src1;
     mark_live(unit, insn_index, destreg, dest);
     mark_live(unit, insn_index, src1reg, src1);
@@ -1001,8 +1013,9 @@ static bool make_cmpxchg(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
     RTLRegister * const src2reg = &unit->regs[src2];
     RTLRegister * const src3reg = &unit->regs[other];
     const int insn_index = unit->num_insns;
-    destreg->source = RTLREG_RESULT;
+    destreg->source = RTLREG_RESULT_NOFOLD;
     destreg->result.opcode = insn->opcode;
+    destreg->result.is_imm = 0;
     destreg->result.src1 = src1;
     destreg->result.src2 = src2;
     destreg->result.src3 = (uint16_t)other;
@@ -1178,6 +1191,10 @@ static bool make_call_addr(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
         RTLRegister * const destreg = &unit->regs[dest];
         destreg->source = RTLREG_RESULT_NOFOLD;
         destreg->result.opcode = insn->opcode;
+        destreg->result.is_imm = 0;
+        destreg->result.src1 = src1;
+        destreg->result.src2 = src2;
+        destreg->result.src3 = (uint16_t)other;
         mark_live(unit, insn_index, destreg, dest);
     }
     mark_live(unit, insn_index, &unit->regs[src1], src1);
