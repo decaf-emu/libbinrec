@@ -7,7 +7,7 @@
  * NO WARRANTY is provided with this software.
  */
 
-#include "src/rtl.h"
+#include "src/rtl-internal.h"
 #include "tests/common.h"
 
 
@@ -22,7 +22,9 @@ static int add_rtl(RTLUnit *unit)
 }
 
 static const char expected[] =
-    "[info] [RTL] Dropping dead block 1 (1-1)\n"
+    #ifdef RTL_DEBUG_OPTIMIZE
+        "[info] [RTL] Dropping dead block 1 (1-1)\n"
+    #endif
     "    0: RETURN\n"
     "    1: NOP\n"
     "\n"

@@ -15,24 +15,28 @@ static unsigned int opt_flags = BINREC_OPT_BASIC;
 
 static int add_rtl(RTLUnit *unit)
 {
-    int label;
+    int label, reg1;
     EXPECT(label = rtl_alloc_label(unit));
-    EXPECT(rtl_add_insn(unit, RTLOP_RETURN, 0, 0, 0, 0));
+    EXPECT(reg1 = rtl_alloc_register(unit, RTLTYPE_INT32));
+    EXPECT(rtl_add_insn(unit, RTLOP_LOAD_ARG, reg1, 0, 0, 0));
+    EXPECT(rtl_add_insn(unit, RTLOP_GOTO_IF_NZ, 0, reg1, 0, label));
     EXPECT(rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, label));
-    EXPECT(rtl_add_insn(unit, RTLOP_GOTO, 0, 0, 0, label));
+    EXPECT(rtl_add_insn(unit, RTLOP_RETURN, 0, reg1, 0, 0));
 
     return EXIT_SUCCESS;
 }
 
 static const char expected[] =
     #ifdef RTL_DEBUG_OPTIMIZE
-        "[info] [RTL] Dropping dead block 1 (1-2)\n"
+        "[info] [RTL] Dropping branch at 1 to next insn\n"
     #endif
-    "    0: RETURN\n"
-    "    1: LABEL      L1\n"
-    "    2: GOTO       L1\n"
+    "    0: LOAD_ARG   r1, 0\n"
+    "    1: NOP\n"
+    "    2: LABEL      L1\n"
+    "    3: RETURN     r1\n"
     "\n"
-    "Block 0: <none> --> [0,0] --> <none>\n"
+    "Block 0: <none> --> [0,1] --> 1\n"
+    "Block 1: 0 --> [2,3] --> <none>\n"
     ;
 
 #include "tests/rtl-optimize-test.i"

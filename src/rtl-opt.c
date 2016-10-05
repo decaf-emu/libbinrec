@@ -143,8 +143,8 @@ static void rollback_reg_death(
             if (insn->src1 == reg_index) {
               still_used:
 #ifdef RTL_DEBUG_OPTIMIZE
-                log_info(unit->handle, "[RTL] rollback_reg_death: r%d still"
-                         " used at insn %d\n", reg_index, insn_index);
+                log_info(unit->handle, "[RTL] r%d still used at insn %d",
+                         reg_index, insn_index);
 #endif
                 reg->death = insn_index;
                 return;
@@ -199,8 +199,8 @@ static void rollback_reg_death(
 
     /* If we got this far, nothing else uses the register. */
 #ifdef RTL_DEBUG_OPTIMIZE
-    log_info(unit->handle, "[RTL] rollback_reg_death: r%d no longer used,"
-             " setting death = birth\n", reg_index);
+    log_info(unit->handle, "[RTL] r%d no longer used, setting death = birth",
+             reg_index);
 #endif
     reg->death = reg->birth;
 }
@@ -780,10 +780,10 @@ void rtl_opt_decondition(RTLUnit *unit)
                      || (opcode == RTLOP_GOTO_IF_NZ && condition != 0)) {
                         /* Branch always taken: convert to GOTO */
 #ifdef RTL_DEBUG_OPTIMIZE
-                        fprintf(stderr, "[RTL] %u: Branch always taken,"
-                                " convert to GOTO and drop edge %u->%u\n",
-                                block->last_insn, block_index,
-                                block->exits[fallthrough_index]);
+                        log_info(unit->handle, "[RTL] %u: Branch always taken,"
+                                 " convert to GOTO and drop edge %u->%u\n",
+                                 block->last_insn, block_index,
+                                 block->exits[fallthrough_index]);
 #endif
                         insn->opcode = RTLOP_GOTO;
                         rtl_block_remove_edge(unit, block_index,
@@ -791,10 +791,10 @@ void rtl_opt_decondition(RTLUnit *unit)
                     } else {
                         /* Branch never taken: convert to NOP */
 #ifdef RTL_DEBUG_OPTIMIZE
-                        fprintf(stderr, "[RTL] %u: Branch never taken,"
-                                " convert to NOP and drop edge %u->%u\n",
-                                block->last_insn, block_index,
-                                block->exits[fallthrough_index ^ 1]);
+                        log_info(unit->handle, "[RTL] %u: Branch never taken,"
+                                 " convert to NOP and drop edge %u->%u\n",
+                                 block->last_insn, block_index,
+                                 block->exits[fallthrough_index ^ 1]);
 #endif
                         insn->opcode = RTLOP_NOP;
                         insn->src_imm = 0;
@@ -866,8 +866,8 @@ void rtl_opt_drop_dead_branches(RTLUnit *unit)
     ASSERT(unit->regs);
     ASSERT(unit->label_blockmap);
 
-    for (int block_index = 0; block_index < unit->num_blocks; block_index++) {
-        RTLBlock * const block = &unit->blocks[block_index];
+    for (int i = 0; i >= 0; i = unit->blocks[i].next_block) {
+        RTLBlock * const block = &unit->blocks[i];
         if (block->last_insn >= block->first_insn) {
             RTLInsn * const insn = &unit->insns[block->last_insn];
             const RTLOpcode opcode = insn->opcode;
@@ -876,8 +876,8 @@ void rtl_opt_drop_dead_branches(RTLUnit *unit)
               || opcode == RTLOP_GOTO_IF_NZ)
              && unit->label_blockmap[insn->label] == block->next_block) {
 #ifdef RTL_DEBUG_OPTIMIZE
-                fprintf(stderr, "[RTL] %u: Dropping branch to next insn\n",
-                        block->last_insn);
+                log_info(unit->handle, "[RTL] Dropping branch at %d to next"
+                         " insn", block->last_insn);
 #endif
                 if (opcode == RTLOP_GOTO_IF_Z || opcode == RTLOP_GOTO_IF_NZ) {
                     RTLRegister *src1_reg = &unit->regs[insn->src1];
@@ -886,6 +886,8 @@ void rtl_opt_drop_dead_branches(RTLUnit *unit)
                     }
                 }
                 insn->opcode = RTLOP_NOP;
+                insn->src1 = 0;
+                insn->src2 = 0;
                 insn->src_imm = 0;
             }
         }

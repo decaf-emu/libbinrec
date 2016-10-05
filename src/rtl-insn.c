@@ -1061,7 +1061,7 @@ static bool make_label(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
         const uint32_t new_block = unit->num_blocks - 1;
         /* The only ways rtl_block_add_edge() can fail is if the block
          * already has two outgoing edges or the new block is full of
-         * incoming edges. We never add outgoing edges except when
+         * incoming edges.  We never add outgoing edges except when
          * terminating a block, and the new block will have no incoming
          * edges, so this call will always succeed. */
         ASSERT(rtl_block_add_edge(unit, unit->cur_block, new_block));

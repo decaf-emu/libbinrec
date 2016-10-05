@@ -8,7 +8,7 @@
  */
 
 #include "src/common.h"
-#include "src/rtl.h"
+#include "src/rtl-internal.h"
 #include "tests/common.h"
 #include "tests/log-capture.h"
 #include "tests/mem-wrappers.h"

@@ -17,22 +17,23 @@ static int add_rtl(RTLUnit *unit)
 {
     int label;
     EXPECT(label = rtl_alloc_label(unit));
-    EXPECT(rtl_add_insn(unit, RTLOP_RETURN, 0, 0, 0, 0));
-    EXPECT(rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, label));
     EXPECT(rtl_add_insn(unit, RTLOP_GOTO, 0, 0, 0, label));
+    EXPECT(rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, label));
+    EXPECT(rtl_add_insn(unit, RTLOP_RETURN, 0, 0, 0, 0));
 
     return EXIT_SUCCESS;
 }
 
 static const char expected[] =
     #ifdef RTL_DEBUG_OPTIMIZE
-        "[info] [RTL] Dropping dead block 1 (1-2)\n"
+        "[info] [RTL] Dropping branch at 0 to next insn\n"
     #endif
-    "    0: RETURN\n"
+    "    0: NOP\n"
     "    1: LABEL      L1\n"
-    "    2: GOTO       L1\n"
+    "    2: RETURN\n"
     "\n"
-    "Block 0: <none> --> [0,0] --> <none>\n"
+    "Block 0: <none> --> [0,0] --> 1\n"
+    "Block 1: 0 --> [1,2] --> <none>\n"
     ;
 
 #include "tests/rtl-optimize-test.i"
