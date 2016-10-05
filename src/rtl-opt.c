@@ -731,55 +731,20 @@ static inline int fold_one_register(RTLUnit * const unit,
 /*-----------------------------------------------------------------------*/
 
 /**
- * drop_dead_block:  Drop a dead basic block from an RTL unit.  Recursive
- * helper function for rtl_opt_drop_dead_blocks().
+ * visit_block:  Mark the given block as seen and visit all successor
+ * blocks.  Helper function for rtl_opt_drop_dead_blocks().
  *
  * [Parameters]
  *     unit: RTL unit.
  *     block_index: Index of block in unit->blocks[].
  */
-static void drop_dead_block(RTLUnit * const unit, const int block_index)
+static void visit_block(RTLUnit * const unit, const int block_index)
 {
-    ASSERT(unit);
-    ASSERT(unit->blocks);
-    ASSERT(unit->block_seen);
-    ASSERT(block_index < unit->num_blocks);
-    ASSERT(unit->blocks[block_index].entries[0] < 0);
-    ASSERT(unit->blocks[block_index].prev_block >= 0);
-
+    unit->block_seen[block_index] = 1;
     RTLBlock * const block = &unit->blocks[block_index];
-#ifdef RTL_DEBUG_OPTIMIZE
-    char exitbuf[32];
-    if (block->exits[0] < 0) {
-        snprintf(exitbuf, sizeof(exitbuf), "no exits");
-    } else if (block->exits[1] < 0) {
-        snprintf(exitbuf, sizeof(exitbuf), "exits: %d", block->exits[0]);
-    } else {
-        snprintf(exitbuf, sizeof(exitbuf), "exits: %d, %d",
-                 block->exits[0], block->exits[1]);
-    }
-    log_info(unit->handle, "[RTL] Dropping dead block %d (%s)",
-             block_index, exitbuf);
-#endif
-
-    unit->blocks[block->prev_block].next_block = block->next_block;
-    if (block->next_block >= 0) {
-        unit->blocks[block->next_block].prev_block = block->prev_block;
-    }
-
-    while (block->exits[0] >= 0) {
-        const unsigned int to_index = block->exits[0];
-        rtl_block_remove_edge(unit, block_index, 0);
-        if (unit->block_seen[to_index]) {
-            /* We already saw this block and (presumably) skipped it
-             * because it wasn't dead.  Check again now that we've removed
-             * this edge, and if it's now dead, recursively drop it.
-             * There's no danger of infinite recursion since any dead block
-             * has no edges entering into it (and therefore, no block has
-             * exit edges that target it) by definition. */
-            if (unit->blocks[to_index].entries[0] < 0) {
-                drop_dead_block(unit, to_index);
-            }
+    for (int i = 0; i < lenof(block->exits) && block->exits[i] >= 0; i++) {
+        if (!unit->block_seen[block->exits[i]]) {
+            visit_block(unit, block->exits[i]);
         }
     }
 }
@@ -854,26 +819,37 @@ bool rtl_opt_drop_dead_blocks(RTLUnit *unit)
     ASSERT(unit->blocks);
     ASSERT(unit->regs);
 
-    /* Allocate and clear a buffer for "seen" flags */
+    /* Allocate and clear a buffer for "seen" flags. */
     unit->block_seen =
         rtl_malloc(unit, unit->num_blocks * sizeof(*unit->block_seen));
     if (UNLIKELY(!unit->block_seen)) {
-        log_error(unit->handle, "Failed to allocate blocks_seen (%u bytes)",
-                  unit->num_blocks);
+        log_error(unit->handle, "Failed to allocate blocks_seen (%d bytes)",
+                  (int)(unit->num_blocks * sizeof(*unit->block_seen)));
         return false;
     }
+    memset(unit->block_seen, 0, unit->num_blocks * sizeof(*unit->block_seen));
 
-    /* Check each unit in sequence (except the initial unit, which is never
-     * dead even if it has no entry edges) */
-    for (int block_index = 1; block_index < unit->num_blocks; block_index++) {
-        if (unit->blocks[block_index].entries[0] < 0) {
-            drop_dead_block(unit, block_index);
+    /* Recursively visit all blocks reachable from the start block. */
+    visit_block(unit, 0);
+
+    /* Remove all blocks which are not reachable. */
+    for (int i = 0; i >= 0; i = unit->blocks[i].next_block) {
+        RTLBlock * const block = &unit->blocks[i];
+        if (!unit->block_seen[i]) {
+#ifdef RTL_DEBUG_OPTIMIZE
+            log_info(unit->handle, "[RTL] Dropping dead block %d (%d-%d)",
+                     i, block->first_insn, block->last_insn);
+#endif
+            ASSERT(block->prev_block >= 0);
+            unit->blocks[block->prev_block].next_block = block->next_block;
+            if (block->next_block >= 0) {
+                unit->blocks[block->next_block].prev_block = block->prev_block;
+            }
         }
-        unit->block_seen[block_index] = 1;
     }
 
     /* Free the "seen" flag buffer before returning (since the core doesn't
-     * touch this field) */
+     * touch this field). */
     rtl_free(unit, unit->block_seen);
     unit->block_seen = NULL;  // Just for safety.
 

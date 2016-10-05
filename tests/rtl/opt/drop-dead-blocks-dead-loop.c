@@ -15,16 +15,20 @@ static unsigned int opt_flags = BINREC_OPT_BASIC;
 
 static int add_rtl(RTLUnit *unit)
 {
+    int label;
+    EXPECT(label = rtl_alloc_label(unit));
     EXPECT(rtl_add_insn(unit, RTLOP_RETURN, 0, 0, 0, 0));
-    EXPECT(rtl_add_insn(unit, RTLOP_NOP, 0, 0, 0, 0));
+    EXPECT(rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, label));
+    EXPECT(rtl_add_insn(unit, RTLOP_GOTO, 0, 0, 0, label));
 
     return EXIT_SUCCESS;
 }
 
 static const char expected[] =
-    "[info] [RTL] Dropping dead block 1 (1-1)\n"
+    "[info] [RTL] Dropping dead block 1 (1-2)\n"
     "    0: RETURN\n"
-    "    1: NOP\n"
+    "    1: LABEL      L1\n"
+    "    2: GOTO       L1\n"
     "\n"
     "Block 0: <none> --> [0,0] --> <none>\n"
     ;
