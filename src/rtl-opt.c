@@ -855,6 +855,13 @@ bool rtl_opt_drop_dead_blocks(RTLUnit *unit)
             if (block->next_block >= 0) {
                 unit->blocks[block->next_block].prev_block = block->prev_block;
             }
+            /* Remove all exiting edges (required since some edges may go
+             * to non-dead blocks).  Note that we can just iterate on
+             * block->exits[0] since rtl_block_remove_edge() will shift
+             * the array downward after removing the edge. */
+            while (block->exits[0] >= 0) {
+                rtl_block_remove_edge(unit, i, 0);
+            }
         }
     }
 

@@ -323,7 +323,7 @@ struct RTLUnit {
 extern bool rtl_block_add(RTLUnit *unit);
 
 /**
- * rtl_block_add_edge:  Add a new edge between two basic blocks.
+ * rtl_block_add_edge:  Add a new control flow edge between two basic blocks.
  *
  * [Parameters]
  *     unit: RTL unit.
@@ -336,7 +336,7 @@ extern bool rtl_block_add(RTLUnit *unit);
 extern bool rtl_block_add_edge(RTLUnit *unit, int from_index, int to_index);
 
 /**
- * rtl_block_remove_edge:  Remove an edge between two basic blocks.
+ * rtl_block_remove_edge:  Remove a control flow edge between two basic blocks.
  *
  * [Parameters]
  *     unit: RTL unit.
