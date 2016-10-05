@@ -697,7 +697,7 @@ static inline int fold_one_register(RTLUnit * const unit,
     const uint64_t result = fold_constant(unit, reg);
 #ifdef RTL_DEBUG_OPTIMIZE
     log_info(unit->handle, "[RTL] Folded r%d to constant value 0x%"PRIX64" at"
-             " insn %d\n", (int)(reg - unit->regs), result, reg->birth);
+             " insn %d", (int)(reg - unit->regs), result, reg->birth);
 #endif
 
     /* Rewrite the instruction that sets this register into a LOAD_IMM
@@ -767,45 +767,55 @@ void rtl_opt_decondition(RTLUnit *unit)
     for (int block_index = 0; block_index < unit->num_blocks; block_index++) {
         RTLBlock * const block = &unit->blocks[block_index];
         if (block->exits[1] != -1) {
+            /* If the block has multiple exits, the last one must be a
+             * conditional branch. */
+            ASSERT(block->last_insn >= block->first_insn);
             RTLInsn * const insn = &unit->insns[block->last_insn];
             const RTLOpcode opcode = insn->opcode;
-            if (opcode == RTLOP_GOTO_IF_Z || opcode == RTLOP_GOTO_IF_NZ) {
-                const int reg_index = insn->src1;
-                RTLRegister * const condition_reg = &unit->regs[reg_index];
-                if (condition_reg->source == RTLREG_CONSTANT) {
-                    const uint64_t condition = condition_reg->value.i64;
-                    const int fallthrough_index =
-                        (block->exits[0] == block_index+1) ? 0 : 1;
-                    if ((opcode == RTLOP_GOTO_IF_Z && condition == 0)
-                     || (opcode == RTLOP_GOTO_IF_NZ && condition != 0)) {
-                        /* Branch always taken: convert to GOTO */
+            ASSERT(opcode == RTLOP_GOTO_IF_Z || opcode == RTLOP_GOTO_IF_NZ);
+
+            /* See if the branch's condition is constant. */
+            const int reg_index = insn->src1;
+            RTLRegister * const condition_reg = &unit->regs[reg_index];
+            if (condition_reg->source == RTLREG_CONSTANT) {
+                const uint64_t condition = condition_reg->value.i64;
+                const int fallthrough_index =
+                    (block->exits[0] == block_index+1) ? 0 : 1;
+
+                /* Convert the branch to either an unconditional GOTO or
+                 * a NOP depending on the condition value. */
+                if ((opcode == RTLOP_GOTO_IF_Z && condition == 0)
+                 || (opcode == RTLOP_GOTO_IF_NZ && condition != 0)) {
+                    /* Branch always taken: convert to GOTO. */
 #ifdef RTL_DEBUG_OPTIMIZE
-                        log_info(unit->handle, "[RTL] %u: Branch always taken,"
-                                 " convert to GOTO and drop edge %u->%u\n",
-                                 block->last_insn, block_index,
-                                 block->exits[fallthrough_index]);
+                    log_info(unit->handle, "[RTL] Branch at %u always taken,"
+                             " converting to GOTO and dropping edge %u->%u",
+                             block->last_insn, block_index,
+                             block->exits[fallthrough_index]);
 #endif
-                        insn->opcode = RTLOP_GOTO;
-                        rtl_block_remove_edge(unit, block_index,
-                                              fallthrough_index);
-                    } else {
-                        /* Branch never taken: convert to NOP */
+                    insn->opcode = RTLOP_GOTO;
+                    rtl_block_remove_edge(unit, block_index,
+                                          fallthrough_index);
+                } else {
+                    /* Branch never taken: convert to NOP. */
 #ifdef RTL_DEBUG_OPTIMIZE
-                        log_info(unit->handle, "[RTL] %u: Branch never taken,"
-                                 " convert to NOP and drop edge %u->%u\n",
-                                 block->last_insn, block_index,
-                                 block->exits[fallthrough_index ^ 1]);
+                    log_info(unit->handle, "[RTL] Branch at %u never taken,"
+                             " converting to NOP and dropping edge %u->%u",
+                             block->last_insn, block_index,
+                             block->exits[fallthrough_index ^ 1]);
 #endif
-                        insn->opcode = RTLOP_NOP;
-                        insn->src_imm = 0;
-                        rtl_block_remove_edge(unit, block_index,
-                                              fallthrough_index ^ 1);
-                    }
-                    if (condition_reg->death == block->last_insn) {
-                        rollback_reg_death(unit, condition_reg, reg_index);
-                    }
+                    insn->opcode = RTLOP_NOP;
+                    insn->src_imm = 0;
+                    rtl_block_remove_edge(unit, block_index,
+                                          fallthrough_index ^ 1);
                 }
-            }  // if (opcode == RTLOP_GOTO_IF_Z || opcode == RTLOP_GOTO_IF_NZ)
+
+                /* If the condition register dies here, roll its death
+                 * back to its previous use. */
+                if (condition_reg->death == block->last_insn) {
+                    rollback_reg_death(unit, condition_reg, reg_index);
+                }
+            }  // if (condition_reg->source == RTLREG_CONSTANT)
         }  // if (block->exits[1] != -1)
     }  // for (block_index = 0; block_index < unit->num_blocks; block_index++)
 }
