@@ -29,7 +29,7 @@ static int add_rtl(RTLUnit *unit)
 
 static const char expected[] =
     #ifdef RTL_DEBUG_OPTIMIZE
-        "[info] [RTL] Branch at 1 always taken, converting to GOTO and dropping edge 0->1\n"
+        "[info] Branch at 1 always taken, converting to GOTO and dropping edge 0->1\n"
     #endif
     "    0: LOAD_IMM   r1, 1\n"
     "    1: GOTO       L1\n"

@@ -29,7 +29,7 @@ static int add_rtl(RTLUnit *unit)
 
 static const char expected[] =
     #ifdef RTL_DEBUG_OPTIMIZE
-        "[info] [RTL] Branch at 1 never taken, converting to NOP and dropping edge 0->2\n"
+        "[info] Branch at 1 never taken, converting to NOP and dropping edge 0->2\n"
     #endif
     "    0: LOAD_IMM   r1, 0\n"
     "    1: NOP\n"

@@ -81,15 +81,15 @@ static inline uint64_t reg_value_i64(const RTLRegister * const reg)
  *
  * [Parameters]
  *     unit: RTL unit.
- *     reg: Register to attempt to eliminate.
- *     reg_index: Index of register in unit->regs[].
+ *     reg_index: Index of register to modify.
  */
-static void rollback_reg_death(
-    RTLUnit * const unit, RTLRegister * const reg, const int reg_index)
+static void rollback_reg_death(RTLUnit * const unit, const int reg_index)
 {
     ASSERT(unit);
-    ASSERT(reg);
-    ASSERT(reg->live);
+    ASSERT(reg_index);
+    ASSERT(unit->regs[reg_index].live);
+
+    RTLRegister * const reg = &unit->regs[reg_index];
 
     for (int insn_index = reg->death-1; insn_index > reg->birth; insn_index--) {
         const RTLInsn * const insn = &unit->insns[insn_index];
@@ -143,7 +143,7 @@ static void rollback_reg_death(
             if (insn->src1 == reg_index) {
               still_used:
 #ifdef RTL_DEBUG_OPTIMIZE
-                log_info(unit->handle, "[RTL] r%d still used at insn %d",
+                log_info(unit->handle, "r%d still used at insn %d",
                          reg_index, insn_index);
 #endif
                 reg->death = insn_index;
@@ -199,7 +199,7 @@ static void rollback_reg_death(
 
     /* If we got this far, nothing else uses the register. */
 #ifdef RTL_DEBUG_OPTIMIZE
-    log_info(unit->handle, "[RTL] r%d no longer used, setting death = birth",
+    log_info(unit->handle, "r%d no longer used, setting death = birth",
              reg_index);
 #endif
     reg->death = reg->birth;
@@ -211,6 +211,12 @@ static void rollback_reg_death(
  * fold_constant:  Perform the operation specified by reg->result and
  * return the result value in 64 bits (bitcast from floating-point if
  * necessary).  Helper for fold_one_register.
+ *
+ * [Parameters]
+ *     unit: RTLUnit to operate on.
+ *     reg: Register to fold.
+ * [Return value]
+ *     Register value.
  */
 static inline uint64_t fold_constant(RTLUnit * const unit,
                                      RTLRegister * const reg)
@@ -222,12 +228,6 @@ static inline uint64_t fold_constant(RTLUnit * const unit,
 
       case RTLOP_MOVE:
         return reg_value_i64(src1);
-        break;
-
-      case RTLOP_SELECT:
-        return (unit->regs[reg->result.src3].value.i64
-                ? src1->value.i64 : src2->value.i64);
-        break;
 
       case RTLOP_SCAST:
         if (src1->type == RTLTYPE_INT32) {
@@ -235,7 +235,6 @@ static inline uint64_t fold_constant(RTLUnit * const unit,
         } else {
             return src1->value.i64;
         }
-        break;
 
       case RTLOP_ZCAST:
         if (src1->type == RTLTYPE_INT32) {
@@ -243,15 +242,12 @@ static inline uint64_t fold_constant(RTLUnit * const unit,
         } else {
             return src1->value.i64;
         }
-        break;
 
       case RTLOP_SEXT8:
         return (int8_t)src1->value.i64;
-        break;
 
       case RTLOP_SEXT16:
-        return (int8_t)src1->value.i64;
-        break;
+        return (int16_t)src1->value.i64;
 
       case RTLOP_ADD:
         if (reg->type == RTLTYPE_INT32) {
@@ -259,7 +255,6 @@ static inline uint64_t fold_constant(RTLUnit * const unit,
         } else {
             return src1->value.i64 + src2->value.i64;
         }
-        break;
 
       case RTLOP_SUB:
         if (reg->type == RTLTYPE_INT32) {
@@ -267,7 +262,6 @@ static inline uint64_t fold_constant(RTLUnit * const unit,
         } else {
             return src1->value.i64 - src2->value.i64;
         }
-        break;
 
       case RTLOP_NEG:
         if (reg->type == RTLTYPE_INT32) {
@@ -275,7 +269,6 @@ static inline uint64_t fold_constant(RTLUnit * const unit,
         } else {
             return -src1->value.i64;
         }
-        break;
 
       case RTLOP_MUL:
         if (reg->type == RTLTYPE_INT32) {
@@ -283,7 +276,6 @@ static inline uint64_t fold_constant(RTLUnit * const unit,
         } else {
             return src1->value.i64 * src2->value.i64;
         }
-        break;
 
       case RTLOP_MULHU:
         if (reg->type == RTLTYPE_INT32) {
@@ -292,7 +284,6 @@ static inline uint64_t fold_constant(RTLUnit * const unit,
         } else {
             return mulh64(src1->value.i64, src2->value.i64, false);
         }
-        break;
 
       case RTLOP_MULHS:
         if (reg->type == RTLTYPE_INT32) {
@@ -301,63 +292,115 @@ static inline uint64_t fold_constant(RTLUnit * const unit,
         } else {
             return mulh64(src1->value.i64, src2->value.i64, true);
         }
-        break;
 
       case RTLOP_DIVU:
         if (reg->type == RTLTYPE_INT32) {
-            return ((uint32_t)src2->value.i64
-                    ? (uint32_t)src1->value.i64 / (uint32_t)src2->value.i64 : 0);
+            if (UNLIKELY(!(uint32_t)src2->value.i64)) {
+                log_warning(unit->handle, "r%d: Treating constant division"
+                            " by zero as 0", (int)(reg - unit->regs));
+                return 0;
+            } else {
+                return (uint32_t)src1->value.i64 / (uint32_t)src2->value.i64;
+            }
         } else {
-            return (src2->value.i64 ? src1->value.i64 / src2->value.i64 : 0);
+            if (UNLIKELY(!src2->value.i64)) {
+                log_warning(unit->handle, "r%d: Treating constant division"
+                            " by zero as 0", (int)(reg - unit->regs));
+                return 0;
+            } else {
+                return src1->value.i64 / src2->value.i64;
+            }
         }
-        break;
 
       case RTLOP_DIVS:
         if (reg->type == RTLTYPE_INT32) {
-            return ((uint32_t)src2->value.i64
-                    && !((uint32_t)src1->value.i64 == 1u<<31
-                         && (int32_t)src2->value.i64 == -1)
-                    ? (int32_t)src1->value.i64 / (int32_t)src2->value.i64 : 0);
+            if (UNLIKELY(!(uint32_t)src2->value.i64)) {
+                log_warning(unit->handle, "r%d: Treating constant division"
+                            " by zero as 0", (int)(reg - unit->regs));
+                return 0;
+            } else if (UNLIKELY((uint32_t)src1->value.i64 == 1u<<31
+                                && (int32_t)src2->value.i64 == -1)) {
+                log_warning(unit->handle, "r%d: Treating overflow in"
+                            " constant signed division as -1<<31",
+                            (int)(reg - unit->regs));
+                return 0x80000000u;
+            } else {
+                return (int32_t)src1->value.i64 / (int32_t)src2->value.i64;
+            }
         } else {
-            return (src2->value.i64
-                    && !(src1->value.i64 == UINT64_C(1)<<63
-                         && src2->value.i64 == UINT64_C(-1))
-                    ? (int64_t)src1->value.i64 / (int64_t)src2->value.i64 : 0);
+            if (UNLIKELY(!src2->value.i64)) {
+                log_warning(unit->handle, "r%d: Treating constant division"
+                            " by zero as 0", (int)(reg - unit->regs));
+                return 0;
+            } else if (UNLIKELY(src1->value.i64 == UINT64_C(1)<<63
+                                && src2->value.i64 == UINT64_C(-1))) {
+                log_warning(unit->handle, "r%d: Treating overflow in"
+                            " constant signed division as -1<<63",
+                            (int)(reg - unit->regs));
+                return UINT64_C(1)<<63;
+            } else {
+                return (int64_t)src1->value.i64 / (int64_t)src2->value.i64;
+            }
         }
-        break;
 
       case RTLOP_MODU:
         if (reg->type == RTLTYPE_INT32) {
-            return ((uint32_t)src2->value.i64
-                    ? (uint32_t)src1->value.i64 % (uint32_t)src2->value.i64 : 0);
+            if (UNLIKELY(!(uint32_t)src2->value.i64)) {
+                log_warning(unit->handle, "r%d: Treating constant division"
+                            " by zero as 0", (int)(reg - unit->regs));
+                return 0;
+            } else {
+                return (uint32_t)src1->value.i64 % (uint32_t)src2->value.i64;
+            }
         } else {
-            return (src2->value.i64 ? src1->value.i64 % src2->value.i64 : 0);
+            if (UNLIKELY(!src2->value.i64)) {
+                log_warning(unit->handle, "r%d: Treating constant division"
+                            " by zero as 0", (int)(reg - unit->regs));
+                return 0;
+            } else {
+                return src1->value.i64 % src2->value.i64;
+            }
         }
-        break;
 
       case RTLOP_MODS:
         if (reg->type == RTLTYPE_INT32) {
-            return (abs((int32_t)src2->value.i64) > 1
-                    ? (int32_t)src1->value.i64 % (int32_t)src2->value.i64 : 0);
+            if (UNLIKELY(!(uint32_t)src2->value.i64)) {
+                log_warning(unit->handle, "r%d: Treating constant division"
+                            " by zero as 0", (int)(reg - unit->regs));
+                return 0;
+            } else if (UNLIKELY((uint32_t)src1->value.i64 == 1u<<31
+                                && (int32_t)src2->value.i64 == -1)) {
+                log_warning(unit->handle, "r%d: Treating overflow in constant"
+                            " signed division as 0", (int)(reg - unit->regs));
+                return 0;
+            } else {
+                return (int32_t)src1->value.i64 % (int32_t)src2->value.i64;
+            }
         } else {
-            return (llabs((int64_t)src2->value.i64) > 1
-                    ? (int64_t)src1->value.i64 % (int64_t)src2->value.i64 : 0);
+            if (UNLIKELY(!src2->value.i64)) {
+                log_warning(unit->handle, "r%d: Treating constant division"
+                            " by zero as 0", (int)(reg - unit->regs));
+                return 0;
+            } else if (UNLIKELY(src1->value.i64 == UINT64_C(1)<<63
+                                && src2->value.i64 == UINT64_C(-1))) {
+                log_warning(unit->handle, "r%d: Treating overflow in constant"
+                            " signed division as 0", (int)(reg - unit->regs));
+                return 0;
+            } else {
+                return (int64_t)src1->value.i64 % (int64_t)src2->value.i64;
+            }
         }
-        break;
 
       case RTLOP_AND:
         /* AND, OR, and XOR always return the same number of bits as the
          * input, so we don't need to explicitly cast down to uint32_t. */
         return src1->value.i64 & src2->value.i64;
-        break;
 
       case RTLOP_OR:
         return src1->value.i64 | src2->value.i64;
-        break;
 
       case RTLOP_XOR:
         return src1->value.i64 ^ src2->value.i64;
-        break;
 
       case RTLOP_NOT:
         if (reg->type == RTLTYPE_INT32) {
@@ -365,7 +408,6 @@ static inline uint64_t fold_constant(RTLUnit * const unit,
         } else {
             return ~src1->value.i64;
         }
-        break;
 
       case RTLOP_SLL:
         if (reg->type == RTLTYPE_INT32) {
@@ -373,7 +415,6 @@ static inline uint64_t fold_constant(RTLUnit * const unit,
         } else {
             return src1->value.i64 << src2->value.i64;
         }
-        break;
 
       case RTLOP_SRL:
         if (reg->type == RTLTYPE_INT32) {
@@ -381,7 +422,6 @@ static inline uint64_t fold_constant(RTLUnit * const unit,
         } else {
             return src1->value.i64 >> src2->value.i64;
         }
-        break;
 
       case RTLOP_SRA:
         if (reg->type == RTLTYPE_INT32) {
@@ -389,7 +429,6 @@ static inline uint64_t fold_constant(RTLUnit * const unit,
         } else {
             return (int64_t)src1->value.i64 >> src2->value.i64;
         }
-        break;
 
       case RTLOP_ROL:
         if (reg->type == RTLTYPE_INT32) {
@@ -397,7 +436,6 @@ static inline uint64_t fold_constant(RTLUnit * const unit,
         } else {
             return ror64(src1->value.i64, -(int)src2->value.i64);
         }
-        break;
 
       case RTLOP_ROR:
         if (reg->type == RTLTYPE_INT32) {
@@ -405,7 +443,6 @@ static inline uint64_t fold_constant(RTLUnit * const unit,
         } else {
             return ror64(src1->value.i64, (int)src2->value.i64);
         }
-        break;
 
       case RTLOP_CLZ:
         if (reg->type == RTLTYPE_INT32) {
@@ -413,7 +450,6 @@ static inline uint64_t fold_constant(RTLUnit * const unit,
         } else {
             return clz64(src1->value.i64);
         }
-        break;
 
       case RTLOP_BSWAP:
         if (reg->type == RTLTYPE_INT32) {
@@ -421,7 +457,6 @@ static inline uint64_t fold_constant(RTLUnit * const unit,
         } else {
             return bswap64(src1->value.i64);
         }
-        break;
 
       case RTLOP_SEQ:
         if (reg->type == RTLTYPE_INT32) {
@@ -429,7 +464,6 @@ static inline uint64_t fold_constant(RTLUnit * const unit,
         } else {
             return (src1->value.i64 == src2->value.i64);
         }
-        break;
 
       case RTLOP_SLTU:
         if (reg->type == RTLTYPE_INT32) {
@@ -437,7 +471,6 @@ static inline uint64_t fold_constant(RTLUnit * const unit,
         } else {
             return (src1->value.i64 < src2->value.i64);
         }
-        break;
 
       case RTLOP_SLTS:
         if (reg->type == RTLTYPE_INT32) {
@@ -445,7 +478,6 @@ static inline uint64_t fold_constant(RTLUnit * const unit,
         } else {
             return ((int64_t)src1->value.i64 < (int64_t)src2->value.i64);
         }
-        break;
 
       case RTLOP_SGTU:
         if (reg->type == RTLTYPE_INT32) {
@@ -453,7 +485,6 @@ static inline uint64_t fold_constant(RTLUnit * const unit,
         } else {
             return (src1->value.i64 > src2->value.i64);
         }
-        break;
 
       case RTLOP_SGTS:
         if (reg->type == RTLTYPE_INT32) {
@@ -461,7 +492,6 @@ static inline uint64_t fold_constant(RTLUnit * const unit,
         } else {
             return ((int64_t)src1->value.i64 > (int64_t)src2->value.i64);
         }
-        break;
 
       case RTLOP_BFEXT:
         if (reg->type == RTLTYPE_INT32) {
@@ -471,7 +501,6 @@ static inline uint64_t fold_constant(RTLUnit * const unit,
             return ((src1->value.i64 >> reg->result.start)
                     & ((UINT64_C(1) << reg->result.count) - 1));
         }
-        return 1;
 
       case RTLOP_BFINS:
         if (reg->type == RTLTYPE_INT32) {
@@ -485,7 +514,6 @@ static inline uint64_t fold_constant(RTLUnit * const unit,
             return (src1->value.i64 & ~mask)
                  | ((src2->value.i64 << reg->result.start) & mask);
         }
-        return 1;
 
       case RTLOP_ADDI:
         if (reg->type == RTLTYPE_INT32) {
@@ -493,7 +521,6 @@ static inline uint64_t fold_constant(RTLUnit * const unit,
         } else {
             return src1->value.i64 + reg->result.src_imm;
         }
-        break;
 
       case RTLOP_MULI:
         if (reg->type == RTLTYPE_INT32) {
@@ -501,7 +528,6 @@ static inline uint64_t fold_constant(RTLUnit * const unit,
         } else {
             return src1->value.i64 * reg->result.src_imm;
         }
-        break;
 
       case RTLOP_ANDI:
         /* Unlike the register-register variant, we have to handle int32
@@ -511,7 +537,6 @@ static inline uint64_t fold_constant(RTLUnit * const unit,
         } else {
             return src1->value.i64 & (uint64_t)reg->result.src_imm;
         }
-        break;
 
       case RTLOP_ORI:
         if (reg->type == RTLTYPE_INT32) {
@@ -519,7 +544,6 @@ static inline uint64_t fold_constant(RTLUnit * const unit,
         } else {
             return src1->value.i64 | (uint64_t)reg->result.src_imm;
         }
-        break;
 
       case RTLOP_XORI:
         if (reg->type == RTLTYPE_INT32) {
@@ -527,7 +551,6 @@ static inline uint64_t fold_constant(RTLUnit * const unit,
         } else {
             return src1->value.i64 ^ (uint64_t)reg->result.src_imm;
         }
-        break;
 
       case RTLOP_SLLI:
         if (reg->type == RTLTYPE_INT32) {
@@ -535,7 +558,6 @@ static inline uint64_t fold_constant(RTLUnit * const unit,
         } else {
             return src1->value.i64 << reg->result.src_imm;
         }
-        break;
 
       case RTLOP_SRLI:
         if (reg->type == RTLTYPE_INT32) {
@@ -543,7 +565,6 @@ static inline uint64_t fold_constant(RTLUnit * const unit,
         } else {
             return src1->value.i64 >> reg->result.src_imm;
         }
-        break;
 
       case RTLOP_SRAI:
         if (reg->type == RTLTYPE_INT32) {
@@ -551,7 +572,6 @@ static inline uint64_t fold_constant(RTLUnit * const unit,
         } else {
             return (int64_t)src1->value.i64 >> reg->result.src_imm;
         }
-        break;
 
       case RTLOP_RORI:
         if (reg->type == RTLTYPE_INT32) {
@@ -559,7 +579,6 @@ static inline uint64_t fold_constant(RTLUnit * const unit,
         } else {
             return ror64(src1->value.i64, reg->result.src_imm);
         }
-        break;
 
       case RTLOP_SEQI:
         if (reg->type == RTLTYPE_INT32) {
@@ -567,7 +586,6 @@ static inline uint64_t fold_constant(RTLUnit * const unit,
         } else {
             return (src1->value.i64 == (uint64_t)reg->result.src_imm);
         }
-        break;
 
       case RTLOP_SLTUI:
         if (reg->type == RTLTYPE_INT32) {
@@ -575,7 +593,6 @@ static inline uint64_t fold_constant(RTLUnit * const unit,
         } else {
             return (src1->value.i64 < (uint64_t)reg->result.src_imm);
         }
-        break;
 
       case RTLOP_SLTSI:
         if (reg->type == RTLTYPE_INT32) {
@@ -583,7 +600,6 @@ static inline uint64_t fold_constant(RTLUnit * const unit,
         } else {
             return ((int64_t)src1->value.i64 < (int64_t)reg->result.src_imm);
         }
-        break;
 
       case RTLOP_SGTUI:
         if (reg->type == RTLTYPE_INT32) {
@@ -591,7 +607,6 @@ static inline uint64_t fold_constant(RTLUnit * const unit,
         } else {
             return (src1->value.i64 > (uint64_t)reg->result.src_imm);
         }
-        break;
 
       case RTLOP_SGTSI:
         if (reg->type == RTLTYPE_INT32) {
@@ -599,7 +614,6 @@ static inline uint64_t fold_constant(RTLUnit * const unit,
         } else {
             return ((int64_t)src1->value.i64 > (int64_t)reg->result.src_imm);
         }
-        break;
 
       /* The remainder will never appear with RTLREG_RESULT, but list them
        * individually rather than using a default case so the compiler will
@@ -608,6 +622,7 @@ static inline uint64_t fold_constant(RTLUnit * const unit,
       case RTLOP_NOP:
       case RTLOP_SET_ALIAS:
       case RTLOP_GET_ALIAS:
+      case RTLOP_SELECT:  // Reduced to MOVE if foldable.
       case RTLOP_ATOMIC_INC:
       case RTLOP_CMPXCHG:
       case RTLOP_LOAD_IMM:
@@ -644,11 +659,230 @@ static inline uint64_t fold_constant(RTLUnit * const unit,
 /*-----------------------------------------------------------------------*/
 
 /**
- * fold_one_register:  Attempt to perform constant folding on a register.
- * The register must be of type RTLREG_RESULT.
+ * convert_to_regimm:  Convert the register-register operation which sets
+ * the given register to a register-immediate operation, if possible.  On
+ * success, the register's result field is updated with the appropriate
+ * opcode, register, and immediate values.  Helper for fold_one_register().
  *
- * This routine calls itself recursively, but it is declared inline anyway
- * to optimize the outer loop in rtl_opt_fold_constants().
+ * [Parameters]
+ *     unit: RTLUnit to operate on.
+ *     reg: Register to modify.
+ * [Return value]
+ *     True if the register's operation was modified, false if not.
+ */
+static inline bool convert_to_regimm(RTLUnit * const unit,
+                                     RTLRegister * const reg)
+{
+    ASSERT(!reg->result.is_imm);
+    ASSERT(reg->result.src2);
+    const RTLOpcode opcode = reg->result.opcode;
+    const int src1 = reg->result.src1;
+    const int src2 = reg->result.src2;
+    RTLRegister * const src1_reg = &unit->regs[src1];
+    RTLRegister * const src2_reg = &unit->regs[src2];
+
+    uint64_t imm64;
+    bool constant_is_src2;
+    if (src1_reg->source == RTLREG_CONSTANT) {
+        imm64 = reg_value_i64(src1_reg);
+        constant_is_src2 = false;
+    } else {
+        ASSERT(src2_reg->source == RTLREG_CONSTANT);
+        imm64 = reg_value_i64(src2_reg);
+        constant_is_src2 = true;
+    }
+    if (reg->type != RTLTYPE_INT32
+     && imm64 + UINT64_C(0x80000000) >= UINT64_C(0x100000000)) {
+        return false;  // Doesn't fit in the immediate field.
+    }
+    int32_t imm = imm64;
+
+    switch (opcode) {
+
+      case RTLOP_ADD:
+        reg->result.opcode = RTLOP_ADDI;
+        break;
+
+      case RTLOP_SUB:
+        if (!constant_is_src2) {
+            return false;  // "const - reg" can't be converted to a single op.
+        } else if (reg->type != RTLTYPE_INT32
+                   && imm64 == UINT64_C(-0x80000000)) {
+            return false;  // Negated value would be out of range.
+        }
+        reg->result.opcode = RTLOP_ADDI;
+        imm = -imm;
+        break;
+
+      case RTLOP_MUL:
+        reg->result.opcode = RTLOP_MULI;
+        break;
+
+      case RTLOP_AND:
+        reg->result.opcode = RTLOP_ANDI;
+        break;
+
+      case RTLOP_OR:
+        reg->result.opcode = RTLOP_ORI;
+        break;
+
+      case RTLOP_XOR:
+        reg->result.opcode = RTLOP_XORI;
+        break;
+
+      case RTLOP_SLL:
+        if (!constant_is_src2) {
+            return false;
+        }
+        reg->result.opcode = RTLOP_SLLI;
+        break;
+
+      case RTLOP_SRL:
+        if (!constant_is_src2) {
+            return false;
+        }
+        reg->result.opcode = RTLOP_SRLI;
+        break;
+
+      case RTLOP_SRA:
+        if (!constant_is_src2) {
+            return false;
+        }
+        reg->result.opcode = RTLOP_SRAI;
+        break;
+
+      case RTLOP_ROL:
+        if (!constant_is_src2) {
+            return false;
+        }
+        reg->result.opcode = RTLOP_RORI;
+        /* We don't care if this is MIN_INT, since only the low bits matter. */
+        imm = -imm;
+        break;
+
+      case RTLOP_ROR:
+        if (!constant_is_src2) {
+            return false;
+        }
+        reg->result.opcode = RTLOP_RORI;
+        break;
+
+      case RTLOP_SEQ:
+        reg->result.opcode = RTLOP_SEQI;
+        break;
+
+      case RTLOP_SLTU:
+        if (constant_is_src2) {
+            reg->result.opcode = RTLOP_SLTUI;
+        } else {
+            reg->result.opcode = RTLOP_SGTUI;
+        }
+        break;
+
+      case RTLOP_SLTS:
+        if (constant_is_src2) {
+            reg->result.opcode = RTLOP_SLTSI;
+        } else {
+            reg->result.opcode = RTLOP_SGTSI;
+        }
+        break;
+
+      case RTLOP_SGTU:
+        if (constant_is_src2) {
+            reg->result.opcode = RTLOP_SGTUI;
+        } else {
+            reg->result.opcode = RTLOP_SLTUI;
+        }
+        break;
+
+      case RTLOP_SGTS:
+        if (constant_is_src2) {
+            reg->result.opcode = RTLOP_SGTSI;
+        } else {
+            reg->result.opcode = RTLOP_SLTSI;
+        }
+        break;
+
+      /* The remainder either never appear with RTLREG_RESULT, have only
+       * one operand, or have no register-immediate equivalent. */
+      case RTLOP_NOP:
+      case RTLOP_SET_ALIAS:
+      case RTLOP_GET_ALIAS:
+      case RTLOP_MOVE:
+      case RTLOP_SELECT:
+      case RTLOP_SCAST:
+      case RTLOP_ZCAST:
+      case RTLOP_SEXT8:
+      case RTLOP_SEXT16:
+      case RTLOP_NEG:
+      case RTLOP_MULHU:
+      case RTLOP_MULHS:
+      case RTLOP_DIVU:
+      case RTLOP_DIVS:
+      case RTLOP_MODU:
+      case RTLOP_MODS:
+      case RTLOP_NOT:
+      case RTLOP_CLZ:
+      case RTLOP_BSWAP:
+      case RTLOP_BFEXT:
+      case RTLOP_BFINS:
+      case RTLOP_ADDI:
+      case RTLOP_MULI:
+      case RTLOP_ANDI:
+      case RTLOP_ORI:
+      case RTLOP_XORI:
+      case RTLOP_SLLI:
+      case RTLOP_SRLI:
+      case RTLOP_SRAI:
+      case RTLOP_RORI:
+      case RTLOP_SEQI:
+      case RTLOP_SLTUI:
+      case RTLOP_SLTSI:
+      case RTLOP_SGTUI:
+      case RTLOP_SGTSI:
+      case RTLOP_ATOMIC_INC:
+      case RTLOP_CMPXCHG:
+      case RTLOP_LOAD_IMM:
+      case RTLOP_LOAD_ARG:
+      case RTLOP_LOAD:
+      case RTLOP_LOAD_U8:
+      case RTLOP_LOAD_S8:
+      case RTLOP_LOAD_U16:
+      case RTLOP_LOAD_S16:
+      case RTLOP_LOAD_BR:
+      case RTLOP_LOAD_U16_BR:
+      case RTLOP_LOAD_S16_BR:
+      case RTLOP_STORE:
+      case RTLOP_STORE_I8:
+      case RTLOP_STORE_I16:
+      case RTLOP_STORE_BR:
+      case RTLOP_STORE_I16_BR:
+      case RTLOP_LABEL:
+      case RTLOP_GOTO:
+      case RTLOP_GOTO_IF_Z:
+      case RTLOP_GOTO_IF_NZ:
+      case RTLOP_CALL_ADDR:
+      case RTLOP_RETURN:
+      case RTLOP_ILLEGAL:
+        return false;
+
+    }  // switch ((RTLOpcode)reg->result.opcode)
+
+    /* Anything that breaks out of the switch (instead of returning false)
+     * is a successful conversion. */
+    ASSERT(reg->result.opcode != opcode);
+    reg->result.is_imm = true;
+    reg->result.src1 = constant_is_src2 ? src1 : src2;
+    reg->result.src_imm = imm;
+    return true;
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
+ * fold_one_register:  Attempt to perform constant folding on a register.
+ * The register must be of type RTLREG_RESULT; all operands are assumed
+ * to have been folded if possible.
  *
  * [Parameters]
  *     unit: RTLUnit to operate on.
@@ -656,76 +890,113 @@ static inline uint64_t fold_constant(RTLUnit * const unit,
  * [Return value]
  *     True if constant folding was performed, false if not.
  */
-static inline int fold_one_register(RTLUnit * const unit,
-                                    RTLRegister * const reg)
+static inline void fold_one_register(RTLUnit * const unit,
+                                     RTLRegister * const reg)
 {
     ASSERT(unit);
     ASSERT(reg);
     ASSERT(reg->live);
     ASSERT(reg->source == RTLREG_RESULT);
 
-    /* Flag the register as not foldable for the moment, to avoid infinite
-     * recursion in case invalid code creates register dependency loops. */
+    RTLInsn * const birth_insn = &unit->insns[reg->birth];
+
+    /* Flag the register as not foldable by default. */
     reg->source = RTLREG_RESULT_NOFOLD;
 
-    /* See if the operands are constant, folding them if necessary. */
-    RTLRegister * const src1 = &unit->regs[reg->result.src1];
-    RTLRegister * const src2 = &unit->regs[reg->result.src2];
-    if (src1->source != RTLREG_CONSTANT
-     && !(src1->source == RTLREG_RESULT
-          && fold_one_register(unit, src1))) {
-        return false;  // Operand 1 wasn't constant.
-    }
-    if (!reg->result.is_imm
-     && reg->result.src2 != 0  // In case it's a 1-operand instruction.
-     && src2->source != RTLREG_CONSTANT
-     && !(src2->source == RTLREG_RESULT
-          && fold_one_register(unit, src2))) {
-        return false;  // Operand 2 wasn't constant.
-    }
+    /* Convert SELECT with a constant condition operand to MOVE.  The MOVE
+     * will be folded in turn if possible. */
     if (reg->result.opcode == RTLOP_SELECT) {
-        RTLRegister * const src3 = &unit->regs[reg->result.src3];
-        if (src3->source != RTLREG_CONSTANT
-         && !(src3->source == RTLREG_RESULT
-              && fold_one_register(unit, src3))) {
-            return false;  // Operand 3 wasn't constant.
+        const int src1 = reg->result.src1;
+        const int src2 = reg->result.src2;
+        const int src3 = reg->result.src3;
+        if (unit->regs[src3].source != RTLREG_CONSTANT) {
+            return;  // Can't fold anything if the condition isn't constant.
         }
-    }
-
-    /* All operands are constants, so perform the operation now and convert
-     * the register to a constant. */
-    const uint64_t result = fold_constant(unit, reg);
+        const bool condition = (unit->regs[reg->result.src3].value.i64 != 0);
+        birth_insn->opcode = RTLOP_MOVE;
+        if (!condition) {
+            birth_insn->src1 = src2;
+            reg->result.src1 = src2;
+        }
+        birth_insn->src2 = 0;
+        birth_insn->src3 = 0;
+        reg->result.opcode = RTLOP_MOVE;
+        reg->result.src2 = 0;
+        reg->result.src3 = 0;
 #ifdef RTL_DEBUG_OPTIMIZE
-    log_info(unit->handle, "[RTL] Folded r%d to constant value 0x%"PRIX64" at"
-             " insn %d", (int)(reg - unit->regs), result, reg->birth);
+        log_info(unit->handle, "Reduced r%d SELECT (always %s) to MOVE from"
+                 " r%d at insn %d", (int)(reg - unit->regs),
+                 condition ? "true" : "false", reg->result.src1, reg->birth);
 #endif
-
-    /* Rewrite the instruction that sets this register into a LOAD_IMM
-     * with the result we calculated. */
-    unit->insns[reg->birth].opcode = RTLOP_LOAD_IMM;
-    unit->insns[reg->birth].src1 = 0;
-    unit->insns[reg->birth].src2 = 0;
-    unit->insns[reg->birth].src_imm = result;
-
-    /* Update death times of the source registers as appropriate. */
-    if (src1->death == reg->birth) {
-        rollback_reg_death(unit, src1, reg->result.src1);
-    }
-    if (!reg->result.is_imm && reg->result.src2 != 0
-     && src2->death == reg->birth) {
-        rollback_reg_death(unit, src2, reg->result.src2);
-    }
-    if (reg->result.opcode == RTLOP_SELECT) {
-        RTLRegister * const src3 = &unit->regs[reg->result.src3];
-        if (src3->death == reg->birth) {
-            rollback_reg_death(unit, src3, reg->result.src3);
+        if (!condition && unit->regs[src1].death == reg->birth) {
+            rollback_reg_death(unit, src1);
+        }
+        if (condition && unit->regs[src2].death == reg->birth) {
+            rollback_reg_death(unit, src2);
+        }
+        if (unit->regs[src3].death == reg->birth) {
+            rollback_reg_death(unit, src3);
         }
     }
 
-    /* Constant folding was successful. */
-    reg->source = RTLREG_CONSTANT;
-    reg->value.i64 = result;
-    return true;
+    /* Fold the register to a constant, if possible.  If one of the two
+     * operands is constant but the other is not, convert the instruction
+     * to its equivalent register-immediate instruction if one exists. */
+    const int src1 = reg->result.src1;
+    const int src2 = reg->result.is_imm ? 0 : reg->result.src2;
+    const bool src1_is_constant = (unit->regs[src1].source == RTLREG_CONSTANT);
+    const bool src2_is_constant = (unit->regs[src2].source == RTLREG_CONSTANT);
+    bool folded = false;
+    if (src1_is_constant && (!src2 || src2_is_constant)) {
+        reg->source = RTLREG_CONSTANT;
+        reg->value.i64 = fold_constant(unit, reg);
+        if (reg->type == RTLTYPE_INT32) {
+            reg->value.i64 = (uint32_t)reg->value.i64;
+        }
+        birth_insn->opcode = RTLOP_LOAD_IMM;
+        birth_insn->src1 = 0;
+        birth_insn->src2 = 0;
+        birth_insn->src_imm = reg->value.i64;
+#ifdef RTL_DEBUG_OPTIMIZE
+        char value_str[20];
+        if (reg->type == RTLTYPE_INT32
+         && (uint32_t)reg->value.i64+0x8000 < 0x10000) {
+            snprintf(value_str, sizeof(value_str), "%d", (int)reg->value.i64);
+        } else {
+            snprintf(value_str, sizeof(value_str), "0x%"PRIX64,
+                     reg->value.i64);
+        }
+        log_info(unit->handle, "Folded r%d to constant value %s at insn %d",
+                 (int)(reg - unit->regs), value_str, reg->birth);
+#endif
+        folded = true;
+    } else if (src1_is_constant || (src2 && src2_is_constant)) {
+        if (convert_to_regimm(unit, reg)) {
+            ASSERT(reg->result.is_imm);
+            birth_insn->opcode = reg->result.opcode;
+            birth_insn->src1 = reg->result.src1;
+            birth_insn->src2 = 0;
+            birth_insn->src_imm = reg->result.src_imm;
+#ifdef RTL_DEBUG_OPTIMIZE
+            log_info(unit->handle, "Reduced r%d to register-immediate"
+                     " operation (r%d, %d) at insn %d",
+                     (int)(reg - unit->regs), reg->result.src1,
+                     reg->result.src_imm, reg->birth);
+#endif
+            folded = true;
+        }
+    }
+
+    /* If folding was successful and a folded operand died on this
+     * instruction, roll its death point back to its previous use. */
+    if (folded) {
+        if (src1_is_constant && unit->regs[src1].death == reg->birth) {
+            rollback_reg_death(unit, src1);
+        }
+        if (src2 && src2_is_constant && unit->regs[src2].death == reg->birth) {
+            rollback_reg_death(unit, src2);
+        }
+    }
 }
 
 /*-----------------------------------------------------------------------*/
@@ -788,7 +1059,7 @@ void rtl_opt_decondition(RTLUnit *unit)
                  || (opcode == RTLOP_GOTO_IF_NZ && condition != 0)) {
                     /* Branch always taken: convert to GOTO. */
 #ifdef RTL_DEBUG_OPTIMIZE
-                    log_info(unit->handle, "[RTL] Branch at %u always taken,"
+                    log_info(unit->handle, "Branch at %u always taken,"
                              " converting to GOTO and dropping edge %u->%u",
                              block->last_insn, block_index,
                              block->exits[fallthrough_index]);
@@ -799,7 +1070,7 @@ void rtl_opt_decondition(RTLUnit *unit)
                 } else {
                     /* Branch never taken: convert to NOP. */
 #ifdef RTL_DEBUG_OPTIMIZE
-                    log_info(unit->handle, "[RTL] Branch at %u never taken,"
+                    log_info(unit->handle, "Branch at %u never taken,"
                              " converting to NOP and dropping edge %u->%u",
                              block->last_insn, block_index,
                              block->exits[fallthrough_index ^ 1]);
@@ -813,7 +1084,7 @@ void rtl_opt_decondition(RTLUnit *unit)
                 /* If the condition register dies here, roll its death
                  * back to its previous use. */
                 if (condition_reg->death == block->last_insn) {
-                    rollback_reg_death(unit, condition_reg, reg_index);
+                    rollback_reg_death(unit, reg_index);
                 }
             }  // if (condition_reg->source == RTLREG_CONSTANT)
         }  // if (block->exits[1] != -1)
@@ -847,7 +1118,7 @@ bool rtl_opt_drop_dead_blocks(RTLUnit *unit)
         RTLBlock * const block = &unit->blocks[i];
         if (!unit->block_seen[i]) {
 #ifdef RTL_DEBUG_OPTIMIZE
-            log_info(unit->handle, "[RTL] Dropping dead block %d (%d-%d)",
+            log_info(unit->handle, "Dropping dead block %d (%d-%d)",
                      i, block->first_insn, block->last_insn);
 #endif
             ASSERT(block->prev_block >= 0);
@@ -893,13 +1164,12 @@ void rtl_opt_drop_dead_branches(RTLUnit *unit)
               || opcode == RTLOP_GOTO_IF_NZ)
              && unit->label_blockmap[insn->label] == block->next_block) {
 #ifdef RTL_DEBUG_OPTIMIZE
-                log_info(unit->handle, "[RTL] Dropping branch at %d to next"
+                log_info(unit->handle, "Dropping branch at %d to next"
                          " insn", block->last_insn);
 #endif
                 if (opcode == RTLOP_GOTO_IF_Z || opcode == RTLOP_GOTO_IF_NZ) {
-                    RTLRegister *src1_reg = &unit->regs[insn->src1];
-                    if (src1_reg->death == block->last_insn) {
-                        rollback_reg_death(unit, src1_reg, insn->src1);
+                    if (unit->regs[insn->src1].death == block->last_insn) {
+                        rollback_reg_death(unit, insn->src1);
                     }
                 }
                 insn->opcode = RTLOP_NOP;
@@ -919,10 +1189,13 @@ void rtl_opt_fold_constants(RTLUnit *unit)
     ASSERT(unit->insns);
     ASSERT(unit->regs);
 
-    for (int reg_index = 1; reg_index < unit->next_reg; reg_index++) {
-        RTLRegister * const reg = &unit->regs[reg_index];
-        if (reg->live && reg->source == RTLREG_RESULT) {
-            fold_one_register(unit, reg);
+    for (uint32_t insn_index = 0; insn_index < unit->num_insns; insn_index++) {
+        const RTLInsn *insn = &unit->insns[insn_index];
+        if (insn->dest) {
+            RTLRegister * const reg = &unit->regs[insn->dest];
+            if (reg->source == RTLREG_RESULT) {
+                fold_one_register(unit, reg);
+            }
         }
     }
 }

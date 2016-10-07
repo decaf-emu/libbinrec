@@ -26,7 +26,7 @@ static int add_rtl(RTLUnit *unit)
 
 static const char expected[] =
     #ifdef RTL_DEBUG_OPTIMIZE
-        "[info] [RTL] Dropping branch at 0 to next insn\n"
+        "[info] Dropping branch at 0 to next insn\n"
     #endif
     "    0: NOP\n"
     "    1: LABEL      L1\n"
