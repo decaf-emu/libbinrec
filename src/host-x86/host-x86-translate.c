@@ -888,11 +888,11 @@ static bool setup_aliases_for_block(
                  * then update maps so we know where the values have gone. */
                 if (host_dest >= X86_XMM0) {
                     ASSERT(host_src >= X86_XMM0);
-                    append_insn_ModRM_reg(code, false, X86OP_XORPS, 
+                    append_insn_ModRM_reg(code, false, X86OP_XORPS,
                                           host_dest, host_src);
-                    append_insn_ModRM_reg(code, false, X86OP_XORPS, 
+                    append_insn_ModRM_reg(code, false, X86OP_XORPS,
                                           host_src, host_dest);
-                    append_insn_ModRM_reg(code, false, X86OP_XORPS, 
+                    append_insn_ModRM_reg(code, false, X86OP_XORPS,
                                           host_dest, host_src);
                 } else {
                     ASSERT(host_src < X86_XMM0);
