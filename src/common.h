@@ -109,8 +109,19 @@ struct RTLUnit;
  * always be inlined, even if the compiler thinks it would not be a good
  * idea.  If no compiler-specific hint is available, "inline" will be
  * substituted instead.
+ *
+ * When building for coverage analysis, forced inlining is disabled since
+ * it's generally more useful to see branch coverage of the code in the
+ * function itself than at every call point.  In some cases, it may not be
+ * possible to cover all branches at every call site; for example, the
+ * append_opcode() function in host-x86/host-x86-translate.c has several
+ * code paths depending on the byte length of the opcode, but most call
+ * sites pass a constant opcode, so only one of those code paths will ever
+ * be taken for that call.
  */
-#if IS_GCC(3,1) || IS_CLANG(1,0)
+#if defined(COVERAGE)
+    #define ALWAYS_INLINE  inline
+#elif IS_GCC(3,1) || IS_CLANG(1,0)
     #define ALWAYS_INLINE  inline __attribute__((always_inline))
 #elif IS_MSVC(1,0)
     #define ALWAYS_INLINE  __forceinline

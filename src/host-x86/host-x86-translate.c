@@ -15,6 +15,19 @@
 #include "src/host-x86/host-x86-opcodes.h"
 #include "src/rtl-internal.h"
 
+/*
+ * Note that many local functions in this file (particularly those which
+ * write to the output code buffer) are declared ALWAYS_INLINE.  This is
+ * because inlining the functions lets the compiler determine that local
+ * variables (including the CodeBuffer structure) are not clobbered by
+ * writes to the output code buffer, which can reduce instruction count in
+ * the translation loop by around 30% (observed with GCC 5.4), but the
+ * default heuristics for choosing whether to inline functions declared as
+ * "inline" don't always analyze far enough to detect that benefit.
+ * Inlining also avoids numerous unnecessary comparisons against constant
+ * values such as opcodes.
+ */
+
 /*************************************************************************/
 /******************* Local data structure definitions ********************/
 /*************************************************************************/
@@ -34,26 +47,6 @@ typedef struct CodeBuffer {
 /*************************************************************************/
 /*************** Utility routines for adding instructions ****************/
 /*************************************************************************/
-
-/*
- * For ordinary compilation, it's critical to have all these functions
- * inlined so the compiler knows that local variables (including the
- * CodeBuffer structure) are not clobbered by writes to the output code
- * buffer; this can reduce instruction count in the translation loop by
- * around 30% (observed with GCC 5.3) if the compiler would ordinarily
- * choose not to inline the functions.  Inlining also avoids numerous
- * unnecessary comparisons against constant values such as opcodes.  For
- * coverage testing, however, it's more useful to see the branch coverage
- * of the functions themselves rather than of every location they're used
- * in the code.
- */
-#ifdef COVERAGE
-    #define APPEND_INLINE  /*nothing*/
-#else
-    #define APPEND_INLINE  ALWAYS_INLINE
-#endif
-
-/*-----------------------------------------------------------------------*/
 
 /**
  * is_spilled:  Helper function to return whether a register is currently
@@ -79,7 +72,7 @@ static inline PURE_FUNCTION bool is_spilled(const HostX86Context *ctx, int reg,
  * append_opcode:  Append an x86 opcode to the current code stream.  The
  * code buffer is assumed to have enough space for the instruction.
  */
-static APPEND_INLINE void append_opcode(CodeBuffer *code, X86Opcode opcode)
+static ALWAYS_INLINE void append_opcode(CodeBuffer *code, X86Opcode opcode)
 {
     uint8_t *ptr = code->buffer + code->len;
 
@@ -120,7 +113,7 @@ static APPEND_INLINE void append_opcode(CodeBuffer *code, X86Opcode opcode)
  *     rex: REX flags (bitwise OR of X86_REX_* or X86OP_REX_*).
  *     opcode: Opcode to append.
  */
-static APPEND_INLINE void append_rex_opcode(CodeBuffer *code, uint8_t rex,
+static ALWAYS_INLINE void append_rex_opcode(CodeBuffer *code, uint8_t rex,
                                             X86Opcode opcode)
 {
     uint8_t *ptr = code->buffer + code->len;
@@ -167,7 +160,7 @@ static APPEND_INLINE void append_rex_opcode(CodeBuffer *code, uint8_t rex,
  * append_imm8:  Append an 8-bit immediate value to the current code stream.
  * The code buffer is assumed to have enough space.
  */
-static APPEND_INLINE void append_imm8(CodeBuffer *code, uint8_t value)
+static ALWAYS_INLINE void append_imm8(CodeBuffer *code, uint8_t value)
 {
     uint8_t *ptr = code->buffer + code->len;
 
@@ -182,7 +175,7 @@ static APPEND_INLINE void append_imm8(CodeBuffer *code, uint8_t value)
  * append_imm32:  Append a 32-bit immediate value to the current code stream.
  * The code buffer is assumed to have enough space.
  */
-static APPEND_INLINE void append_imm32(CodeBuffer *code, uint32_t value)
+static ALWAYS_INLINE void append_imm32(CodeBuffer *code, uint32_t value)
 {
     uint8_t *ptr = code->buffer + code->len;
 
@@ -200,7 +193,7 @@ static APPEND_INLINE void append_imm32(CodeBuffer *code, uint32_t value)
  * append_ModRM:  Append a ModR/M byte to the current code stream.
  * The code buffer is assumed to have enough space.
  */
-static APPEND_INLINE void append_ModRM(CodeBuffer *code, X86Mod mod,
+static ALWAYS_INLINE void append_ModRM(CodeBuffer *code, X86Mod mod,
                                        int reg_opcode, int r_m)
 {
     uint8_t *ptr = code->buffer + code->len;
@@ -216,7 +209,7 @@ static APPEND_INLINE void append_ModRM(CodeBuffer *code, X86Mod mod,
  * append_ModRM:  Append a ModR/M and SIB byte pair to the current code
  * stream.  The code buffer is assumed to have enough space.
  */
-static APPEND_INLINE void append_ModRM_SIB(
+static ALWAYS_INLINE void append_ModRM_SIB(
     CodeBuffer *code, X86Mod mod, int reg_opcode, int scale, int index,
     int base)
 {
@@ -238,7 +231,7 @@ static APPEND_INLINE void append_ModRM_SIB(
  *     is64: True for 64-bit operands, false for 32-bit operands.
  *     opcode: Instruction opcode.
  */
-static APPEND_INLINE void append_insn(
+static ALWAYS_INLINE void append_insn(
     CodeBuffer *code, bool is64, X86Opcode opcode)
 {
     if (is64) {
@@ -260,7 +253,7 @@ static APPEND_INLINE void append_insn(
  *     opcode: Instruction opcode.
  *     reg: Register index.
  */
-static APPEND_INLINE void append_insn_R(
+static ALWAYS_INLINE void append_insn_R(
     CodeBuffer *code, bool is64, X86Opcode opcode, X86Register reg)
 {
     uint8_t rex = is64 ? X86_REX_W : 0;
@@ -287,7 +280,7 @@ static APPEND_INLINE void append_insn_R(
  *     reg1: Register index (or sub-opcode) for ModR/M reg field.
  *     reg2: Register index for ModR/M r/m field.
  */
-static APPEND_INLINE void append_insn_ModRM_reg(
+static ALWAYS_INLINE void append_insn_ModRM_reg(
     CodeBuffer *code, bool is64, X86Opcode opcode, X86Register reg1,
     X86Register reg2)
 {
@@ -320,7 +313,7 @@ static APPEND_INLINE void append_insn_ModRM_reg(
  *     base: Base register index for memory address.
  *     offset: Constant offset for memory address.
  */
-static APPEND_INLINE void append_insn_ModRM_mem(
+static ALWAYS_INLINE void append_insn_ModRM_mem(
     CodeBuffer *code, bool is64, X86Opcode opcode, X86Register reg,
     X86Register base, int32_t offset)
 {
@@ -387,7 +380,7 @@ static APPEND_INLINE void append_insn_ModRM_mem(
  *     insn_index: Index of current instruction in ctx->unit->insns[].
  *     rtl_reg2: RTL register index from which to set ModR/M r/m field.
  */
-static APPEND_INLINE void append_insn_ModRM_ctx(
+static ALWAYS_INLINE void append_insn_ModRM_ctx(
     CodeBuffer *code, bool is64, X86Opcode opcode, X86Register reg1,
     HostX86Context *ctx, int insn_index, int rtl_reg2)
 {
@@ -411,7 +404,7 @@ static APPEND_INLINE void append_insn_ModRM_ctx(
  *     host_dest: Destination host register.
  *     host_src: Source host register.
  */
-static APPEND_INLINE void append_move(
+static ALWAYS_INLINE void append_move(
     CodeBuffer *code, RTLDataType type, X86Register host_dest,
     X86Register host_src)
 {
@@ -446,7 +439,7 @@ static APPEND_INLINE void append_move(
  *
  * Specialization of append_move() for GPRs.
  */
-static APPEND_INLINE void append_move_gpr(
+static ALWAYS_INLINE void append_move_gpr(
     CodeBuffer *code, RTLDataType type, X86Register host_dest,
     X86Register host_src)
 {
@@ -468,7 +461,7 @@ static APPEND_INLINE void append_move_gpr(
  *     host_base: Host register for memory address base.
  *     offset: Access offset from base register.
  */
-static APPEND_INLINE void append_load(
+static ALWAYS_INLINE void append_load(
     CodeBuffer *code, RTLDataType type, X86Register host_dest,
     X86Register host_base, int32_t offset)
 {
@@ -508,7 +501,7 @@ static APPEND_INLINE void append_load(
  *
  * Specialization of append_load() for GPRs.
  */
-static APPEND_INLINE void append_load_gpr(
+static ALWAYS_INLINE void append_load_gpr(
     CodeBuffer *code, RTLDataType type, X86Register host_dest,
     X86Register host_base, int32_t offset)
 {
@@ -530,7 +523,7 @@ static APPEND_INLINE void append_load_gpr(
  *     host_base: Host register for memory address base.
  *     offset: Access offset from base register.
  */
-static APPEND_INLINE void append_store(
+static ALWAYS_INLINE void append_store(
     CodeBuffer *code, RTLDataType type, X86Register host_src,
     X86Register host_base, int32_t offset)
 {
@@ -573,7 +566,7 @@ static APPEND_INLINE void append_store(
  *     alias: Alias register to load.
  *     host_dest: Host register into which to load alias register value.
  */
-static APPEND_INLINE void append_load_alias(
+static ALWAYS_INLINE void append_load_alias(
     CodeBuffer *code, const HostX86Context *ctx, const RTLAlias *alias,
     X86Register host_dest)
 {
@@ -594,7 +587,7 @@ static APPEND_INLINE void append_load_alias(
  *     alias: Alias to store.
  *     host_src: Host register containing data to store.
  */
-static APPEND_INLINE void append_store_alias(
+static ALWAYS_INLINE void append_store_alias(
     CodeBuffer *code, const HostX86Context *ctx, const RTLAlias *alias,
     X86Register host_src)
 {
@@ -619,7 +612,7 @@ static APPEND_INLINE void append_store_alias(
  *     host_dest: Destination host register.
  *     src: Source RTL register.
  */
-static APPEND_INLINE void append_move_or_load(
+static ALWAYS_INLINE void append_move_or_load(
     CodeBuffer *code, const HostX86Context *ctx, const RTLUnit *unit,
     int insn_index, int host_dest, int src)
 {
@@ -642,7 +635,7 @@ static APPEND_INLINE void append_move_or_load(
  *
  * Specialization of append_load() for GPRs.
  */
-static APPEND_INLINE void append_move_or_load_gpr(
+static ALWAYS_INLINE void append_move_or_load_gpr(
     CodeBuffer *code, const HostX86Context *ctx, const RTLUnit *unit,
     int insn_index, int host_dest, int src)
 {
@@ -663,7 +656,7 @@ static APPEND_INLINE void append_move_or_load_gpr(
  * If src1 is spilled, load its value to the register designated by
  * "fallback" and return that register.
  */
-static APPEND_INLINE X86Register reload_base_reg(
+static ALWAYS_INLINE X86Register reload_base_reg(
     CodeBuffer *code, const HostX86Context *ctx, int insn_index, int base,
     X86Register fallback)
 {
@@ -683,7 +676,7 @@ static APPEND_INLINE X86Register reload_base_reg(
  * append_test_reg:  Append an instruction to test the value of the given
  * integer RTL register for zeroness.
  */
-static APPEND_INLINE void append_test_reg(
+static ALWAYS_INLINE void append_test_reg(
     HostX86Context *ctx, const RTLUnit *unit, int insn_index,
     CodeBuffer *code, int reg)
 {
@@ -724,7 +717,7 @@ static APPEND_INLINE void append_test_reg(
  *     long_opcode: Opcode for a long (32-bit) displacement.
  *     disp: Displacement to encode.
  */
-static APPEND_INLINE void append_jump_raw(
+static ALWAYS_INLINE void append_jump_raw(
     CodeBuffer *code, X86Opcode short_opcode, X86Opcode long_opcode,
     int32_t disp)
 {
@@ -757,7 +750,7 @@ static APPEND_INLINE void append_jump_raw(
  *     target: Byte position of the target instruction, or -1 if the target
  *         is unknown.
  */
-static APPEND_INLINE void append_jump(
+static ALWAYS_INLINE void append_jump(
     CodeBuffer *code, HostX86BlockInfo *block_info,
     X86Opcode short_opcode, X86Opcode long_opcode, int label, long target)
 {
