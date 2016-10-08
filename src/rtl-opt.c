@@ -618,7 +618,6 @@ static inline uint64_t fold_constant(RTLUnit * const unit,
       /* The remainder will never appear with RTLREG_RESULT, but list them
        * individually rather than using a default case so the compiler will
        * warn us if we add a new opcode but don't include it here. */
-      //FIXME: notimp: read constants from read-only memory
       case RTLOP_NOP:
       case RTLOP_SET_ALIAS:
       case RTLOP_GET_ALIAS:
@@ -960,7 +959,7 @@ static inline void fold_one_register(RTLUnit * const unit,
 #ifdef RTL_DEBUG_OPTIMIZE
         char value_str[20];
         if (reg->type == RTLTYPE_INT32
-         && (uint32_t)reg->value.i64+0x8000 < 0x10000) {
+         && (uint32_t)reg->value.i64 + 0x8000 < 0x10000) {
             snprintf(value_str, sizeof(value_str), "%d", (int)reg->value.i64);
         } else {
             snprintf(value_str, sizeof(value_str), "0x%"PRIX64,
@@ -996,6 +995,143 @@ static inline void fold_one_register(RTLUnit * const unit,
         if (src2 && src2_is_constant && unit->regs[src2].death == reg->birth) {
             rollback_reg_death(unit, src2);
         }
+    }
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
+ * get_readonly_ptr:  Return a pointer to the address referenced by the
+ * given register's load instruction if that address is constant and within
+ * a region of guest memory marked as read-only, otherwise NULL.
+ *
+ * [Parameters]
+ *     unit: RTLUnit to operate on.
+ *     reg: Register to check (assumed to be RTLREG_MEMORY).
+ * [Return value]
+ *     Pointer to the load source for the register, or NULL if the
+ *     register does not load from read-only memory.
+ */
+static const void *get_readonly_ptr(RTLUnit * const unit,
+                                    RTLRegister * const reg)
+{
+    ASSERT(unit);
+    ASSERT(unit->handle);
+    ASSERT(reg);
+    ASSERT(reg->source == RTLREG_MEMORY);
+
+    const RTLRegister * const base_reg = &unit->regs[reg->memory.base];
+    if (base_reg->source != RTLREG_CONSTANT) {
+        return NULL;
+    }
+    const uint32_t addr = (uint32_t)base_reg->value.i64 + reg->memory.offset;
+    const uint32_t page = addr >> READONLY_PAGE_BITS;
+
+    bool is_readonly;
+    const binrec_t * const handle = unit->handle;
+    if (handle->readonly_map[page>>2] & (2 << ((page & 3) * 2))) {
+        is_readonly = true;
+    } else if (handle->readonly_map[page>>2] & (1 << ((page & 3) * 2))) {
+        const int index = lookup_partial_readonly_page(handle, page);
+        ASSERT(index < lenof(handle->partial_readonly_pages));
+        ASSERT(handle->partial_readonly_pages[index] == page);
+        const uint32_t page_offset = addr & READONLY_PAGE_MASK;
+        is_readonly = ((handle->partial_readonly_map[index][page_offset>>3]
+                        & (1 << (page_offset & 7))) != 0);
+    } else {
+        is_readonly = false;
+    }
+
+    if (is_readonly) {
+        return (void *)((uintptr_t)handle->setup.guest_memory_base + addr);
+    } else {
+        return NULL;
+    }
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
+ * fold_readonly_load:  Convert a load from read-only memory to an
+ * equivalent load-immediate instruction.
+ *
+ * [Parameters]
+ *     unit: RTLUnit to operate on.
+ *     reg: Register on which to perform constant folding.
+ *     load_ptr: Pointer to source data for the load.
+ */
+static void fold_readonly_load(RTLUnit * const unit, RTLRegister * const reg,
+                               const void *load_ptr)
+{
+    ASSERT(unit);
+    ASSERT(reg);
+    ASSERT(load_ptr);
+
+    uint64_t value;
+    if (reg->memory.size == 1) {
+        value = *(const uint8_t *)load_ptr;
+        if (reg->memory.is_signed) {
+            value = (uint32_t)(int8_t)value;
+        }
+    } else if (reg->memory.size == 2) {
+        value = *(const uint16_t *)load_ptr;
+        if (reg->memory.byterev ^ unit->handle->host_little_endian) {
+            value = bswap_le16(value);
+        } else {
+            value = bswap_be16(value);
+        }
+        if (reg->memory.is_signed) {
+            value = (uint32_t)(int16_t)value;
+        }
+    } else {
+        ASSERT(reg->memory.size == 0);
+        switch ((RTLDataType)reg->type) {
+          case RTLTYPE_INT32:
+          case RTLTYPE_FLOAT:
+            value = *(const uint32_t *)load_ptr;
+            if (reg->memory.byterev ^ unit->handle->host_little_endian) {
+                value = bswap_le32(value);
+            } else {
+                value = bswap_be32(value);
+            }
+            break;
+          case RTLTYPE_ADDRESS:
+          case RTLTYPE_DOUBLE:
+            value = *(const uint64_t *)load_ptr;
+            if (reg->memory.byterev ^ unit->handle->host_little_endian) {
+                value = bswap_le64(value);
+            } else {
+                value = bswap_be64(value);
+            }
+            break;
+          default:
+            return;  // Vector types have no LOAD_IMM equivalent.
+        }
+    }
+
+    const int base = reg->memory.base;
+
+#ifdef RTL_DEBUG_OPTIMIZE
+    char value_str[20];
+    if (reg->type == RTLTYPE_INT32 && (uint32_t)value + 0x8000 < 0x10000) {
+        snprintf(value_str, sizeof(value_str), "%d", (int)value);
+    } else {
+        snprintf(value_str, sizeof(value_str), "0x%"PRIX64, value);
+    }
+    const uint32_t addr =
+        ((uint32_t)unit->regs[base].value.i64 + reg->memory.offset);
+    log_info(unit->handle, "r%d loads constant value %s from 0x%X at insn %d",
+             (int)(reg - unit->regs), value_str, addr, reg->birth);
+#endif
+
+    reg->source = RTLREG_CONSTANT;
+    reg->value.i64 = value;
+    RTLInsn *reg_insn = &unit->insns[reg->birth];
+    reg_insn->opcode = RTLOP_LOAD_IMM;
+    reg_insn->src_imm = value;
+
+    if (unit->regs[base].death == reg->birth) {
+        rollback_reg_death(unit, base);
     }
 }
 
@@ -1195,6 +1331,11 @@ void rtl_opt_fold_constants(RTLUnit *unit)
             RTLRegister * const reg = &unit->regs[insn->dest];
             if (reg->source == RTLREG_RESULT) {
                 fold_one_register(unit, reg);
+            } else if (reg->source == RTLREG_MEMORY) {
+                const void *readonly_ptr = get_readonly_ptr(unit, reg);
+                if (readonly_ptr) {
+                    fold_readonly_load(unit, reg, readonly_ptr);
+                }
             }
         }
     }

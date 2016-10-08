@@ -790,7 +790,7 @@ static bool make_load(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
     RTLRegister * const src1reg = &unit->regs[src1];
     const int insn_index = unit->num_insns;
     destreg->source = RTLREG_MEMORY;
-    destreg->memory.addr_reg = src1;
+    destreg->memory.base = src1;
     destreg->memory.offset = (int16_t)other;
     destreg->memory.byterev = (insn->opcode == RTLOP_LOAD_BR);
     mark_live(unit, insn_index, destreg, dest);
@@ -848,7 +848,7 @@ static bool make_load_narrow(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
     RTLRegister * const src1reg = &unit->regs[src1];
     const int insn_index = unit->num_insns;
     destreg->source = RTLREG_MEMORY;
-    destreg->memory.addr_reg = src1;
+    destreg->memory.base = src1;
     destreg->memory.offset = (int16_t)other;
     destreg->memory.byterev = (insn->opcode >= RTLOP_LOAD_U16_BR);
     destreg->memory.size = insn_info[lookup_index].size;

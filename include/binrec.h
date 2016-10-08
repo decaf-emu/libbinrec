@@ -471,13 +471,14 @@ typedef struct binrec_setup_t {
 
 /**
  * BINREC_OPT_FOLD_CONSTANTS:  Look for computations whose operands are all
- * constant, and convert them to load-immediate operations.  The computed
- * values are themselves treated as constant, so constantness can be
- * propagated through multiple instructions.  Intermediate values in a
- * computation sequence which end up being unused due to constant folding,
- * as well as any other instructions whose outputs which are not used
- * elsewhere, are removed from the code stream if BINREC_OPT_DSE is also
- * enabled.
+ * constant and load operations which load from a constant address within
+ * memory marked read-only (see binrec_add_readonly_region()), and convert
+ * them to load-immediate operations.  The computed values are themselves
+ * treated as constant, so constantness can be propagated through multiple
+ * instructions.  Intermediate values in a computation sequence which end
+ * up being unused due to constant folding, as well as any other
+ * instructions whose outputs which are not used elsewhere, are removed
+ * from the code stream if BINREC_OPT_DSE is also enabled.
  */
 #define BINREC_OPT_FOLD_CONSTANTS  (1<<5)
 
@@ -843,6 +844,16 @@ extern void binrec_set_max_inline_depth(binrec_t *handle, int depth);
  * read-only.  Instructions which are known to load from read-only memory
  * will be translated into load-constant operations if enabled by the
  * BINREC_OPT_FOLD_CONSTANTS optimization flag.
+ *
+ * When determining whether a load operation addresses read-only memory,
+ * only the first (lowest) address of the referenced value is checked.
+ * Thus, a multi-byte load operation which crosses the end of a read-only
+ * region will still be translated to a load-constant operation, and any
+ * subsequent changes to the bytes outside the read-only region will not
+ * be seen by the translated code.
+ *
+ * If the guest code performs a store operation into a region marked as
+ * read-only, subsequent behavior of the program is undefined.
  *
  * This function may fail if too many misaligned regions are added; in
  * that case, rebuild the library with different values of the

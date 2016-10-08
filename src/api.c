@@ -142,12 +142,7 @@ static int add_partial_readonly_page(binrec_t *handle,
 
     const uint32_t page = start & ~READONLY_PAGE_MASK;
 
-    int index;
-    for (index = 0; index < MAX_PARTIAL_READONLY; index++) {
-        if (page <= handle->partial_readonly_pages[index]) {
-            break;
-        }
-    }
+    const int index = lookup_partial_readonly_page(handle, page);
     if (index == MAX_PARTIAL_READONLY) {
         log_error(handle, "Failed to add read-only range [0x%X,0x%X]: no free"
                   " partial page entries", start, end-1);
@@ -162,10 +157,11 @@ static int add_partial_readonly_page(binrec_t *handle,
         }
         memmove(&handle->partial_readonly_pages[index],
                 &handle->partial_readonly_pages[index+1],
-                sizeof(*handle->partial_readonly_pages) * ((MAX_PARTIAL_READONLY-1) - index));
+                sizeof(*handle->partial_readonly_pages) * (handle->num_partial_readonly - index));
         memmove(&handle->partial_readonly_map[index],
                 &handle->partial_readonly_map[index+1],
-                sizeof(*handle->partial_readonly_map) * ((MAX_PARTIAL_READONLY-1) - index));
+                sizeof(*handle->partial_readonly_map) * (handle->num_partial_readonly - index));
+        handle->num_partial_readonly++;
         handle->partial_readonly_pages[index] = page;
         memset(handle->partial_readonly_map[index], 0,
                sizeof(*handle->partial_readonly_map));
@@ -180,6 +176,26 @@ static int add_partial_readonly_page(binrec_t *handle,
         handle->partial_readonly_map[index][address>>3] |= 1 << (address & 7);
     }
     return 1;
+}
+
+/*************************************************************************/
+/********************** Internal utility functions ***********************/
+/*************************************************************************/
+
+int lookup_partial_readonly_page(const binrec_t *handle, uint32_t page)
+{
+    int low = 0, high = handle->num_partial_readonly - 1;
+    while (low <= high) {
+        const int mid = (low + high) / 2;
+        if (page == handle->partial_readonly_pages[mid]) {
+            return mid;
+        } else if (page < handle->partial_readonly_pages[mid]) {
+            high = mid - 1;
+        } else {
+            low = mid + 1;
+        }
+    }
+    return low;
 }
 
 /*************************************************************************/
@@ -436,6 +452,7 @@ void binrec_clear_readonly_regions(binrec_t *handle)
     memset(handle->readonly_map, 0, sizeof(handle->readonly_map));
     memset(handle->partial_readonly_pages, 0xFF,
            sizeof(handle->partial_readonly_pages));
+    handle->num_partial_readonly = 0;
 }
 
 /*-----------------------------------------------------------------------*/

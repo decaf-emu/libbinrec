@@ -325,7 +325,7 @@ static void rtl_describe_register(const RTLRegister *reg,
             type = type_suffix(reg->type);
         }
         snprintf(buf, bufsize, "@%d(r%d).%s%s",
-                 reg->memory.offset, reg->memory.addr_reg, type,
+                 reg->memory.offset, reg->memory.base, type,
                  reg->memory.byterev ? ".br" : "");
         return;
       }

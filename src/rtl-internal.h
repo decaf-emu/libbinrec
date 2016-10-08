@@ -171,7 +171,7 @@ struct RTLRegister {
         } value;
         uint8_t arg_index;      // Function argument index for RTLREG_FUNC_ARG
         struct {
-            uint16_t addr_reg;  // Register holding address for RTLREG_MEMORY
+            uint16_t base;      // Register holding address for RTLREG_MEMORY
             int16_t offset;     // Access offset
             bool byterev;       // True if a byte-reversed access
             uint8_t size;       // Access size in bytes (1 or 2) if this is a

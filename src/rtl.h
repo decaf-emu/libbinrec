@@ -35,14 +35,14 @@
  * Note that input machine instructions do not always map directly to RTL
  * instructions.  As a somewhat extreme example, the "movsb" instruction
  * in the Intel x86 architecture might translate to:
- *     LOAD_I32  reg1, (state_reg, #esi_offset)
+ *     LOAD      reg1, (state_reg, #esi_offset)
  *     LOAD_U8   reg2, (reg1)
  *     ADDI      reg3, reg1, #1
- *     STORE_I32 (state_reg, #esi_offset), reg3
- *     LOAD_I32  reg4, (state_reg, #edi_offset)
+ *     STORE     (state_reg, #esi_offset), reg3
+ *     LOAD      reg4, (state_reg, #edi_offset)
  *     STORE_I8  (reg4), reg2
  *     ADDI      reg5, reg4, #1
- *     STORE_I32 (state_reg, #edi_offset), reg5
+ *     STORE     (state_reg, #edi_offset), reg5
  *
  * The RTL used here deviates slightly from a "pure" RTL in that it allows
  * certain operations involving immediate values (notably memory access
@@ -262,7 +262,8 @@ typedef enum RTLOpcode {
 
     /* Memory load and store operations.  Address operands must be of
      * ADDRESS type, offsets must be in [-32768,+32767], and for 8/16-bit
-     * loads, the value operand must be of INT32 type. */
+     * loads, the value operand must be of INT32 type.  Behavior is
+     * undefined if the address is not a multiple of the load size. */
     RTLOP_LOAD,         // dest = *(typeof(dest) *)(src1 + other)
     RTLOP_LOAD_U8,      // dest = *(uint8_t *)(src1 + other)
     RTLOP_LOAD_S8,      // dest = *(int8_t *)(src1 + other)

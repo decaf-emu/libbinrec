@@ -332,6 +332,7 @@ struct binrec_t {
      * indicates that all remaining entries are unused. */
     uint32_t partial_readonly_pages[MAX_PARTIAL_READONLY];
     uint8_t partial_readonly_map[MAX_PARTIAL_READONLY][1 << (READONLY_PAGE_BITS - 3)];
+    int num_partial_readonly;  // Number of partial_readonly_* entries used.
 
 };
 
@@ -554,6 +555,24 @@ static inline bool binrec_ensure_code_space(binrec_t *handle, long bytes)
 #define calloc  _invalid_call_to_calloc
 #define realloc _invalid_call_to_realloc
 #define free    _invalid_call_to_free
+
+/*-------------- Miscellaneous routines (defined in api.c) --------------*/
+
+/**
+ * lookup_partial_readonly_page:  Look up the given page in the partial
+ * readonly page tables.  If the page is present, return its table index;
+ * otherwise, return the index at which it should be inserted (which may be
+ * past the end of the table if the table is full).
+ *
+ * [Parameters]
+ *     handle: Handle to use for lookup.
+ *     page: Page number (address >> READONLY_PAGE_BITS).
+ * [Return value]
+ *     Index in handle->partial_readonly_* arrays of the page if it exists
+ *     in the tables, otherwise the index at which it should be inserted.
+ */
+#define lookup_partial_readonly_page INTERNAL(lookup_partial_readonly_page)
+extern int lookup_partial_readonly_page(const binrec_t *handle, uint32_t page);
 
 /*************************************************************************/
 /*************************************************************************/
