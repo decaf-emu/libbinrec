@@ -1601,12 +1601,26 @@ static inline void translate_muldiv_reg(
 {
     RTLUnit * const unit = ctx->unit;
 
+    /* For division, we might skip over the actual division operation, so
+     * store the target register now.  We handle XER (when OE is set)
+     * separately, since we have to set SO|OV anyway on the overflow path. */
+    const bool is_divide = (rtlop == RTLOP_DIVU || rtlop == RTLOP_DIVS);
+    if (is_divide) {
+        const int rD = insn_rD(insn);
+        if (ctx->gpr_dirty & (1u << rD)) {
+            ctx->gpr_dirty ^= 1u << rD;
+            rtl_add_insn(unit, RTLOP_SET_ALIAS,
+                         0, ctx->live.gpr[rD], 0, ctx->alias.gpr[rD]);
+        }
+        ctx->live.gpr[rD] = 0;
+    }
+
     const int rA = get_gpr(ctx, insn_rA(insn));
     const int rB = get_gpr(ctx, insn_rB(insn));
 
     int div_skip_label = 0;
     int xer = 0;
-    if (rtlop == RTLOP_DIVU || rtlop == RTLOP_DIVS) {
+    if (is_divide) {
         if (do_overflow) {
             xer = get_xer(ctx);
         }
@@ -1628,7 +1642,12 @@ static inline void translate_muldiv_reg(
 
     const int result = rtl_alloc_register(unit, RTLTYPE_INT32);
     rtl_add_insn(unit, rtlop, result, rA, rB, 0);
-    set_gpr(ctx, insn_rD(insn), result);
+    if (is_divide) {
+        rtl_add_insn(unit, RTLOP_SET_ALIAS,
+                     0, result, 0, ctx->alias.gpr[insn_rD(insn)]);
+    } else {
+        set_gpr(ctx, insn_rD(insn), result);
+    }
 
     if (do_overflow) {
         if (!xer) {
@@ -1659,12 +1678,6 @@ static inline void translate_muldiv_reg(
     }
 
     if (div_skip_label) {
-        /* The state of the destination register after an overflow error
-         * is explicitly undefined in the PowerPC spec, so we don't bother
-         * trying to synchronize the live state of rD here.  We do,
-         * however, need to synchronize XER if overflow recording is
-         * enabled. */
-
         int div_continue_label = 0;
         if (do_overflow) {
             rtl_add_insn(unit, RTLOP_SET_ALIAS,

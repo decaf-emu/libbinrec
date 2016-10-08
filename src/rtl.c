@@ -1349,7 +1349,7 @@ bool rtl_optimize_unit(RTLUnit *unit, unsigned int flags)
 
     /* Perform optimizations in the proper order. */
     if (flags & BINREC_OPT_DEEP_DATA_FLOW) {
-        //FIXME: notimp: alias data flow analysis
+        // FIXME: alias data flow analysis not yet implemented
     }
     if (flags & BINREC_OPT_FOLD_CONSTANTS) {
         rtl_opt_fold_constants(unit);
@@ -1442,7 +1442,7 @@ const char *rtl_disassemble_unit(RTLUnit *unit, bool verbose)
     }
 
     for (int index = 0; index != -1; index = unit->blocks[index].next_block) {
-        char text[200];
+        char text[4000];
         rtl_describe_block(unit, index, text, sizeof(text));
         const int text_len = strlen(text);
         if (buflen + text_len + 1 > bufsize) {

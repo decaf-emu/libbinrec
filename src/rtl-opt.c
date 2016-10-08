@@ -1239,9 +1239,11 @@ void rtl_opt_decondition(RTLUnit *unit)
      * so we only need to check the last instruction of each block with two
      * exit edges. */
 
-    for (int block_index = 0; block_index < unit->num_blocks; block_index++) {
+    for (int block_index = 0; block_index >= 0;
+         block_index = unit->blocks[block_index].next_block)
+    {
         RTLBlock * const block = &unit->blocks[block_index];
-        if (block->exits[1] != -1) {
+        if (block->exits[1] >= 0) {
             /* If the block has multiple exits, the last one must be a
              * conditional branch. */
             ASSERT(block->last_insn >= block->first_insn);
@@ -1292,7 +1294,7 @@ void rtl_opt_decondition(RTLUnit *unit)
                 }
             }  // if (condition_reg->source == RTLREG_CONSTANT)
         }  // if (block->exits[1] != -1)
-    }  // for (block_index = 0; block_index < unit->num_blocks; block_index++)
+    }  // for (block_index)
 }
 
 /*-----------------------------------------------------------------------*/

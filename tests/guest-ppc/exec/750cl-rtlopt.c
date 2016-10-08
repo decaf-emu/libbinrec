@@ -73,15 +73,19 @@ int main(void)
     state.gpr[5] = error_log_address;
     state.fpr[1][0] = 1.0;
 
+    const unsigned int common_opt = BINREC_OPT_BASIC
+                                  | BINREC_OPT_DSE
+                                  | BINREC_OPT_DECONDITION
+                                  | BINREC_OPT_DEEP_DATA_FLOW
+                                  | BINREC_OPT_FOLD_CONSTANTS;
     if (!call_guest_code(BINREC_ARCH_PPC_7XX, &state, memory, start_address,
-                         0, 0, 0, 0, 0)) {
+                         common_opt, 0, 0, 0, 0)) {
         const char *log_messages = get_log_messages();
         if (log_messages) {
             fputs(log_messages, stderr);
         }
         FAIL("Failed to execute guest code");
     }
-    EXPECT_STREQ(get_log_messages(), NULL);
 
     int exitcode = EXIT_SUCCESS;
     const int expected_errors = 1078;

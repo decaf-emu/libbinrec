@@ -24,8 +24,8 @@ static const char expected[] =
     "    4: GET_ALIAS  r4, a4\n"
     "    5: GOTO_IF_Z  r4, L3\n"
     "    6: DIVU       r5, r3, r4\n"
-    "    7: LABEL      L3\n"
-    "    8: SET_ALIAS  a2, r5\n"
+    "    7: SET_ALIAS  a2, r5\n"
+    "    8: LABEL      L3\n"
     "    9: LOAD_IMM   r6, 4\n"
     "   10: SET_ALIAS  a1, r6\n"
     "   11: LABEL      L2\n"
@@ -38,8 +38,8 @@ static const char expected[] =
     "\n"
     "Block 0: <none> --> [0,1] --> 1\n"
     "Block 1: 0 --> [2,5] --> 2,3\n"
-    "Block 2: 1 --> [6,6] --> 3\n"
-    "Block 3: 2,1 --> [7,10] --> 4\n"
+    "Block 2: 1 --> [6,7] --> 3\n"
+    "Block 3: 2,1 --> [8,10] --> 4\n"
     "Block 4: 3 --> [11,12] --> <none>\n"
     ;
 

@@ -400,7 +400,7 @@ void binrec_set_max_inline_depth(binrec_t *handle, int depth)
 {
     ASSERT(handle);
 
-    if (depth >= 1) {
+    if (depth >= 0) {
         handle->max_inline_depth = depth;
     } else {
         log_error(handle, "Invalid maximum inline depth %d", depth);

@@ -40,11 +40,17 @@ int main(void)
                  "[error] Invalid maximum inline length -1\n");
     clear_log_messages();
 
-    binrec_set_max_inline_depth(handle, 0);  // Invalid.
+    binrec_set_max_inline_depth(handle, -1);  // Invalid.
     EXPECT_EQ(handle->max_inline_depth, 2);
     EXPECT_STREQ(get_log_messages(),
-                 "[error] Invalid maximum inline depth 0\n");
+                 "[error] Invalid maximum inline depth -1\n");
     clear_log_messages();
+
+    binrec_set_max_inline_length(handle, 0);
+    binrec_set_max_inline_depth(handle, 0);
+    EXPECT_EQ(handle->max_inline_length, 0);
+    EXPECT_EQ(handle->max_inline_depth, 0);
+    EXPECT_STREQ(get_log_messages(), NULL);
 
     binrec_destroy_handle(handle);
     return EXIT_SUCCESS;

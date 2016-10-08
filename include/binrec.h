@@ -833,9 +833,12 @@ extern void binrec_set_max_inline_length(binrec_t *handle, int length);
  *     A: call D
  *        ret
  *
+ * Setting a value of zero disables inlining regardless of the maximum
+ * inline length set with binrec_set_max_inline_length().
+ *
  * [Parameters]
  *     handle: Handle to operate on.
- *     depth: Maximum inline depth (must be at least 1).
+ *     depth: Maximum inline depth (must be at least 0).
  */
 extern void binrec_set_max_inline_depth(binrec_t *handle, int depth);
 

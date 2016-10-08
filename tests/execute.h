@@ -51,11 +51,20 @@ typedef struct PPCState {
  *         the guest architecture (see definitions in tests/execute.h).
  *     memory: Pointer to base of guest memory.
  *     address: Address at which to start executing code.
+ *     common_opt: Bitmask of common optimizations to apply (BINREC_OPT_*).
+ *     guest_opt: Bitmask of guest-specific optimizations to apply
+ *         (BINREC_OPT_G_*).
+ *     host_opt: Bitmask of host-specific optimizations to apply
+ *         (BINREC_OPT_H_*).
+ *     inline_length: Maximum length of functions to inline.
+ *     inline_depth: Maximum depth of functions to inline.
  * [Return value]
  *     True if code was successfully executed; false if translation failed.
  */
 extern bool call_guest_code(binrec_arch_t arch, void *state, void *memory,
-                            uint32_t address);
+                            uint32_t address, unsigned int common_opt,
+                            unsigned int guest_opt, unsigned int host_opt,
+                            int inline_length, int inline_depth);
 
 /*************************************************************************/
 /*************************************************************************/

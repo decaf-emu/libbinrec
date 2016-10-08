@@ -63,7 +63,9 @@ static void call(void *code, long code_size, void *arg)
 /*-----------------------------------------------------------------------*/
 
 bool call_guest_code(binrec_arch_t arch, void *state, void *memory,
-                     uint32_t address)
+                     uint32_t address, unsigned int common_opt,
+                     unsigned int guest_opt, unsigned int host_opt,
+                     int inline_length, int inline_depth)
 {
     ASSERT(arch == BINREC_ARCH_PPC_7XX);
     PPCState *state_ppc = state;
@@ -96,6 +98,9 @@ bool call_guest_code(binrec_arch_t arch, void *state, void *memory,
     if (!handle) {
         return false;
     }
+    binrec_set_optimization_flags(handle, common_opt, guest_opt, host_opt);
+    binrec_set_max_inline_length(handle, inline_length);
+    binrec_set_max_inline_depth(handle, inline_depth);
 
     const uint32_t RETURN_ADDRESS = -4;  // Used to detect return-to-caller.
     state_ppc->lr = RETURN_ADDRESS;
