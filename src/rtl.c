@@ -1337,30 +1337,38 @@ bool rtl_optimize_unit(RTLUnit *unit, unsigned int flags)
     ASSERT(unit->regs != NULL);
     ASSERT(unit->label_blockmap != NULL);
 
+    /* Allocate and clear a buffer for block "seen" flags, used by some
+     * optimizers. */
+    unit->block_seen =
+        rtl_malloc(unit, unit->num_blocks * sizeof(*unit->block_seen));
+    if (UNLIKELY(!unit->block_seen)) {
+        log_error(unit->handle, "Failed to allocate blocks_seen (%d bytes)",
+                  (int)(unit->num_blocks * sizeof(*unit->block_seen)));
+        return false;
+    }
+
+    /* Perform optimizations in the proper order. */
     if (flags & BINREC_OPT_DEEP_DATA_FLOW) {
         //FIXME: notimp: alias data flow analysis
     }
-
     if (flags & BINREC_OPT_FOLD_CONSTANTS) {
         rtl_opt_fold_constants(unit);
     }
-
     if (flags & BINREC_OPT_DECONDITION) {
         rtl_opt_decondition(unit);
     }
-
     if (flags & BINREC_OPT_DSE) {
         rtl_opt_drop_dead_stores(unit);
     }
-
     if (flags & BINREC_OPT_BASIC) {
-        //FIXME: notimp: branch threading
-        if (UNLIKELY(!rtl_opt_drop_dead_blocks(unit))) {
-            log_error(unit->handle, "Dead block dropping failed");
-            return false;
-        }
+        rtl_opt_thread_branches(unit);
+        rtl_opt_drop_dead_blocks(unit);
         rtl_opt_drop_dead_branches(unit);
     }
+
+    /* Free the "seen" flag buffer before returning. */
+    rtl_free(unit, unit->block_seen);
+    unit->block_seen = NULL;
 
     return true;
 }

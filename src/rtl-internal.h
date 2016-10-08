@@ -436,11 +436,9 @@ extern void rtl_opt_decondition(RTLUnit *unit);
  *
  * [Parameters]
  *     unit: RTL unit.
- * [Return value]
- *     True on success, false on error.
  */
 #define rtl_opt_drop_dead_blocks INTERNAL(rtl_opt_drop_dead_blocks)
-extern bool rtl_opt_drop_dead_blocks(RTLUnit *unit);
+extern void rtl_opt_drop_dead_blocks(RTLUnit *unit);
 
 /**
  * rtl_opt_drop_dead_branches:  Search an RTL unit for branch instructions
@@ -476,6 +474,18 @@ extern void rtl_opt_drop_dead_stores(RTLUnit *unit);
  */
 #define rtl_opt_fold_constants INTERNAL(rtl_opt_fold_constants)
 extern void rtl_opt_fold_constants(RTLUnit *unit);
+
+/**
+ * rtl_opt_thread_branches:  Search an RTL unit for branch instructions
+ * which directly target other (unconditional or same-conditioned) branch
+ * instructions, and rewrite their targets to point to the final branch
+ * target.
+ *
+ * [Parameters]
+ *     unit: RTL unit.
+ */
+#define rtl_opt_thread_branches INTERNAL(rtl_opt_thread_branches)
+extern void rtl_opt_thread_branches(RTLUnit *unit);
 
 /*------------------------ Register information -------------------------*/
 

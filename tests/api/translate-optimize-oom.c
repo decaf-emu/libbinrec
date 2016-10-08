@@ -93,7 +93,6 @@ int main(void)
     EXPECT_STREQ(get_log_messages(),
                  ("[info] Scanning terminated at requested limit 0x1007\n"
                   "[error] Failed to allocate blocks_seen (3 bytes)\n"
-                  "[error] Dead block dropping failed\n"
                   "[warning] Failed to optimize RTL for code at 0x1000\n"));
 
     free(x86_code);

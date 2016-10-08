@@ -1156,6 +1156,74 @@ static void visit_block(RTLUnit * const unit, const int block_index)
     }
 }
 
+/*-----------------------------------------------------------------------*/
+
+/**
+ * thread_branch:  Thread the given branch instruction through to its
+ * final destination.  Helper function for rtl_opt_thread_branches().
+ *
+ * [Parameters]
+ *     unit: RTL unit.
+ *     block_index: Index in unit->blocks[] of block containing branch.
+ *     branch: Pointer to branch instruction.
+ */
+static void thread_branch(RTLUnit * const unit, int block_index,
+                          RTLInsn * const branch)
+{
+    memset(unit->block_seen, 0, unit->num_blocks * sizeof(*unit->block_seen));
+    unit->block_seen[block_index] = 1;
+
+    int new_label = 0, new_target;
+    const int target_block = unit->label_blockmap[branch->label];
+    ASSERT(target_block >= 0 && target_block < unit->num_blocks);
+    for (uint32_t i = unit->blocks[target_block].first_insn;
+         i < unit->num_insns; i++)
+    {
+        const RTLInsn * const insn = &unit->insns[i];
+        if (insn->opcode == RTLOP_GOTO
+         || (insn->opcode == branch->opcode && insn->src1 == branch->src1)) {
+            const int label = insn->label;
+            new_target = unit->label_blockmap[label];
+            ASSERT(new_target >= 0 && new_target < unit->num_blocks);
+            if (UNLIKELY(unit->block_seen[new_target])) {
+#ifdef RTL_DEBUG_OPTIMIZE
+                log_info(unit->handle, "Branch at %d has a cycle, not"
+                         " threading", (int)(branch - unit->insns));
+#endif
+                new_label = 0;
+                break;
+            }
+            new_label = label;
+            unit->block_seen[new_target] = 1;
+            i = unit->blocks[new_target].first_insn - 1;
+        } else if (insn->opcode != RTLOP_NOP && insn->opcode != RTLOP_LABEL) {
+            break;
+        }
+    }
+
+    if (new_label) {
+        /* Update the instruction and flow graph.  If this is a conditional
+         * branch to the next instruction, we'll be replacing the
+         * fall-through edge along with the branch edge here; but in that
+         * case, the conditional branch is a NOP anyway, so we've
+         * effectively just removed a dead block from the flow graph. */
+        RTLBlock * const block = &unit->blocks[block_index];
+        const int exit_index = (block->exits[1] == target_block ? 1 : 0);
+        rtl_block_remove_edge(unit, block_index, exit_index);
+        if (UNLIKELY(!rtl_block_add_edge(unit, block_index, new_target))) {
+            ASSERT(rtl_block_add_edge(unit, block_index, target_block));
+            log_warning(unit->handle, "Out of memory while threading branch at"
+                     " %d", (int)(branch - unit->insns));
+        } else {
+#ifdef RTL_DEBUG_OPTIMIZE
+            log_info(unit->handle, "Threading branch at %d through to final"
+                     " target L%d", (int)(branch - unit->insns), new_label);
+#endif
+            branch->label = new_label;
+        }
+    }
+}
+
 /*************************************************************************/
 /********************** Internal interface routines **********************/
 /*************************************************************************/
@@ -1229,24 +1297,16 @@ void rtl_opt_decondition(RTLUnit *unit)
 
 /*-----------------------------------------------------------------------*/
 
-bool rtl_opt_drop_dead_blocks(RTLUnit *unit)
+void rtl_opt_drop_dead_blocks(RTLUnit *unit)
 {
     ASSERT(unit);
     ASSERT(unit->insns);
     ASSERT(unit->blocks);
     ASSERT(unit->regs);
-
-    /* Allocate and clear a buffer for "seen" flags. */
-    unit->block_seen =
-        rtl_malloc(unit, unit->num_blocks * sizeof(*unit->block_seen));
-    if (UNLIKELY(!unit->block_seen)) {
-        log_error(unit->handle, "Failed to allocate blocks_seen (%d bytes)",
-                  (int)(unit->num_blocks * sizeof(*unit->block_seen)));
-        return false;
-    }
-    memset(unit->block_seen, 0, unit->num_blocks * sizeof(*unit->block_seen));
+    ASSERT(unit->block_seen);
 
     /* Recursively visit all blocks reachable from the start block. */
+    memset(unit->block_seen, 0, unit->num_blocks * sizeof(*unit->block_seen));
     visit_block(unit, 0);
 
     /* Remove all blocks which are not reachable. */
@@ -1271,13 +1331,6 @@ bool rtl_opt_drop_dead_blocks(RTLUnit *unit)
             }
         }
     }
-
-    /* Free the "seen" flag buffer before returning (since the core doesn't
-     * touch this field). */
-    rtl_free(unit, unit->block_seen);
-    unit->block_seen = NULL;  // Just for safety.
-
-    return true;
 }
 
 /*-----------------------------------------------------------------------*/
@@ -1360,6 +1413,30 @@ void rtl_opt_fold_constants(RTLUnit *unit)
                 if (readonly_ptr) {
                     fold_readonly_load(unit, reg, readonly_ptr);
                 }
+            }
+        }
+    }
+}
+
+/*-----------------------------------------------------------------------*/
+
+void rtl_opt_thread_branches(RTLUnit *unit)
+{
+    ASSERT(unit);
+    ASSERT(unit->insns);
+    ASSERT(unit->blocks);
+    ASSERT(unit->regs);
+    ASSERT(unit->label_blockmap);
+    ASSERT(unit->block_seen);
+
+    for (int i = 0; i >= 0; i = unit->blocks[i].next_block) {
+        RTLBlock * const block = &unit->blocks[i];
+        if (block->last_insn >= block->first_insn) {
+            RTLInsn * const insn = &unit->insns[block->last_insn];
+            if ((insn->opcode == RTLOP_GOTO
+              || insn->opcode == RTLOP_GOTO_IF_Z
+              || insn->opcode == RTLOP_GOTO_IF_NZ)) {
+                thread_branch(unit, i, insn);
             }
         }
     }
