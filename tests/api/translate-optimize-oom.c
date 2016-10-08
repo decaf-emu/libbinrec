@@ -91,9 +91,7 @@ int main(void)
     EXPECT_EQ(x86_code_size, sizeof(x86_expected));
 
     EXPECT_STREQ(get_log_messages(),
-                 ("[info] Scanning terminated at requested limit 0x1007\n"
-                  "[error] Failed to allocate blocks_seen (3 bytes)\n"
-                  "[warning] Failed to optimize RTL for code at 0x1000\n"));
+                 "[info] Scanning terminated at requested limit 0x1007\n");
 
     free(x86_code);
     binrec_destroy_handle(handle);

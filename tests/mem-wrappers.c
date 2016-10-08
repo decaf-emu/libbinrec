@@ -25,8 +25,10 @@ static int code_fail_counter = 0;
 void *mem_wrap_malloc(UNUSED void *userdata, size_t size)
 {
     if (fail_counter > 0) {
-        if (--fail_counter == 0) {
+        if (fail_counter == 1) {
             return NULL;
+        } else {
+            fail_counter--;
         }
     }
     return malloc(size);
@@ -35,8 +37,10 @@ void *mem_wrap_malloc(UNUSED void *userdata, size_t size)
 void *mem_wrap_realloc(UNUSED void *userdata, void *ptr, size_t size)
 {
     if (fail_counter > 0) {
-        if (--fail_counter == 0) {
+        if (fail_counter == 1) {
             return NULL;
+        } else {
+            fail_counter--;
         }
     }
     return realloc(ptr, size);
@@ -63,8 +67,10 @@ void *mem_wrap_code_malloc(UNUSED void *userdata, size_t size,
                            UNUSED size_t alignment)
 {
     if (code_fail_counter > 0) {
-        if (--code_fail_counter == 0) {
+        if (code_fail_counter == 1) {
             return NULL;
+        } else {
+            code_fail_counter--;
         }
     }
     return malloc(size);
@@ -75,8 +81,10 @@ void *mem_wrap_code_realloc(UNUSED void *userdata, void *ptr,
                             UNUSED size_t alignment)
 {
     if (code_fail_counter > 0) {
-        if (--code_fail_counter == 0) {
+        if (code_fail_counter == 1) {
             return NULL;
+        } else {
+            code_fail_counter--;
         }
     }
     return realloc(ptr, new_size);

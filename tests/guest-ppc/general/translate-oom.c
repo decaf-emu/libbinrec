@@ -61,6 +61,7 @@ int main(void)
             }
             break;
         }
+        mem_wrap_cancel_fail();
         rtl_destroy_unit(unit);
     }
 

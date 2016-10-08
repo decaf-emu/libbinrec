@@ -39,6 +39,7 @@ int main(int argc, char **argv)
         }
         clear_log_messages();
         mem_wrap_cancel_fail();
+        mem_wrap_code_cancel_fail();
         const int result = (*tests[i].f)();
         if (result != EXIT_SUCCESS) {
             printf("FAILED: %s\n", tests[i].name);
