@@ -1350,7 +1350,7 @@ bool rtl_optimize_unit(RTLUnit *unit, unsigned int flags)
     }
 
     if (flags & BINREC_OPT_DSE) {
-        //FIXME: notimp: dead store elimination
+        rtl_opt_drop_dead_stores(unit);
     }
 
     if (flags & BINREC_OPT_BASIC) {

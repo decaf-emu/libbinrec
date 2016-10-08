@@ -1319,6 +1319,30 @@ void rtl_opt_drop_dead_branches(RTLUnit *unit)
 
 /*-----------------------------------------------------------------------*/
 
+void rtl_opt_drop_dead_stores(RTLUnit *unit)
+{
+    for (uint32_t insn_index = 0; insn_index < unit->num_insns; insn_index++) {
+        RTLInsn *insn = &unit->insns[insn_index];
+        const RTLRegister *dest_reg = &unit->regs[insn->dest];
+        if (insn->dest && dest_reg->death == dest_reg->birth) {
+            const RTLOpcode opcode = insn->opcode;
+            /* Don't drop instructions with side effects! */
+            if (opcode != RTLOP_ATOMIC_INC && opcode != RTLOP_CMPXCHG) {
+#ifdef RTL_DEBUG_OPTIMIZE
+                log_info(unit->handle, "Dropping dead store to r%d at insn %d",
+                         insn->dest, insn_index);
+#endif
+                insn->opcode = RTLOP_NOP;
+                insn->src1 = 0;
+                insn->src2 = 0;
+                insn->src_imm = 0;
+            }
+        }
+    }
+}
+
+/*-----------------------------------------------------------------------*/
+
 void rtl_opt_fold_constants(RTLUnit *unit)
 {
     ASSERT(unit);

@@ -454,6 +454,17 @@ extern bool rtl_opt_drop_dead_blocks(RTLUnit *unit);
 extern void rtl_opt_drop_dead_branches(RTLUnit *unit);
 
 /**
+ * rtl_opt_drop_dead_stores:  Search an RTL unit for instructions that
+ * write to a register which is never used elsewhere, and replace them
+ * with NOPs.
+ *
+ * [Parameters]
+ *     unit: RTL unit.
+ */
+#define rtl_opt_drop_dead_stores INTERNAL(rtl_opt_drop_dead_stores)
+extern void rtl_opt_drop_dead_stores(RTLUnit *unit);
+
+/**
  * rtl_opt_fold_constants:  Perform constant folding on the given RTL unit,
  * converting instructions that operate on constant operands into load-
  * immediate instructions that load the result of the operation.  If such
