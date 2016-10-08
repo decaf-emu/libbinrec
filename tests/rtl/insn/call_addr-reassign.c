@@ -31,11 +31,11 @@ int main(void)
     EXPECT(reg2 = rtl_alloc_register(unit, RTLTYPE_INT32));
 
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg1, 0, 0, 10));
-    EXPECT(rtl_add_insn(unit, RTLOP_CALL_ADDR, reg2, reg1, 0, 0));
+    EXPECT(rtl_add_insn(unit, RTLOP_CALL, reg2, reg1, 0, 0));
     EXPECT_EQ(unit->num_insns, 2);
     EXPECT_FALSE(unit->error);
 
-    EXPECT_FALSE(rtl_add_insn(unit, RTLOP_CALL_ADDR, reg2, reg1, 0, 0));
+    EXPECT_FALSE(rtl_add_insn(unit, RTLOP_CALL, reg2, reg1, 0, 0));
     EXPECT_ICE("Operand constraint violated:"
                " unit->regs[dest].source == RTLREG_UNDEFINED");
     EXPECT_EQ(unit->num_insns, 2);

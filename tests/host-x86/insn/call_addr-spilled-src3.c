@@ -31,7 +31,7 @@ static int add_rtl(RTLUnit *unit)
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg2, 0, 0, 2));
     EXPECT(reg3 = rtl_alloc_register(unit, RTLTYPE_INT32));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg3, 0, 0, 3));
-    EXPECT(rtl_add_insn(unit, RTLOP_CALL_ADDR, 0, reg1, reg3, reg2));
+    EXPECT(rtl_add_insn(unit, RTLOP_CALL, 0, reg1, reg3, reg2));
     EXPECT(rtl_add_insn(unit, RTLOP_RETURN, 0, 0, 0, 0));
     for (int i = 0; i < lenof(dummy_regs); i++) {
         EXPECT(rtl_add_insn(unit, RTLOP_NOP, 0, dummy_regs[i], 0, 0));

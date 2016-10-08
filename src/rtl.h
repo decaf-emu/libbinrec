@@ -299,7 +299,7 @@ typedef enum RTLOpcode {
     /* Call to arbitrary host address.  src1 must be of ADDRESS type.
      * dest, src2, and other are optional, but must be integer type if
      * given; if src2 is omitted, other must also be omitted. */
-    RTLOP_CALL_ADDR,    // dest = (*src1)(src2, other)
+    RTLOP_CALL,         // dest = (*src1)(src2, other)
 
     /* Terminator for generated code (returns to caller; the return value
      * is optional) */

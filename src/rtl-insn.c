@@ -1149,10 +1149,10 @@ static bool make_goto_cond(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
 /*-----------------------------------------------------------------------*/
 
 /**
- * make_call_addr:  Encode a CALL_ADDR instruction.
+ * make_call:  Encode a CALL instruction.
  */
-static bool make_call_addr(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
-                           int src2, uint64_t other)
+static bool make_call(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
+                      int src2, uint64_t other)
 {
     ASSERT(unit != NULL);
     ASSERT(unit->regs != NULL);
@@ -1332,7 +1332,7 @@ bool (* const makefunc_table[])(RTLUnit *, RTLInsn *, int, int, int,
     [RTLOP_GOTO      ] = make_goto,
     [RTLOP_GOTO_IF_Z ] = make_goto_cond,
     [RTLOP_GOTO_IF_NZ] = make_goto_cond,
-    [RTLOP_CALL_ADDR ] = make_call_addr,
+    [RTLOP_CALL      ] = make_call,
     [RTLOP_RETURN    ] = make_return,
     [RTLOP_ILLEGAL   ] = make_illegal,
 };

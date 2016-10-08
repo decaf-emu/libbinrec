@@ -37,13 +37,13 @@ int main(void)
     EXPECT_EQ(unit->num_insns, 3);
     EXPECT_FALSE(unit->error);
 
-    EXPECT_FALSE(rtl_add_insn(unit, RTLOP_CALL_ADDR, 0, 0, reg2, reg3));
+    EXPECT_FALSE(rtl_add_insn(unit, RTLOP_CALL, 0, 0, reg2, reg3));
     EXPECT_ICE("Operand constraint violated: src1 != 0");
     EXPECT_EQ(unit->num_insns, 3);
     EXPECT(unit->error);
     unit->error = false;
 
-    EXPECT_FALSE(rtl_add_insn(unit, RTLOP_CALL_ADDR, 0, reg1, 0, reg3));
+    EXPECT_FALSE(rtl_add_insn(unit, RTLOP_CALL, 0, reg1, 0, reg3));
     EXPECT_ICE("Operand constraint violated: !(src2 == 0 && other != 0)");
     EXPECT_EQ(unit->num_insns, 3);
     EXPECT(unit->error);

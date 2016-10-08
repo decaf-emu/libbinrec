@@ -1279,7 +1279,7 @@ static bool append_epilogue(HostX86Context *ctx, bool append_ret)
 /*-----------------------------------------------------------------------*/
 
 /**
- * translate_call_addr:  Translate a CALL_ADDR instruction.
+ * translate_call:  Translate a CALL instruction.
  *
  * [Parameters]
  *     ctx: Translation context.
@@ -1288,8 +1288,8 @@ static bool append_epilogue(HostX86Context *ctx, bool append_ret)
  * [Return value]
  *     True on success, false if out of memory.
  */
-static bool translate_call_addr(HostX86Context *ctx, int block_index,
-                                int insn_index)
+static bool translate_call(HostX86Context *ctx, int block_index,
+                           int insn_index)
 {
     ASSERT(ctx);
     ASSERT(ctx->handle);
@@ -3040,9 +3040,9 @@ static bool translate_block(HostX86Context *ctx, int block_index)
             break;
           }  // case RTLOP_GOTO_IF_Z, RTLOP_GOTO_IF_NZ
 
-          case RTLOP_CALL_ADDR:
+          case RTLOP_CALL:
             handle->code_len = code.len;
-            if (!translate_call_addr(ctx, block_index, insn_index)) {
+            if (!translate_call(ctx, block_index, insn_index)) {
                 return false;
             }
             code.buffer = handle->code_buffer;

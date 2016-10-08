@@ -51,7 +51,7 @@ int main(void)
     EXPECT(rtl_add_insn(unit, RTLOP_STORE, 0, reg8, reg6, 0));
     EXPECT(rtl_add_insn(unit, RTLOP_ATOMIC_INC, reg9, reg8, 0, 0));
     EXPECT(rtl_add_insn(unit, RTLOP_CMPXCHG, reg10, reg8, reg6, reg7));
-    EXPECT(rtl_add_insn(unit, RTLOP_CALL_ADDR, reg11, reg8, reg6, reg7));
+    EXPECT(rtl_add_insn(unit, RTLOP_CALL, reg11, reg8, reg6, reg7));
     EXPECT(rtl_add_insn(unit, RTLOP_GOTO_IF_NZ, 0, reg11, 0, label));
     EXPECT(rtl_add_insn(unit, RTLOP_RETURN, 0, reg11, 0, 0));
 
@@ -72,7 +72,7 @@ int main(void)
                  "    9: STORE      0(r8), r6\n"
                  "   10: ATOMIC_INC r9, (r8)\n"
                  "   11: CMPXCHG    r10, (r8), r6, r7\n"
-                 "   12: CALL_ADDR  r11, @r8, r6, r7\n"
+                 "   12: CALL       r11, @r8, r6, r7\n"
                  "   13: GOTO_IF_NZ r11, L1\n"
                  "   14: RETURN     r11\n"
                  "\n"

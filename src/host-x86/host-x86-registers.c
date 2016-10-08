@@ -417,7 +417,7 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
     }
 
     if (insn->opcode == RTLOP_SELECT || insn->opcode == RTLOP_CMPXCHG
-     || (insn->opcode == RTLOP_CALL_ADDR && insn->src3 != 0)) {
+     || (insn->opcode == RTLOP_CALL && insn->src3 != 0)) {
         ASSERT(insn->src3 < unit->next_reg);
         const RTLRegister * const src3_reg = &unit->regs[insn->src3];
         const HostX86RegInfo * const src3_info = &ctx->regs[insn->src3];

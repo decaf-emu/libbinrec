@@ -37,21 +37,21 @@ int main(void)
     EXPECT_EQ(unit->num_insns, 2);
     EXPECT_FALSE(unit->error);
 
-    EXPECT_FALSE(rtl_add_insn(unit, RTLOP_CALL_ADDR, 0, reg3, reg2, 0));
+    EXPECT_FALSE(rtl_add_insn(unit, RTLOP_CALL, 0, reg3, reg2, 0));
     EXPECT_ICE("Operand constraint violated:"
                " unit->regs[src1].source != RTLREG_UNDEFINED");
     EXPECT_EQ(unit->num_insns, 2);
     EXPECT(unit->error);
     unit->error = false;
 
-    EXPECT_FALSE(rtl_add_insn(unit, RTLOP_CALL_ADDR, 0, reg1, reg4, 0));
+    EXPECT_FALSE(rtl_add_insn(unit, RTLOP_CALL, 0, reg1, reg4, 0));
     EXPECT_ICE("Operand constraint violated:"
                " unit->regs[src2].source != RTLREG_UNDEFINED");
     EXPECT_EQ(unit->num_insns, 2);
     EXPECT(unit->error);
     unit->error = false;
 
-    EXPECT_FALSE(rtl_add_insn(unit, RTLOP_CALL_ADDR, 0, reg1, reg2, reg4));
+    EXPECT_FALSE(rtl_add_insn(unit, RTLOP_CALL, 0, reg1, reg2, reg4));
     EXPECT_ICE("Operand constraint violated:"
                " unit->regs[other].source != RTLREG_UNDEFINED");
     EXPECT_EQ(unit->num_insns, 2);

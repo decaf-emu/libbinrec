@@ -2083,7 +2083,7 @@ static void translate_trap(
     const int trap_handler = rtl_alloc_register(unit, RTLTYPE_ADDRESS);
     rtl_add_insn(unit, RTLOP_LOAD, trap_handler, ctx->psb_reg, 0,
                  ctx->handle->setup.state_offset_trap_handler);
-    rtl_add_insn(unit, RTLOP_CALL_ADDR, 0, trap_handler, ctx->psb_reg, 0);
+    rtl_add_insn(unit, RTLOP_CALL, 0, trap_handler, ctx->psb_reg, 0);
     rtl_add_insn(unit, RTLOP_RETURN, 0, 0, 0, 0);
 
     if (result) {
@@ -2678,7 +2678,7 @@ static inline void translate_insn(
         const int sc_handler = rtl_alloc_register(unit, RTLTYPE_ADDRESS);
         rtl_add_insn(unit, RTLOP_LOAD, sc_handler, ctx->psb_reg, 0,
                      ctx->handle->setup.state_offset_sc_handler);
-        rtl_add_insn(unit, RTLOP_CALL_ADDR, 0, sc_handler, ctx->psb_reg, 0);
+        rtl_add_insn(unit, RTLOP_CALL, 0, sc_handler, ctx->psb_reg, 0);
         rtl_add_insn(unit, RTLOP_RETURN, 0, 0, 0, 0);
         return;
       }  // case OPCD_SC
