@@ -1364,6 +1364,11 @@ bool rtl_optimize_unit(RTLUnit *unit, unsigned int flags)
         rtl_opt_thread_branches(unit);
         rtl_opt_drop_dead_blocks(unit);
         rtl_opt_drop_dead_branches(unit);
+        if (flags & BINREC_OPT_DSE) {
+            /* Clear out any stores which are no longer used after
+             * dead branch dropping. */
+            rtl_opt_drop_dead_stores(unit);
+        }
     }
 
     /* Free the "seen" flag buffer before returning. */
