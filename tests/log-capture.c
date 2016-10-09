@@ -11,6 +11,7 @@
 #include "tests/common.h"
 #include "tests/log-capture.h"
 #include <stdio.h>
+#include <stdlib.h>
 
 
 static char *log_messages = NULL;
@@ -23,6 +24,7 @@ void log_capture(UNUSED void *userdata, binrec_loglevel_t level,
         [BINREC_LOGLEVEL_WARNING] = "warning",
         [BINREC_LOGLEVEL_ERROR  ] = "error",
     };
+
     const int current_len = log_messages ? strlen(log_messages) : 0;
     const int message_len =
         snprintf(NULL, 0, "[%s] %s\n", level_prefix[level], message);
@@ -30,6 +32,11 @@ void log_capture(UNUSED void *userdata, binrec_loglevel_t level,
     ASSERT(log_messages = realloc(log_messages, new_size));
     ASSERT(snprintf(log_messages + current_len, message_len + 1, "[%s] %s\n",
                     level_prefix[level], message) == message_len);
+
+    const char *verbose = getenv("LOG_VERBOSE");
+    if (verbose && *verbose && strcmp(verbose, "0") != 0) {
+        printf("[%s] %s\n", level_prefix[level], message);
+    }
 }
 
 const char *get_log_messages(void)
