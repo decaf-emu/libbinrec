@@ -1271,6 +1271,7 @@ void rtl_opt_decondition(RTLUnit *unit)
                              block->exits[fallthrough_index]);
 #endif
                     insn->opcode = RTLOP_GOTO;
+                    insn->src1 = 0;
                     rtl_block_remove_edge(unit, block_index,
                                           fallthrough_index);
                 } else {
@@ -1282,6 +1283,7 @@ void rtl_opt_decondition(RTLUnit *unit)
                              block->exits[fallthrough_index ^ 1]);
 #endif
                     insn->opcode = RTLOP_NOP;
+                    insn->src1 = 0;
                     insn->src_imm = 0;
                     rtl_block_remove_edge(unit, block_index,
                                           fallthrough_index ^ 1);
@@ -1388,6 +1390,7 @@ void rtl_opt_drop_dead_stores(RTLUnit *unit)
                          insn->dest, insn_index);
 #endif
                 insn->opcode = RTLOP_NOP;
+                insn->dest = 0;
                 insn->src1 = 0;
                 insn->src2 = 0;
                 insn->src_imm = 0;

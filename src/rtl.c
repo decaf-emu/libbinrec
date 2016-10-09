@@ -616,9 +616,23 @@ static void rtl_decode_insn(const RTLUnit *unit, uint32_t index,
     switch ((RTLOpcode)insn->opcode) {
 
       case RTLOP_NOP:
-        if (insn->src_imm) {
-            s += snprintf_assert(s, top - s, "%-10s 0x%"PRIX64"\n",
-                                 name, insn->src_imm);
+        if (insn->dest || insn->src1 || insn->src2 || insn->src_imm) {
+            s += snprintf_assert(s, top - s, "%-10s ", name);
+            if (insn->dest) {
+                s += snprintf_assert(s, top - s, "r%d", insn->dest);
+            } else {
+                s += snprintf_assert(s, top - s, "-");
+            }
+            if (insn->src1) {
+                s += snprintf_assert(s, top - s, ", r%d", insn->src1);
+            }
+            if (insn->src2) {
+                s += snprintf_assert(s, top - s, ", r%d", insn->src2);
+            }
+            if (insn->src_imm) {
+                s += snprintf_assert(s, top - s, ", 0x%"PRIX64, insn->src_imm);
+            }
+            s += snprintf_assert(s, top - s, "\n");
         } else {
             s += snprintf_assert(s, top - s, "%s\n", name);
         }
@@ -900,7 +914,8 @@ static void rtl_describe_alias(const RTLUnit *unit, int index,
  *     unit: RTLUnit containing basic block to describe.
  *     index: Index of basic block.
  *     buf: Buffer into which to store result text.
- *     bufsize: Size of buffer (should be at least 200).
+ *     bufsize: Size of buffer (should be at least 200; more may be needed
+ *         for blocks with many entering edges).
  */
 static void rtl_describe_block(const RTLUnit *unit, int index,
                                char *buf, int bufsize)

@@ -38,7 +38,7 @@ static const char expected[] =
     "    1: LOAD_ARG   r2, 2\n"
     "    2: LOAD_IMM   r3, 0\n"
     "    3: MOVE       r4, r2\n"
-    "    4: NOP\n"
+    "    4: NOP        -, r1\n"
     "\n"
     "Block 0: <none> --> [0,4] --> <none>\n"
     ;
