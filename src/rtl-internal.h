@@ -156,7 +156,8 @@ struct RTLRegister {
 
     /* Liveness information. */
     bool live;                  // True if this register has been referenced
-                                //    (this field is never cleared once set)
+                                //    (never cleared once set, except if the
+                                //    register is killed during optimization)
     uint16_t live_link;         // Next register in live list (sorted by birth)
     int32_t birth;              // First RTL insn index when register is live
                                 //    (= insn where it's assigned, because SSA)

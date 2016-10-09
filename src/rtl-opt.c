@@ -82,8 +82,11 @@ static inline uint64_t reg_value_i64(const RTLRegister * const reg)
  * [Parameters]
  *     unit: RTL unit.
  *     reg_index: Index of register to modify.
+ * [Return value]
+ *     True if the register is no longer referenced after being set,
+ *     false otherwise.
  */
-static void rollback_reg_death(RTLUnit * const unit, const int reg_index)
+static bool rollback_reg_death(RTLUnit * const unit, const int reg_index)
 {
     ASSERT(unit);
     ASSERT(reg_index);
@@ -147,7 +150,7 @@ static void rollback_reg_death(RTLUnit * const unit, const int reg_index)
                          reg_index, insn_index);
 #endif
                 reg->death = insn_index;
-                return;
+                return false;
             }
             break;
 
@@ -203,6 +206,7 @@ static void rollback_reg_death(RTLUnit * const unit, const int reg_index)
              reg_index);
 #endif
     reg->death = reg->birth;
+    return true;
 }
 
 /*-----------------------------------------------------------------------*/
@@ -1138,6 +1142,69 @@ static void fold_readonly_load(RTLUnit * const unit, RTLRegister * const reg,
 /*-----------------------------------------------------------------------*/
 
 /**
+ * maybe_kill_store:  Kill (change to NOP) the instruction that sets the
+ * given register if the instruction is a killable one.  Recurseive helper
+ * for rtl_opt_drop_dead_stores().
+ *
+ * [Parameters]
+ *     unit: RTL unit.
+ *     reg: Register to possibly kill store for.
+ */
+static void maybe_kill_store(RTLUnit * const unit, RTLRegister * const reg)
+{
+    ASSERT(unit);
+    ASSERT(reg);
+    ASSERT(reg->death == reg->birth);
+
+    const int insn_index = reg->birth;
+    RTLInsn * const insn = &unit->insns[insn_index];
+
+    /* Don't drop instructions with side effects! */
+    if (insn->opcode == RTLOP_ATOMIC_INC || insn->opcode == RTLOP_CMPXCHG) {
+        return;
+    }
+
+#ifdef RTL_DEBUG_OPTIMIZE
+    log_info(unit->handle, "Dropping dead store to r%d at insn %d",
+             insn->dest, insn_index);
+#endif
+
+    if (insn->src1) {
+        RTLRegister * const src1_reg = &unit->regs[insn->src1];
+        if (src1_reg->death == insn_index) {
+            if (rollback_reg_death(unit, insn->src1)) {
+                maybe_kill_store(unit, src1_reg);
+            }
+        }
+    }
+    if (insn->src2) {
+        RTLRegister * const src2_reg = &unit->regs[insn->src2];
+        if (src2_reg->death == insn_index) {
+            if (rollback_reg_death(unit, insn->src2)) {
+                maybe_kill_store(unit, src2_reg);
+            }
+        }
+    }
+    if (insn->opcode == RTLOP_SELECT) {
+        ASSERT(insn->src3);
+        RTLRegister * const src3_reg = &unit->regs[insn->src3];
+        if (src3_reg->death == insn_index) {
+            if (rollback_reg_death(unit, insn->src3)) {
+                maybe_kill_store(unit, src3_reg);
+            }
+        }
+    }
+
+    insn->opcode = RTLOP_NOP;
+    insn->dest = 0;
+    insn->src1 = 0;
+    insn->src2 = 0;
+    insn->src_imm = 0;
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
  * visit_block:  Mark the given block as seen and visit all successor
  * blocks.  Helper function for rtl_opt_drop_dead_blocks().
  *
@@ -1378,23 +1445,10 @@ void rtl_opt_drop_dead_branches(RTLUnit *unit)
 
 void rtl_opt_drop_dead_stores(RTLUnit *unit)
 {
-    for (uint32_t insn_index = 0; insn_index < unit->num_insns; insn_index++) {
-        RTLInsn *insn = &unit->insns[insn_index];
-        const RTLRegister *dest_reg = &unit->regs[insn->dest];
-        if (insn->dest && dest_reg->death == dest_reg->birth) {
-            const RTLOpcode opcode = insn->opcode;
-            /* Don't drop instructions with side effects! */
-            if (opcode != RTLOP_ATOMIC_INC && opcode != RTLOP_CMPXCHG) {
-#ifdef RTL_DEBUG_OPTIMIZE
-                log_info(unit->handle, "Dropping dead store to r%d at insn %d",
-                         insn->dest, insn_index);
-#endif
-                insn->opcode = RTLOP_NOP;
-                insn->dest = 0;
-                insn->src1 = 0;
-                insn->src2 = 0;
-                insn->src_imm = 0;
-            }
+    for (int reg_index = 1; reg_index < unit->next_reg; reg_index++) {
+        RTLRegister *reg = &unit->regs[reg_index];
+        if (reg->death == reg->birth) {
+            maybe_kill_store(unit, reg);
         }
     }
 }
