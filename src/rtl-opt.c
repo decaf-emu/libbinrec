@@ -1262,7 +1262,8 @@ static void maybe_kill_store(RTLUnit * const unit, RTLRegister * const reg)
     RTLInsn * const insn = &unit->insns[insn_index];
 
     /* Don't drop instructions with side effects! */
-    if (insn->opcode == RTLOP_ATOMIC_INC || insn->opcode == RTLOP_CMPXCHG) {
+    if (insn->opcode == RTLOP_ATOMIC_INC || insn->opcode == RTLOP_CMPXCHG
+     || insn->opcode == RTLOP_CALL) {
         return;
     }
 
