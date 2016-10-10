@@ -46,6 +46,7 @@ int main(int argc, char **argv)
             failed++;
         }
     }
+    clear_log_messages();
     if (failed == 0) {
         printf("All tests passed.\n");
         return EXIT_SUCCESS;
