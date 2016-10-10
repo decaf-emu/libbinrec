@@ -301,6 +301,7 @@ struct RTLUnit {
     /* The following fields are used only by optimization routines: */
     bool *block_seen;           // Array of "seen" flags for all blocks
                                 //    (used by rtlopt_drop_dead_blocks())
+    int block_seen_size;        // Allocated size of block_seen array
 };
 
 /*************************************************************************/

@@ -1353,12 +1353,17 @@ bool rtl_optimize_unit(RTLUnit *unit, unsigned int flags)
     ASSERT(unit->label_blockmap != NULL);
 
     /* Allocate and clear a buffer for block "seen" flags, used by some
-     * optimizers. */
+     * optimizers.  We double the size to make room for entry overflow
+     * blocks which might be added by branch threading (this is overkill,
+     * but it's guaranteed to be enough space because at most one overflow
+     * block can be added per block exit, and there are at most two exits
+     * per block). */
+    unit->block_seen_size = 3 * unit->num_blocks;
     unit->block_seen =
-        rtl_malloc(unit, unit->num_blocks * sizeof(*unit->block_seen));
+        rtl_malloc(unit, unit->block_seen_size * sizeof(*unit->block_seen));
     if (UNLIKELY(!unit->block_seen)) {
         log_error(unit->handle, "Failed to allocate blocks_seen (%d bytes)",
-                  (int)(unit->num_blocks * sizeof(*unit->block_seen)));
+                  (int)(unit->block_seen_size * sizeof(*unit->block_seen)));
         return false;
     }
 

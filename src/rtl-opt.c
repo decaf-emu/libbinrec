@@ -1595,6 +1595,8 @@ void rtl_opt_drop_dead_blocks(RTLUnit *unit)
             }
         }
     }
+
+    ASSERT(unit->num_blocks <= unit->block_seen_size);
 }
 
 /*-----------------------------------------------------------------------*/
@@ -1692,6 +1694,8 @@ void rtl_opt_thread_branches(RTLUnit *unit)
             }
         }
     }
+
+    ASSERT(unit->num_blocks <= unit->block_seen_size);
 }
 
 /*************************************************************************/
