@@ -26,9 +26,14 @@ int main(void)
     RTLUnit *unit;
     EXPECT(unit = rtl_create_unit(handle));
 
-    EXPECT_FALSE(rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, 0));
-    EXPECT_ICE("Operand constraint violated: other != 0");
-    EXPECT_EQ(unit->num_insns, 0);
+    int label;
+    EXPECT(label = rtl_alloc_label(unit));
+
+    EXPECT(rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, label));
+    EXPECT_EQ(unit->num_insns, 1);
+    EXPECT_FALSE(rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, label));
+    EXPECT_ICE("Operand constraint violated: unit->label_blockmap[other] < 0");
+    EXPECT_EQ(unit->num_insns, 1);
     EXPECT(unit->error);
     unit->error = false;
 

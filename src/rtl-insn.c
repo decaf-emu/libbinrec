@@ -1044,6 +1044,7 @@ static bool make_label(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
 
 #ifdef ENABLE_OPERAND_SANITY_CHECKS
     OPERAND_ASSERT(other != 0);
+    OPERAND_ASSERT(unit->label_blockmap[other] < 0);
 #endif
 
     insn->label = (uint16_t)other;
@@ -1069,7 +1070,7 @@ static bool make_label(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
         unit->blocks[unit->cur_block].first_insn = unit->num_insns;
     }
 
-    /* Save the label's unit number in the label-to-unit map */
+    /* Save the label's unit number in the label-to-unit map. */
     unit->label_blockmap[insn->label] = unit->cur_block;
 
     return true;
