@@ -1387,10 +1387,15 @@ static void visit_block(RTLUnit * const unit, const int block_index)
 {
     unit->block_seen[block_index] = 1;
     RTLBlock * const block = &unit->blocks[block_index];
-    for (int i = 0; i < lenof(block->exits) && block->exits[i] >= 0; i++) {
+    /* As in is_alias_store_visible(), use tail recursion for the first
+     * exit edge. */
+    for (int i = 1; i < lenof(block->exits) && block->exits[i] >= 0; i++) {
         if (!unit->block_seen[block->exits[i]]) {
             visit_block(unit, block->exits[i]);
         }
+    }
+    if (block->exits[0] >= 0 && !unit->block_seen[block->exits[0]]) {
+        visit_block(unit, block->exits[0]);
     }
 }
 
