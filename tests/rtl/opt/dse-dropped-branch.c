@@ -30,7 +30,7 @@ static const char expected[] =
     #ifdef RTL_DEBUG_OPTIMIZE
         "[info] Dropping branch at 1 to next insn\n"
         "[info] r1 no longer used, setting death = birth\n"
-        "[info] Dropping dead store to r1 at insn 0\n"
+        "[info] Dropping dead store to r1 at 0\n"
     #endif
     "    0: NOP\n"
     "    1: NOP\n"

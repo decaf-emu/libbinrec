@@ -40,11 +40,11 @@ static int add_rtl(RTLUnit *unit)
 
 static const char expected[] =
     #ifdef RTL_DEBUG_OPTIMIZE
-        "[info] Folded r5 to constant value 0x0 at insn 4\n"
+        "[info] Folded r5 to constant value 0x0 at 4\n"
         "[info] r2 no longer used, setting death = birth\n"
-        "[info] Folded r6 to constant value 0x1 at insn 5\n"
+        "[info] Folded r6 to constant value 0x1 at 5\n"
         "[info] r3 no longer used, setting death = birth\n"
-        "[info] Folded r7 to constant value 0x0 at insn 6\n"
+        "[info] Folded r7 to constant value 0x0 at 6\n"
         "[info] r1 no longer used, setting death = birth\n"
         "[info] r4 no longer used, setting death = birth\n"
     #endif

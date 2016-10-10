@@ -30,7 +30,7 @@ static int add_rtl(RTLUnit *unit)
 
 static const char expected[] =
     #ifdef RTL_DEBUG_OPTIMIZE
-        "[info] Reduced r4 SELECT (always false) to MOVE from r2 at insn 3\n"
+        "[info] Reduced r4 SELECT (always false) to MOVE from r2 at 3\n"
         "[info] r1 no longer used, setting death = birth\n"
         "[info] r3 no longer used, setting death = birth\n"
     #endif

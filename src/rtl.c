@@ -1363,14 +1363,14 @@ bool rtl_optimize_unit(RTLUnit *unit, unsigned int flags)
     }
 
     /* Perform optimizations in the proper order. */
-    if (flags & BINREC_OPT_DEEP_DATA_FLOW) {
-        // FIXME: alias data flow analysis not yet implemented
-    }
     if (flags & BINREC_OPT_FOLD_CONSTANTS) {
         rtl_opt_fold_constants(unit);
     }
     if (flags & BINREC_OPT_DECONDITION) {
         rtl_opt_decondition(unit);
+    }
+    if (flags & BINREC_OPT_DEEP_DATA_FLOW) {
+        rtl_opt_alias_data_flow(unit);
     }
     if (flags & BINREC_OPT_DSE) {
         rtl_opt_drop_dead_stores(unit);

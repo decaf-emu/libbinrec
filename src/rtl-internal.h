@@ -415,6 +415,24 @@ static inline void rtl_free(const RTLUnit *unit, void *ptr)
 /*---------------------------- Optimization -----------------------------*/
 
 /**
+ * rtl_opt_alias_data_flow:  Analyze data flow through aliases in the given
+ * unit and eliminate SET_ALIAS instructions which are not visible to any
+ * subsequent alias references.  Aliases with bound storage (from
+ * rtl_set_alias_storage()) are treated as being implicitly referenced
+ * when the unit returns to its caller.
+ *
+ * This function's worst-case runtime is roughly quadratic in the number
+ * of basic blocks in the unit (more precisely: O(ab^2+i), where a is the
+ * number of aliases, b is the number of basic blocks, and i is the number
+ * of instructions in the unit).
+ *
+ * [Parameters]
+ *     unit: RTL unit.
+ */
+#define rtl_opt_alias_data_flow INTERNAL(rtl_opt_alias_data_flow)
+extern void rtl_opt_alias_data_flow(RTLUnit *unit);
+
+/**
  * rtl_opt_decondition:  Perform "deconditioning" of conditional branches
  * with constant conditions.  For "GOTO_IF_Z (GOTO_IF_NZ) label, rN" where
  * rN is type RTLREG_CONSTANT, the instruction is changed to GOTO if the

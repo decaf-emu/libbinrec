@@ -18,6 +18,25 @@
 #include <stdio.h>
 
 /*************************************************************************/
+/*************************** Local data types ****************************/
+/*************************************************************************/
+
+/* Data structure used in alias data flow analysis.  One record per alias
+ * is allocated for each block. */
+typedef struct AliasRef {
+    /* True if this alias is set in the block. */
+    bool has_set;
+    /* True if this alias is referenced before being set in the block. */
+    bool has_get;
+    /* True if the latest value set by a SET_ALIAS instruction in this
+     * block is referenced by a subsequent GET_ALIAS in the same block. */
+    bool set_used;
+    /* Index of the last SET_ALIAS instruction for this alias in the block.
+     * Only valid if has_set is true. */
+    int32_t set_insn;
+} AliasRef;
+
+/*************************************************************************/
 /**************************** Local routines *****************************/
 /*************************************************************************/
 
@@ -146,7 +165,7 @@ static bool rollback_reg_death(RTLUnit * const unit, const int reg_index)
             if (insn->src1 == reg_index) {
               still_used:
 #ifdef RTL_DEBUG_OPTIMIZE
-                log_info(unit->handle, "r%d still used at insn %d",
+                log_info(unit->handle, "r%d still used at %d",
                          reg_index, insn_index);
 #endif
                 reg->death = insn_index;
@@ -928,7 +947,7 @@ static inline void fold_one_register(RTLUnit * const unit,
         reg->result.src3 = 0;
 #ifdef RTL_DEBUG_OPTIMIZE
         log_info(unit->handle, "Reduced r%d SELECT (always %s) to MOVE from"
-                 " r%d at insn %d", (int)(reg - unit->regs),
+                 " r%d at %d", (int)(reg - unit->regs),
                  condition ? "true" : "false", reg->result.src1, reg->birth);
 #endif
         if (!condition && unit->regs[src1].death == reg->birth) {
@@ -969,7 +988,7 @@ static inline void fold_one_register(RTLUnit * const unit,
             snprintf(value_str, sizeof(value_str), "0x%"PRIX64,
                      reg->value.i64);
         }
-        log_info(unit->handle, "Folded r%d to constant value %s at insn %d",
+        log_info(unit->handle, "Folded r%d to constant value %s at %d",
                  (int)(reg - unit->regs), value_str, reg->birth);
 #endif
         folded = true;
@@ -982,7 +1001,7 @@ static inline void fold_one_register(RTLUnit * const unit,
             birth_insn->src_imm = reg->result.src_imm;
 #ifdef RTL_DEBUG_OPTIMIZE
             log_info(unit->handle, "Reduced r%d to register-immediate"
-                     " operation (r%d, %d) at insn %d",
+                     " operation (r%d, %d) at %d",
                      (int)(reg - unit->regs), reg->result.src1,
                      reg->result.src_imm, reg->birth);
 #endif
@@ -1124,7 +1143,7 @@ static void fold_readonly_load(RTLUnit * const unit, RTLRegister * const reg,
     }
     const uint32_t addr =
         ((uint32_t)unit->regs[base].value.i64 + reg->memory.offset);
-    log_info(unit->handle, "r%d loads constant value %s from 0x%X at insn %d",
+    log_info(unit->handle, "r%d loads constant value %s from 0x%X at %d",
              (int)(reg - unit->regs), value_str, addr, reg->birth);
 #endif
 
@@ -1136,6 +1155,89 @@ static void fold_readonly_load(RTLUnit * const unit, RTLRegister * const reg,
 
     if (unit->regs[base].death == reg->birth) {
         rollback_reg_death(unit, base);
+    }
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
+ * is_alias_store_visible:  Return whether a store to the given alias in
+ * the given basic block is visible to any other alias reference.  If the
+ * store is visible at an exit from the unit, it is treated as visible if
+ * the alias has bound storage and not visible otherwise.
+ *
+ * [Parameters]
+ *     unit: RTL unit.
+ *     alias_info: Alias reference data array.
+ *     alias: Index in unit->aliases[] of alias to check.
+ *     block_index: Index in unit->blocks[] of block to start search at.
+ * [Return value]
+ *     True if the store is visible, false if not.
+ */
+static bool is_alias_store_visible(RTLUnit * const unit, AliasRef **alias_info,
+                                   const int alias, const int block_index)
+{
+    const RTLBlock * const block = &unit->blocks[block_index];
+    if (block->exits[0] < 0) {
+        return unit->aliases[alias].base != 0;
+    } else {
+        /* Rather than simply iterating over the exit list, we first
+         * recurse on the second exit if it exists, then recurse on the
+         * first exit; this allows the latter recursion to be a tail call. */
+        STATIC_ASSERT(lenof(block->exits) == 2, "RTLBlock must have 2 exits");
+
+        if (block->exits[1] >= 0 && !unit->block_seen[block->exits[1]]) {
+            const int exit = block->exits[1];
+            unit->block_seen[exit] = true;
+            if (alias_info[exit][alias].has_get) {
+                return true;
+            } else if (!alias_info[exit][alias].has_set
+                    && is_alias_store_visible(unit, alias_info, alias, exit)) {
+                return true;
+            }
+        }
+
+        const int exit = block->exits[0];
+        if (unit->block_seen[exit]) {
+            return false;
+        } else {
+            unit->block_seen[exit] = true;
+            if (alias_info[exit][alias].has_get) {
+                return true;
+            } else if (alias_info[exit][alias].has_set) {
+                return false;
+            } else {
+                return is_alias_store_visible(unit, alias_info, alias, exit);
+            }
+        }
+    }
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
+ * kill_alias_store:  Kill (change to NOP) the given SET_ALIAS instruction.
+ *
+ * [Parameters]
+ *     unit: RTL unit.
+ *     insn_index: Index of instruction to kill.
+ */
+static void kill_alias_store(RTLUnit * const unit, const int insn_index)
+{
+    ASSERT(unit);
+    ASSERT(unit->insns[insn_index].opcode == RTLOP_SET_ALIAS);
+
+    RTLInsn *insn = &unit->insns[insn_index];
+#ifdef RTL_DEBUG_OPTIMIZE
+    log_info(unit->handle, "Dropping dead store to a%d at %d",
+             insn->alias, insn_index);
+#endif
+    const int src1 = insn->src1;
+    insn->opcode = RTLOP_NOP;
+    insn->src1 = 0;
+    insn->src_imm = 0;
+    if (unit->regs[src1].death == insn_index) {
+        rollback_reg_death(unit, src1);
     }
 }
 
@@ -1165,7 +1267,7 @@ static void maybe_kill_store(RTLUnit * const unit, RTLRegister * const reg)
     }
 
 #ifdef RTL_DEBUG_OPTIMIZE
-    log_info(unit->handle, "Dropping dead store to r%d at insn %d",
+    log_info(unit->handle, "Dropping dead store to r%d at %d",
              insn->dest, insn_index);
 #endif
 
@@ -1200,27 +1302,6 @@ static void maybe_kill_store(RTLUnit * const unit, RTLRegister * const reg)
     insn->src1 = 0;
     insn->src2 = 0;
     insn->src_imm = 0;
-}
-
-/*-----------------------------------------------------------------------*/
-
-/**
- * visit_block:  Mark the given block as seen and visit all successor
- * blocks.  Helper function for rtl_opt_drop_dead_blocks().
- *
- * [Parameters]
- *     unit: RTL unit.
- *     block_index: Index of block in unit->blocks[].
- */
-static void visit_block(RTLUnit * const unit, const int block_index)
-{
-    unit->block_seen[block_index] = 1;
-    RTLBlock * const block = &unit->blocks[block_index];
-    for (int i = 0; i < lenof(block->exits) && block->exits[i] >= 0; i++) {
-        if (!unit->block_seen[block->exits[i]]) {
-            visit_block(unit, block->exits[i]);
-        }
-    }
 }
 
 /*-----------------------------------------------------------------------*/
@@ -1291,9 +1372,115 @@ static void thread_branch(RTLUnit * const unit, int block_index,
     }
 }
 
+/*-----------------------------------------------------------------------*/
+
+/**
+ * visit_block:  Mark the given block as seen and visit all successor
+ * blocks.  Helper function for rtl_opt_drop_dead_blocks().
+ *
+ * [Parameters]
+ *     unit: RTL unit.
+ *     block_index: Index of block in unit->blocks[].
+ */
+static void visit_block(RTLUnit * const unit, const int block_index)
+{
+    unit->block_seen[block_index] = 1;
+    RTLBlock * const block = &unit->blocks[block_index];
+    for (int i = 0; i < lenof(block->exits) && block->exits[i] >= 0; i++) {
+        if (!unit->block_seen[block->exits[i]]) {
+            visit_block(unit, block->exits[i]);
+        }
+    }
+}
+
 /*************************************************************************/
 /********************** Internal interface routines **********************/
 /*************************************************************************/
+
+void rtl_opt_alias_data_flow(RTLUnit *unit)
+{
+    ASSERT(unit);
+    ASSERT(unit->insns);
+    ASSERT(unit->blocks);
+    ASSERT(unit->regs);
+    ASSERT(unit->aliases);
+    ASSERT(unit->block_seen);
+
+    const int alias_info_size =
+        sizeof(AliasRef) * unit->num_blocks * unit->next_alias;
+    const int ptr_array_size = sizeof(AliasRef *) * unit->num_blocks;
+    /* "char *" since "char" is guaranteed to be a basic memory unit (byte). */
+    char *alias_info_buf = rtl_malloc(unit, alias_info_size + ptr_array_size);
+    if (UNLIKELY(!alias_info_buf)) {
+        log_warning(unit->handle, "No memory for alias tracking, skipping"
+                    " data flow analysis");
+        return;
+    }
+    memset(alias_info_buf + ptr_array_size, 0, alias_info_size);
+    AliasRef **alias_info = (AliasRef **)alias_info_buf;
+    for (int i = 0; i < unit->num_blocks; i++) {
+        alias_info[i] =
+            (AliasRef *)(alias_info_buf + ptr_array_size
+                         + (sizeof(AliasRef) * i * unit->next_alias));
+    }
+
+    /* Look up alias references in each block.  We only record the last
+     * SET_ALIAS instruction in each block since that's the only one that
+     * matters for data flow analysis; any other SET_ALIAS without a
+     * following GET_ALIAS is dead, so we NOP it out. */
+    for (int block_index = 0; block_index >= 0;
+         block_index = unit->blocks[block_index].next_block)
+    {
+        const RTLBlock *block = &unit->blocks[block_index];
+        AliasRef *alias_refs = alias_info[block_index];
+        for (int insn_index = block->first_insn;
+             insn_index <= block->last_insn; insn_index++)
+        {
+            RTLInsn *insn = &unit->insns[insn_index];
+            const int alias = insn->alias;
+            AliasRef *alias_ref = &alias_refs[alias];
+            if (insn->opcode == RTLOP_SET_ALIAS) {
+                if (alias_ref->has_set && !alias_ref->set_used) {
+                    kill_alias_store(unit, alias_ref->set_insn);
+                }
+                alias_ref->has_set = true;
+                alias_ref->set_used = false;
+                alias_ref->set_insn = insn_index;
+            } else if (insn->opcode == RTLOP_GET_ALIAS) {
+                if (alias_ref->has_set) {
+                    alias_ref->set_used = true;
+                } else {
+                    alias_ref->has_get = true;
+                }
+            }
+        }
+    }
+
+    /* Trace the visibility of each recorded SET_ALIAS instruction.  If
+     * there are no code paths on which the store is visible (and for
+     * aliases with bound storage, if the store is not visible at any exit
+     * from the unit), kill it. */
+    for (int block_index = 0; block_index >= 0;
+         block_index = unit->blocks[block_index].next_block)
+    {
+        AliasRef *alias_refs = alias_info[block_index];
+        for (int alias = 1; alias < unit->next_alias; alias++) {
+            AliasRef *alias_ref = &alias_refs[alias];
+            if (alias_ref->has_set && !alias_ref->set_used) {
+                memset(unit->block_seen, 0,
+                       sizeof(*unit->block_seen) * unit->num_blocks);
+                if (!is_alias_store_visible(unit, alias_info, alias,
+                                            block_index)) {
+                    kill_alias_store(unit, alias_ref->set_insn);
+                }
+            }
+        }
+    }
+
+    rtl_free(unit, alias_info_buf);
+}
+
+/*-----------------------------------------------------------------------*/
 
 void rtl_opt_decondition(RTLUnit *unit)
 {

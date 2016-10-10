@@ -40,9 +40,9 @@ static int add_rtl(RTLUnit *unit)
 
 static const char expected[] =
     #ifdef RTL_DEBUG_OPTIMIZE
-        "[info] Reduced r7 to register-immediate operation (r1, -2147483647) at insn 6\n"
+        "[info] Reduced r7 to register-immediate operation (r1, -2147483647) at 6\n"
         "[info] r4 no longer used, setting death = birth\n"
-        "[info] Reduced r8 to register-immediate operation (r2, -2147483648) at insn 7\n"
+        "[info] Reduced r8 to register-immediate operation (r2, -2147483648) at 7\n"
         "[info] r5 no longer used, setting death = birth\n"
     #endif
     "    0: LOAD_ARG   r1, 0\n"

@@ -29,9 +29,9 @@ static int add_rtl(RTLUnit *unit)
 
 static const char expected[] =
     #ifdef RTL_DEBUG_OPTIMIZE
-        "[info] Folded r3 to constant value 0x68AC at insn 3\n"
-        "[info] r1 still used at insn 2\n"
-        "[info] r2 still used at insn 2\n"
+        "[info] Folded r3 to constant value 0x68AC at 3\n"
+        "[info] r1 still used at 2\n"
+        "[info] r2 still used at 2\n"
     #endif
     "    0: LOAD_IMM   r1, 0x1234\n"
     "    1: LOAD_IMM   r2, 0x5678\n"

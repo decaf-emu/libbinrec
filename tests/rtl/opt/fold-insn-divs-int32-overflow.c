@@ -30,7 +30,7 @@ static int add_rtl(RTLUnit *unit)
 static const char expected[] =
     "[warning] r3: Treating overflow in constant signed division as -1<<31\n"
     #ifdef RTL_DEBUG_OPTIMIZE
-        "[info] Folded r3 to constant value 0x80000000 at insn 2\n"
+        "[info] Folded r3 to constant value 0x80000000 at 2\n"
         "[info] r1 no longer used, setting death = birth\n"
         "[info] r2 no longer used, setting death = birth\n"
     #endif
