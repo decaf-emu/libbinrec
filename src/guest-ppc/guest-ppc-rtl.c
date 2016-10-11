@@ -1140,8 +1140,8 @@ static inline void translate_load_store_multiple(
         }
     }
 
-    /* Flush loaded GPRs so we don't have a bunch of RTL registers live
-     * until the end of the block. */
+    /* Flush loaded GPRs so we don't have a bunch of dirty RTL registers
+     * live until the end of the block. */
     if (!is_store) {
         store_live_regs(ctx, block, true, false);
     }
@@ -1167,8 +1167,8 @@ static inline void translate_load_store_string(
     RTLUnit * const unit = ctx->unit;
 
     /* We implement the string move instructions by loading or storing
-     * directly to/from the PSB, so make sure it's up to date, and make
-     * sure no future code tries to store stale values. */
+     * directly to/from the PSB, so make sure it's up to date, and clear
+     * the live register set so no future code tries to use stale values. */
     store_live_regs(ctx, block, true, true);
 
     int base_address, host_address;
@@ -2450,7 +2450,7 @@ static inline void translate_x1F(
         /* icbi implies that already-translated code may have changed, so
          * unconditionally return from this unit.  We currently don't
          * bother checking the invalidation address. */
-        store_live_regs(ctx, block, true, false);
+        store_live_regs(ctx, block, true, true);
         set_nia_imm(ctx, address + 4);
         rtl_add_insn(unit, RTLOP_GOTO, 0, 0, 0, ctx->epilogue_label);
         return;
@@ -2700,12 +2700,9 @@ static inline void translate_insn(
                 is_sc_blr = true;
             }
         }
-        store_live_regs(ctx, block, true, false);
-        if (is_sc_blr) {
-            set_nia(ctx, get_lr(ctx));
-        } else {
-            set_nia_imm(ctx, address + 4);
-        }
+        const int nia = is_sc_blr ? get_lr(ctx) : rtl_imm32(unit, address + 4);
+        store_live_regs(ctx, block, true, true);
+        set_nia(ctx, nia);
         guest_ppc_flush_state(ctx);
         const int sc_handler = rtl_alloc_register(unit, RTLTYPE_ADDRESS);
         rtl_add_insn(unit, RTLOP_LOAD, sc_handler, ctx->psb_reg, 0,
