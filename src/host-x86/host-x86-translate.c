@@ -2431,8 +2431,30 @@ static bool translate_block(HostX86Context *ctx, int block_index)
             break;
           }  // case RTLOP_BFINS
 
-          case RTLOP_ADDI:
           case RTLOP_ANDI:
+            /* AND with 255 or 65535 can be translated to a zero-extend. */
+            if (insn->src_imm == 0xFF) {
+                const X86Register host_dest = ctx->regs[dest].host_reg;
+                /* Registers SP-DI require an empty REX prefix to access
+                 * the low byte as a byte register, but be careful not to
+                 * double REX if a prefix will already be added. */
+                const X86Register host_src1 = ctx->regs[src1].host_reg;
+                if (!is_spilled(ctx, src1, insn_index)
+                 && host_src1 >= X86_SP && host_src1 <= X86_DI
+                 && host_dest <= X86_DI) {
+                    append_opcode(&code, X86OP_REX);
+                }
+                append_insn_ModRM_ctx(&code, false, X86OP_MOVZX_Gv_Eb,
+                                      host_dest, ctx, insn_index, src1);
+                break;
+            } else if (insn->src_imm == 0xFFFF) {
+                const X86Register host_dest = ctx->regs[dest].host_reg;
+                append_insn_ModRM_ctx(&code, false, X86OP_MOVZX_Gv_Ew,
+                                      host_dest, ctx, insn_index, src1);
+                break;
+            }
+            /* Fall through to common ALU-immediate handling. */
+          case RTLOP_ADDI:
           case RTLOP_ORI:
           case RTLOP_XORI: {
             const X86Register host_dest = ctx->regs[dest].host_reg;
