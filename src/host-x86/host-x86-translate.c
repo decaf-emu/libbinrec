@@ -418,9 +418,9 @@ static ALWAYS_INLINE void append_move(
         append_insn_ModRM_reg(code, true, X86OP_MOV_Gv_Ev,
                               host_dest, host_src);
         return;
-      case RTLTYPE_FLOAT:
-      case RTLTYPE_DOUBLE:
-      case RTLTYPE_V2_DOUBLE:
+      case RTLTYPE_FLOAT32:
+      case RTLTYPE_FLOAT64:
+      case RTLTYPE_V2_FLOAT64:
         /* The Intel optimization guidelines state: (1) avoid mixed use of
          * integer/FP operations on the same register (thus MOVAPS instead
          * of MOVDQA); (2) use PS instead of PD if both operations are
@@ -476,15 +476,15 @@ static ALWAYS_INLINE void append_load(
         append_insn_ModRM_mem(code, true, X86OP_MOV_Gv_Ev,
                               host_dest, host_base, offset);
         return;
-      case RTLTYPE_FLOAT:
+      case RTLTYPE_FLOAT32:
         append_insn_ModRM_mem(code, false, X86OP_MOVSS_V_W,
                               host_dest, host_base, offset);
         return;
-      case RTLTYPE_DOUBLE:
+      case RTLTYPE_FLOAT64:
         append_insn_ModRM_mem(code, false, X86OP_MOVSD_V_W,
                               host_dest, host_base, offset);
         return;
-      case RTLTYPE_V2_DOUBLE:
+      case RTLTYPE_V2_FLOAT64:
         /* MOVAPS instead of MOVAPD for optimization purposes (see note in
          * append_move()). */
         append_insn_ModRM_mem(code, false, X86OP_MOVAPS_V_W,
@@ -539,15 +539,15 @@ static ALWAYS_INLINE void append_store(
         append_insn_ModRM_mem(code, true, X86OP_MOV_Ev_Gv,
                               host_src, host_base, offset);
         return;
-      case RTLTYPE_FLOAT:
+      case RTLTYPE_FLOAT32:
         append_insn_ModRM_mem(code, false, X86OP_MOVSS_W_V,
                               host_src, host_base, offset);
         return;
-      case RTLTYPE_DOUBLE:
+      case RTLTYPE_FLOAT64:
         append_insn_ModRM_mem(code, false, X86OP_MOVSD_W_V,
                               host_src, host_base, offset);
         return;
-      case RTLTYPE_V2_DOUBLE:
+      case RTLTYPE_V2_FLOAT64:
         /* MOVAPS instead of MOVAPD for optimization purposes (see note in
          * append_move()). */
         append_insn_ModRM_mem(code, false, X86OP_MOVAPS_W_V,
@@ -2540,7 +2540,7 @@ static bool translate_block(HostX86Context *ctx, int block_index)
             const X86Register host_dest = ctx->regs[dest].host_reg;
 
             switch (unit->regs[dest].type) {
-              case RTLTYPE_FLOAT:
+              case RTLTYPE_FLOAT32:
                 if (imm == 0) {
                     append_insn_ModRM_reg(&code, false, X86OP_XORPS,
                                           host_dest, host_dest);
@@ -2554,7 +2554,7 @@ static bool translate_block(HostX86Context *ctx, int block_index)
                 }
                 break;
 
-              case RTLTYPE_DOUBLE:
+              case RTLTYPE_FLOAT64:
                 if (imm == 0) {
                     append_insn_ModRM_reg(&code, false, X86OP_XORPS,
                                           host_dest, host_dest);
@@ -2647,7 +2647,7 @@ static bool translate_block(HostX86Context *ctx, int block_index)
             if (is_spilled(ctx, src2, insn_index)) {
                 if (rtl_type_is_int(type)) {
                     type = (type == RTLTYPE_INT32
-                            ? RTLTYPE_FLOAT : RTLTYPE_DOUBLE);
+                            ? RTLTYPE_FLOAT32 : RTLTYPE_FLOAT64);
                 }
                 append_load(&code, type, X86_XMM15,
                             X86_SP, ctx->regs[src2].spill_offset);

@@ -22,7 +22,7 @@ static int add_rtl(RTLUnit *unit)
     EXPECT(base = rtl_alloc_register(unit, RTLTYPE_ADDRESS));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_ARG, base, 0, 0, 0));
     for (int i = 0; i < lenof(regs); i++) {
-        EXPECT(regs[i] = rtl_alloc_register(unit, RTLTYPE_DOUBLE));
+        EXPECT(regs[i] = rtl_alloc_register(unit, RTLTYPE_FLOAT64));
         EXPECT(rtl_add_insn(unit, RTLOP_LOAD, regs[i], base, 0, i*8));
     }
     for (int i = 0; i < lenof(regs); i++) {

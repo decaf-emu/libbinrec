@@ -22,7 +22,7 @@ static int add_rtl(RTLUnit *unit)
     EXPECT(base = rtl_alloc_register(unit, RTLTYPE_ADDRESS));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_ARG, base, 0, 0, 0));
     for (int i = 0; i < lenof(regs); i++) {
-        EXPECT(regs[i] = rtl_alloc_register(unit, RTLTYPE_FLOAT));
+        EXPECT(regs[i] = rtl_alloc_register(unit, RTLTYPE_FLOAT32));
         EXPECT(rtl_add_insn(unit, RTLOP_LOAD, regs[i], base, 0, i*4));
     }
     for (int i = 0; i < lenof(regs); i++) {
@@ -30,7 +30,7 @@ static int add_rtl(RTLUnit *unit)
     }
 
     int alias;
-    EXPECT(alias = rtl_alloc_alias_register(unit, RTLTYPE_FLOAT));
+    EXPECT(alias = rtl_alloc_alias_register(unit, RTLTYPE_FLOAT32));
     EXPECT(rtl_add_insn(unit, RTLOP_SET_ALIAS, 0, regs[14], 0, alias));
 
     return EXIT_SUCCESS;

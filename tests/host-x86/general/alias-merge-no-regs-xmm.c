@@ -21,9 +21,9 @@ static int add_rtl(RTLUnit *unit)
     int reg1, reg2, alias;
     EXPECT(reg1 = rtl_alloc_register(unit, RTLTYPE_ADDRESS));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_ARG, reg1, 0, 0, 0));
-    EXPECT(alias = rtl_alloc_alias_register(unit, RTLTYPE_FLOAT));
+    EXPECT(alias = rtl_alloc_alias_register(unit, RTLTYPE_FLOAT32));
     rtl_set_alias_storage(unit, alias, reg1, 0x1234);
-    EXPECT(reg2 = rtl_alloc_register(unit, RTLTYPE_FLOAT));
+    EXPECT(reg2 = rtl_alloc_register(unit, RTLTYPE_FLOAT32));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg2, 0, 0, 0x40000000));
     EXPECT(rtl_add_insn(unit, RTLOP_SET_ALIAS, 0, reg2, 0, alias));
 
@@ -31,13 +31,13 @@ static int add_rtl(RTLUnit *unit)
     EXPECT(label = rtl_alloc_label(unit));
     EXPECT(rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, label));
     for (int i = 0; i < lenof(tempreg); i++) {
-        EXPECT(tempreg[i] = rtl_alloc_register(unit, RTLTYPE_FLOAT));
+        EXPECT(tempreg[i] = rtl_alloc_register(unit, RTLTYPE_FLOAT32));
         EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, tempreg[i], 0, 0, 0));
     }
     for (int i = 0; i < lenof(tempreg); i++) {
         EXPECT(rtl_add_insn(unit, RTLOP_NOP, 0, tempreg[i], 0, 0));
     }
-    EXPECT(reg3 = rtl_alloc_register(unit, RTLTYPE_FLOAT));
+    EXPECT(reg3 = rtl_alloc_register(unit, RTLTYPE_FLOAT32));
     EXPECT(rtl_add_insn(unit, RTLOP_GET_ALIAS, reg3, 0, 0, alias));
     EXPECT(rtl_add_insn(unit, RTLOP_SET_ALIAS, 0, reg3, 0, alias));
 

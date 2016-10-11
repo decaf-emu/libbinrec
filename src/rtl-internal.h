@@ -529,7 +529,7 @@ static inline CONST_FUNCTION bool rtl_type_is_int(RTLDataType type)
  */
 static inline CONST_FUNCTION bool rtl_type_is_scalar(RTLDataType type)
 {
-    return type <= RTLTYPE_DOUBLE;
+    return type <= RTLTYPE_FLOAT64;
 }
 
 /**

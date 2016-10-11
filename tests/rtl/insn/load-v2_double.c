@@ -26,8 +26,8 @@ int main(void)
 
     int reg1, reg2, reg3;
     EXPECT(reg1 = rtl_alloc_register(unit, RTLTYPE_ADDRESS));
-    EXPECT(reg2 = rtl_alloc_register(unit, RTLTYPE_V2_DOUBLE));
-    EXPECT(reg3 = rtl_alloc_register(unit, RTLTYPE_V2_DOUBLE));
+    EXPECT(reg2 = rtl_alloc_register(unit, RTLTYPE_V2_FLOAT64));
+    EXPECT(reg3 = rtl_alloc_register(unit, RTLTYPE_V2_FLOAT64));
 
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg1, 0, 0, 10));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD, reg2, reg1, 0, 32));

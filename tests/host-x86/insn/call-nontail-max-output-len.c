@@ -23,7 +23,7 @@ static int add_rtl(RTLUnit *unit)
         EXPECT(dummy_regs[i] = rtl_alloc_register(unit, RTLTYPE_INT64));
         EXPECT(rtl_add_insn(unit, RTLOP_NOP, dummy_regs[i], 0, 0, 0));
     }
-    alloc_dummy_registers(unit, 15, RTLTYPE_FLOAT);
+    alloc_dummy_registers(unit, 15, RTLTYPE_FLOAT32);
 
     int reg1, reg2, reg3, reg4;
     EXPECT(reg1 = rtl_alloc_register(unit, RTLTYPE_ADDRESS));

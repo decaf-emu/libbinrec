@@ -50,9 +50,9 @@ static int add_rtl(RTLUnit *unit)
     int pad_alias[15], pad_reg[15];
     STATIC_ASSERT(lenof(pad_alias) == lenof(pad_reg), "Array length mismatch");
     for (int i = 0; i < lenof(pad_alias); i++) {
-        EXPECT(pad_alias[i] = rtl_alloc_alias_register(unit, RTLTYPE_FLOAT));
+        EXPECT(pad_alias[i] = rtl_alloc_alias_register(unit, RTLTYPE_FLOAT32));
         rtl_set_alias_storage(unit, pad_alias[i], reg1, 0x100+i*4);
-        EXPECT(pad_reg[i] = rtl_alloc_register(unit, RTLTYPE_FLOAT));
+        EXPECT(pad_reg[i] = rtl_alloc_register(unit, RTLTYPE_FLOAT32));
         EXPECT(rtl_add_insn(unit, RTLOP_GET_ALIAS,
                             pad_reg[i], 0, 0, pad_alias[i]));
         EXPECT(rtl_add_insn(unit, RTLOP_SET_ALIAS,
@@ -71,7 +71,7 @@ static int add_rtl(RTLUnit *unit)
     /* Also reload the padding aliases to trigger merging. */
     for (int i = 0; i < lenof(pad_alias); i++) {
         int reg;
-        EXPECT(reg = rtl_alloc_register(unit, RTLTYPE_FLOAT));
+        EXPECT(reg = rtl_alloc_register(unit, RTLTYPE_FLOAT32));
         EXPECT(rtl_add_insn(unit, RTLOP_GET_ALIAS, reg, 0, 0, pad_alias[i]));
     }
 

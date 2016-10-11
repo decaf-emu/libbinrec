@@ -20,14 +20,14 @@ static int add_rtl(RTLUnit *unit)
 {
     int dummy_regs[14];
     for (int i = 0; i < lenof(dummy_regs); i++) {
-        EXPECT(dummy_regs[i] = rtl_alloc_register(unit, RTLTYPE_FLOAT));
+        EXPECT(dummy_regs[i] = rtl_alloc_register(unit, RTLTYPE_FLOAT32));
         EXPECT(rtl_add_insn(unit, RTLOP_NOP, dummy_regs[i], 0, 0, 0));
     }
 
     int reg1, reg2, reg3;
-    EXPECT(reg1 = rtl_alloc_register(unit, RTLTYPE_FLOAT));
+    EXPECT(reg1 = rtl_alloc_register(unit, RTLTYPE_FLOAT32));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg1, 0, 0, 0x3F800000));
-    EXPECT(reg2 = rtl_alloc_register(unit, RTLTYPE_FLOAT));
+    EXPECT(reg2 = rtl_alloc_register(unit, RTLTYPE_FLOAT32));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg2, 0, 0, 0x40000000));
     EXPECT(reg3 = rtl_alloc_register(unit, RTLTYPE_ADDRESS));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg3, 0, 0, 3));

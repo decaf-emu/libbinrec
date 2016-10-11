@@ -31,7 +31,7 @@ int main(void)
     EXPECT(reg2 = rtl_alloc_register(unit, RTLTYPE_INT32));
     EXPECT(reg3 = rtl_alloc_register(unit, RTLTYPE_INT32));
     EXPECT(reg4 = rtl_alloc_register(unit, RTLTYPE_ADDRESS));
-    EXPECT(reg5 = rtl_alloc_register(unit, RTLTYPE_FLOAT));
+    EXPECT(reg5 = rtl_alloc_register(unit, RTLTYPE_FLOAT32));
 
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg1, 0, 0, 10));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg2, 0, 0, 20));

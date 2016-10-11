@@ -77,7 +77,7 @@ static inline int get_fpr(GuestPPCContext * const ctx, int index)
         return ctx->live.fpr[index];
     } else {
         RTLUnit * const unit = ctx->unit;
-        const int reg = rtl_alloc_register(unit, RTLTYPE_V2_DOUBLE);
+        const int reg = rtl_alloc_register(unit, RTLTYPE_V2_FLOAT64);
         ASSERT(ctx->alias.fpr[index]);
         rtl_add_insn(unit, RTLOP_GET_ALIAS, reg, 0, 0, ctx->alias.fpr[index]);
         ctx->live.fpr[index] = reg;
@@ -2471,7 +2471,7 @@ static inline void translate_x1F(
         const int host_address = rtl_alloc_register(unit, RTLTYPE_ADDRESS);
         rtl_add_insn(unit, RTLOP_ADD,
                      host_address, ctx->membase_reg, addr_aligned, 0);
-        // FIXME: use V2_DOUBLE when we have a way to create one
+        // FIXME: use V2_FLOAT64 when we have a way to create one
         const int zero = rtl_imm64(unit, 0);
         for (int i = 0; i < 32; i += 8) {
             rtl_add_insn(unit, RTLOP_STORE, 0, host_address, zero, i);

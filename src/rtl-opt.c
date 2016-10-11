@@ -85,7 +85,7 @@ static inline uint64_t mulh64(uint64_t a, uint64_t b, bool is_signed)
  */
 static inline uint64_t reg_value_i64(const RTLRegister * const reg)
 {
-    if (reg->type == RTLTYPE_FLOAT) {
+    if (reg->type == RTLTYPE_FLOAT32) {
         return float_to_bits(reg->value.f32);
     } else {
         return reg->value.i64;
@@ -1110,7 +1110,7 @@ static void fold_readonly_load(RTLUnit * const unit, RTLRegister * const reg,
         ASSERT(reg->memory.size == 0);
         switch ((RTLDataType)reg->type) {
           case RTLTYPE_INT32:
-          case RTLTYPE_FLOAT:
+          case RTLTYPE_FLOAT32:
             value = *(const uint32_t *)load_ptr;
             if (reg->memory.byterev ^ unit->handle->host_little_endian) {
                 value = bswap_le32(value);
@@ -1120,7 +1120,7 @@ static void fold_readonly_load(RTLUnit * const unit, RTLRegister * const reg,
             break;
           case RTLTYPE_INT64:
           case RTLTYPE_ADDRESS:
-          case RTLTYPE_DOUBLE:
+          case RTLTYPE_FLOAT64:
             value = *(const uint64_t *)load_ptr;
             if (reg->memory.byterev ^ unit->handle->host_little_endian) {
                 value = bswap_le64(value);

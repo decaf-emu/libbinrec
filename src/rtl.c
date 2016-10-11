@@ -271,9 +271,9 @@ static const char *type_suffix(RTLDataType type)
         case RTLTYPE_INT32:     return "i32";
         case RTLTYPE_INT64:     return "i64";
         case RTLTYPE_ADDRESS:   return "addr";
-        case RTLTYPE_FLOAT:     return "f32";
-        case RTLTYPE_DOUBLE:    return "f64";
-        case RTLTYPE_V2_DOUBLE: return "f64x2";
+        case RTLTYPE_FLOAT32:     return "f32";
+        case RTLTYPE_FLOAT64:    return "f64";
+        case RTLTYPE_V2_FLOAT64: return "f64x2";
     }
     ASSERT(!"Invalid type");
 }
@@ -313,10 +313,10 @@ static void rtl_describe_register(const RTLRegister *reg,
           case RTLTYPE_ADDRESS:
             format_int(buf, bufsize, reg->type, reg->value.i64);
             break;
-          case RTLTYPE_FLOAT:
+          case RTLTYPE_FLOAT32:
             format_float(buf, bufsize, reg->value.f32);
             break;
-          case RTLTYPE_DOUBLE:
+          case RTLTYPE_FLOAT64:
             format_double(buf, bufsize, reg->value.f64);
             break;
           default:
@@ -756,11 +756,11 @@ static void rtl_decode_insn(const RTLUnit *unit, uint32_t index,
           case RTLTYPE_ADDRESS:
             s += format_int(s, top - s, unit->regs[dest].type, insn->src_imm);
             break;
-          case RTLTYPE_FLOAT:
+          case RTLTYPE_FLOAT32:
             s += format_float(s, top - s,
                               bits_to_float((uint32_t)insn->src_imm));
             break;
-          case RTLTYPE_DOUBLE:
+          case RTLTYPE_FLOAT64:
             s += format_double(s, top - s, bits_to_double(insn->src_imm));
            break;
           default:
@@ -894,9 +894,9 @@ static void rtl_describe_alias(const RTLUnit *unit, int index,
         [RTLTYPE_INT32    ] = "int32",
         [RTLTYPE_INT64    ] = "int64",
         [RTLTYPE_ADDRESS  ] = "address",
-        [RTLTYPE_FLOAT    ] = "float",
-        [RTLTYPE_DOUBLE   ] = "double",
-        [RTLTYPE_V2_DOUBLE] = "double[2]",
+        [RTLTYPE_FLOAT32    ] = "float",
+        [RTLTYPE_FLOAT64   ] = "double",
+        [RTLTYPE_V2_FLOAT64] = "double[2]",
     };
     ASSERT(alias->type > 0 && alias->type < lenof(type_names));
 

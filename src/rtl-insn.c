@@ -702,7 +702,7 @@ static bool make_load_imm(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
     OPERAND_ASSERT(rtl_register_is_scalar(&unit->regs[dest]));
     OPERAND_ASSERT(unit->regs[dest].type == RTLTYPE_INT64
                    || unit->regs[dest].type == RTLTYPE_ADDRESS
-                   || unit->regs[dest].type == RTLTYPE_DOUBLE
+                   || unit->regs[dest].type == RTLTYPE_FLOAT64
                    || other <= UINT64_C(0xFFFFFFFF));
 #endif
 
@@ -714,12 +714,12 @@ static bool make_load_imm(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
     destreg->source = RTLREG_CONSTANT;
     switch (unit->regs[dest].type) {
       case RTLTYPE_INT32:
-      case RTLTYPE_FLOAT:
+      case RTLTYPE_FLOAT32:
         destreg->value.i64 = (uint32_t)other;
         break;
       case RTLTYPE_INT64:
       case RTLTYPE_ADDRESS:
-      case RTLTYPE_DOUBLE:
+      case RTLTYPE_FLOAT64:
         destreg->value.i64 = other;
         break;
       default:

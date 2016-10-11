@@ -19,10 +19,10 @@ static const unsigned int host_opt = 0;
 static int add_rtl(RTLUnit *unit)
 {
     alloc_dummy_registers(unit, 6, RTLTYPE_INT32);
-    alloc_dummy_registers(unit, 8, RTLTYPE_DOUBLE);
+    alloc_dummy_registers(unit, 8, RTLTYPE_FLOAT64);
 
     int reg;
-    EXPECT(reg = rtl_alloc_register(unit, RTLTYPE_DOUBLE));
+    EXPECT(reg = rtl_alloc_register(unit, RTLTYPE_FLOAT64));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg, 0, 0,
                         UINT64_C(0x3FF0000000000000)));
 

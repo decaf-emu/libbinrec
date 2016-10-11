@@ -20,7 +20,7 @@ static int add_rtl(RTLUnit *unit)
 {
     int dummy_xmm[23];
     for (int i = 0; i < lenof(dummy_xmm); i++) {
-        EXPECT(dummy_xmm[i] = rtl_alloc_register(unit, RTLTYPE_V2_DOUBLE));
+        EXPECT(dummy_xmm[i] = rtl_alloc_register(unit, RTLTYPE_V2_FLOAT64));
         EXPECT(rtl_add_insn(unit, RTLOP_NOP, dummy_xmm[i], 0, 0, 0));
     }
     for (int i = 0; i < lenof(dummy_xmm); i++) {

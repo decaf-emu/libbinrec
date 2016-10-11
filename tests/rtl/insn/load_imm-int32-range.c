@@ -34,7 +34,7 @@ int main(void)
     EXPECT_ICE("Operand constraint violated:"
                " unit->regs[dest].type == RTLTYPE_INT64"
                " || unit->regs[dest].type == RTLTYPE_ADDRESS"
-               " || unit->regs[dest].type == RTLTYPE_DOUBLE"
+               " || unit->regs[dest].type == RTLTYPE_FLOAT64"
                " || other <= UINT64_C(0xFFFFFFFF)");
     EXPECT_EQ(unit->num_insns, 0);
     EXPECT(unit->error);

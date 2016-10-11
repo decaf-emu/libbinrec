@@ -27,7 +27,7 @@ int main(void)
     EXPECT(unit = rtl_create_unit(handle));
 
     int reg;
-    EXPECT(reg = rtl_alloc_register(unit, RTLTYPE_FLOAT));
+    EXPECT(reg = rtl_alloc_register(unit, RTLTYPE_FLOAT32));
 
     EXPECT_FALSE(rtl_add_insn(unit, RTLOP_LOAD_ARG, reg, 0, 0, 0));
     EXPECT_ICE("Operand constraint violated:"

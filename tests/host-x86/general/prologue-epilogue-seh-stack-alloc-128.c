@@ -23,7 +23,7 @@ int main(void)
     EXPECT(unit = rtl_create_unit(handle));
 
     alloc_dummy_registers(unit, 14, RTLTYPE_INT32);
-    alloc_dummy_registers(unit, 14, RTLTYPE_FLOAT);
+    alloc_dummy_registers(unit, 14, RTLTYPE_FLOAT32);
 
     EXPECT(rtl_finalize_unit(unit));
 

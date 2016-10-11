@@ -218,9 +218,9 @@ static int allocate_frame_slot(HostX86Context *ctx, RTLDataType type)
         case RTLTYPE_INT32:     size =  4; break;
         case RTLTYPE_INT64:     size =  8; break;
         case RTLTYPE_ADDRESS:   size =  8; break;
-        case RTLTYPE_FLOAT:     size =  4; break;
-        case RTLTYPE_DOUBLE:    size =  8; break;
-        case RTLTYPE_V2_DOUBLE: size = 16; break;
+        case RTLTYPE_FLOAT32:     size =  4; break;
+        case RTLTYPE_FLOAT64:    size =  8; break;
+        case RTLTYPE_V2_FLOAT64: size = 16; break;
     }
     ASSERT(size > 0);
 
@@ -470,7 +470,7 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
                 regs_to_save |= 1u << reg;
                 if (ctx->stack_callsave[reg] < 0) {
                     const RTLDataType type =
-                        reg >= X86_XMM0 ? RTLTYPE_V2_DOUBLE : RTLTYPE_INT64;
+                        reg >= X86_XMM0 ? RTLTYPE_V2_FLOAT64 : RTLTYPE_INT64;
                     ctx->stack_callsave[reg] = allocate_frame_slot(ctx, type);
                 }
             }

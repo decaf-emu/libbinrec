@@ -27,8 +27,8 @@ int main(void)
     EXPECT(unit = rtl_create_unit(handle));
 
     int reg, alias;
-    EXPECT(reg = rtl_alloc_register(unit, RTLTYPE_FLOAT));
-    EXPECT(alias = rtl_alloc_alias_register(unit, RTLTYPE_FLOAT));
+    EXPECT(reg = rtl_alloc_register(unit, RTLTYPE_FLOAT32));
+    EXPECT(alias = rtl_alloc_alias_register(unit, RTLTYPE_FLOAT32));
 
     EXPECT(rtl_add_insn(unit, RTLOP_GET_ALIAS, reg, 0, 0, alias));
     EXPECT_EQ(unit->num_insns, 1);

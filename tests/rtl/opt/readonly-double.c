@@ -27,7 +27,7 @@ static int add_rtl(RTLUnit *unit)
     EXPECT(reg1 = rtl_alloc_register(unit, RTLTYPE_ADDRESS));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM,
                         reg1, 0, 0, 2*sizeof(*value_buf)));
-    EXPECT(reg2 = rtl_alloc_register(unit, RTLTYPE_DOUBLE));
+    EXPECT(reg2 = rtl_alloc_register(unit, RTLTYPE_FLOAT64));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD, reg2, reg1, 0, -sizeof(*value_buf)));
 
     return EXIT_SUCCESS;
