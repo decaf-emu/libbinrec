@@ -981,12 +981,12 @@ static inline void fold_one_register(RTLUnit * const unit,
         birth_insn->src_imm = reg->value.i64;
 #ifdef RTL_DEBUG_OPTIMIZE
         char value_str[20];
-        if (reg->type == RTLTYPE_INT32
-         && (uint32_t)reg->value.i64 + 0x8000 < 0x10000) {
-            snprintf(value_str, sizeof(value_str), "%d", (int)reg->value.i64);
+        if (rtl_register_is_int(reg)) {
+            format_int(value_str, sizeof(value_str),
+                       reg->type, reg->value.i64);
         } else {
-            snprintf(value_str, sizeof(value_str), "0x%"PRIX64,
-                     reg->value.i64);
+            snprintf_assert(value_str, sizeof(value_str),
+                            "0x%"PRIX64, reg->value.i64);
         }
         log_info(unit->handle, "Folded r%d to constant value %s at %d",
                  (int)(reg - unit->regs), value_str, reg->birth);
@@ -1118,6 +1118,7 @@ static void fold_readonly_load(RTLUnit * const unit, RTLRegister * const reg,
                 value = bswap_be32(value);
             }
             break;
+          case RTLTYPE_INT64:
           case RTLTYPE_ADDRESS:
           case RTLTYPE_DOUBLE:
             value = *(const uint64_t *)load_ptr;
@@ -1136,10 +1137,10 @@ static void fold_readonly_load(RTLUnit * const unit, RTLRegister * const reg,
 
 #ifdef RTL_DEBUG_OPTIMIZE
     char value_str[20];
-    if (reg->type == RTLTYPE_INT32 && (uint32_t)value + 0x8000 < 0x10000) {
-        snprintf(value_str, sizeof(value_str), "%d", (int)value);
+    if (rtl_register_is_int(reg)) {
+        format_int(value_str, sizeof(value_str), reg->type, value);
     } else {
-        snprintf(value_str, sizeof(value_str), "0x%"PRIX64, value);
+        snprintf_assert(value_str, sizeof(value_str), "0x%"PRIX64, value);
     }
     const uint32_t addr =
         ((uint32_t)unit->regs[base].value.i64 + reg->memory.offset);

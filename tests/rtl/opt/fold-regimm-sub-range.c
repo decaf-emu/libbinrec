@@ -16,21 +16,21 @@ static unsigned int opt_flags = BINREC_OPT_FOLD_CONSTANTS;
 static int add_rtl(RTLUnit *unit)
 {
     int reg1, reg2, reg3, reg4, reg5, reg6, reg7, reg8;
-    EXPECT(reg1 = rtl_alloc_register(unit, RTLTYPE_ADDRESS));
+    EXPECT(reg1 = rtl_alloc_register(unit, RTLTYPE_INT64));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_ARG, reg1, 0, 0, 0));
     EXPECT(reg2 = rtl_alloc_register(unit, RTLTYPE_INT32));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_ARG, reg2, 0, 0, 1));
-    EXPECT(reg3 = rtl_alloc_register(unit, RTLTYPE_ADDRESS));
+    EXPECT(reg3 = rtl_alloc_register(unit, RTLTYPE_INT64));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM,
                         reg3, 0, 0, UINT64_C(-0x80000000)));
-    EXPECT(reg4 = rtl_alloc_register(unit, RTLTYPE_ADDRESS));
+    EXPECT(reg4 = rtl_alloc_register(unit, RTLTYPE_INT64));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM,
                         reg4, 0, 0, UINT64_C(0x7FFFFFFF)));
     EXPECT(reg5 = rtl_alloc_register(unit, RTLTYPE_INT32));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg5, 0, 0, 0x80000000u));
-    EXPECT(reg6 = rtl_alloc_register(unit, RTLTYPE_ADDRESS));
+    EXPECT(reg6 = rtl_alloc_register(unit, RTLTYPE_INT64));
     EXPECT(rtl_add_insn(unit, RTLOP_SUB, reg6, reg1, reg3, 0));
-    EXPECT(reg7 = rtl_alloc_register(unit, RTLTYPE_ADDRESS));
+    EXPECT(reg7 = rtl_alloc_register(unit, RTLTYPE_INT64));
     EXPECT(rtl_add_insn(unit, RTLOP_SUB, reg7, reg1, reg4, 0));
     EXPECT(reg8 = rtl_alloc_register(unit, RTLTYPE_INT32));
     EXPECT(rtl_add_insn(unit, RTLOP_SUB, reg8, reg2, reg5, 0));

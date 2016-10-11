@@ -413,6 +413,7 @@ static ALWAYS_INLINE void append_move(
         append_insn_ModRM_reg(code, false, X86OP_MOV_Gv_Ev,
                               host_dest, host_src);
         return;
+      case RTLTYPE_INT64:
       case RTLTYPE_ADDRESS:
         append_insn_ModRM_reg(code, true, X86OP_MOV_Gv_Ev,
                               host_dest, host_src);
@@ -444,7 +445,7 @@ static ALWAYS_INLINE void append_move_gpr(
     X86Register host_src)
 {
     ASSERT(rtl_type_is_int(type));
-    append_insn_ModRM_reg(code, type == RTLTYPE_ADDRESS, X86OP_MOV_Gv_Ev,
+    append_insn_ModRM_reg(code, type != RTLTYPE_INT32, X86OP_MOV_Gv_Ev,
                           host_dest, host_src);
 }
 
@@ -470,6 +471,7 @@ static ALWAYS_INLINE void append_load(
         append_insn_ModRM_mem(code, false, X86OP_MOV_Gv_Ev,
                               host_dest, host_base, offset);
         return;
+      case RTLTYPE_INT64:
       case RTLTYPE_ADDRESS:
         append_insn_ModRM_mem(code, true, X86OP_MOV_Gv_Ev,
                               host_dest, host_base, offset);
@@ -506,7 +508,7 @@ static ALWAYS_INLINE void append_load_gpr(
     X86Register host_base, int32_t offset)
 {
     ASSERT(rtl_type_is_int(type));
-    append_insn_ModRM_mem(code, type == RTLTYPE_ADDRESS, X86OP_MOV_Gv_Ev,
+    append_insn_ModRM_mem(code, type != RTLTYPE_INT32, X86OP_MOV_Gv_Ev,
                           host_dest, host_base, offset);
 }
 
@@ -532,6 +534,7 @@ static ALWAYS_INLINE void append_store(
         append_insn_ModRM_mem(code, false, X86OP_MOV_Ev_Gv,
                               host_src, host_base, offset);
         return;
+      case RTLTYPE_INT64:
       case RTLTYPE_ADDRESS:
         append_insn_ModRM_mem(code, true, X86OP_MOV_Ev_Gv,
                               host_src, host_base, offset);
@@ -683,14 +686,14 @@ static ALWAYS_INLINE void append_test_reg(
     ASSERT(rtl_register_is_int(&unit->regs[reg]));
 
     if (is_spilled(ctx, reg, insn_index)) {
-        const bool is64 = (unit->regs[reg].type == RTLTYPE_ADDRESS);
+        const bool is64 = (unit->regs[reg].type != RTLTYPE_INT32);
         append_insn_ModRM_mem(code, is64, X86OP_IMM_Ev_Ib, X86OP_IMM_CMP,
                               X86_SP, ctx->regs[reg].spill_offset);
         append_imm8(code, 0);
     } else {
         const X86Register host_reg = ctx->regs[reg].host_reg;
         uint8_t rex = 0;
-        if (ctx->unit->regs[reg].type == RTLTYPE_ADDRESS) {
+        if (ctx->unit->regs[reg].type != RTLTYPE_INT32) {
             rex |= X86_REX_W;
         }
         if (host_reg & 8) {
@@ -1362,9 +1365,9 @@ static bool translate_call(HostX86Context *ctx, int block_index,
      * due to all the different ways we might have to swap values around. */
     const X86Register src1_fallback = is_tail ? X86_AX : X86_R15;
     if (src2) {
-        const bool src2_is64 = (unit->regs[src2].type == RTLTYPE_ADDRESS);
+        const bool src2_is64 = (unit->regs[src2].type != RTLTYPE_INT32);
         const bool src3_is64 =  // Safe even if src3 == 0.
-            (unit->regs[src3].type == RTLTYPE_ADDRESS);
+            (unit->regs[src3].type != RTLTYPE_INT32);
         const int host_arg0 = host_x86_int_arg_register(ctx, 0);
         ASSERT(host_arg0 >= 0);
         const int host_arg1 = host_x86_int_arg_register(ctx, 1);
@@ -1649,7 +1652,7 @@ static bool translate_block(HostX86Context *ctx, int block_index)
             const X86Register host_dest = ctx->regs[dest].host_reg;
             const X86Register host_src1 = ctx->regs[src1].host_reg;
             const X86Register host_src2 = ctx->regs[src2].host_reg;
-            const bool is64 = (unit->regs[src1].type == RTLTYPE_ADDRESS);
+            const bool is64 = (unit->regs[src1].type != RTLTYPE_INT32);
 
             /* Set the x86 condition flags based on the condition register. */
             append_test_reg(ctx, unit, insn_index, &code, insn->src3);
@@ -1690,8 +1693,8 @@ static bool translate_block(HostX86Context *ctx, int block_index)
                             X86_SP, ctx->regs[src1].spill_offset);
                 host_src1 = host_dest;
             }
-            if (type_dest == RTLTYPE_ADDRESS) {
-                if (type_src1 == RTLTYPE_ADDRESS) {
+            if (type_dest != RTLTYPE_INT32) {
+                if (type_src1 != RTLTYPE_INT32) {
                     if (host_dest != host_src1) {
                         append_insn_ModRM_reg(&code, true, X86OP_MOV_Ev_Gv,
                                               host_src1, host_dest);
@@ -1720,7 +1723,7 @@ static bool translate_block(HostX86Context *ctx, int block_index)
           case RTLOP_SEXT8:
           case RTLOP_SEXT16: {
             const X86Register host_dest = ctx->regs[dest].host_reg;
-            const bool is64 = (unit->regs[dest].type == RTLTYPE_ADDRESS);
+            const bool is64 = (unit->regs[dest].type != RTLTYPE_INT32);
             const X86Opcode opcode = (insn->opcode == RTLOP_SEXT8
                                       ? X86OP_MOVSX_Gv_Eb : X86OP_MOVSX_Gv_Ew);
             append_insn_ModRM_ctx(&code, is64, opcode, host_dest,
@@ -1732,7 +1735,7 @@ static bool translate_block(HostX86Context *ctx, int block_index)
           case RTLOP_NOT: {
             const X86Register host_dest = ctx->regs[dest].host_reg;
             const X86Register host_src1 = ctx->regs[src1].host_reg;
-            const bool is64 = (unit->regs[src1].type == RTLTYPE_ADDRESS);
+            const bool is64 = (unit->regs[src1].type != RTLTYPE_INT32);
             if (is_spilled(ctx, src1, insn_index)) {
                 append_load(&code, unit->regs[src1].type, host_dest,
                             X86_SP, ctx->regs[src1].spill_offset);
@@ -1754,7 +1757,7 @@ static bool translate_block(HostX86Context *ctx, int block_index)
           case RTLOP_XOR: {
             const X86Register host_dest = ctx->regs[dest].host_reg;
             const X86Register host_src2 = ctx->regs[src2].host_reg;
-            const bool is64 = (unit->regs[src1].type == RTLTYPE_ADDRESS);
+            const bool is64 = (unit->regs[src1].type != RTLTYPE_INT32);
             const X86Opcode opcode = (
                 insn->opcode == RTLOP_ADD ? X86OP_ADD_Gv_Ev :
                 insn->opcode == RTLOP_SUB ? X86OP_SUB_Gv_Ev :
@@ -1780,7 +1783,7 @@ static bool translate_block(HostX86Context *ctx, int block_index)
              * ALU instructions which are one byte. */
             const X86Register host_dest = ctx->regs[dest].host_reg;
             const X86Register host_src2 = ctx->regs[src2].host_reg;
-            const bool is64 = (unit->regs[src1].type == RTLTYPE_ADDRESS);
+            const bool is64 = (unit->regs[src1].type != RTLTYPE_INT32);
             const X86Opcode opcode = X86OP_IMUL_Gv_Ev;
             if (host_dest == host_src2 && !is_spilled(ctx, src2, insn_index)) {
                 append_insn_ModRM_ctx(&code, is64, opcode, host_dest,
@@ -1799,7 +1802,7 @@ static bool translate_block(HostX86Context *ctx, int block_index)
             const X86Register host_dest = ctx->regs[dest].host_reg;
             const X86Register host_src1 = ctx->regs[src1].host_reg;
             const X86Register host_src2 = ctx->regs[src2].host_reg;
-            const bool is64 = (unit->regs[src1].type == RTLTYPE_ADDRESS);
+            const bool is64 = (unit->regs[src1].type != RTLTYPE_INT32);
             ASSERT(host_dest != X86_AX);
 
             /* The destination register will always get rDX if it's free,
@@ -1892,7 +1895,7 @@ static bool translate_block(HostX86Context *ctx, int block_index)
             const X86Register host_dest = ctx->regs[dest].host_reg;
             const X86Register host_src1 = ctx->regs[src1].host_reg;
             const X86Register host_src2 = ctx->regs[src2].host_reg;
-            const bool is64 = (unit->regs[src1].type == RTLTYPE_ADDRESS);
+            const bool is64 = (unit->regs[src1].type != RTLTYPE_INT32);
             ASSERT(host_dest != host_src2);
             ASSERT(host_dest != X86_DX);
 
@@ -1975,7 +1978,7 @@ static bool translate_block(HostX86Context *ctx, int block_index)
           case RTLOP_MODS: {
             const X86Register host_dest = ctx->regs[dest].host_reg;
             const X86Register host_src2 = ctx->regs[src2].host_reg;
-            const bool is64 = (unit->regs[src1].type == RTLTYPE_ADDRESS);
+            const bool is64 = (unit->regs[src1].type != RTLTYPE_INT32);
             ASSERT(host_dest != host_src2);
             ASSERT(host_dest != X86_AX);
 
@@ -2045,7 +2048,7 @@ static bool translate_block(HostX86Context *ctx, int block_index)
             const bool src2_spilled = is_spilled(ctx, src2, insn_index);
             ASSERT(host_dest != X86_CX);
             ASSERT(host_dest != host_src2 || src2_spilled);
-            const bool is64 = (unit->regs[src1].type == RTLTYPE_ADDRESS);
+            const bool is64 = (unit->regs[src1].type != RTLTYPE_INT32);
             const X86Opcode opcode = (
                 insn->opcode == RTLOP_SLL ? X86OP_SHIFT_SHL :
                 insn->opcode == RTLOP_SRL ? X86OP_SHIFT_SHR :
@@ -2104,7 +2107,7 @@ static bool translate_block(HostX86Context *ctx, int block_index)
 
           case RTLOP_CLZ: {
             const X86Register host_dest = ctx->regs[dest].host_reg;
-            const bool is64 = (unit->regs[src1].type == RTLTYPE_ADDRESS);
+            const bool is64 = (unit->regs[src1].type != RTLTYPE_INT32);
             if (handle->setup.host_features & BINREC_FEATURE_X86_LZCNT) {
                 append_insn_ModRM_ctx(&code, is64, X86OP_LZCNT, host_dest,
                                       ctx, insn_index, src1);
@@ -2126,7 +2129,7 @@ static bool translate_block(HostX86Context *ctx, int block_index)
           case RTLOP_BSWAP: {
             const X86Register host_dest = ctx->regs[dest].host_reg;
             const X86Register host_src1 = ctx->regs[src1].host_reg;
-            const bool is64 = (unit->regs[src1].type == RTLTYPE_ADDRESS);
+            const bool is64 = (unit->regs[src1].type != RTLTYPE_INT32);
             if (is_spilled(ctx, src1, insn_index)) {
                 append_load(&code, unit->regs[src1].type, host_dest,
                             X86_SP, ctx->regs[src1].spill_offset);
@@ -2145,7 +2148,7 @@ static bool translate_block(HostX86Context *ctx, int block_index)
           case RTLOP_SGTS: {
             const X86Register host_dest = ctx->regs[dest].host_reg;
             X86Register host_src1 = ctx->regs[src1].host_reg;
-            const bool is64 = (unit->regs[src1].type == RTLTYPE_ADDRESS);
+            const bool is64 = (unit->regs[src1].type != RTLTYPE_INT32);
             const X86Opcode set_opcode = (
                 insn->opcode == RTLOP_SLTU ? X86OP_SETB :
                 insn->opcode == RTLOP_SLTS ? X86OP_SETL :
@@ -2176,7 +2179,7 @@ static bool translate_block(HostX86Context *ctx, int block_index)
           case RTLOP_BFEXT: {
             const X86Register host_dest = ctx->regs[dest].host_reg;
             const X86Register host_src1 = ctx->regs[src1].host_reg;
-            const bool is64 = (unit->regs[src1].type == RTLTYPE_ADDRESS);
+            const bool is64 = (unit->regs[src1].type != RTLTYPE_INT32);
 
             /* BEXTR (from BMI2) is another option for implementing this
              * instruction, but it takes the source and count from a GPR
@@ -2270,7 +2273,7 @@ static bool translate_block(HostX86Context *ctx, int block_index)
             const X86Register host_src2 = ctx->regs[src2].host_reg;
             const bool src2_spilled = is_spilled(ctx, src2, insn_index);
             ASSERT(host_dest != host_src2 || src2_spilled);
-            const bool is64 = (unit->regs[src1].type == RTLTYPE_ADDRESS);
+            const bool is64 = (unit->regs[src1].type != RTLTYPE_INT32);
             const int operand_size = is64 ? 64 : 32;
 
             if (UNLIKELY(insn->bitfield.count == operand_size)) {
@@ -2436,7 +2439,7 @@ static bool translate_block(HostX86Context *ctx, int block_index)
             /* The immediate value is actually signed, but we treat it as
              * unsigned here to simplify range testing. */
             const uint32_t imm = (uint32_t)insn->src_imm;
-            const bool is64 = (unit->regs[src1].type == RTLTYPE_ADDRESS);
+            const bool is64 = (unit->regs[src1].type != RTLTYPE_INT32);
             const X86Opcode opcode = (
                 insn->opcode == RTLOP_ADDI ? X86OP_IMM_ADD :
                 insn->opcode == RTLOP_ANDI ? X86OP_IMM_AND :
@@ -2459,7 +2462,7 @@ static bool translate_block(HostX86Context *ctx, int block_index)
           case RTLOP_MULI: {
             const X86Register host_dest = ctx->regs[dest].host_reg;
             const uint32_t imm = (uint32_t)insn->src_imm;  // As for ADDI etc.
-            const bool is64 = (unit->regs[src1].type == RTLTYPE_ADDRESS);
+            const bool is64 = (unit->regs[src1].type != RTLTYPE_INT32);
             if (imm + 128 < 256) {
                 append_insn_ModRM_ctx(&code, is64, X86OP_IMUL_Gv_Ev_Ib,
                                       host_dest, ctx, insn_index, src1);
@@ -2478,7 +2481,7 @@ static bool translate_block(HostX86Context *ctx, int block_index)
           case RTLOP_RORI: {
             const X86Register host_dest = ctx->regs[dest].host_reg;
             const uint8_t shift_count = (uint8_t)insn->src_imm;
-            const bool is64 = (unit->regs[src1].type == RTLTYPE_ADDRESS);
+            const bool is64 = (unit->regs[src1].type != RTLTYPE_INT32);
             const X86Opcode opcode = (
                 insn->opcode == RTLOP_SLLI ? X86OP_SHIFT_SHL :
                 insn->opcode == RTLOP_SRLI ? X86OP_SHIFT_SHR :
@@ -2499,7 +2502,7 @@ static bool translate_block(HostX86Context *ctx, int block_index)
           case RTLOP_SGTSI: {
             const X86Register host_dest = ctx->regs[dest].host_reg;
             const uint32_t imm = (uint32_t)insn->src_imm;  // As for ADDI etc.
-            const bool is64 = (unit->regs[src1].type == RTLTYPE_ADDRESS);
+            const bool is64 = (unit->regs[src1].type != RTLTYPE_INT32);
             const X86Opcode set_opcode = (
                 insn->opcode == RTLOP_SLTUI ? X86OP_SETB :
                 insn->opcode == RTLOP_SLTSI ? X86OP_SETL :
@@ -2596,7 +2599,7 @@ static bool translate_block(HostX86Context *ctx, int block_index)
             ASSERT(host_src_i >= 0);  // Checked during register allocation.
             const X86Register host_src = (X86Register)host_src_i;
             if (host_dest != host_src) {
-                const bool is64 = (unit->regs[dest].type == RTLTYPE_ADDRESS);
+                const bool is64 = (unit->regs[dest].type != RTLTYPE_INT32);
                 append_insn_ModRM_reg(&code, is64, X86OP_MOV_Gv_Ev,
                                       host_dest, host_src);
             }
@@ -2642,12 +2645,10 @@ static bool translate_block(HostX86Context *ctx, int block_index)
             X86Register host_value = ctx->regs[src2].host_reg;
             RTLDataType type = unit->regs[src2].type;
             if (is_spilled(ctx, src2, insn_index)) {
-                if (type == RTLTYPE_INT32) {
-                    type = RTLTYPE_FLOAT;
-                } else if (type == RTLTYPE_ADDRESS) {
-                    type = RTLTYPE_DOUBLE;
+                if (rtl_type_is_int(type)) {
+                    type = (type == RTLTYPE_INT32
+                            ? RTLTYPE_FLOAT : RTLTYPE_DOUBLE);
                 }
-                ASSERT(!rtl_type_is_int(type));
                 append_load(&code, type, X86_XMM15,
                             X86_SP, ctx->regs[src2].spill_offset);
                 host_value = X86_XMM15;
@@ -2723,6 +2724,7 @@ static bool translate_block(HostX86Context *ctx, int block_index)
                     append_insn_R(&code, false, X86OP_BSWAP_rAX, host_dest);
                 }
                 break;
+              case RTLTYPE_INT64:
               case RTLTYPE_ADDRESS:
                 if (handle->setup.host_features & BINREC_FEATURE_X86_MOVBE) {
                     append_insn_ModRM_mem(&code, true, X86OP_MOVBE_Gy_My,
@@ -2806,9 +2808,10 @@ static bool translate_block(HostX86Context *ctx, int block_index)
                     }
                 }
                 break;
+              case RTLTYPE_INT64:
               case RTLTYPE_ADDRESS:
                 if (saved_ax) {
-                    append_load(&code, RTLTYPE_ADDRESS, X86_AX,
+                    append_load(&code, RTLTYPE_INT64, X86_AX,
                                 X86_SP, ctx->regs[src2].spill_offset);
                 }
                 if (handle->setup.host_features & BINREC_FEATURE_X86_MOVBE) {
@@ -2885,7 +2888,7 @@ static bool translate_block(HostX86Context *ctx, int block_index)
             const X86Register host_base =
                 reload_base_reg(&code, ctx, insn_index, src1,
                                 ctx->regs[dest].host_temp);
-            const bool is64 = (unit->regs[dest].type == RTLTYPE_ADDRESS);
+            const bool is64 = (unit->regs[dest].type != RTLTYPE_INT32);
             append_insn_R(&code, false, X86OP_MOV_rAX_Iv, host_dest);
             append_imm32(&code, 1);
             append_insn_ModRM_mem(&code, is64, X86OP_XADD_Ev_Gv,
@@ -2900,7 +2903,7 @@ static bool translate_block(HostX86Context *ctx, int block_index)
             X86Register host_src3 = ctx->regs[insn->src3].host_reg;
             X86Register host_temp;
             int temp_index = 0;
-            const bool is64 = (unit->regs[dest].type == RTLTYPE_ADDRESS);
+            const bool is64 = (unit->regs[dest].type != RTLTYPE_INT32);
 
             /* If we have a temporary, we need to save RAX.  However, we
              * want to save the allocated temporary (a GPR) for a CMPXCHG

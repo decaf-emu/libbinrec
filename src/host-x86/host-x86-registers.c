@@ -216,6 +216,7 @@ static int allocate_frame_slot(HostX86Context *ctx, RTLDataType type)
     int size = 0;
     switch (type) {
         case RTLTYPE_INT32:     size =  4; break;
+        case RTLTYPE_INT64:     size =  8; break;
         case RTLTYPE_ADDRESS:   size =  8; break;
         case RTLTYPE_FLOAT:     size =  4; break;
         case RTLTYPE_DOUBLE:    size =  8; break;
@@ -469,7 +470,7 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
                 regs_to_save |= 1u << reg;
                 if (ctx->stack_callsave[reg] < 0) {
                     const RTLDataType type =
-                        reg >= X86_XMM0 ? RTLTYPE_V2_DOUBLE : RTLTYPE_ADDRESS;
+                        reg >= X86_XMM0 ? RTLTYPE_V2_DOUBLE : RTLTYPE_INT64;
                     ctx->stack_callsave[reg] = allocate_frame_slot(ctx, type);
                 }
             }
@@ -914,7 +915,7 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
             /* Temporary needed for mask if extracting from the high half
              * of a 64-bit value (but not the very top, since that's
              * implemented with a simple shift). */
-            need_temp = (dest_reg->type == RTLTYPE_ADDRESS
+            need_temp = (dest_reg->type != RTLTYPE_INT32
                          && insn->bitfield.start + insn->bitfield.count < 64
                          && insn->bitfield.count > 32);
             break;
@@ -923,7 +924,7 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
              * register is reused as the destination (so we have somewhere
              * to put the mask), or if src2 is spilled or remains live past
              * this instruction (so we can't mask and shift it in place). */
-            need_temp = ((dest_reg->type == RTLTYPE_ADDRESS
+            need_temp = ((dest_reg->type != RTLTYPE_INT32
                           && dest_info->host_reg == src1_info->host_reg)
                          || src2_info->spilled
                          || src2_reg->death > insn_index);

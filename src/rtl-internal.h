@@ -550,6 +550,50 @@ static inline PURE_FUNCTION bool rtl_register_is_scalar(const RTLRegister *reg)
     return rtl_type_is_scalar(reg->type);
 }
 
+/*------------------- Miscellaneous utility functions -------------------*/
+
+/**
+ * snprintf_assert:  Wrapper for snprintf() which ASSERT()s that the
+ * written string fits within the supplied buffer.
+ */
+#define snprintf_assert INTERNAL(snprintf_assert)
+FORMAT(3, 4)
+extern int snprintf_assert(char *buf, size_t size, const char *format, ...);
+
+/**
+ * format_int:  Write the given integer value to the given buffer as a
+ * numeric string in an appropriate format for the type and value magnitude.
+ * Non-address types in the range [-0x8000,+0xFFFF] are formatted as decimal
+ * values; all other cases are formatted in hexadecimal.
+ *
+ * [Parameters]
+ *     buf: Buffer into which to store formatted value.
+ *     bufsize: Size of buffer, in bytes.  Should be at least 19.
+ *     type: Type of value (RTLTYPE_*).
+ *     value: Value, as a 64-bit integer.
+ * [Return value]
+ *     Number of bytes written, like snprintf().
+ */
+#define format_int INTERNAL(format_int)
+extern int format_int(char *buf, int bufsize, RTLDataType type, uint64_t value);
+
+/**
+ * format_float, format_double:  Write the given floating-point value to
+ * the given buffer as a numeric string.
+ *
+ * [Parameters]
+ *     buf: Buffer into which to store formatted value.
+ *     bufsize: Size of buffer, in bytes.  Should be at least 14 for
+ *         format_float(), 24 for format_double().
+ *     value: Value to format.
+ * [Return value]
+ *     Number of bytes written, like snprintf().
+ */
+#define format_float INTERNAL(format_float)
+extern int format_float(char *buf, int bufsize, float value);
+#define format_double INTERNAL(format_double)
+extern int format_double(char *buf, int bufsize, double value);
+
 /*************************************************************************/
 /*************************************************************************/
 

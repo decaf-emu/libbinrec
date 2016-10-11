@@ -32,13 +32,12 @@ static inline int rtl_imm32(RTLUnit * const unit, uint32_t value)
 /*-----------------------------------------------------------------------*/
 
 /**
- * rtl_imm64:  Allocate and return a new RTL register of ADDRESS type
+ * rtl_imm64:  Allocate and return a new RTL register of INT64 type
  * containing the given immediate value.
- * FIXME: Use a real INT64 type instead of assuming ADDRESS is 64 bits.
  */
 static inline int rtl_imm64(RTLUnit * const unit, uint32_t value)
 {
-    const int reg = rtl_alloc_register(unit, RTLTYPE_ADDRESS);
+    const int reg = rtl_alloc_register(unit, RTLTYPE_INT64);
     rtl_add_insn(unit, RTLOP_LOAD_IMM, reg, 0, 0, value);
     return reg;
 }
@@ -1567,13 +1566,13 @@ static inline void translate_move_spr(
                          ctx->handle->setup.state_offset_timebase_handler);
             rtl_add_insn(unit, RTLOP_GOTO_IF_Z, 0, func, 0, label_no_handler);
 
-            const int result64 = rtl_alloc_register(unit, RTLTYPE_ADDRESS);  // FIXME: should be INT64
+            const int result64 = rtl_alloc_register(unit, RTLTYPE_INT64);
             rtl_add_insn(unit, RTLOP_CALL, result64, func, ctx->psb_reg, 0);
             const int result = rtl_alloc_register(unit, RTLTYPE_INT32);
             if (spr == SPR_TBL) {
                 rtl_add_insn(unit, RTLOP_ZCAST, result, result64, 0, 0);
             } else {
-                const int shifted = rtl_alloc_register(unit, RTLTYPE_ADDRESS);
+                const int shifted = rtl_alloc_register(unit, RTLTYPE_INT64);
                 rtl_add_insn(unit, RTLOP_SRLI, shifted, result64, 0, 32);
                 rtl_add_insn(unit, RTLOP_ZCAST, result, shifted, 0, 0);
             }
@@ -1884,15 +1883,14 @@ static void translate_shift(
         const int rB = get_gpr(ctx, insn_rB(insn));
         count = rtl_alloc_register(unit, RTLTYPE_INT32);
         rtl_add_insn(unit, RTLOP_ANDI, count, rB, 0, 63);
-        // FIXME: use a real INT64 type instead of assuming sizeof(ADDRESS)==8
-        const int rS_64 = rtl_alloc_register(unit, RTLTYPE_ADDRESS);
+        const int rS_64 = rtl_alloc_register(unit, RTLTYPE_INT64);
         if (is_sra) {
             rtl_add_insn(unit, RTLOP_SCAST, rS_64, rS, 0, 0);
         } else {
             rtl_add_insn(unit, RTLOP_ZCAST, rS_64, rS, 0, 0);
         }
         rS = rS_64;
-        const int result_64 = rtl_alloc_register(unit, RTLTYPE_ADDRESS);
+        const int result_64 = rtl_alloc_register(unit, RTLTYPE_INT64);
         rtl_add_insn(unit, rtlop, result_64, rS, count, 0);
         result = rtl_alloc_register(unit, RTLTYPE_INT32);
         rtl_add_insn(unit, RTLOP_ZCAST, result, result_64, 0, 0);
@@ -1907,11 +1905,11 @@ static void translate_shift(
             rtl_add_insn(unit, RTLOP_ANDI, test, rS, 0, mask);
         } else {
             const int one = rtl_imm64(unit, 1);
-            const int shifted_one = rtl_alloc_register(unit, RTLTYPE_ADDRESS);
+            const int shifted_one = rtl_alloc_register(unit, RTLTYPE_INT64);
             rtl_add_insn(unit, RTLOP_SLL, shifted_one, one, count, 0);
-            const int mask = rtl_alloc_register(unit, RTLTYPE_ADDRESS);
+            const int mask = rtl_alloc_register(unit, RTLTYPE_INT64);
             rtl_add_insn(unit, RTLOP_ADDI, mask, shifted_one, 0, -1);
-            test = rtl_alloc_register(unit, RTLTYPE_ADDRESS);
+            test = rtl_alloc_register(unit, RTLTYPE_INT64);
             rtl_add_insn(unit, RTLOP_AND, test, rS, mask, 0);
         }
         const int has_bits = rtl_alloc_register(unit, RTLTYPE_INT32);
@@ -2474,8 +2472,8 @@ static inline void translate_x1F(
         rtl_add_insn(unit, RTLOP_ADD,
                      host_address, ctx->membase_reg, addr_aligned, 0);
         // FIXME: use V2_DOUBLE when we have a way to create one
-        const int zero = rtl_imm32(unit, 0);
-        for (int i = 0; i < 32; i += 4) {
+        const int zero = rtl_imm64(unit, 0);
+        for (int i = 0; i < 32; i += 8) {
             rtl_add_insn(unit, RTLOP_STORE, 0, host_address, zero, i);
         }
         return;

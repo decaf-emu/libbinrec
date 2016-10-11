@@ -107,14 +107,15 @@
  * same type, except where noted.
  *
  * RTLTYPE_ADDRESS is a special integer variant which is the same size as
- * a memory address (i.e., a pointer) on the target architecture.  The
- * address type is treated as distinct from other integer types; to perform
+ * a memory address (i.e., a pointer) on the host architecture.  The
+ * ADDRESS type is treated as distinct from other integer types; to perform
  * calculations with an address, the second operand must be cast to address
  * type with an RTLOP_ZCAST or RTLOP_SCAST instruction.
  */
 typedef enum RTLDataType_ {
     /* Zero is invalid. */
     RTLTYPE_INT32 = 1,  // 32-bit integer
+    RTLTYPE_INT64,      // 64-bit integer
     RTLTYPE_ADDRESS,    // Host-pointer-sized integer
     RTLTYPE_FLOAT,      // 32-bit floating point
     RTLTYPE_DOUBLE,     // 64-bit floating point
@@ -128,9 +129,8 @@ typedef enum RTLDataType_ {
  * Note that in general, computational instructions require that all
  * operands be of the same type; for example, it is invalid to ADD an
  * INT32 register and an ADDRESS register, or to add two INT32 registers
- * and store the result in an ADDRESS register.  Use the appropriate
- * typecast instructions, such as ZCAST or SCAST for integers, to convert
- * between types.
+ * and store the result in an ADDRESS register.  Use an appropriate
+ * conversion instruction, such as ZCAST or SCAST, to convert between types.
  */
 typedef enum RTLOpcode {
     /* Zero is invalid. */
@@ -285,8 +285,8 @@ typedef enum RTLOpcode {
     RTLOP_STORE_I16_BR, // *(uint16_t *)(src1 + other) = bswap16(src2)
 
     /* Integer atomic operations.  Address operands (src1) must be of
-     * ADDRESS type; other operands may be of any integral type, but they
-     * must all match. */
+     * ADDRESS type; other operands may be of any integral type except
+     * ADDRESS, but (for CMPXCHG) they must all match. */
     RTLOP_ATOMIC_INC,   // dest = (*src1)++
     RTLOP_CMPXCHG,      // dest = (*src1==src2 ? (*src1 = other, src2) : *src1)
 

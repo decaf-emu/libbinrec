@@ -26,9 +26,10 @@ int main(void)
     RTLUnit *unit;
     EXPECT(unit = rtl_create_unit(handle));
 
-    int reg1, reg2;
+    int reg1, reg2, reg3;
     EXPECT(reg1 = rtl_alloc_register(unit, RTLTYPE_ADDRESS));
     EXPECT(reg2 = rtl_alloc_register(unit, RTLTYPE_FLOAT));
+    EXPECT(reg3 = rtl_alloc_register(unit, RTLTYPE_ADDRESS));
 
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg1, 0, 0, 10));
     EXPECT_EQ(unit->num_insns, 1);

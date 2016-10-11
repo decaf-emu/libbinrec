@@ -700,7 +700,8 @@ static bool make_load_imm(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
     OPERAND_ASSERT(dest != 0);
     OPERAND_ASSERT(unit->regs[dest].source == RTLREG_UNDEFINED);
     OPERAND_ASSERT(rtl_register_is_scalar(&unit->regs[dest]));
-    OPERAND_ASSERT(unit->regs[dest].type == RTLTYPE_ADDRESS
+    OPERAND_ASSERT(unit->regs[dest].type == RTLTYPE_INT64
+                   || unit->regs[dest].type == RTLTYPE_ADDRESS
                    || unit->regs[dest].type == RTLTYPE_DOUBLE
                    || other <= UINT64_C(0xFFFFFFFF));
 #endif
@@ -716,6 +717,7 @@ static bool make_load_imm(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
       case RTLTYPE_FLOAT:
         destreg->value.i64 = (uint32_t)other;
         break;
+      case RTLTYPE_INT64:
       case RTLTYPE_ADDRESS:
       case RTLTYPE_DOUBLE:
         destreg->value.i64 = other;
@@ -950,8 +952,8 @@ static bool make_atomic_inc(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
     OPERAND_ASSERT(dest != 0);
     OPERAND_ASSERT(src1 != 0);
     OPERAND_ASSERT(unit->regs[dest].source == RTLREG_UNDEFINED);
-    OPERAND_ASSERT(unit->regs[src1].source != RTLREG_UNDEFINED);
     OPERAND_ASSERT(rtl_register_is_int(&unit->regs[dest]));
+    OPERAND_ASSERT(unit->regs[src1].source != RTLREG_UNDEFINED);
     OPERAND_ASSERT(unit->regs[src1].type == RTLTYPE_ADDRESS);
 #endif
 
@@ -994,12 +996,12 @@ static bool make_cmpxchg(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
     OPERAND_ASSERT(src2 != 0);
     OPERAND_ASSERT(other != 0);
     OPERAND_ASSERT(unit->regs[dest].source == RTLREG_UNDEFINED);
-    OPERAND_ASSERT(unit->regs[src1].source != RTLREG_UNDEFINED);
-    OPERAND_ASSERT(unit->regs[src2].source != RTLREG_UNDEFINED);
-    OPERAND_ASSERT(unit->regs[other].source != RTLREG_UNDEFINED);
     OPERAND_ASSERT(rtl_register_is_int(&unit->regs[dest]));
+    OPERAND_ASSERT(unit->regs[src1].source != RTLREG_UNDEFINED);
     OPERAND_ASSERT(unit->regs[src1].type == RTLTYPE_ADDRESS);
+    OPERAND_ASSERT(unit->regs[src2].source != RTLREG_UNDEFINED);
     OPERAND_ASSERT(unit->regs[src2].type == unit->regs[dest].type);
+    OPERAND_ASSERT(unit->regs[other].source != RTLREG_UNDEFINED);
     OPERAND_ASSERT(unit->regs[other].type == unit->regs[dest].type);
 #endif
 

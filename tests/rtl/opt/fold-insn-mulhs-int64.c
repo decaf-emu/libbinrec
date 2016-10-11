@@ -16,46 +16,46 @@ static unsigned int opt_flags = BINREC_OPT_FOLD_CONSTANTS;
 static int add_rtl(RTLUnit *unit)
 {
     int reg1, reg2, reg3;
-    EXPECT(reg1 = rtl_alloc_register(unit, RTLTYPE_ADDRESS));
+    EXPECT(reg1 = rtl_alloc_register(unit, RTLTYPE_INT64));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM,
                         reg1, 0, 0, UINT64_C(0x0123456789ABCDEF)));
-    EXPECT(reg2 = rtl_alloc_register(unit, RTLTYPE_ADDRESS));
+    EXPECT(reg2 = rtl_alloc_register(unit, RTLTYPE_INT64));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM,
                         reg2, 0, 0, UINT64_C(0xFEDCBA9876543210)));
-    EXPECT(reg3 = rtl_alloc_register(unit, RTLTYPE_ADDRESS));
+    EXPECT(reg3 = rtl_alloc_register(unit, RTLTYPE_INT64));
     EXPECT(rtl_add_insn(unit, RTLOP_MULHS, reg3, reg1, reg2, 0));
 
     /* Check other combinations of signs. */
     int reg4, reg5, reg6;
-    EXPECT(reg4 = rtl_alloc_register(unit, RTLTYPE_ADDRESS));
+    EXPECT(reg4 = rtl_alloc_register(unit, RTLTYPE_INT64));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM,
                         reg4, 0, 0, UINT64_C(0xFEDCBA9876543210)));
-    EXPECT(reg5 = rtl_alloc_register(unit, RTLTYPE_ADDRESS));
+    EXPECT(reg5 = rtl_alloc_register(unit, RTLTYPE_INT64));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM,
                         reg5, 0, 0, UINT64_C(0x0123456789ABCDEF)));
-    EXPECT(reg6 = rtl_alloc_register(unit, RTLTYPE_ADDRESS));
+    EXPECT(reg6 = rtl_alloc_register(unit, RTLTYPE_INT64));
     EXPECT(rtl_add_insn(unit, RTLOP_MULHS, reg6, reg4, reg5, 0));
 
     int reg7, reg8, reg9;
-    EXPECT(reg7 = rtl_alloc_register(unit, RTLTYPE_ADDRESS));
+    EXPECT(reg7 = rtl_alloc_register(unit, RTLTYPE_INT64));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM,
                         reg7, 0, 0, UINT64_C(0xFEDCBA9876543211)));
-    EXPECT(reg8 = rtl_alloc_register(unit, RTLTYPE_ADDRESS));
+    EXPECT(reg8 = rtl_alloc_register(unit, RTLTYPE_INT64));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM,
                         reg8, 0, 0, UINT64_C(0xFEDCBA9876543210)));
-    EXPECT(reg9 = rtl_alloc_register(unit, RTLTYPE_ADDRESS));
+    EXPECT(reg9 = rtl_alloc_register(unit, RTLTYPE_INT64));
     EXPECT(rtl_add_insn(unit, RTLOP_MULHS, reg9, reg7, reg8, 0));
 
     /* Check handling of a negative result with a zero low half. */
 
     int reg10, reg11, reg12;
-    EXPECT(reg10 = rtl_alloc_register(unit, RTLTYPE_ADDRESS));
+    EXPECT(reg10 = rtl_alloc_register(unit, RTLTYPE_INT64));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM,
                         reg10, 0, 0, UINT64_C(0x123456780000000)));
-    EXPECT(reg11 = rtl_alloc_register(unit, RTLTYPE_ADDRESS));
+    EXPECT(reg11 = rtl_alloc_register(unit, RTLTYPE_INT64));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM,
                         reg11, 0, 0, UINT64_C(0xFEDCBA9800000000)));
-    EXPECT(reg12 = rtl_alloc_register(unit, RTLTYPE_ADDRESS));
+    EXPECT(reg12 = rtl_alloc_register(unit, RTLTYPE_INT64));
     EXPECT(rtl_add_insn(unit, RTLOP_MULHS, reg12, reg10, reg11, 0));
 
     return EXIT_SUCCESS;

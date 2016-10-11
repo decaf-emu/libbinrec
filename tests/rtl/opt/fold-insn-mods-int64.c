@@ -16,13 +16,13 @@ static unsigned int opt_flags = BINREC_OPT_FOLD_CONSTANTS;
 static int add_rtl(RTLUnit *unit)
 {
     int reg1, reg2, reg3;
-    EXPECT(reg1 = rtl_alloc_register(unit, RTLTYPE_ADDRESS));
+    EXPECT(reg1 = rtl_alloc_register(unit, RTLTYPE_INT64));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM,
                         reg1, 0, 0, UINT64_C(-0x123456789ABCDEF)));
-    EXPECT(reg2 = rtl_alloc_register(unit, RTLTYPE_ADDRESS));
+    EXPECT(reg2 = rtl_alloc_register(unit, RTLTYPE_INT64));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM,
                         reg2, 0, 0, UINT64_C(0x789ABCDEF)));
-    EXPECT(reg3 = rtl_alloc_register(unit, RTLTYPE_ADDRESS));
+    EXPECT(reg3 = rtl_alloc_register(unit, RTLTYPE_INT64));
     EXPECT(rtl_add_insn(unit, RTLOP_MODS, reg3, reg1, reg2, 0));
 
     return EXIT_SUCCESS;

@@ -53,6 +53,13 @@ int main(void)
     EXPECT(unit->error);
     unit->error = false;
 
+    EXPECT_FALSE(rtl_add_insn(unit, RTLOP_CMPXCHG, reg4, reg2, reg2, reg3));
+    EXPECT_ICE("Operand constraint violated:"
+               " unit->regs[src1].type == RTLTYPE_ADDRESS");
+    EXPECT_EQ(unit->num_insns, 3);
+    EXPECT(unit->error);
+    unit->error = false;
+
     EXPECT_FALSE(rtl_add_insn(unit, RTLOP_CMPXCHG, reg4, reg1, reg1, reg3));
     EXPECT_ICE("Operand constraint violated:"
                " unit->regs[src2].type == unit->regs[dest].type");

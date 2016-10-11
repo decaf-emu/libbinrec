@@ -18,6 +18,83 @@
 #include <stdio.h>
 
 /*************************************************************************/
+/*********************** Exported utility routines ***********************/
+/*************************************************************************/
+
+FORMAT(3, 4)
+int snprintf_assert(char *buf, size_t size, const char *format, ...)
+{
+    va_list args;
+    va_start(args, format);
+    int result = vsnprintf(buf, size, format, args);
+    va_end(args);
+    ASSERT((size_t)result < size);
+    return result;
+}
+
+/*-----------------------------------------------------------------------*/
+
+int format_int(char *buf, int bufsize, RTLDataType type, uint64_t value)
+{
+    switch (type) {
+      case RTLTYPE_INT32:
+        if ((uint32_t)value + 0x8000 >= 0x18000) {
+            /* i.e., value is outside [-0x8000,+0xFFFF] */
+            return snprintf_assert(buf, bufsize, "0x%X", (uint32_t)value);
+        } else {
+            return snprintf_assert(buf, bufsize, "%d", (int32_t)value);
+        }
+      case RTLTYPE_INT64:
+        if (value + 0x8000 >= 0x18000) {
+            return snprintf_assert(buf, bufsize, "0x%"PRIX64, value);
+        } else {
+            return snprintf_assert(buf, bufsize, "%d", (int32_t)value);
+        }
+      default:
+        ASSERT(type == RTLTYPE_ADDRESS);
+        return snprintf_assert(buf, bufsize, "0x%"PRIX64, value);
+    }
+}
+
+/*-----------------------------------------------------------------------*/
+
+int format_float(char *buf, int bufsize, float value)
+{
+    if (isnan(value)) {
+        return snprintf_assert(buf, bufsize, "nan(0x%X)",
+                               float_to_bits(value) & 0x007FFFFF);
+    } else if (isinf(value)) {
+        return snprintf_assert(buf, bufsize, value < 0.0f ? "-inf" : "inf");
+    } else {
+        int n = snprintf_assert(buf, bufsize, "%.8g", value);
+        if (!strchr(buf, '.')) {
+            n += snprintf_assert(buf+n, bufsize-n, ".0");
+        }
+        n += snprintf_assert(buf+n, bufsize-n, "f");
+        return n;
+    }
+}
+
+/*-----------------------------------------------------------------------*/
+
+int format_double(char *buf, int bufsize, double value)
+{
+    if (isnan(value)) {
+        return snprintf_assert(
+            buf, bufsize, "nan(0x%"PRIX64")",
+            double_to_bits(value) & UINT64_C(0x000FFFFFFFFFFFFF));
+    } else if (isinf(value)) {
+        return snprintf_assert(buf, bufsize, value < 0.0 ? "-inf" : "inf");
+    } else {
+        int n = snprintf_assert(buf, bufsize, "%.17g", value);
+        if (!strchr(buf, '.')) {
+            n += snprintf_assert(buf+n, bufsize-n, ".0");
+        }
+        return n;
+    }
+}
+
+/*************************************************************************/
 /**************************** Local routines *****************************/
 /*************************************************************************/
 
@@ -186,71 +263,13 @@ static NOINLINE bool rtl_add_insn_with_new_block(
 /*-----------------------------------------------------------------------*/
 
 /**
- * snprintf_assert:  Wrapper for snprintf() which ASSERT()s that the
- * written string fits within the supplied buffer.  Helper for
- * rtl_decode_insn(), rtl_describe_alias(), and rtl_describe_block().
- */
-FORMAT(3, 4)
-static int snprintf_assert(char *buf, size_t size, const char *format, ...)
-{
-    va_list args;
-    va_start(args, format);
-    int result = vsnprintf(buf, size, format, args);
-    va_end(args);
-    ASSERT((size_t)result < size);
-    return result;
-}
-
-/*-----------------------------------------------------------------------*/
-
-/**
- * format_float, format_double:  Write the given floating-point value to
- * the given buffer as a numeric string.  Returns the number of bytes
- * written, like snprintf().
- */
-static int format_float(char *buf, int bufsize, float value)
-{
-    if (isnan(value)) {
-        return snprintf_assert(buf, bufsize, "nan(0x%X)",
-                               float_to_bits(value) & 0x007FFFFF);
-    } else if (isinf(value)) {
-        return snprintf_assert(buf, bufsize, value < 0.0f ? "-inf" : "inf");
-    } else {
-        int n = snprintf_assert(buf, bufsize, "%.8g", value);
-        if (!strchr(buf, '.')) {
-            n += snprintf_assert(buf+n, bufsize-n, ".0");
-        }
-        n += snprintf_assert(buf+n, bufsize-n, "f");
-        return n;
-    }
-}
-
-static int format_double(char *buf, int bufsize, double value)
-{
-    if (isnan(value)) {
-        return snprintf_assert(
-            buf, bufsize, "nan(0x%"PRIX64")",
-            double_to_bits(value) & UINT64_C(0x000FFFFFFFFFFFFF));
-    } else if (isinf(value)) {
-        return snprintf_assert(buf, bufsize, value < 0.0 ? "-inf" : "inf");
-    } else {
-        int n = snprintf_assert(buf, bufsize, "%.17g", value);
-        if (!strchr(buf, '.')) {
-            n += snprintf_assert(buf+n, bufsize-n, ".0");
-        }
-        return n;
-    }
-}
-
-/*-----------------------------------------------------------------------*/
-
-/**
  * type_suffix:  Return an appropriate suffix for the given data type.
  */
 static const char *type_suffix(RTLDataType type)
 {
     switch (type) {
         case RTLTYPE_INT32:     return "i32";
+        case RTLTYPE_INT64:     return "i64";
         case RTLTYPE_ADDRESS:   return "addr";
         case RTLTYPE_FLOAT:     return "f32";
         case RTLTYPE_DOUBLE:    return "f64";
@@ -290,15 +309,9 @@ static void rtl_describe_register(const RTLRegister *reg,
       case RTLREG_CONSTANT:
         switch ((RTLDataType)reg->type) {
           case RTLTYPE_INT32:
-            if (reg->value.i64 >= 0x10000
-             && reg->value.i64 < -0x8000u) {
-                snprintf(buf, bufsize, "0x%X", (int32_t)reg->value.i64);
-            } else {
-                snprintf(buf, bufsize, "%d", (int32_t)reg->value.i64);
-            }
-            break;
+          case RTLTYPE_INT64:
           case RTLTYPE_ADDRESS:
-            snprintf(buf, bufsize, "0x%"PRIX64, reg->value.i64);
+            format_int(buf, bufsize, reg->type, reg->value.i64);
             break;
           case RTLTYPE_FLOAT:
             format_float(buf, bufsize, reg->value.f32);
@@ -738,30 +751,22 @@ static void rtl_decode_insn(const RTLUnit *unit, uint32_t index,
         switch (unit->regs[dest].type) {
           case RTLTYPE_INT32:
             ASSERT(insn->src_imm <= 0xFFFFFFFF);
-            if (insn->src_imm >= 0x10000
-             && insn->src_imm < (uint32_t)-0x8000) {
-                s += snprintf_assert(s, top - s, "0x%"PRIX64"\n",
-                                     insn->src_imm);
-            } else {
-                s += snprintf_assert(s, top - s, "%d\n",
-                                     (int32_t)insn->src_imm);
-            }
-            break;
+            /* fall through */
+          case RTLTYPE_INT64:
           case RTLTYPE_ADDRESS:
-            s += snprintf_assert(s, top - s, "0x%"PRIX64"\n", insn->src_imm);
+            s += format_int(s, top - s, unit->regs[dest].type, insn->src_imm);
             break;
           case RTLTYPE_FLOAT:
             s += format_float(s, top - s,
                               bits_to_float((uint32_t)insn->src_imm));
-            s += snprintf_assert(s, top - s, "\n");
             break;
           case RTLTYPE_DOUBLE:
             s += format_double(s, top - s, bits_to_double(insn->src_imm));
-            s += snprintf_assert(s, top - s, "\n");
            break;
           default:
             ASSERT(!"Invalid type for LOAD_IMM");
         }
+        s += snprintf_assert(s, top - s, "\n");
         return;
 
       case RTLOP_LOAD_ARG:
@@ -887,6 +892,7 @@ static void rtl_describe_alias(const RTLUnit *unit, int index,
 
     static const char *type_names[] = {
         [RTLTYPE_INT32    ] = "int32",
+        [RTLTYPE_INT64    ] = "int64",
         [RTLTYPE_ADDRESS  ] = "address",
         [RTLTYPE_FLOAT    ] = "float",
         [RTLTYPE_DOUBLE   ] = "double",

@@ -26,7 +26,7 @@ static const char expected[] =
     "    6: SCAST      r6, r3\n"
     "    7: SRA        r7, r6, r5\n"
     "    8: ZCAST      r8, r7\n"
-    "    9: LOAD_IMM   r9, 0x1\n"
+    "    9: LOAD_IMM   r9, 1\n"
     "   10: SLL        r10, r9, r5\n"
     "   11: ADDI       r11, r10, -1\n"
     "   12: AND        r12, r6, r11\n"

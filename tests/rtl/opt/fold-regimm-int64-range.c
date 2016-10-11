@@ -16,17 +16,17 @@ static unsigned int opt_flags = BINREC_OPT_FOLD_CONSTANTS;
 static int add_rtl(RTLUnit *unit)
 {
     int reg1, reg2, reg3, reg4, reg5;
-    EXPECT(reg1 = rtl_alloc_register(unit, RTLTYPE_ADDRESS));
+    EXPECT(reg1 = rtl_alloc_register(unit, RTLTYPE_INT64));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_ARG, reg1, 0, 0, 0));
-    EXPECT(reg2 = rtl_alloc_register(unit, RTLTYPE_ADDRESS));
+    EXPECT(reg2 = rtl_alloc_register(unit, RTLTYPE_INT64));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM,
                         reg2, 0, 0, UINT64_C(0x80000000)));
-    EXPECT(reg3 = rtl_alloc_register(unit, RTLTYPE_ADDRESS));
+    EXPECT(reg3 = rtl_alloc_register(unit, RTLTYPE_INT64));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM,
                         reg3, 0, 0, UINT64_C(-0x80000001)));
-    EXPECT(reg4 = rtl_alloc_register(unit, RTLTYPE_ADDRESS));
+    EXPECT(reg4 = rtl_alloc_register(unit, RTLTYPE_INT64));
     EXPECT(rtl_add_insn(unit, RTLOP_ADD, reg4, reg1, reg2, 0));
-    EXPECT(reg5 = rtl_alloc_register(unit, RTLTYPE_ADDRESS));
+    EXPECT(reg5 = rtl_alloc_register(unit, RTLTYPE_INT64));
     EXPECT(rtl_add_insn(unit, RTLOP_ADD, reg5, reg1, reg3, 0));
 
     return EXIT_SUCCESS;

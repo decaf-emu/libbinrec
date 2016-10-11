@@ -16,12 +16,12 @@ static unsigned int opt_flags = BINREC_OPT_FOLD_CONSTANTS;
 static int add_rtl(RTLUnit *unit)
 {
     int reg1, reg2, reg3;
-    EXPECT(reg1 = rtl_alloc_register(unit, RTLTYPE_ADDRESS));
+    EXPECT(reg1 = rtl_alloc_register(unit, RTLTYPE_INT64));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM,
                         reg1, 0, 0, UINT64_C(-0x123456789ABCDEF)));
-    EXPECT(reg2 = rtl_alloc_register(unit, RTLTYPE_ADDRESS));
+    EXPECT(reg2 = rtl_alloc_register(unit, RTLTYPE_INT64));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg2, 0, 0, 0));
-    EXPECT(reg3 = rtl_alloc_register(unit, RTLTYPE_ADDRESS));
+    EXPECT(reg3 = rtl_alloc_register(unit, RTLTYPE_INT64));
     EXPECT(rtl_add_insn(unit, RTLOP_MODU, reg3, reg1, reg2, 0));
 
     return EXIT_SUCCESS;
@@ -30,13 +30,13 @@ static int add_rtl(RTLUnit *unit)
 static const char expected[] =
     "[warning] r3: Treating constant division by zero as 0\n"
     #ifdef RTL_DEBUG_OPTIMIZE
-        "[info] Folded r3 to constant value 0x0 at 2\n"
+        "[info] Folded r3 to constant value 0 at 2\n"
         "[info] r1 no longer used, setting death = birth\n"
         "[info] r2 no longer used, setting death = birth\n"
     #endif
     "    0: LOAD_IMM   r1, 0xFEDCBA9876543211\n"
-    "    1: LOAD_IMM   r2, 0x0\n"
-    "    2: LOAD_IMM   r3, 0x0\n"
+    "    1: LOAD_IMM   r2, 0\n"
+    "    2: LOAD_IMM   r3, 0\n"
     "\n"
     "Block 0: <none> --> [0,2] --> <none>\n"
     ;

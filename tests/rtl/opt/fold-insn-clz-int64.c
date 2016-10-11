@@ -16,9 +16,9 @@ static unsigned int opt_flags = BINREC_OPT_FOLD_CONSTANTS;
 static int add_rtl(RTLUnit *unit)
 {
     int reg1, reg2;
-    EXPECT(reg1 = rtl_alloc_register(unit, RTLTYPE_ADDRESS));
+    EXPECT(reg1 = rtl_alloc_register(unit, RTLTYPE_INT64));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg1, 0, 0, 0x123456789));
-    EXPECT(reg2 = rtl_alloc_register(unit, RTLTYPE_ADDRESS));
+    EXPECT(reg2 = rtl_alloc_register(unit, RTLTYPE_INT64));
     EXPECT(rtl_add_insn(unit, RTLOP_CLZ, reg2, reg1, 0, 0));
 
     return EXIT_SUCCESS;
@@ -26,11 +26,11 @@ static int add_rtl(RTLUnit *unit)
 
 static const char expected[] =
     #ifdef RTL_DEBUG_OPTIMIZE
-        "[info] Folded r2 to constant value 0x1F at 1\n"
+        "[info] Folded r2 to constant value 31 at 1\n"
         "[info] r1 no longer used, setting death = birth\n"
     #endif
     "    0: LOAD_IMM   r1, 0x123456789\n"
-    "    1: LOAD_IMM   r2, 0x1F\n"
+    "    1: LOAD_IMM   r2, 31\n"
     "\n"
     "Block 0: <none> --> [0,1] --> <none>\n"
     ;

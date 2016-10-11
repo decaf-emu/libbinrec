@@ -18,18 +18,18 @@ static int add_rtl(RTLUnit *unit)
     int reg1, reg2, reg3, reg4, reg5, reg6;
     EXPECT(reg1 = rtl_alloc_register(unit, RTLTYPE_ADDRESS));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_ARG, reg1, 0, 0, 0));
-    EXPECT(reg2 = rtl_alloc_register(unit, RTLTYPE_ADDRESS));
+    EXPECT(reg2 = rtl_alloc_register(unit, RTLTYPE_INT32));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_ARG, reg2, 0, 0, 1));
-    EXPECT(reg3 = rtl_alloc_register(unit, RTLTYPE_ADDRESS));
+    EXPECT(reg3 = rtl_alloc_register(unit, RTLTYPE_INT32));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_ARG, reg3, 0, 0, 2));
-    EXPECT(reg4 = rtl_alloc_register(unit, RTLTYPE_ADDRESS));
-    EXPECT(rtl_add_insn(unit, RTLOP_SELECT, reg4, reg1, reg2, reg3));
-    EXPECT(reg5 = rtl_alloc_register(unit, RTLTYPE_ADDRESS));
+    EXPECT(reg4 = rtl_alloc_register(unit, RTLTYPE_INT32));
+    EXPECT(rtl_add_insn(unit, RTLOP_SELECT, reg4, reg2, reg3, reg1));
+    EXPECT(reg5 = rtl_alloc_register(unit, RTLTYPE_INT32));
     /* If DSE improperly rolls back reg1/2/3 death at reg4, the registers
      * will appear to die at this instruction and thus be (incorrectly)
      * eliminated. */
-    EXPECT(rtl_add_insn(unit, RTLOP_SELECT, reg5, reg1, reg2, reg3));
-    EXPECT(reg6 = rtl_alloc_register(unit, RTLTYPE_ADDRESS));
+    EXPECT(rtl_add_insn(unit, RTLOP_SELECT, reg5, reg2, reg3, reg1));
+    EXPECT(reg6 = rtl_alloc_register(unit, RTLTYPE_INT32));
     EXPECT(rtl_add_insn(unit, RTLOP_CMPXCHG, reg6, reg1, reg2, reg3));
 
     return EXIT_SUCCESS;

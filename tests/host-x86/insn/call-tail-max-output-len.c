@@ -20,7 +20,7 @@ static int add_rtl(RTLUnit *unit)
 {
     int dummy_regs[29];
     for (int i = 0; i < lenof(dummy_regs); i++) {
-        EXPECT(dummy_regs[i] = rtl_alloc_register(unit, RTLTYPE_ADDRESS));
+        EXPECT(dummy_regs[i] = rtl_alloc_register(unit, RTLTYPE_INT64));
         EXPECT(rtl_add_insn(unit, RTLOP_NOP, dummy_regs[i], 0, 0, 0));
     }
     alloc_dummy_registers(unit, 15, RTLTYPE_FLOAT);
@@ -28,11 +28,11 @@ static int add_rtl(RTLUnit *unit)
     int reg1, reg2, reg3, reg4;
     EXPECT(reg1 = rtl_alloc_register(unit, RTLTYPE_ADDRESS));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg1, 0, 0, 1));
-    EXPECT(reg2 = rtl_alloc_register(unit, RTLTYPE_ADDRESS));
+    EXPECT(reg2 = rtl_alloc_register(unit, RTLTYPE_INT64));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg2, 0, 0, 2));
-    EXPECT(reg3 = rtl_alloc_register(unit, RTLTYPE_ADDRESS));
+    EXPECT(reg3 = rtl_alloc_register(unit, RTLTYPE_INT64));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg3, 0, 0, 3));
-    EXPECT(reg4 = rtl_alloc_register(unit, RTLTYPE_ADDRESS));
+    EXPECT(reg4 = rtl_alloc_register(unit, RTLTYPE_INT64));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg4, 0, 0, 4));
     EXPECT(rtl_add_insn(unit, RTLOP_STORE, 0, reg1, reg2, 0));  // Touch XMM15.
     EXPECT(rtl_add_insn(unit, RTLOP_CALL, 0, reg1, reg2, reg3));
