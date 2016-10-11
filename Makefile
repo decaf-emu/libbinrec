@@ -543,6 +543,8 @@ include $(sort $(wildcard $(patsubst %.o,%.d,\
     $(LIBRARY_OBJECTS:%.o=%_cov.o) \
     $(TEST_OBJECTS) \
     $(TEST_OBJECTS:%.o=%_cov.o) \
+    $(TEST_UTILITY_OBJECTS) \
+    $(TEST_UTILITY_OBJECTS:%.o=%_cov.o) \
 )))
 endif
 

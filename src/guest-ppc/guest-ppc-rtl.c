@@ -1550,8 +1550,42 @@ static inline void translate_move_spr(
                         address, spr==SPR_TBU ? 'U' : 'L');
             rtl_add_insn(unit, RTLOP_ILLEGAL, 0, 0, 0, 0);
         } else {
-            // FIXME: callout to handler not yet implemented
-            set_gpr(ctx, insn_rD(insn), rtl_imm32(unit, 0));
+            /* We have to manually store rD since we set it differently
+             * depending on whether a timebase handler function is present. */
+            const int rD = insn_rD(insn);
+            if (ctx->gpr_dirty & (1u << rD)) {
+                ctx->gpr_dirty ^= 1u << rD;
+                rtl_add_insn(unit, RTLOP_SET_ALIAS,
+                             0, ctx->live.gpr[rD], 0, ctx->alias.gpr[rD]);
+            }
+            ctx->live.gpr[rD] = 0;
+
+            const int label_no_handler = rtl_alloc_label(unit);
+            const int label_end = rtl_alloc_label(unit);
+            const int func = rtl_alloc_register(unit, RTLTYPE_ADDRESS);
+            rtl_add_insn(unit, RTLOP_LOAD, func, ctx->psb_reg, 0,
+                         ctx->handle->setup.state_offset_timebase_handler);
+            rtl_add_insn(unit, RTLOP_GOTO_IF_Z, 0, func, 0, label_no_handler);
+
+            const int result64 = rtl_alloc_register(unit, RTLTYPE_ADDRESS);  // FIXME: should be INT64
+            rtl_add_insn(unit, RTLOP_CALL, result64, func, ctx->psb_reg, 0);
+            const int result = rtl_alloc_register(unit, RTLTYPE_INT32);
+            if (spr == SPR_TBL) {
+                rtl_add_insn(unit, RTLOP_ZCAST, result, result64, 0, 0);
+            } else {
+                const int shifted = rtl_alloc_register(unit, RTLTYPE_ADDRESS);
+                rtl_add_insn(unit, RTLOP_SRLI, shifted, result64, 0, 32);
+                rtl_add_insn(unit, RTLOP_ZCAST, result, shifted, 0, 0);
+            }
+            rtl_add_insn(unit, RTLOP_SET_ALIAS,
+                         0, result, 0, ctx->alias.gpr[rD]);
+            rtl_add_insn(unit, RTLOP_GOTO, 0, 0, 0, label_end);
+
+            rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, label_no_handler);
+            rtl_add_insn(unit, RTLOP_SET_ALIAS,
+                         0, rtl_imm32(unit,0), 0, ctx->alias.gpr[rD]);
+
+            rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, label_end);
         }
         break;
 

@@ -3,6 +3,9 @@
 # No copyright is claimed on this file.
 #
 # Update history:
+#    - 2016-10-12: Fixed incorrect encoding of mftb in mftbu tests.  (The
+#         error has no impact on correctness, only on the usefulness of
+#         the failure record contents).
 #    - 2016-10-02: Added tests to verify that lmw/stmw with a very positive
 #         offset do not wrap around to negative offsets.  Also changed the
 #         lmw/stmw tests to record the incorrect value detected and the
@@ -11249,12 +11252,12 @@ get_load_address:
    addi %r6,%r6,32
 
    # mftbu
-0: .int 0x7D4D42E6  # mftb %r10
+0: .int 0x7D4C42E6  # mftb %r10
    .int 0x7C6D42E6  # mftbu %r3
    li %r0,MFTB_SPIN_COUNT
    mtctr %r0
 1: bdnz 1b
-   .int 0x7D6D42E6  # mftb %r11
+   .int 0x7D6C42E6  # mftb %r11
    .int 0x7CED42E6  # mftbu %r7
    bl record
    sub %r3,%r7,%r3
@@ -11262,10 +11265,10 @@ get_load_address:
    beq 0f
    cmpwi %r3,1      # The low 32 bits might have rolled over.
    beq 0f
-   stw %r10,8(%r6)
-   stw %r3,12(%r6)
-   stw %r11,16(%r6)
-   stw %r7,20(%r6)
+   stw %r3,8(%r6)
+   stw %r10,12(%r6)
+   stw %r7,16(%r6)
+   stw %r11,20(%r6)
    addi %r6,%r6,32
 
    ########################################################################
