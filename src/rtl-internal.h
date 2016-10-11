@@ -103,19 +103,26 @@ typedef struct RTLInsn_ {
     uint16_t dest;            // Destination register
     uint16_t src1, src2;      // Source registers
     union {
-        uint16_t src3;        // Third source register
         struct {
-            uint8_t start;    // First (lowest) bit number for a bitfield
-            uint8_t count;    // Number of bits for a bitfield
-        } bitfield;
-        int16_t offset;       // Byte offset for load/store instructions
-        uint16_t alias;       // Alias index for SET/GET_ALIAS
-        uint8_t arg_index;    // Argument index for LOAD_ARG
-        uint16_t label;       // GOTO target label
-        uint16_t target;      // CALL_NATIVE branch target register
+            union {
+                uint16_t src3;      // Third source register
+                struct {
+                    uint8_t start;  // First (lowest) bit number for a bitfield
+                    uint8_t count;  // Number of bits for a bitfield
+                } bitfield;
+                int16_t offset;     // Byte offset for load/store instructions
+                uint16_t alias;     // Alias index for SET/GET_ALIAS
+                uint8_t arg_index;  // Argument index for LOAD_ARG
+                uint16_t label;     // GOTO target label
+            };
+            uint16_t host_data_16;  // For use by host translators
+            uint32_t host_data_32;  // For use by host translators
+        };
         uint64_t src_imm;     // Source immediate value or argument index
     };
 } RTLInsn;
+
+STATIC_ASSERT(sizeof(RTLInsn) == 16, "RTLInsn should be 16 bytes long for best performance");
 
 /*----------------------------------*/
 

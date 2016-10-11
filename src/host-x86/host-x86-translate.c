@@ -228,7 +228,7 @@ static ALWAYS_INLINE void append_ModRM_SIB(
  *
  * [Parameters]
  *     code: Output code buffer.
- *     is64: True for 64-bit operands, false for 32-bit operands.
+ *     is64: True to prepend REX.W to an integer instruction, false otherwise.
  *     opcode: Instruction opcode.
  */
 static ALWAYS_INLINE void append_insn(
@@ -249,7 +249,7 @@ static ALWAYS_INLINE void append_insn(
  *
  * [Parameters]
  *     code: Output code buffer.
- *     is64: True for 64-bit operands, false for 32-bit operands.
+ *     is64: True to prepend REX.W to an integer instruction, false otherwise.
  *     opcode: Instruction opcode.
  *     reg: Register index.
  */
@@ -275,7 +275,7 @@ static ALWAYS_INLINE void append_insn_R(
  *
  * [Parameters]
  *     code: Output code buffer.
- *     is64: True for 64-bit operands, false for 32-bit operands.
+ *     is64: True to prepend REX.W to an integer instruction, false otherwise.
  *     opcode: Instruction opcode.
  *     reg1: Register index (or sub-opcode) for ModR/M reg field.
  *     reg2: Register index for ModR/M r/m field.
@@ -307,7 +307,7 @@ static ALWAYS_INLINE void append_insn_ModRM_reg(
  *
  * [Parameters]
  *     code: Output code buffer.
- *     is64: True for 64-bit operands, false for 32-bit operands.
+ *     is64: True to prepend REX.W to an integer instruction, false otherwise.
  *     opcode: Instruction opcode.
  *     reg: Register index (or sub-opcode) for ModR/M reg field.
  *     base: Base register index for memory address.
@@ -373,7 +373,7 @@ static ALWAYS_INLINE void append_insn_ModRM_mem(
  *
  * [Parameters]
  *     code: Output code buffer.
- *     is64: True for 64-bit operands, false for 32-bit operands.
+ *     is64: True to prepend REX.W to an integer instruction, false otherwise.
  *     opcode: Instruction opcode.
  *     reg1: Register index (or sub-opcode) for ModR/M reg field.
  *     ctx: Translation context.
@@ -1303,119 +1303,151 @@ static bool translate_call(HostX86Context *ctx, int block_index,
     const RTLUnit * const unit = ctx->unit;
     const RTLBlock * const block = &unit->blocks[block_index];
     const RTLInsn * const insn = &unit->insns[insn_index];
-    const int dest = insn->dest;
     const int src1 = insn->src1;
     const int src2 = insn->src2;
     const int src3 = insn->src3;
+    int src1_loc = (is_spilled(ctx, src1, insn_index)
+                    ? -1 : ctx->regs[src1].host_reg);
+    int src2_loc = (!src2 || is_spilled(ctx, src2, insn_index)
+                    ? -1 : ctx->regs[src2].host_reg);
+    int src3_loc = (!src3 || is_spilled(ctx, src3, insn_index)
+                    ? -1 : ctx->regs[src3].host_reg);
+    const bool is_tail = (insn->host_data_16 != 0);
 
-    /* Optimize the call as a tail call if possible.  We can optimize if
-     * the next instruction is a RETURN (including the implicit RETURN at
-     * the end of the unit) which either returns no value or returns the
-     * destination register of this call instruction. */
-    if ((uint32_t)insn_index == unit->num_insns - 1
-        || (unit->insns[insn_index+1].opcode == RTLOP_RETURN
-            && (unit->insns[insn_index+1].src1 == 0
-                || unit->insns[insn_index+1].src1 == dest))) {
-        const int MAX_TAIL_CALL_LEN = 24 + 107 + 3;  // 3x load, epilogue, JMP
-        if (UNLIKELY(handle->code_len + MAX_TAIL_CALL_LEN > handle->code_buffer_size)
-         && UNLIKELY(!binrec_ensure_code_space(handle, MAX_TAIL_CALL_LEN))) {
-            log_error(handle, "No memory for tail call");
-            return false;
+    /* Call setup will generally require more space than is reserved by
+     * default, so expand the buffer if needed. */
+    const int MAX_SETUP_LEN = 3*8;  // 3x REX GPR load (src1/src2/src3)
+    /* Tail calls: worst case epilogue (107 bytes, see append_epilogue()) +
+     * JMP Ev (without REX, since src1 is loaded to RAX) */
+    const int MAX_TAIL_CALL_LEN = MAX_SETUP_LEN + 107 + 2;
+    /* Nontail calls: CALL Ev (with REX) + return value copy (with REX) +
+     * worst case save/restore for System V ABI (9x REX GPR store,
+     * 8x non-REX XMM store, 7x REX XMM store) */
+    const int MAX_NONTAIL_CALL_LEN =
+        MAX_SETUP_LEN + 3 + 3 + 2 * (9*8 + 8*8 + 7*9);
+    const int max_len = is_tail ? MAX_TAIL_CALL_LEN : MAX_NONTAIL_CALL_LEN;
+    if (UNLIKELY(handle->code_len + max_len > handle->code_buffer_size)
+     && UNLIKELY(!binrec_ensure_code_space(handle, max_len))) {
+        log_error(handle, "No memory for CALL instruction");
+        return false;
+    }
+
+    CodeBuffer code = {.buffer = handle->code_buffer,
+                       .buffer_size = handle->code_buffer_size,
+                       .len = handle->code_len};
+    const long initial_len = code.len;
+
+    /* If this is not a tail call, we need to save any values live in
+     * caller-saved registers to the stack (and we need to do this before
+     * potentially clobbering them with function arguments).  The register
+     * allocator will let us know which registers are live via the
+     * host_data_32 field in the CALL instruction. */
+    if (!is_tail) {
+        uint32_t save_regs = insn->host_data_32;
+        while (save_regs) {
+            const int reg = ctz32(save_regs);
+            save_regs ^= 1u << reg;
+            ASSERT(ctx->stack_callsave[reg] >= 0);
+            if (reg >= X86_XMM0) {
+                append_insn_ModRM_mem(&code, false, X86OP_MOVAPS_W_V,
+                                      reg, X86_SP, ctx->stack_callsave[reg]);
+            } else {
+                append_insn_ModRM_mem(&code, true, X86OP_MOV_Ev_Gv,
+                                      reg, X86_SP, ctx->stack_callsave[reg]);
+            }
         }
+    }
 
-        CodeBuffer code = {.buffer = handle->code_buffer,
-                           .buffer_size = handle->code_buffer_size,
-                           .len = handle->code_len};
-        const long initial_len = code.len;
+    /* Put arguments (if any) in the right place.  This is a bit ugly
+     * due to all the different ways we might have to swap values around. */
+    const X86Register src1_fallback = is_tail ? X86_AX : X86_R15;
+    if (src2) {
+        const bool src2_is64 = (unit->regs[src2].type == RTLTYPE_ADDRESS);
+        const bool src3_is64 =  // Safe even if src3 == 0.
+            (unit->regs[src3].type == RTLTYPE_ADDRESS);
+        const int host_arg0 = host_x86_int_arg_register(ctx, 0);
+        ASSERT(host_arg0 >= 0);
+        const int host_arg1 = host_x86_int_arg_register(ctx, 1);
+        ASSERT(host_arg1 >= 0);
 
-        int src1_loc = (is_spilled(ctx, src1, insn_index)
-                        ? -1 : ctx->regs[src1].host_reg);
-        int src2_loc = (!src2 || is_spilled(ctx, src2, insn_index)
-                        ? -1 : ctx->regs[src2].host_reg);
-        int src3_loc = (!src3 || is_spilled(ctx, src3, insn_index)
-                        ? -1 : ctx->regs[src3].host_reg);
-
-        /* Put arguments (if any) in the right place.  This is a bit ugly
-         * because of all the different ways we might have to swap values
-         * around. */
-        if (src2) {
-            const bool src2_is64 = (unit->regs[src2].type == RTLTYPE_ADDRESS);
-            const bool src3_is64 =  // Safe even if src3 == 0.
-                (unit->regs[src3].type == RTLTYPE_ADDRESS);
-            const int host_arg0 = host_x86_int_arg_register(ctx, 0);
-            ASSERT(host_arg0 >= 0);
-            const int host_arg1 = host_x86_int_arg_register(ctx, 1);
-            ASSERT(host_arg1 >= 0);
-
-            if (src2_loc >= 0) {
-                if (src1_loc == host_arg0) {
-                    append_insn_ModRM_reg(&code, true, X86OP_XCHG_Ev_Gv,
-                                          src2_loc, host_arg0);
-                    src1_loc = src2_loc;
-                } else if (src3_loc == host_arg0) {
-                    append_insn_ModRM_reg(&code, src2_is64 || src3_is64,
-                                          X86OP_XCHG_Ev_Gv, src2_loc,
-                                          host_arg0);
-                    src3_loc = src2_loc;
-                } else if (src2_loc != host_arg0) {
-                    append_insn_ModRM_reg(&code, src2_is64, X86OP_MOV_Gv_Ev,
-                                          host_arg0, src2_loc);
-                }
-            }
-
-            if (src3_loc >= 0) {
-                if (src1_loc == host_arg1) {
-                    append_insn_ModRM_reg(&code, true, X86OP_XCHG_Ev_Gv,
-                                          src3_loc, host_arg1);
-                    src1_loc = src3_loc;
-                } else if (src3_loc != host_arg1) {
-                    append_insn_ModRM_reg(&code, src2_is64, X86OP_MOV_Gv_Ev,
-                                          host_arg1, src3_loc);
-                }
-            }
-
-            /* At this point src2 and src3 are either in their target
-             * registers or not loaded, so we can safely move src1 out of
-             * the way of any spill reloads. */
-
-            if (src2_loc < 0) {
-                if (src1_loc == host_arg0) {
-                    append_insn_ModRM_reg(&code, true, X86OP_MOV_Gv_Ev,
-                                          X86_AX, host_arg0);
-                    src1_loc = X86_AX;
-                }
-                append_load_gpr(&code, unit->regs[src2].type, host_arg0,
-                                X86_SP, ctx->regs[src2].spill_offset);
-            }
-
-            if (src3 && src3_loc < 0) {
-                if (src1_loc == host_arg1) {
-                    append_insn_ModRM_reg(&code, true, X86OP_MOV_Gv_Ev,
-                                          X86_AX, host_arg1);
-                    src1_loc = X86_AX;
-                }
-                append_load_gpr(&code, unit->regs[src3].type, host_arg1,
-                                X86_SP, ctx->regs[src3].spill_offset);
+        if (src2_loc >= 0) {
+            if (src1_loc == host_arg0) {
+                append_insn_ModRM_reg(&code, true, X86OP_XCHG_Ev_Gv,
+                                      src2_loc, host_arg0);
+                src1_loc = src2_loc;
+            } else if (src3_loc == host_arg0) {
+                append_insn_ModRM_reg(&code, src2_is64 || src3_is64,
+                                      X86OP_XCHG_Ev_Gv, src2_loc, host_arg0);
+                src3_loc = src2_loc;
+            } else if (src2_loc != host_arg0) {
+                append_insn_ModRM_reg(&code, src2_is64, X86OP_MOV_Gv_Ev,
+                                      host_arg0, src2_loc);
             }
         }
 
-        if (src1_loc < 0) {
-            append_load_gpr(&code, RTLTYPE_ADDRESS, X86_AX,
-                            X86_SP, ctx->regs[src1].spill_offset);
-            src1_loc = X86_AX;
-        } else if (ctx->callee_saved_regs & (1u << src1_loc)) {
+        if (src3_loc >= 0) {
+            if (src1_loc == host_arg1) {
+                append_insn_ModRM_reg(&code, true, X86OP_XCHG_Ev_Gv,
+                                      src3_loc, host_arg1);
+                src1_loc = src3_loc;
+            } else if (src3_loc != host_arg1) {
+                append_insn_ModRM_reg(&code, src2_is64, X86OP_MOV_Gv_Ev,
+                                      host_arg1, src3_loc);
+            }
+        }
+
+        /* At this point src2 and src3 are either in their target registers
+         * or not loaded, so we can safely move src1 out of the way of any
+         * spill reloads. */
+
+        if (src2_loc < 0) {
+            if (src1_loc == host_arg0) {
+                append_insn_ModRM_reg(&code, true, X86OP_MOV_Gv_Ev,
+                                      src1_fallback, host_arg0);
+                src1_loc = src1_fallback;
+            }
+            append_load_gpr(&code, unit->regs[src2].type, host_arg0,
+                            X86_SP, ctx->regs[src2].spill_offset);
+        }
+
+        if (src3 && src3_loc < 0) {
+            if (src1_loc == host_arg1) {
+                append_insn_ModRM_reg(&code, true, X86OP_MOV_Gv_Ev,
+                                      src1_fallback, host_arg1);
+                src1_loc = src1_fallback;
+            }
+            append_load_gpr(&code, unit->regs[src3].type, host_arg1,
+                            X86_SP, ctx->regs[src3].spill_offset);
+        }
+    }
+
+    /* Reload the call target, if necessary. */
+    if (src1_loc < 0) {
+        append_load_gpr(&code, RTLTYPE_ADDRESS, src1_fallback,
+                        X86_SP, ctx->regs[src1].spill_offset);
+        src1_loc = src1_fallback;
+    }
+
+    if (is_tail) {
+
+        /* If the call target is in a callee-saved register, it'll be
+         * clobbered by the epilogue, so move it out of the way.  We use
+         * RAX since it's the return register in both SysV and Windows ABIs
+         * and it doesn't require a REX prefix. */
+        if (ctx->callee_saved_regs & (1u << src1_loc)) {
             append_move_gpr(&code, RTLTYPE_ADDRESS, X86_AX, src1_loc);
             src1_loc = X86_AX;
         }
 
-        /* We've already reserved space for the epilogue, so this can
-         * never fail. */
+        /* Append the epilogue.  We've already reserved space for it, so
+         * this can never fail. */
         handle->code_len = code.len;
         ASSERT(append_epilogue(ctx, false));
         ASSERT(handle->code_buffer == code.buffer);
         ASSERT(handle->code_buffer_size == code.buffer_size);
         code.len = handle->code_len;
 
+        /* Do the actual tail call. */
         append_insn_ModRM_reg(&code, false, X86OP_MISC_FF,
                               X86OP_MISC_FF_JMP_Ev, src1_loc);
 
@@ -1427,12 +1459,40 @@ static bool translate_call(HostX86Context *ctx, int block_index,
             unit->insns[insn_index+1].src1 = 0;
         }
 
-        ASSERT(code.len - initial_len <= MAX_TAIL_CALL_LEN);
-        handle->code_len = code.len;
-        return true;
-    }  // if a tail call
+    } else {  // not a tail call
 
-    ASSERT(!"Non-tail calls not implemented");
+        /* Do the actual call. */
+        append_insn_ModRM_reg(&code, false, X86OP_MISC_FF,
+                              X86OP_MISC_FF_CALL_Ev, src1_loc);
+
+        /* If the return value is stored to an RTL register, move it to
+         * where it belongs. */
+        const int dest = insn->dest;
+        if (dest && ctx->regs[dest].host_reg != X86_AX) {
+            append_move_gpr(&code, unit->regs[dest].type,
+                            ctx->regs[dest].host_reg, X86_AX);
+        }
+
+        /* Restore all registers we saved before the call. */
+        uint32_t save_regs = insn->host_data_32;
+        while (save_regs) {
+            const int reg = ctz32(save_regs);
+            save_regs ^= 1u << reg;
+            ASSERT(ctx->stack_callsave[reg] >= 0);
+            if (reg >= X86_XMM0) {
+                append_insn_ModRM_mem(&code, false, X86OP_MOVAPS_V_W,
+                                      reg, X86_SP, ctx->stack_callsave[reg]);
+            } else {
+                append_insn_ModRM_mem(&code, true, X86OP_MOV_Gv_Ev,
+                                      reg, X86_SP, ctx->stack_callsave[reg]);
+            }
+        }
+
+    }  // if (is_tail)
+
+    ASSERT(code.len - initial_len <= max_len);
+    handle->code_len = code.len;
+    return true;
 }
 
 /*-----------------------------------------------------------------------*/
@@ -3221,6 +3281,7 @@ static bool init_context(HostX86Context *ctx, binrec_t *handle, RTLUnit *unit)
     memset(ctx->label_offsets, -1,
            sizeof(*ctx->label_offsets) * unit->next_label);
     memset(ctx->alias_buffer, 0, ((4 * unit->next_alias) * unit->num_blocks));
+    memset(ctx->stack_callsave, -1, sizeof(ctx->stack_callsave));
 
     return true;
 }

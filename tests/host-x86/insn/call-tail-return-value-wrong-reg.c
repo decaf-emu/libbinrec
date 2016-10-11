@@ -18,13 +18,23 @@ static const unsigned int host_opt = 0;
 
 static int add_rtl(RTLUnit *unit)
 {
-    EXPECT(rtl_add_insn(unit, RTLOP_NOP, 0, 0, 0, 0));
+    int reg1, reg2;
+    EXPECT(reg1 = rtl_alloc_register(unit, RTLTYPE_ADDRESS));
+    EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg1, 0, 0, 1));
+    EXPECT(reg2 = rtl_alloc_register(unit, RTLTYPE_INT32));
+    EXPECT(rtl_add_insn(unit, RTLOP_CALL, reg2, reg1, 0, 0));
+    EXPECT(rtl_add_insn(unit, RTLOP_RETURN, 0, reg1, 0, 0));
+
     return EXIT_SUCCESS;
 }
 
 static const uint8_t expected_code[] = {
-    0x48,0x83,0xEC,0x08,                // sub $8,%rsp
-    0x48,0x83,0xC4,0x08,                // add $8,%rsp
+    0x53,                               // push %rbx
+    0xBB,0x01,0x00,0x00,0x00,           // mov $1,%ebx
+    0xFF,0xD3,                          // call *%rbx
+    0x48,0x8B,0xC3,                     // mov %rbx,%rax
+    0xE9,0x00,0x00,0x00,0x00,           // jmp epilogue
+    0x5B,                               // epilogue: pop %rbx
     0xC3,                               // ret
 };
 

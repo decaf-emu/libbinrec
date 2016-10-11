@@ -47,15 +47,25 @@
  * bases into the host register file.  Normally at most one alias base will
  * be required, so this does not add undue register pressure.
  *
- * Before the register allocation pass itself, we scan through the code
- * stream once to record which RTL registers are stored in which aliases
- * at the end of each block; this information is used to try and allocate
- * the same hardware register to RTL registers linked to the same alias.
- * If the FIXED_REGS optimization is enabled, then during the alias scan,
- * we also allocate hardware registers for operands which must be in
- * specific registers (such as shift counts, which must be in CL); we do
- * this as part of the same pass to avoid the cost of looping over the
- * entire unit an additional time.
+ * Before the register allocation pass itself, we perform a more
+ * lightweight scan of the code stream for three purposes:
+ *
+ * - We record which RTL registers are stored in which aliases at the end
+ *   of each block; this information is used to try and allocate the same
+ *   hardware register to RTL registers linked to the same alias.
+ *
+ * - We record a list of all non-tail CALL instructions, linked through
+ *   the host_data_32 field of RTLInsn, to inform the register allocator
+ *   when it should avoid allocating caller-saved registers.  Note that
+ *   host_data_32 is repurposed during the actual allocation pass to store
+ *   a bitmask of host registers which should be saved and restored around
+ *   the call by the code generator.
+ *
+ * - If the FIXED_REGS optimization is enabled, then we allocate hardware
+ *   registers for operands which must be in specific registers (such as
+ *   shift counts, which must be in CL).  We do this as part of the same
+ *   pass to avoid the cost of looping over the entire unit an additional
+ *   time.
  *
  * Resolution of alias references occurs in several stages, depending on
  * the nature of the reference:
@@ -134,7 +144,6 @@ static inline int get_gpr(HostX86Context *ctx, uint32_t avoid_regs)
 
     /* Give preference to caller-saved registers, so we don't need to
      * unnecessarily save and restore registers ourselves. */
-    // FIXME: will need adjustment when we have non-tail calls (probably also want something like CALL_INTERNAL for pre/post insn callbacks that shouldn't affect register allocation)
     int host_reg = ctz32(regs_free & ~ctx->callee_saved_regs);
     if (host_reg < 16) {
         return host_reg;
@@ -250,12 +259,27 @@ static X86Register allocate_register(
     ASSERT(reg_index < ctx->unit->next_reg);
 
     const bool is_gpr = rtl_register_is_int(reg);
+    const bool live_across_call = (ctx->nontail_call_list >= 0
+                                   && reg->death > ctx->nontail_call_list);
 
-    int host_reg;
-    if (is_gpr) {
-        host_reg = get_gpr(ctx, avoid_regs);
-    } else {
-        host_reg = get_xmm(ctx, avoid_regs);
+    int host_reg = -1;
+    if (live_across_call) {
+        /* Try to allocate a callee-saved register so we don't have to
+         * save and restore this value across the call. */
+        const uint32_t avoid_caller_saved =
+            avoid_regs | ~ctx->callee_saved_regs;
+        if (is_gpr) {
+            host_reg = get_gpr(ctx, avoid_caller_saved);
+        } else {
+            host_reg = get_xmm(ctx, avoid_caller_saved);
+        }
+    }
+    if (host_reg < 0) {
+        if (is_gpr) {
+            host_reg = get_gpr(ctx, avoid_regs);
+        } else {
+            host_reg = get_xmm(ctx, avoid_regs);
+        }
     }
     if (host_reg >= 0) {
         assign_register(ctx, reg_index, host_reg);
@@ -340,7 +364,7 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
     ASSERT((unsigned int)block_index < ctx->unit->num_blocks);
 
     const RTLUnit * const unit = ctx->unit;
-    const RTLInsn * const insn = &unit->insns[insn_index];
+    RTLInsn * const insn = &unit->insns[insn_index];
 
     const int dest = insn->dest;
     ASSERT(dest >= 0 && dest < unit->next_reg);
@@ -425,6 +449,47 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
                == src3_info->host_allocated);
         if (src3_reg->death == insn_index) {
             unassign_register(ctx, insn->src3, src3_info);
+        }
+    }
+
+    /* If this is a non-tail call, record the set of live caller-saved
+     * registers so the translator knows what to save and restore, and
+     * advance the list pointer so the return-value register (if any)
+     * isn't unnecessarily forced to a callee-saved register. */
+    if (insn_index == ctx->nontail_call_list) {
+        ASSERT(insn->opcode == RTLOP_CALL);
+        ASSERT(!insn->host_data_16);  // Tail call flag should be false.
+
+        ctx->nontail_call_list = insn->host_data_32;
+
+        uint32_t regs_to_save = 0;
+        uint32_t caller_saved_regs = ~ctx->callee_saved_regs;
+        while (caller_saved_regs) {
+            const int reg = ctz32(caller_saved_regs);
+            caller_saved_regs ^= 1u << reg;
+            if (ctx->reg_map[reg]) {
+                regs_to_save |= 1u << reg;
+                if (ctx->stack_callsave[reg] < 0) {
+                    const RTLDataType type =
+                        reg >= X86_XMM0 ? RTLTYPE_V2_DOUBLE : RTLTYPE_ADDRESS;
+                    ctx->stack_callsave[reg] = allocate_frame_slot(ctx, type);
+                }
+            }
+        }
+        insn->host_data_32 = regs_to_save;
+
+        /* Non-tail calls use R15 as a temporary to hold the call address,
+         * if needed.  The temporary is used unconditionally if src1 (the
+         * address) is spilled, or if either src2 or src3 is spilled and
+         * src1 is live in the corresponding argument register for the
+         * current ABI.  Mark R15 as touched in those cases so it's saved
+         * and restored by the generated prologue and epilogue. */
+        if (src1_info->spilled
+            || (src2 && src2_info->spilled
+                && src1_info->host_reg == host_x86_int_arg_register(ctx, 0))
+            || (insn->src3 && ctx->regs[insn->src3].spilled
+                && src1_info->host_reg == host_x86_int_arg_register(ctx, 1))) {
+            ctx->block_regs_touched |= 1u << X86_R15;
         }
     }
 
@@ -598,10 +663,12 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
 
         /*
          * If loading a function argument, try to reuse the same register
-         * the argument is passed in.
+         * the argument is passed in, unless the result register is live
+         * across a CALL instruction.
          */
-        // FIXME: only appropriate if no non-tail calls
-        if (!host_allocated && insn->opcode == RTLOP_LOAD_ARG) {
+        if (!host_allocated && insn->opcode == RTLOP_LOAD_ARG
+            && (ctx->nontail_call_list < 0
+                || dest_reg->death <= ctx->nontail_call_list)) {
             const int target_reg =
                 host_x86_int_arg_register(ctx, insn->arg_index);
             if (target_reg < 0) {
@@ -693,6 +760,11 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
                  * though doing so requires an additional MOV after the
                  * CMPXCHG completes. */
                 avoid_regs |= 1u << X86_AX;
+                break;
+
+              case RTLOP_CALL:
+                /* There's no relationship between the inputs and output,
+                 * so just use the normal allocation algorithm. */
                 break;
 
               default:
@@ -1231,6 +1303,51 @@ static void first_pass_for_block(HostX86Context *ctx, int block_index)
             break;
           }  // case RTLOP_CMPXCHG
 
+          case RTLOP_CALL:
+            /* Non-tail calls require special handling to preserve
+             * caller-saved registers around the call, and to avoid
+             * allocating callee-saved registers to values which are
+             * live across the call.  Record the tailness of the call in
+             * host_data_16 so the translator doesn't have to repeat the
+             * same check. */
+            if ((uint32_t)insn_index == unit->num_insns - 1
+                || (unit->insns[insn_index+1].opcode == RTLOP_RETURN
+                    && (unit->insns[insn_index+1].src1 == 0
+                        || unit->insns[insn_index+1].src1 == insn->dest))) {
+                insn->host_data_16 = 1;
+            } else {
+                insn->host_data_16 = 0;
+                insn->host_data_32 = -1;
+                if (ctx->nontail_call_list >= 0) {
+                    unit->insns[ctx->nontail_call_list].host_data_32 = insn_index;
+                } else {
+                    ctx->nontail_call_list = insn_index;
+                }
+            }
+            /*
+             * We could potentially allocate argument and return value
+             * registers for the fixed-regs optimization, but we currently
+             * don't bother because:
+             *
+             * - CALL instructions are currently fairly uncommon.
+             *
+             * - Return values will get the correct register (rAX) if it's
+             *   not used by a value live across the CALL, and such values
+             *   (which should be uncommon to begin with -- see below) will
+             *   prefer callee-saved registers.
+             *
+             * - Argument registers differ between ABIs, and in the case of
+             *   the Windows ABI they overlap fixed registers used by other
+             *   instructions (rCX/rDX) so we can't just have separate
+             *   "last_argN_death" fields to track register allocation state.
+             *
+             * We also don't worry about the live-across-a-CALL case when
+             * allocating fixed registers for other instructions' operands,
+             * since ALU results generally won't be live across a control
+             * transfer instruction for the usage patterns of this library.
+             */
+            break;
+
           case RTLOP_RETURN:
             if (!do_fixed_regs) {
                 break;
@@ -1353,6 +1470,8 @@ bool host_x86_allocate_registers(HostX86Context *ctx)
     }
 
     /* First pass: record alias info, and allocate fixed regs if enabled. */
+    ctx->nontail_call_list = -1;
+    ctx->fixed_reg_list = 0;
     if (ctx->handle->host_opt & BINREC_OPT_H_X86_FIXED_REGS) {
         ctx->last_ax_death = -1;
         ctx->last_cx_death = -1;

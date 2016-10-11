@@ -16,17 +16,17 @@
 /*
  * Notes on terminology and typography:
  *
- * - When not qualified with a specific size, "word" refers to a 32-bit
- *   unit.  This differs from Intel usage, but follows the usage of all
- *   other major architectures currently in use.
+ * - When not qualified with a specific bit width, "word" refers to a
+ *   32-bit unit.  This differs from Intel usage, but follows the usage of
+ *   all other major architectures currently in use.
  *
  * - In comments, register names such as "rAX" with a lower-case "r"
  *   indicate an indeterminate data size, while "RAX" and "EAX"
- *   specifically indicate that the register is being used in 64-bit or
- *   32-bit mode respectively.  In some cases (notably the register
- *   constants defined below), the prefix may be omitted for brevity;
- *   this is not considered likely to cause confusion since 16-bit
- *   registers are only used in a few locations.
+ *   indicate that the register is being used in 64-bit or 32-bit mode
+ *   respectively.  In some cases (notably the register constants defined
+ *   below), the prefix may be omitted for brevity; this is considered
+ *   unlikely to cause confusion since 16-bit registers are only used in
+ *   a few locations.
  *
  * - Assembly instructions in comments (particularly in tests) follow
  *   AT&T syntax, as seen in GCC-style inline assembly: for example,
@@ -171,6 +171,15 @@ typedef struct HostX86Context {
     /* Bitmap of registers which have been used in the current block. */
     uint32_t block_regs_touched;
 
+    /* First CALL instruction which is not a tail call, or -1 if there is
+     * no such instruction.  Subsequent non-tail calls are linked via the
+     * RTLInsn.host_data_32 field (only valid during register allocation).
+     * After register allocation, tailness is recorded during register
+     * allocation as a boolean in the host_data_16 field of each CALL
+     * instruction; for non-tail calls, the set of registers to be saved
+     * and restored is recorded in the host_data_32 field, replacing the
+     * link for this list. */
+    int32_t nontail_call_list;
     /* List of registers which are allocated to specific hardware registers
      * due to instruction requirements (e.g. shift counts in CL).  The
      * first register in the list is stored here, and subsequent registers
@@ -186,8 +195,9 @@ typedef struct HostX86Context {
     int frame_size;
     /* Total stack allocation, excluding PUSH instructions. */
     int stack_alloc;
-    /* Stack offset of temporary storage for spill reloads. */
-    int spill_save;
+    /* Stack offset of temporary storage for call-clobbered registers,
+     * indexed by X86Register number (-1 if no offset assigned). */
+    int stack_callsave[32];
 } HostX86Context;
 
 /*************************************************************************/
