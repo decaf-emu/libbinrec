@@ -456,10 +456,8 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
      * registers so the translator knows what to save and restore, and
      * advance the list pointer so the return-value register (if any)
      * isn't unnecessarily forced to a callee-saved register. */
-    if (insn_index == ctx->nontail_call_list) {
-        ASSERT(insn->opcode == RTLOP_CALL);
-        ASSERT(!insn->host_data_16);  // Tail call flag should be false.
-
+    if (insn->opcode == RTLOP_CALL && !insn->host_data_16) {
+        ASSERT(ctx->nontail_call_list == insn_index);
         ctx->nontail_call_list = insn->host_data_32;
 
         uint32_t regs_to_save = 0;
@@ -1318,11 +1316,13 @@ static void first_pass_for_block(HostX86Context *ctx, int block_index)
             } else {
                 insn->host_data_16 = 0;
                 insn->host_data_32 = -1;
-                if (ctx->nontail_call_list >= 0) {
-                    unit->insns[ctx->nontail_call_list].host_data_32 = insn_index;
+                if (ctx->last_nontail_call >= 0) {
+                    unit->insns[ctx->last_nontail_call].host_data_32 =
+                        insn_index;
                 } else {
                     ctx->nontail_call_list = insn_index;
                 }
+                ctx->last_nontail_call = insn_index;
             }
             /*
              * We could potentially allocate argument and return value
@@ -1471,6 +1471,7 @@ bool host_x86_allocate_registers(HostX86Context *ctx)
 
     /* First pass: record alias info, and allocate fixed regs if enabled. */
     ctx->nontail_call_list = -1;
+    ctx->last_nontail_call = -1;
     ctx->fixed_reg_list = 0;
     if (ctx->handle->host_opt & BINREC_OPT_H_X86_FIXED_REGS) {
         ctx->last_ax_death = -1;

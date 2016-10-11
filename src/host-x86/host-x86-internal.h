@@ -180,6 +180,7 @@ typedef struct HostX86Context {
      * and restored is recorded in the host_data_32 field, replacing the
      * link for this list. */
     int32_t nontail_call_list;
+    int32_t last_nontail_call;  // Last instruction in the list.
     /* List of registers which are allocated to specific hardware registers
      * due to instruction requirements (e.g. shift counts in CL).  The
      * first register in the list is stored here, and subsequent registers
