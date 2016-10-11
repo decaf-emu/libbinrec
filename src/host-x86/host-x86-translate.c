@@ -157,6 +157,25 @@ static ALWAYS_INLINE void append_rex_opcode(CodeBuffer *code, uint8_t rex,
 /*-----------------------------------------------------------------------*/
 
 /**
+ * maybe_append_empty_rex:  Append an empty REX prefix (0x40) if
+ * host_bytereg is one of X86_SP, X86_BP, X86_SI, or X86_DI and host_other
+ * is one of X86_AX through X86_DI.  These are the conditions under which
+ * a REX prefix is required (even if empty) to access host_bytereg as a
+ * byte register; without REX, the corresponding values for the register
+ * field in the opcode map to AH through DH instead.
+ */
+static ALWAYS_INLINE void maybe_append_empty_rex(
+    CodeBuffer *code, int host_bytereg, int host_other)
+{
+    if (host_bytereg >= X86_SP && host_bytereg <= X86_DI
+     && host_other <= X86_DI) {
+        append_opcode(code, X86OP_REX);
+    }
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
  * append_imm8:  Append an 8-bit immediate value to the current code stream.
  * The code buffer is assumed to have enough space.
  */
@@ -2163,14 +2182,14 @@ static bool translate_block(HostX86Context *ctx, int block_index)
             append_insn_ModRM_ctx(&code, is64, X86OP_CMP_Gv_Ev, host_src1,
                                   ctx, insn_index, src2);
             /* Registers SP-DI require a REX prefix (even if empty) to
-             * access the low byte as a byte register. */
-            if (host_dest >= X86_SP && host_dest <= X86_DI) {
-                append_opcode(&code, X86OP_REX);
-            }
+             * access the low byte as a byte register.  For these
+             * instructions, there is no other register to worry about,
+             * so we just pass host_dest as the second register; the REX
+             * will get properly added if host_dest is one of the REX-only
+             * byte registers. */
+            maybe_append_empty_rex(&code, host_dest, host_dest);
             append_insn_ModRM_reg(&code, false, set_opcode, 0, host_dest);
-            if (host_dest >= X86_SP && host_dest <= X86_DI) {
-                append_opcode(&code, X86OP_REX);
-            }
+            maybe_append_empty_rex(&code, host_dest, host_dest);
             append_insn_ModRM_reg(&code, false, X86OP_MOVZX_Gv_Eb,
                                   host_dest, host_dest);
             break;
@@ -2218,14 +2237,7 @@ static bool translate_block(HostX86Context *ctx, int block_index)
                                           X86OP_IMM_AND, host_dest);
                     append_imm8(&code, (1U << insn->bitfield.count) - 1);
                 } else if (insn->bitfield.count == 8) {
-                    /* Registers SP-DI require an empty REX prefix to
-                     * access the low byte as a byte register, but be
-                     * careful not to double REX if a prefix will already
-                     * be added. */
-                    if (host_shifted >= X86_SP && host_shifted <= X86_DI
-                     && host_dest <= X86_DI) {
-                        append_opcode(&code, X86OP_REX);
-                    }
+                    maybe_append_empty_rex(&code, host_shifted, host_dest);
                     append_insn_ModRM_reg(&code, is64, X86OP_MOVZX_Gv_Eb,
                                           host_dest, host_shifted);
                 } else if (insn->bitfield.count == 16) {
@@ -2387,14 +2399,8 @@ static bool translate_block(HostX86Context *ctx, int block_index)
                                           X86OP_IMM_AND, host_newbits);
                     append_imm8(&code, (1U << insn->bitfield.count) - 1);
                 } else if (insn->bitfield.count == 8) {
-                    /* Registers SP-DI require an empty REX prefix to
-                     * access the low byte as a byte register, but be
-                     * careful not to double REX if a prefix will already
-                     * be added. */
-                    if (!src2_spilled
-                     && host_src2 >= X86_SP && host_src2 <= X86_DI
-                     && host_newbits <= X86_DI) {
-                        append_opcode(&code, X86OP_REX);
+                    if (!src2_spilled) {
+                        maybe_append_empty_rex(&code, host_src2, host_newbits);
                     }
                     append_insn_ModRM_ctx(
                         &code, false, X86OP_MOVZX_Gv_Eb, host_newbits,
@@ -2435,14 +2441,9 @@ static bool translate_block(HostX86Context *ctx, int block_index)
             /* AND with 255 or 65535 can be translated to a zero-extend. */
             if (insn->src_imm == 0xFF) {
                 const X86Register host_dest = ctx->regs[dest].host_reg;
-                /* Registers SP-DI require an empty REX prefix to access
-                 * the low byte as a byte register, but be careful not to
-                 * double REX if a prefix will already be added. */
                 const X86Register host_src1 = ctx->regs[src1].host_reg;
-                if (!is_spilled(ctx, src1, insn_index)
-                 && host_src1 >= X86_SP && host_src1 <= X86_DI
-                 && host_dest <= X86_DI) {
-                    append_opcode(&code, X86OP_REX);
+                if (!is_spilled(ctx, src1, insn_index)) {
+                    maybe_append_empty_rex(&code, host_src1, host_dest);
                 }
                 append_insn_ModRM_ctx(&code, false, X86OP_MOVZX_Gv_Eb,
                                       host_dest, ctx, insn_index, src1);
@@ -2544,14 +2545,9 @@ static bool translate_block(HostX86Context *ctx, int block_index)
                 append_imm32(&code, imm);
             }
 
-            /* Handle empty REX prefix for low byte of SP-DI. */
-            if (host_dest >= X86_SP && host_dest <= X86_DI) {
-                append_opcode(&code, X86OP_REX);
-            }
+            maybe_append_empty_rex(&code, host_dest, host_dest);
             append_insn_ModRM_reg(&code, false, set_opcode, 0, host_dest);
-            if (host_dest >= X86_SP && host_dest <= X86_DI) {
-                append_opcode(&code, X86OP_REX);
-            }
+            maybe_append_empty_rex(&code, host_dest, host_dest);
             append_insn_ModRM_reg(&code, false, X86OP_MOVZX_Gv_Eb,
                                   host_dest, host_dest);
             break;
@@ -2693,11 +2689,7 @@ static bool translate_block(HostX86Context *ctx, int block_index)
                 host_value = X86_AX;
                 saved_ax = true;
             }
-            /* Handle mandatory REX prefix for low byte of SP/BP/SI/DI. */
-            if (host_value >= X86_SP && host_value <= X86_DI
-             && host_base <= X86_DI) {
-                append_opcode(&code, X86OP_REX);
-            }
+            maybe_append_empty_rex(&code, host_value, host_base);
             append_insn_ModRM_mem(&code, false, X86OP_MOV_Eb_Gb,
                                   host_value, host_base, insn->offset);
             if (saved_ax) {
