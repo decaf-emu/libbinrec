@@ -269,14 +269,18 @@ typedef struct binrec_setup_t {
     int state_offset_reserve_state;
     /* Next instruction address (updated on return from translated code) */
     int state_offset_nia;
-    /* Pointer to function to handle time base reads */
+    /* Pointer to function to handle time base reads.  Signature:
+     * uint64_t timebase_handler(void *state) */
     int state_offset_timebase_handler;
-    /* Pointer to function to handle system calls (sc instruction) */
+    /* Pointer to function to handle system calls (sc instruction).
+     * Signature: void sc_handler(void *state) */
     int state_offset_sc_handler;
-    /* Pointer to function to handle trap exceptions */
+    /* Pointer to function to handle trap exceptions.  Signature:
+     * void trap_handler(void *state) */
     int state_offset_trap_handler;
     /* Pointer to function to call at intra-unit branches (see
-     * binrec_enable_branch_callback()) */
+     * binrec_enable_branch_callback()).  Signature:
+     * int branch_callback(void *state, uint32_t branch_address) */
     int state_offset_branch_callback;
 
     /**
@@ -922,6 +926,8 @@ extern void binrec_clear_readonly_regions(binrec_t *handle);
  * will be updated as usual on exit from the translated code.
  *
  * Calling this function has no effect on already-translated code.
+ *
+ * By default, the branch callback is disabled.
  *
  * [Parameters]
  *     handle: Handle to operate on.

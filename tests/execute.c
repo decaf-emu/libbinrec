@@ -209,6 +209,7 @@ bool call_guest_code(binrec_arch_t arch, void *state, void *memory,
     setup.state_offset_timebase_handler = offsetof(PPCState,timebase_handler);
     setup.state_offset_sc_handler = offsetof(PPCState,sc_handler);
     setup.state_offset_trap_handler = offsetof(PPCState,trap_handler);
+    setup.state_offset_branch_callback = offsetof(PPCState,branch_callback);
     setup.log = log_capture;
 
     binrec_t *handle;
@@ -219,6 +220,9 @@ bool call_guest_code(binrec_arch_t arch, void *state, void *memory,
     binrec_set_optimization_flags(handle, common_opt, guest_opt, host_opt);
     binrec_set_max_inline_length(handle, inline_length);
     binrec_set_max_inline_depth(handle, inline_depth);
+    if (state_ppc->branch_callback) {
+        binrec_enable_branch_callback(handle, true);
+    }
 
     const uint32_t RETURN_ADDRESS = -4;  // Used to detect return-to-caller.
     state_ppc->lr = RETURN_ADDRESS;
