@@ -15,34 +15,29 @@
 #include "tests/log-capture.h"
 
 
-static int branch_counter;
+static struct {
+    uint32_t address;
+    uint32_t r3;
+    uint32_t r4;
+} saved_state[4];
+static int save_counter;
 
-static int branch_callback(PPCState *state, uint32_t address)
+static void pre_insn_callback(void *state_, uint32_t address)
 {
+    PPCState *state = state_;
     ASSERT(state);
+    ASSERT(save_counter < lenof(saved_state));
 
-    if (address == 0x1000) {
-        return 1;  // Initial branch.
-    } else if (address != 0x100C) {
-        printf("%s:%d: address was 0x%X but should have been 0x100C\n",
-               __FILE__, __LINE__, address);
-        branch_counter = -1;
-        state->nia = 0x1010;
-        return 0;
-    } else if (state->nia != 0x100C) {
-        printf("%s:%d: state->nia was 0x%X but should have been 0x100C\n",
-               __FILE__, __LINE__, state->nia);
-        branch_counter = 99;
-        state->nia = 0x1010;
-        return 0;
-    } else {
-        ASSERT(branch_counter >= 0 && branch_counter < 3);  // Else we're probably infinite-looping.
-        branch_counter++;
-        state->nia = 0x1010;  // Should only take effect when breaking out.
-        return branch_counter < 3;
-    }
+    saved_state[save_counter].address = address;
+    saved_state[save_counter].r3 = state->gpr[3];
+    saved_state[save_counter].r4 = state->gpr[4];
+    save_counter++;
 }
 
+static void configure_handle(binrec_t *handle)
+{
+    binrec_set_pre_insn_callback(handle, pre_insn_callback);
+}
 
 int main(void)
 {
@@ -55,10 +50,9 @@ int main(void)
     EXPECT(memory = malloc(0x10000));
 
     static const uint32_t ppc_code[] = {
-        0x4800000C,  // b 0x100C
-        0x60000000,  // nop
-        0x48000000,  // b 0x1008
-        0x48000000,  // b 0x100C
+        0x38600001,  // li r3,1
+        0x3880000A,  // li r4,10
+        0x38600002,  // li r3,2
         0x4E800020,  // blr
     };
     const uint32_t start_address = 0x1000;
@@ -66,11 +60,10 @@ int main(void)
 
     PPCState state;
     memset(&state, 0, sizeof(state));
-    state.branch_callback = branch_callback;
-    branch_counter = 0;
+    save_counter = 0;
 
     if (!call_guest_code(BINREC_ARCH_PPC_7XX, &state, memory, start_address,
-                         NULL)) {
+                         configure_handle)) {
         const char *log_messages = get_log_messages();
         if (log_messages) {
             fputs(log_messages, stdout);
@@ -79,7 +72,19 @@ int main(void)
     }
     EXPECT_STREQ(get_log_messages(), NULL);
 
-    EXPECT_EQ(branch_counter, 3);
+    EXPECT_EQ(save_counter, 4);
+    EXPECT_EQ(saved_state[0].address, 0x1000);
+    EXPECT_EQ(saved_state[0].r3, 0);
+    EXPECT_EQ(saved_state[0].r4, 0);
+    EXPECT_EQ(saved_state[1].address, 0x1004);
+    EXPECT_EQ(saved_state[1].r3, 1);
+    EXPECT_EQ(saved_state[1].r4, 0);
+    EXPECT_EQ(saved_state[2].address, 0x1008);
+    EXPECT_EQ(saved_state[2].r3, 1);
+    EXPECT_EQ(saved_state[2].r4, 10);
+    EXPECT_EQ(saved_state[3].address, 0x100C);
+    EXPECT_EQ(saved_state[3].r3, 2);
+    EXPECT_EQ(saved_state[3].r4, 10);
 
     free(memory);
     return EXIT_SUCCESS;

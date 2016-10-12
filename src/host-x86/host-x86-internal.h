@@ -132,6 +132,10 @@ typedef struct HostX86BlockInfo {
      * the block, or 0 if the alias is not written. */
     uint16_t *alias_store;
 
+    /* True if this block contains a non-tail call.  (Used to ensure that
+     * aliases with bound storage are properly flushed before calls.) */
+    bool has_nontail_call;
+
     /* Code buffer offset of the 32-bit displacement operand to an
      * unresolved branch instruction at the end of this block, or -1 if
      * the block does not have an unresolved branch. */
@@ -160,6 +164,9 @@ typedef struct HostX86Context {
     long *label_offsets;
     /* Buffer for alias_* arrays for each block. */
     void *alias_buffer;
+    /* Last SET_ALIAS instruction for each alias in the current block (if
+     * killable), or -1.  Used during the first register allocation pass. */
+    int32_t *last_set_alias;
 
     /* Current mapping from x86 to RTL registers. */
     uint16_t reg_map[32];

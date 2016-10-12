@@ -714,9 +714,10 @@ int main(void)
     PPCState state;
     memset(&state, 0, sizeof(state));
     state.trap_handler = trap_handler;
+    trap_count = 0;
 
     if (!call_guest_code(BINREC_ARCH_PPC_7XX, &state, memory, start_address,
-                         0, 0, 0, 0, 0)) {
+                         NULL)) {
         const char *log_messages = get_log_messages();
         if (log_messages) {
             fputs(log_messages, stdout);

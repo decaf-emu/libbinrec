@@ -29,7 +29,10 @@ typedef struct AliasRef {
     /* True if this alias is referenced before being set in the block. */
     bool has_get;
     /* True if the latest value set by a SET_ALIAS instruction in this
-     * block is referenced by a subsequent GET_ALIAS in the same block. */
+     * block is referenced by a subsequent GET_ALIAS in the same block.
+     * Also true if the alias has bound storage and the latest SET_ALIAS
+     * value is live at a call-type instruction (CALL or CALL_TRANSPARENT)
+     * later in the same block. */
     bool set_used;
     /* Index of the last SET_ALIAS instruction for this alias in the block.
      * Only valid if has_set is true. */
@@ -1437,7 +1440,8 @@ void rtl_opt_alias_data_flow(RTLUnit *unit)
     /* Look up alias references in each block.  We only record the last
      * SET_ALIAS instruction in each block since that's the only one that
      * matters for data flow analysis; any other SET_ALIAS without a
-     * following GET_ALIAS is dead, so we NOP it out. */
+     * following GET_ALIAS (or CALL/CALL_TRANSPARENT, if the alias has
+     * bound storage) is dead, so we NOP it out. */
     for (int block_index = 0; block_index >= 0;
          block_index = unit->blocks[block_index].next_block)
     {
@@ -1449,19 +1453,35 @@ void rtl_opt_alias_data_flow(RTLUnit *unit)
             RTLInsn *insn = &unit->insns[insn_index];
             const int alias = insn->alias;
             AliasRef *alias_ref = &alias_refs[alias];
-            if (insn->opcode == RTLOP_SET_ALIAS) {
+            switch (insn->opcode) {
+              case RTLOP_SET_ALIAS:
                 if (alias_ref->has_set && !alias_ref->set_used) {
                     kill_alias_store(unit, alias_ref->set_insn);
                 }
                 alias_ref->has_set = true;
                 alias_ref->set_used = false;
                 alias_ref->set_insn = insn_index;
-            } else if (insn->opcode == RTLOP_GET_ALIAS) {
+                break;
+              case RTLOP_GET_ALIAS:
                 if (alias_ref->has_set) {
                     alias_ref->set_used = true;
                 } else {
                     alias_ref->has_get = true;
                 }
+                break;
+              case RTLOP_CALL:
+              case RTLOP_CALL_TRANSPARENT:
+                /* A call-type instruction is effectively a reference to
+                 * any previously set alias with bound storage, since the
+                 * value has to be flushed to storage before the call. */
+                for (int i = 1; i < unit->next_alias; i++) {
+                    if (unit->aliases[i].base && alias_refs[i].has_set) {
+                        alias_refs[i].set_used = true;
+                    }
+                }
+                break;
+              default:
+                break;
             }
         }
     }

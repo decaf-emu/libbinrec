@@ -73,8 +73,10 @@
  * - Multiple loads (GET_ALIAS) and stores (SET_ALIAS) to the same alias
  *   within the same basic block are resolved during the first pass by
  *   converting load-after-load and load-after-store to MOVE.
- *   Store-after-store is handled by ignoring the earlier (dead) store at
- *   code generation time.
+ *   Store-after-store is handled by killing the earlier (dead) store
+ *   during the first pass, except that if there is a CALL or
+ *   CALL_TRANSPARENT instruction between the two stores and the alias has
+ *   bound storage, the earlier store is not killed.
  *
  * - After the first pass, the source registers for all remaining alias
  *   stores have their live ranges extended to the end of the block
@@ -1080,6 +1082,8 @@ static void first_pass_for_block(HostX86Context *ctx, int block_index)
     block_info->alias_store = (uint16_t *)((char *)ctx->alias_buffer
                                            + block_index * (4 * num_aliases)
                                            + (2 * num_aliases));
+    memset(ctx->last_set_alias, -1,
+           sizeof(*ctx->last_set_alias) * unit->next_alias);
 
     /* If this block has exactly one entering edge and that edge comes from
      * a block we've already seen, carry alias-store data over from that
@@ -1115,6 +1119,8 @@ static void first_pass_for_block(HostX86Context *ctx, int block_index)
                 if (unit->regs[insn->src1].death < insn_index) {
                     unit->regs[insn->src1].death = insn_index;
                 }
+                /* The previous SET_ALIAS can no longer be killed. */
+                ctx->last_set_alias[insn->alias] = -1;
             } else {
                 block_info->alias_load[insn->alias] = insn->dest;
                 /* We don't convert forwarded stores to MOVE in order to
@@ -1125,7 +1131,22 @@ static void first_pass_for_block(HostX86Context *ctx, int block_index)
             break;
 
           case RTLOP_SET_ALIAS:
+            if (ctx->last_set_alias[insn->alias] >= 0) {
+                /* Kill the last SET_ALIAS for this alias, _unless_ it has
+                 * bound storage and we've seen a non-tail call in this
+                 * block; in that case, we have to keep the SET_ALIAS in
+                 * place so its value gets stored to the associated storage. */
+                if (!block_info->has_nontail_call
+                 || !unit->aliases[insn->alias].base) {
+                    RTLInsn *last_set =
+                        &unit->insns[ctx->last_set_alias[insn->alias]];
+                    last_set->opcode = RTLOP_NOP;
+                    last_set->src1 = 0;
+                    last_set->src_imm = 0;
+                }
+            }
             block_info->alias_store[insn->alias] = insn->src1;
+            ctx->last_set_alias[insn->alias] = insn_index;
             break;
 
           case RTLOP_MULHU:
@@ -1331,6 +1352,7 @@ static void first_pass_for_block(HostX86Context *ctx, int block_index)
                     ctx->nontail_call_list = insn_index;
                 }
                 ctx->last_nontail_call = insn_index;
+                block_info->has_nontail_call = true;
             }
             /*
              * We could potentially allocate argument and return value
@@ -1359,6 +1381,7 @@ static void first_pass_for_block(HostX86Context *ctx, int block_index)
           case RTLOP_CALL_TRANSPARENT:
             /* We treat all CALL_TRANSPARENT instructions as non-tail. */
             insn->host_data_16 = 0;
+            block_info->has_nontail_call = true;
             break;
 
           case RTLOP_RETURN:

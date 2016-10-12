@@ -118,7 +118,7 @@ typedef struct RTLInsn_ {
             uint16_t host_data_16;  // For use by host translators
             uint32_t host_data_32;  // For use by host translators
         };
-        uint64_t src_imm;     // Source immediate value or argument index
+        uint64_t src_imm;     // Source immediate value
     };
 } RTLInsn;
 

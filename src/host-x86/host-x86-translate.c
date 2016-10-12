@@ -1611,13 +1611,12 @@ static bool translate_block(HostX86Context *ctx, int block_index)
             break;
 
           case RTLOP_SET_ALIAS: {
-            if (src1 != block_info->alias_store[insn->alias]) {
-                break;  // This is a dead store.
-            }
-            /* We need to store to memory if (1) this is a terminal block
-             * or (2) at least one successor block doesn't both (a) have a
-             * mergeable GET_ALIAS and (b) SET_ALIAS the same alias. */
-            bool need_store = (block->exits[0] < 0);
+            /* We need to store to memory if (1) this is a terminal block,
+             * (2) at least one successor block doesn't both (a) have a
+             * mergeable GET_ALIAS and (b) SET_ALIAS the same alias, or
+             * (3) this block contains a non-tail CALL or CALL_TRANSPARENT. */
+            bool need_store =
+                (block->exits[0] < 0 || block_info->has_nontail_call);
             for (int i = 0; !need_store && i < lenof(block->exits); i++) {
                 const int successor = block->exits[i];
                 if (successor >= 0) {
@@ -3255,6 +3254,7 @@ static void destroy_context(HostX86Context *ctx)
     binrec_free(ctx->handle, ctx->regs);
     binrec_free(ctx->handle, ctx->label_offsets);
     binrec_free(ctx->handle, ctx->alias_buffer);
+    binrec_free(ctx->handle, ctx->last_set_alias);
 }
 
 /*-----------------------------------------------------------------------*/
@@ -3284,8 +3284,10 @@ static bool init_context(HostX86Context *ctx, binrec_t *handle, RTLUnit *unit)
         handle, sizeof(*ctx->label_offsets) * unit->next_label);
     ctx->alias_buffer = binrec_malloc(
         handle, ((4 * unit->next_alias) * unit->num_blocks));
+    ctx->last_set_alias = binrec_malloc(
+        handle, sizeof(*ctx->last_set_alias) * unit->next_alias);
     if (!ctx->blocks || !ctx->regs || !ctx->label_offsets
-     || !ctx->alias_buffer) {
+     || !ctx->alias_buffer || !ctx->last_set_alias) {
         log_error(handle, "No memory for output translation context");
         destroy_context(ctx);
         return false;

@@ -180,10 +180,9 @@ static void clear_cache(void)
 
 /*-----------------------------------------------------------------------*/
 
-bool call_guest_code(binrec_arch_t arch, void *state, void *memory,
-                     uint32_t address, unsigned int common_opt,
-                     unsigned int guest_opt, unsigned int host_opt,
-                     int inline_length, int inline_depth)
+bool call_guest_code(
+    binrec_arch_t arch, void *state, void *memory, uint32_t address,
+    void (*configure_handle)(binrec_t *handle))
 {
     ASSERT(arch == BINREC_ARCH_PPC_7XX);
     PPCState *state_ppc = state;
@@ -217,11 +216,11 @@ bool call_guest_code(binrec_arch_t arch, void *state, void *memory,
     if (!handle) {
         return false;
     }
-    binrec_set_optimization_flags(handle, common_opt, guest_opt, host_opt);
-    binrec_set_max_inline_length(handle, inline_length);
-    binrec_set_max_inline_depth(handle, inline_depth);
     if (state_ppc->branch_callback) {
         binrec_enable_branch_callback(handle, true);
+    }
+    if (configure_handle) {
+        (*configure_handle)(handle);
     }
 
     const uint32_t RETURN_ADDRESS = -4;  // Used to detect return-to-caller.

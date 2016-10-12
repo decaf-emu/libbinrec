@@ -17,6 +17,16 @@
 #include "tests/guest-ppc/exec/750cl-common.i"
 
 
+static void configure_handle(binrec_t *handle)
+{
+    const unsigned int common_opt = BINREC_OPT_BASIC
+                                  | BINREC_OPT_DSE
+                                  | BINREC_OPT_DECONDITION
+                                  | BINREC_OPT_DEEP_DATA_FLOW
+                                  | BINREC_OPT_FOLD_CONSTANTS;
+    binrec_set_optimization_flags(handle, common_opt, 0, 0);
+}
+
 int main(void)
 {
     if (!binrec_host_supported(binrec_native_arch())) {
@@ -28,13 +38,8 @@ int main(void)
     uint8_t *memory;
     EXPECT(memory = setup_750cl(&state));
 
-    const unsigned int common_opt = BINREC_OPT_BASIC
-                                  | BINREC_OPT_DSE
-                                  | BINREC_OPT_DECONDITION
-                                  | BINREC_OPT_DEEP_DATA_FLOW
-                                  | BINREC_OPT_FOLD_CONSTANTS;
     if (!call_guest_code(BINREC_ARCH_PPC_7XX, &state, memory,
-                         PPC750CL_START_ADDRESS, common_opt, 0, 0, 0, 0)) {
+                         PPC750CL_START_ADDRESS, configure_handle)) {
         const char *log_messages = get_log_messages();
         if (log_messages) {
             fputs(log_messages, stderr);

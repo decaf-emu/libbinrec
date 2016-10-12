@@ -39,7 +39,7 @@ int main(void)
     state.gpr[4] = 2;
 
     if (!call_guest_code(BINREC_ARCH_PPC_7XX, &state, memory, start_address,
-                         0, 0, 0, 0, 0)) {
+                         NULL)) {
         const char *log_messages = get_log_messages();
         if (log_messages) {
             fputs(log_messages, stdout);
