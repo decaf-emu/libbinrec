@@ -3,6 +3,7 @@
 # No copyright is claimed on this file.
 #
 # Update history:
+#    - 2016-10-12: Added missing tests for ps_merge instructions with Rc=1.
 #    - 2016-10-12: Fixed incorrect encoding of mftb in mftbu tests.  (The
 #         error has no impact on correctness, only on the usefulness of
 #         the failure record contents).
@@ -11331,9 +11332,11 @@ get_load_address:
    # ps_merge{00,01,10,11}
    ########################################################################
 
-0: mffs %f3
-   stfd %f3,0(%r4)
-   lwz %r11,4(%r4)
+0: stw %r0,0(%r4)
+   lis %r11,0x8000
+   stw %r11,4(%r4)
+   lfd %f3,0(%r4)
+   mtfsf 255,%f3
 
    # ps_merge00
 0: ps_merge00 %f24,%f0,%f1  # (0.0f,1.0f)
@@ -11368,6 +11371,29 @@ get_load_address:
    stw %r11,20(%r6)
    addi %r6,%r6,32
 
+   # ps_merge00.
+0: mtcr %r0
+   ps_merge00. %f24,%f0,%f1  # (0.0f,1.0f)
+   bl record
+   stfs %f24,0(%r4)
+   lwz %r3,0(%r4)
+   mffs %f3
+   stfd %f3,8(%r4)
+   lwz %r8,12(%r4)
+   mfcr %r9
+   cmpwi %r3,0
+   bne 1f
+   cmpw %r8,%r11
+   bne 1f
+   andis. %r3,%r9,0x0F00
+   lis %r7,0x0800
+   cmpw %r3,%r7
+   beq 0f
+1: stw %r3,8(%r6)
+   stw %r8,16(%r6)
+   stw %r9,20(%r6)
+   addi %r6,%r6,32
+
    # ps_merge11
 0: ps_merge11 %f3,%f24,%f25
    bl record
@@ -11390,6 +11416,37 @@ get_load_address:
    cmpw %r3,%r7
    bne 1f
    cmpw %r8,%r11
+   beq 0f
+1: addi %r6,%r6,32
+
+   # ps_merge11.
+0: mtcr %r0
+   ps_merge11. %f3,%f24,%f25
+   bl record
+   mfcr %r9
+   stfs %f3,0(%r4)
+   lwz %r3,0(%r4)
+   lis %r7,0x3F80
+   cmpw %r3,%r7
+   stw %r3,8(%r6)
+   ps_merge11 %f3,%f3,%f3
+   stfs %f3,0(%r4)
+   lwz %r3,0(%r4)
+   stw %r3,12(%r6)
+   mffs %f3
+   stfd %f3,8(%r4)
+   lwz %r8,12(%r4)
+   stw %r8,16(%r6)
+   stw %r9,20(%r6)
+   bne 1f
+   lis %r7,0x4040
+   cmpw %r3,%r7
+   bne 1f
+   cmpw %r8,%r11
+   bne 1f
+   andis. %r3,%r9,0x0F00
+   lis %r7,0x0800
+   cmpw %r3,%r7
    beq 0f
 1: addi %r6,%r6,32
 
@@ -11417,6 +11474,36 @@ get_load_address:
    beq 0f
 1: addi %r6,%r6,32
 
+   # ps_merge01.
+0: mtcr %r0
+   ps_merge01. %f3,%f24,%f25
+   bl record
+   mfcr %r9
+   stfs %f3,0(%r4)
+   lwz %r3,0(%r4)
+   cmpwi %r3,0
+   stw %r3,8(%r6)
+   ps_merge11 %f3,%f3,%f3
+   stfs %f3,0(%r4)
+   lwz %r3,0(%r4)
+   stw %r3,12(%r6)
+   mffs %f3
+   stfd %f3,8(%r4)
+   lwz %r8,12(%r4)
+   stw %r8,16(%r6)
+   stw %r11,20(%r6)
+   bne 1f
+   lis %r7,0x4040
+   cmpw %r3,%r7
+   bne 1f
+   cmpw %r8,%r11
+   bne 1f
+   andis. %r3,%r9,0x0F00
+   lis %r7,0x0800
+   cmpw %r3,%r7
+   beq 0f
+1: addi %r6,%r6,32
+
    # ps_merge10
 0: ps_merge10 %f3,%f24,%f25
    bl record
@@ -11439,6 +11526,37 @@ get_load_address:
    cmpw %r3,%r7
    bne 1f
    cmpw %r8,%r11
+   beq 0f
+1: addi %r6,%r6,32
+
+   # ps_merge10.
+0: mtcr %r0
+   ps_merge10. %f3,%f24,%f25
+   bl record
+   mfcr %r9
+   stfs %f3,0(%r4)
+   lwz %r3,0(%r4)
+   lis %r7,0x3F80
+   cmpw %r3,%r7
+   stw %r3,8(%r6)
+   ps_merge11 %f3,%f3,%f3
+   stfs %f3,0(%r4)
+   lwz %r3,0(%r4)
+   stw %r3,12(%r6)
+   mffs %f3
+   stfd %f3,8(%r4)
+   lwz %r8,12(%r4)
+   stw %r8,16(%r6)
+   stw %r11,20(%r6)
+   bne 1f
+   lis %r7,0x4000
+   cmpw %r3,%r7
+   bne 1f
+   cmpw %r8,%r11
+   bne 1f
+   andis. %r3,%r9,0x0F00
+   lis %r7,0x0800
+   cmpw %r3,%r7
    beq 0f
 1: addi %r6,%r6,32
 

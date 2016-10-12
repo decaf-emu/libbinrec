@@ -29,6 +29,7 @@ trap "rm -r '$tempdir'" EXIT SIGHUP SIGINT SIGQUIT SIGTERM
 
 "$PPC_AS" --defsym ESPRESSO=1 -o"$tempdir/ppc750cl.o" "$1"
 "$PPC_LD" -Ttext=0x1000000 --defsym _start=0x1000000 -o"$tempdir/ppc750cl" "$tempdir/ppc750cl.o"
+powerpc-eabi-objdump -M750cl -dr "$tempdir/ppc750cl" >/tmp/ppc750cl.txt
 "$PPC_OBJCOPY" -O binary "$tempdir/ppc750cl" "$tempdir/ppc750cl.bin"
 
 echo "static const unsigned char ppc750cl_bin[] = {";
