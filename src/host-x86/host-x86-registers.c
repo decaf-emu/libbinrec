@@ -215,16 +215,17 @@ static int allocate_frame_slot(HostX86Context *ctx, RTLDataType type)
 {
     ASSERT(ctx);
 
-    int size = 0;
-    switch (type) {
-        case RTLTYPE_INT32:     size =  4; break;
-        case RTLTYPE_INT64:     size =  8; break;
-        case RTLTYPE_ADDRESS:   size =  8; break;
-        case RTLTYPE_FLOAT32:     size =  4; break;
-        case RTLTYPE_FLOAT64:    size =  8; break;
-        case RTLTYPE_V2_FLOAT64: size = 16; break;
-    }
-    ASSERT(size > 0);
+    static const uint8_t type_sizes[] = {
+        [RTLTYPE_INT32     ] = 4,
+        [RTLTYPE_INT64     ] = 8,
+        [RTLTYPE_ADDRESS   ] = 8,
+        [RTLTYPE_FLOAT32   ] = 4,
+        [RTLTYPE_FLOAT64   ] = 8,
+        [RTLTYPE_V2_FLOAT64] = 16,
+    };
+    ASSERT(type > 0 && type < lenof(type_sizes));
+    ASSERT(type_sizes[type]);
+    const int size = type_sizes[type];
 
     /* For simplicity, we just add the new slot at the end of the stack
      * frame.  This can leave holes in the stack frame depending on the

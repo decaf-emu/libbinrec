@@ -429,17 +429,22 @@ static ALWAYS_INLINE void append_move(
 {
     switch (type) {
       case RTLTYPE_INT32:
+        ASSERT(host_dest <= X86_R15);
+        ASSERT(host_src <= X86_R15);
         append_insn_ModRM_reg(code, false, X86OP_MOV_Gv_Ev,
                               host_dest, host_src);
         return;
       case RTLTYPE_INT64:
       case RTLTYPE_ADDRESS:
+        ASSERT(host_dest <= X86_R15);
+        ASSERT(host_src <= X86_R15);
         append_insn_ModRM_reg(code, true, X86OP_MOV_Gv_Ev,
                               host_dest, host_src);
         return;
-      case RTLTYPE_FLOAT32:
-      case RTLTYPE_FLOAT64:
-      case RTLTYPE_V2_FLOAT64:
+      default:
+        ASSERT(!rtl_type_is_int(type));
+        ASSERT(host_dest >= X86_XMM0);
+        ASSERT(host_src >= X86_XMM0);
         /* The Intel optimization guidelines state: (1) avoid mixed use of
          * integer/FP operations on the same register (thus MOVAPS instead
          * of MOVDQA); (2) use PS instead of PD if both operations are
@@ -448,7 +453,6 @@ static ALWAYS_INLINE void append_move(
                               host_dest, host_src);
         return;
     }
-    ASSERT(!"Invalid type to append_move()");
 }
 
 /*-----------------------------------------------------------------------*/
@@ -503,14 +507,12 @@ static ALWAYS_INLINE void append_load(
         append_insn_ModRM_mem(code, false, X86OP_MOVSD_V_W,
                               host_dest, host_base, offset);
         return;
-      case RTLTYPE_V2_FLOAT64:
-        /* MOVAPS instead of MOVAPD for optimization purposes (see note in
-         * append_move()). */
+      default:
+        ASSERT(!rtl_type_is_scalar(type));
         append_insn_ModRM_mem(code, false, X86OP_MOVAPS_V_W,
                               host_dest, host_base, offset);
         return;
     }
-    ASSERT(!"Invalid type to append_load()");
 }
 
 /*-----------------------------------------------------------------------*/
@@ -566,14 +568,12 @@ static ALWAYS_INLINE void append_store(
         append_insn_ModRM_mem(code, false, X86OP_MOVSD_W_V,
                               host_src, host_base, offset);
         return;
-      case RTLTYPE_V2_FLOAT64:
-        /* MOVAPS instead of MOVAPD for optimization purposes (see note in
-         * append_move()). */
+      default:
+        ASSERT(!rtl_type_is_scalar(type));
         append_insn_ModRM_mem(code, false, X86OP_MOVAPS_W_V,
                               host_src, host_base, offset);
         return;
     }
-    ASSERT(!"Invalid type to append_store()");
 }
 
 /*-----------------------------------------------------------------------*/
@@ -1552,8 +1552,6 @@ static bool translate_block(HostX86Context *ctx, int block_index)
          insn_index++)
     {
         const RTLInsn * const insn = &unit->insns[insn_index];
-        ASSERT(insn->opcode >= RTLOP__FIRST);
-        ASSERT(insn->opcode <= RTLOP__LAST);
         const int dest = insn->dest;
         const int src1 = insn->src1;
         const int src2 = insn->src2;

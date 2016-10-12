@@ -267,15 +267,17 @@ static NOINLINE bool rtl_add_insn_with_new_block(
  */
 static const char *type_suffix(RTLDataType type)
 {
-    switch (type) {
-        case RTLTYPE_INT32:     return "i32";
-        case RTLTYPE_INT64:     return "i64";
-        case RTLTYPE_ADDRESS:   return "addr";
-        case RTLTYPE_FLOAT32:     return "f32";
-        case RTLTYPE_FLOAT64:    return "f64";
-        case RTLTYPE_V2_FLOAT64: return "f64x2";
-    }
-    ASSERT(!"Invalid type");
+    static const char * const suffixes[] = {
+        [RTLTYPE_INT32     ] = "i32",
+        [RTLTYPE_INT64     ] = "i64",
+        [RTLTYPE_ADDRESS   ] = "addr",
+        [RTLTYPE_FLOAT32   ] = "f32",
+        [RTLTYPE_FLOAT64   ] = "f64",
+        [RTLTYPE_V2_FLOAT64] = "f64x2",
+    };
+    ASSERT(type > 0 && type < lenof(suffixes));
+    ASSERT(suffixes[type]);
+    return suffixes[type];
 }
 
 /*-----------------------------------------------------------------------*/
@@ -308,11 +310,6 @@ static void rtl_describe_register(const RTLRegister *reg,
 
       case RTLREG_CONSTANT:
         switch ((RTLDataType)reg->type) {
-          case RTLTYPE_INT32:
-          case RTLTYPE_INT64:
-          case RTLTYPE_ADDRESS:
-            format_int(buf, bufsize, reg->type, reg->value.i64);
-            break;
           case RTLTYPE_FLOAT32:
             format_float(buf, bufsize, reg->value.f32);
             break;
@@ -320,7 +317,9 @@ static void rtl_describe_register(const RTLRegister *reg,
             format_double(buf, bufsize, reg->value.f64);
             break;
           default:
-            ASSERT(!"Invalid constant type");
+            ASSERT(rtl_register_is_int(reg));
+            format_int(buf, bufsize, reg->type, reg->value.i64);
+            break;
         }
         return;
 
@@ -404,7 +403,7 @@ static void rtl_describe_register(const RTLRegister *reg,
             [RTLOP_SGTSI ] = true,
         };
 
-        switch (reg->result.opcode) {
+        switch ((RTLOpcode)reg->result.opcode) {
           case RTLOP_MOVE:
             snprintf(buf, bufsize, "r%d", reg->result.src1);
             break;
@@ -499,7 +498,8 @@ static void rtl_describe_register(const RTLRegister *reg,
             snprintf(buf, bufsize, "call(...)");
             break;
           default:
-            ASSERT(!"Invalid result opcode");
+            snprintf(buf, bufsize, "<invalid result opcode %u>",
+                     reg->result.opcode);
             break;
         }  // switch (reg->result.opcode)
         return;
@@ -507,7 +507,7 @@ static void rtl_describe_register(const RTLRegister *reg,
 
     }  // switch (reg->source)
 
-    ASSERT(!"Invalid register source");
+    snprintf(buf, bufsize, "<invalid register source %u>", reg->source);
 }
 
 /*-----------------------------------------------------------------------*/
@@ -754,8 +754,8 @@ static void rtl_decode_insn(const RTLUnit *unit, uint32_t index,
           case RTLTYPE_INT32:
             ASSERT(insn->src_imm <= 0xFFFFFFFF);
             /* fall through */
-          case RTLTYPE_INT64:
-          case RTLTYPE_ADDRESS:
+          default:
+            ASSERT(rtl_register_is_int(&unit->regs[dest]));
             s += format_int(s, top - s, unit->regs[dest].type, insn->src_imm);
             break;
           case RTLTYPE_FLOAT32:
@@ -764,9 +764,7 @@ static void rtl_decode_insn(const RTLUnit *unit, uint32_t index,
             break;
           case RTLTYPE_FLOAT64:
             s += format_double(s, top - s, bits_to_double(insn->src_imm));
-           break;
-          default:
-            ASSERT(!"Invalid type for LOAD_IMM");
+            break;
         }
         s += snprintf_assert(s, top - s, "\n");
         return;
@@ -864,7 +862,7 @@ static void rtl_decode_insn(const RTLUnit *unit, uint32_t index,
 
     }  // switch (insn->opcode)
 
-    ASSERT(!"Invalid opcode");
+    s += snprintf_assert(s, top - s, "<invalid opcode %u>\n", insn->opcode);
 
     #undef APPEND_REG_DESC
 }
@@ -893,15 +891,16 @@ static void rtl_describe_alias(const RTLUnit *unit, int index,
     char *s = buf;
     char * const top = buf + bufsize;
 
-    static const char *type_names[] = {
-        [RTLTYPE_INT32    ] = "int32",
-        [RTLTYPE_INT64    ] = "int64",
-        [RTLTYPE_ADDRESS  ] = "address",
-        [RTLTYPE_FLOAT32    ] = "float",
+    static const char * const type_names[] = {
+        [RTLTYPE_INT32     ] = "int32",
+        [RTLTYPE_INT64     ] = "int64",
+        [RTLTYPE_ADDRESS   ] = "address",
+        [RTLTYPE_FLOAT32   ] = "float",
         [RTLTYPE_FLOAT64   ] = "double",
         [RTLTYPE_V2_FLOAT64] = "double[2]",
     };
     ASSERT(alias->type > 0 && alias->type < lenof(type_names));
+    ASSERT(type_names[alias->type]);
 
     s += snprintf_assert(s, top - s, "Alias %d: %s",
                          index, type_names[alias->type]);

@@ -712,18 +712,11 @@ static bool make_load_imm(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
     RTLRegister * const destreg = &unit->regs[dest];
     const int insn_index = unit->num_insns;
     destreg->source = RTLREG_CONSTANT;
-    switch (unit->regs[dest].type) {
-      case RTLTYPE_INT32:
-      case RTLTYPE_FLOAT32:
+    if (unit->regs[dest].type == RTLTYPE_INT32
+     || unit->regs[dest].type == RTLTYPE_FLOAT32) {
         destreg->value.i64 = (uint32_t)other;
-        break;
-      case RTLTYPE_INT64:
-      case RTLTYPE_ADDRESS:
-      case RTLTYPE_FLOAT64:
+    } else {
         destreg->value.i64 = other;
-        break;
-      default:
-        UNREACHABLE;
     }
     mark_live(unit, insn_index, destreg, dest);
 

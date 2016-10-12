@@ -118,109 +118,22 @@ static bool rollback_reg_death(RTLUnit * const unit, const int reg_index)
 
     for (int insn_index = reg->death-1; insn_index > reg->birth; insn_index--) {
         const RTLInsn * const insn = &unit->insns[insn_index];
-        switch ((RTLOpcode)insn->opcode) {
-
-          case RTLOP_GET_ALIAS:
-          case RTLOP_LOAD_IMM:
-          case RTLOP_LOAD_ARG:
-          case RTLOP_LABEL:
-          case RTLOP_GOTO:
-          case RTLOP_ILLEGAL:
-            break;
-
-          case RTLOP_SET_ALIAS:
-          case RTLOP_MOVE:
-          case RTLOP_SCAST:
-          case RTLOP_ZCAST:
-          case RTLOP_SEXT8:
-          case RTLOP_SEXT16:
-          case RTLOP_NEG:
-          case RTLOP_NOT:
-          case RTLOP_CLZ:
-          case RTLOP_BSWAP:
-          case RTLOP_BFEXT:
-          case RTLOP_ADDI:
-          case RTLOP_MULI:
-          case RTLOP_ANDI:
-          case RTLOP_ORI:
-          case RTLOP_XORI:
-          case RTLOP_SLLI:
-          case RTLOP_SRLI:
-          case RTLOP_SRAI:
-          case RTLOP_RORI:
-          case RTLOP_SEQI:
-          case RTLOP_SLTUI:
-          case RTLOP_SLTSI:
-          case RTLOP_SGTUI:
-          case RTLOP_SGTSI:
-          case RTLOP_LOAD:
-          case RTLOP_LOAD_U8:
-          case RTLOP_LOAD_S8:
-          case RTLOP_LOAD_U16:
-          case RTLOP_LOAD_S16:
-          case RTLOP_LOAD_BR:
-          case RTLOP_LOAD_U16_BR:
-          case RTLOP_LOAD_S16_BR:
-          case RTLOP_ATOMIC_INC:
-          case RTLOP_GOTO_IF_Z:
-          case RTLOP_GOTO_IF_NZ:
-          case RTLOP_RETURN:
-            if (insn->src1 == reg_index) {
-              still_used:
+        if (insn->src1 == reg_index || insn->src2 == reg_index) {
+          still_used:
 #ifdef RTL_DEBUG_OPTIMIZE
-                log_info(unit->handle, "r%d still used at %d",
-                         reg_index, insn_index);
+            log_info(unit->handle, "r%d still used at %d",
+                     reg_index, insn_index);
 #endif
-                reg->death = insn_index;
-                return false;
-            }
-            break;
-
-          case RTLOP_NOP:
-          case RTLOP_ADD:
-          case RTLOP_SUB:
-          case RTLOP_MUL:
-          case RTLOP_MULHU:
-          case RTLOP_MULHS:
-          case RTLOP_DIVU:
-          case RTLOP_DIVS:
-          case RTLOP_MODU:
-          case RTLOP_MODS:
-          case RTLOP_AND:
-          case RTLOP_OR:
-          case RTLOP_XOR:
-          case RTLOP_SLL:
-          case RTLOP_SRL:
-          case RTLOP_SRA:
-          case RTLOP_ROL:
-          case RTLOP_ROR:
-          case RTLOP_SEQ:
-          case RTLOP_SLTU:
-          case RTLOP_SLTS:
-          case RTLOP_SGTU:
-          case RTLOP_SGTS:
-          case RTLOP_BFINS:
-          case RTLOP_STORE:
-          case RTLOP_STORE_I8:
-          case RTLOP_STORE_I16:
-          case RTLOP_STORE_BR:
-          case RTLOP_STORE_I16_BR:
-            if (insn->src1 == reg_index || insn->src2 == reg_index) {
-                goto still_used;
-            }
-            break;
-
-          case RTLOP_SELECT:
-          case RTLOP_CMPXCHG:
-          case RTLOP_CALL:
-          case RTLOP_CALL_TRANSPARENT:
-            if (insn->src1 == reg_index || insn->src2 == reg_index
-             || insn->src3 == reg_index) {
-                goto still_used;
-            }
-            break;
-
-        }  // switch (opcode)
+            reg->death = insn_index;
+            return false;
+        }
+        const bool has_src3 = (insn->opcode == RTLOP_SELECT
+                            || insn->opcode == RTLOP_CMPXCHG
+                            || insn->opcode == RTLOP_CALL
+                            || insn->opcode == RTLOP_CALL_TRANSPARENT);
+        if (has_src3 && insn->src3 == reg_index) {
+            goto still_used;
+        }
     }  // for (insn_index)
 
     /* If we got this far, nothing else uses the register. */
@@ -680,7 +593,9 @@ static inline uint64_t fold_constant(RTLUnit * const unit,
 
     }  // switch ((RTLOpcode)reg->result.opcode)
 
-    UNREACHABLE;
+    log_error(unit->handle, "Invalid opcode %u on RESULT register %d",
+              reg->result.opcode, (int)(reg - unit->regs));
+    return 0;
 }
 
 /*-----------------------------------------------------------------------*/
@@ -898,7 +813,6 @@ static inline bool convert_to_regimm(RTLUnit * const unit,
 
     /* Anything that breaks out of the switch (instead of returning false)
      * is a successful conversion. */
-    ASSERT(reg->result.opcode != opcode);
     reg->result.is_imm = true;
     reg->result.src1 = constant_is_src2 ? src1 : src2;
     reg->result.src_imm = imm;

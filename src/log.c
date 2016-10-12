@@ -70,14 +70,15 @@ void INTERNAL(log_error)(binrec_t *handle, const char *format, ...)
 void INTERNAL(_log_ice)(binrec_t *handle, const char *file, int line,
                         const char *format, ...)
 {
-    if (strrchr(file, '/')) {
-        file = strrchr(file, '/') + 1;
+    const char *pathsep;
+#ifdef _WIN32
+    pathsep = "/\\";
+#else
+    pathsep = "/";
+#endif
+    while (file[strcspn(file, pathsep)]) {
+        file += strcspn(file, pathsep) + 1;
     }
-    #ifdef _WIN32
-        if (strrchr(file, '\\')) {
-            file = strrchr(file, '\\') + 1;
-        }
-    #endif
 
     char buf[1000];
     va_list args;

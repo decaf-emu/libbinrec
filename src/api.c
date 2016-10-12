@@ -8,6 +8,7 @@
  */
 
 #include "include/binrec.h"
+#include "src/bitutils.h"
 #include "src/common.h"
 #include "src/guest-ppc.h"
 #include "src/host-x86.h"
@@ -251,14 +252,28 @@ binrec_arch_t binrec_native_features(void)
         #endif
 
         uint64_t features = 0;
-        if (ecx_1 & (1<<12)) features |= BINREC_FEATURE_X86_FMA;
-        if (ecx_1 & (1<<22)) features |= BINREC_FEATURE_X86_MOVBE;
-        if (ecx_1 & (1<<23)) features |= BINREC_FEATURE_X86_POPCNT;
-        if (ecx_1 & (1<<28)) features |= BINREC_FEATURE_X86_AVX;
-        if (ecx_80000001 & (1<<5)) features |= BINREC_FEATURE_X86_LZCNT;
-        if (ebx_7 & (1<<3)) features |= BINREC_FEATURE_X86_BMI1;
-        if (ebx_7 & (1<<5)) features |= BINREC_FEATURE_X86_AVX2;
-        if (ebx_7 & (1<<8)) features |= BINREC_FEATURE_X86_BMI2;
+        /* These macros allow setting feature bits without conditional
+         * operations, so that coverage doesn't depend on finding many
+         * CPUs that implement different sets of features.  This is
+         * possibly a bit of overkill for the trivial purpose of improving
+         * coverage, but it's not that bad in the grand scheme of things.
+         * Also, it works just fine. */
+        #define COPY_FEATURE_BIT_LEFT(src, bit, feature)  do { \
+            STATIC_ASSERT((feature) >= 1<<(bit), "Wrong shift direction"); \
+            features |= ((src) & (1<<(bit))) << (ctz32((feature)) - (bit)); \
+        } while (0)
+        #define COPY_FEATURE_BIT_RIGHT(src, bit, feature)  do { \
+            STATIC_ASSERT((feature) <= 1<<(bit), "Wrong shift direction"); \
+            features |= ((src) & (1<<(bit))) >> ((bit) - ctz32((feature))); \
+        } while (0)
+        COPY_FEATURE_BIT_RIGHT(ecx_1, 12, BINREC_FEATURE_X86_FMA);
+        COPY_FEATURE_BIT_RIGHT(ecx_1, 22, BINREC_FEATURE_X86_MOVBE);
+        COPY_FEATURE_BIT_RIGHT(ecx_1, 23, BINREC_FEATURE_X86_POPCNT);
+        COPY_FEATURE_BIT_RIGHT(ecx_1, 28, BINREC_FEATURE_X86_AVX);
+        COPY_FEATURE_BIT_RIGHT(ecx_80000001, 5, BINREC_FEATURE_X86_LZCNT);
+        COPY_FEATURE_BIT_LEFT (ebx_7, 3, BINREC_FEATURE_X86_BMI1);
+        COPY_FEATURE_BIT_LEFT (ebx_7, 5, BINREC_FEATURE_X86_AVX2);
+        COPY_FEATURE_BIT_RIGHT(ebx_7, 8, BINREC_FEATURE_X86_BMI2);
         return features;
 
     #else  // Unsupported architecture.
