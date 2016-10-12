@@ -11,7 +11,7 @@
 #include "src/endian.h"
 #include "tests/common.h"
 #include "tests/execute.h"
-#include "tests/guest-ppc/exec/common.h"
+#include "tests/guest-ppc/common.h"
 #include "tests/log-capture.h"
 
 #include "tests/guest-ppc/exec/750cl-common.i"

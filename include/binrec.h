@@ -102,12 +102,12 @@ extern "C" {
  * instruction, but is done to allow the use of that instruction as (for
  * example) a callout to native code in a PowerPC system emulator.
  *
- * D-form (immediate offset) load and store instructions which wrap around
- * the 32-bit address space, such as lwz rD,16(rS) where the value of rS
- * is 0xFFFFFFF0 or greater, are not supported; such accesses will "leak"
- * outside the guest memory region.  However, accesses to the top 32k of
- * memory using single-register (not lmw/stmw) D-form instructions with
- * rA = 0 are handled correctly.
+ * If D-form (immediate offset) load or store instruction has an offset
+ * which causes the final address to wrap around the 32-bit address space,
+ * such as lwz rD,16(rA) where the value of rA is 0xFFFFFFF0 or greater,
+ * the access will improperly "leak" outside the guest memory region.
+ * However, accesses to the top 32k of memory using single-register (not
+ * lmw/stmw) D-form instructions with rA = 0 are handled correctly.
  */
 
 /*************************************************************************/
@@ -888,6 +888,55 @@ extern int binrec_add_readonly_region(binrec_t *handle,
  *     handle: Handle to operate on.
  */
 extern void binrec_clear_readonly_regions(binrec_t *handle);
+
+/**
+ * binrec_set_pre_insn_callback:  Set a callback function which will be
+ * called immediately before executing each guest instruction.  This can
+ * be used, for example, to log an execution trace or to record the state
+ * of the guest processor at a particular point.  Pass NULL to disable an
+ * existing callback.
+ *
+ * The callback receives two parameters: the processor state block pointer
+ * passed to the translated code, and the address of the instruction about
+ * to be executed.
+ *
+ * Calling this function has no effect on already-translated code.
+ *
+ * The pre- and post-instruction callbacks are generally useful only for
+ * debugging or analysis of code at runtime, so they are set directly as
+ * pointers in the runtime environment under the assumption that the host
+ * architecture is that of the runtime environment.  These callbacks should
+ * not be enabled when cross-compiling to a different architecture.
+ *
+ * Enabling the pre- or post-instruction callback can have a significant
+ * negative impact on performance.
+ *
+ * [Parameters]
+ *     handle: Handle to operate on.
+ *     callback: Callback to install, or NULL to clear any installed callback.
+ */
+extern void binrec_set_pre_insn_callback(binrec_t *handle,
+                                         void (*callback)(void *, uint32_t));
+
+/**
+ * binrec_set_post_insn_callback:  Set a callback function which will be
+ * called immediately after executing each guest instruction.  The state
+ * of the guest processor will be the same as if translation had ended
+ * immediately after the just-executed instruction.  Pass NULL to disable
+ * an existing callback.
+ *
+ * The callback receives two parameters: the processor state block pointer
+ * passed to the translated code, and the address of the instruction that
+ * was just executed.
+ *
+ * Calling this function has no effect on already-translated code.
+ *
+ * [Parameters]
+ *     handle: Handle to operate on.
+ *     callback: Callback to install, or NULL to clear any installed callback.
+ */
+extern void binrec_set_post_insn_callback(binrec_t *handle,
+                                          void (*callback)(void *, uint32_t));
 
 /*************************************************************************/
 /********************** Interface: Code translation **********************/

@@ -288,15 +288,12 @@ static inline int get_ea_indexed(GuestPPCContext *ctx, uint32_t insn,
  *
  * [Parameters]
  *     ctx: Translation context.
- *     block: Block which is being or was just translated.
  *     clean: True to clear all dirty flags after storing dirty registers;
  *         false to leave dirty flags alone.
  *     clear: True to clear all live registers after storing them; false
  *         to leave them live.
  */
-static void store_live_regs(
-    GuestPPCContext *ctx, const GuestPPCBlockInfo *block, bool clean,
-    bool clear)
+static void store_live_regs(GuestPPCContext *ctx, bool clean, bool clear)
 {
     RTLUnit * const unit = ctx->unit;
 
@@ -422,6 +419,30 @@ static int merge_cr(GuestPPCContext *ctx)
     }
 
     return cr;
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
+ * post_insn_callback:  Add RTL to call the post-instruction callback if
+ * one has been set.
+ *
+ * [Parameters]
+ *     ctx: Translation context.
+ *     address: Instruction address to pass to the callback.
+ */
+static void post_insn_callback(GuestPPCContext *ctx, uint32_t address)
+{
+    if (ctx->handle->post_insn_callback) {
+        store_live_regs(ctx, false, false);
+        guest_ppc_flush_state(ctx);
+        RTLUnit * const unit = ctx->unit;
+        const int func = rtl_alloc_register(unit, RTLTYPE_ADDRESS);
+        rtl_add_insn(unit, RTLOP_LOAD_IMM, func, 0, 0,
+                     (uintptr_t)ctx->handle->post_insn_callback);
+        rtl_add_insn(unit, RTLOP_CALL_TRANSPARENT,
+                     0, func, ctx->psb_reg, rtl_imm32(unit, address));
+    }
 }
 
 /*-----------------------------------------------------------------------*/
@@ -716,15 +737,15 @@ static inline void translate_bitmisc(
  *
  * [Parameters]
  *     ctx: Translation context.
- *     block: Basic block being translated.
  *     address: Address of instruction being translated.
  *     BO: BO field of instruction word (0x14 for an unconditional branch).
  *     BI: BI field of instruction word (ignored if an unconditional branch).
+ *     target: Branch target address.
  *     target_label: RTL label for the target block.
  */
 static void translate_branch_label(
-    GuestPPCContext *ctx, GuestPPCBlockInfo *block, uint32_t address,
-    int BO, int BI, int target_label)
+    GuestPPCContext *ctx, uint32_t address, int BO, int BI,
+    uint32_t target, int target_label)
 {
     RTLUnit * const unit = ctx->unit;
 
@@ -747,7 +768,7 @@ static void translate_branch_label(
 
         /* Store here so any update to CTR is stored along with other pending
          * changes. */
-        store_live_regs(ctx, block, true, false);
+        store_live_regs(ctx, true, false);
 
         if (skip_label) {
             rtl_add_insn(unit, BO & 0x02 ? RTLOP_GOTO_IF_NZ : RTLOP_GOTO_IF_Z,
@@ -757,7 +778,7 @@ static void translate_branch_label(
             test_reg = new_ctr;
         }
     } else {
-        store_live_regs(ctx, block, true, false);
+        store_live_regs(ctx, true, false);
     }
 
     if (!(BO & 0x10)) {
@@ -768,6 +789,10 @@ static void translate_branch_label(
         test_reg = test;
     }
 
+    if (ctx->handle->post_insn_callback) {
+        set_nia_imm(ctx, target);
+        post_insn_callback(ctx, address);
+    }
     rtl_add_insn(unit, branch_op, 0, test_reg, 0, target_label);
 
     if (skip_label) {
@@ -783,7 +808,6 @@ static void translate_branch_label(
  *
  * [Parameters]
  *     ctx: Translation context.
- *     block: Basic block being translated.
  *     address: Address of instruction being translated.
  *     BO: BO field of instruction word (0x14 for an unconditional branch).
  *     BI: BI field of instruction word (ignored if an unconditional branch).
@@ -793,8 +817,8 @@ static void translate_branch_label(
  *         (as for BCLR/BCCTR), false if the low bits are known to be 0b00.
  */
 static void translate_branch_terminal(
-    GuestPPCContext *ctx, GuestPPCBlockInfo *block, uint32_t address,
-    int BO, int BI, int LK, int target, bool clear_low_bits)
+    GuestPPCContext *ctx, uint32_t address, int BO, int BI, int LK,
+    int target, bool clear_low_bits)
 {
     RTLUnit * const unit = ctx->unit;
 
@@ -817,12 +841,12 @@ static void translate_branch_terminal(
         rtl_add_insn(unit, RTLOP_ADDI, new_ctr, ctr, 0, -1);
         set_ctr(ctx, new_ctr);
 
-        store_live_regs(ctx, block, true, false);
+        store_live_regs(ctx, true, false);
 
         rtl_add_insn(unit, BO & 0x02 ? RTLOP_GOTO_IF_NZ : RTLOP_GOTO_IF_Z,
                      0, new_ctr, 0, skip_label);
     } else {
-        store_live_regs(ctx, block, true, false);
+        store_live_regs(ctx, true, false);
     }
 
     if (!(BO & 0x10)) {
@@ -840,6 +864,7 @@ static void translate_branch_terminal(
                      0, rtl_imm32(unit, address+4), 0, ctx->alias.lr);
     }
     set_nia(ctx, target);
+    post_insn_callback(ctx, address);
     rtl_add_insn(unit, RTLOP_GOTO, 0, 0, 0, ctx->epilogue_label);
 
     if (skip_label) {
@@ -854,7 +879,6 @@ static void translate_branch_terminal(
  *
  * [Parameters]
  *     ctx: Translation context.
- *     block: Basic block being translated.
  *     address: Address of instruction being translated.
  *     BO: BO field of instruction word (0x14 for an unconditional branch).
  *     BI: BI field of instruction word (ignored if an unconditional branch).
@@ -863,8 +887,8 @@ static void translate_branch_terminal(
  *     LK: LK bit of instruction word.
  */
 static inline void translate_branch(
-    GuestPPCContext *ctx, GuestPPCBlockInfo *block, uint32_t address,
-    int BO, int BI, int32_t disp, int AA, int LK)
+    GuestPPCContext *ctx, uint32_t address, int BO, int BI, int32_t disp,
+    int AA, int LK)
 {
     ASSERT((address & 3) == 0);
     ASSERT((disp & 3) == 0);
@@ -909,9 +933,9 @@ static inline void translate_branch(
     }
 
     if (target_label) {
-        translate_branch_label(ctx, block, address, BO, BI, target_label);
+        translate_branch_label(ctx, address, BO, BI, target, target_label);
     } else {
-        translate_branch_terminal(ctx, block, address, BO, BI, LK,
+        translate_branch_terminal(ctx, address, BO, BI, LK,
                                   rtl_imm32(unit, target), false);
     }
 }
@@ -1073,13 +1097,11 @@ static inline void translate_load_store_gpr(
  *
  * [Parameters]
  *     ctx: Translation context.
- *     block: Basic block being translated.
  *     insn: Instruction word.
  *     is_store: True if the instruction is a store instruction (stmw).
  */
 static inline void translate_load_store_multiple(
-    GuestPPCContext *ctx, GuestPPCBlockInfo *block, uint32_t insn,
-    bool is_store)
+    GuestPPCContext *ctx, uint32_t insn, bool is_store)
 {
     RTLUnit * const unit = ctx->unit;
 
@@ -1143,7 +1165,7 @@ static inline void translate_load_store_multiple(
     /* Flush loaded GPRs so we don't have a bunch of dirty RTL registers
      * live until the end of the block. */
     if (!is_store) {
-        store_live_regs(ctx, block, true, false);
+        store_live_regs(ctx, true, false);
     }
 }
 
@@ -1155,21 +1177,19 @@ static inline void translate_load_store_multiple(
  *
  * [Parameters]
  *     ctx: Translation context.
- *     block: Basic block being translated.
  *     insn: Instruction word.
  *     is_store: True if the instruction is a store instruction (stswi/stswx).
  *     is_imm: True if the instruction has an immediate count (lswi/stswi).
  */
 static inline void translate_load_store_string(
-    GuestPPCContext *ctx, GuestPPCBlockInfo *block, uint32_t insn,
-    bool is_store, bool is_imm)
+    GuestPPCContext *ctx, uint32_t insn, bool is_store, bool is_imm)
 {
     RTLUnit * const unit = ctx->unit;
 
     /* We implement the string move instructions by loading or storing
      * directly to/from the PSB, so make sure it's up to date, and clear
      * the live register set so no future code tries to use stale values. */
-    store_live_regs(ctx, block, true, true);
+    store_live_regs(ctx, true, true);
 
     int base_address, host_address;
     if (insn_rA(insn)) {
@@ -1376,7 +1396,7 @@ static inline void translate_load_store_string(
 
         rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, end_label);
 
-    }
+    }  // if (is_imm)
 }
 
 /*-----------------------------------------------------------------------*/
@@ -1936,14 +1956,12 @@ static void translate_shift(
  *
  * [Parameters]
  *     ctx: Translation context.
- *     block: Basic block being translated.
  *     address: Address of instruction being translated.
  *     insn: Instruction word.
  *     rB: RTL register containing second comparison value (rB or immediate).
  */
 static void translate_trap(
-    GuestPPCContext *ctx, GuestPPCBlockInfo *block, uint32_t address,
-    uint32_t insn, int rB)
+    GuestPPCContext *ctx, uint32_t address, uint32_t insn, int rB)
 {
     RTLUnit * const unit = ctx->unit;
 
@@ -2109,7 +2127,7 @@ static void translate_trap(
     /* Don't touch dirty flags because this is only executed on the
      * trapping path.  (We assume trapping is the exceptional case,
      * so we don't store registers unconditionally.) */
-    store_live_regs(ctx, block, false, false);
+    store_live_regs(ctx, false, false);
     set_nia_imm(ctx, address);
     guest_ppc_flush_state(ctx);
     const int trap_handler = rtl_alloc_register(unit, RTLTYPE_ADDRESS);
@@ -2149,15 +2167,13 @@ static void translate_unimplemented_insn(
  *
  * [Parameters]
  *     ctx: Translation context.
- *     block: Basic block being translated.
  *     address: Address of instruction being translated.
  *     insn: Instruction word.
  * [Return value]
  *     True on success, false on error.
  */
 static inline void translate_x1F(
-    GuestPPCContext * const ctx, GuestPPCBlockInfo * const block,
-    const uint32_t address, const uint32_t insn)
+    GuestPPCContext * const ctx, const uint32_t address, const uint32_t insn)
 {
     RTLUnit * const unit = ctx->unit;
 
@@ -2183,8 +2199,7 @@ static inline void translate_x1F(
 
       /* XO_5 = 0x04 */
       case XO_TW:
-        translate_trap(ctx, block, address, insn,
-                       get_gpr(ctx, insn_rB(insn)));
+        translate_trap(ctx, address, insn, get_gpr(ctx, insn_rB(insn)));
         return;
 
       /* XO_5 = 0x08 */
@@ -2354,16 +2369,16 @@ static inline void translate_x1F(
 
       /* XO_5 = 0x15 */
       case XO_LSWX:
-        translate_load_store_string(ctx, block, insn, false, false);
+        translate_load_store_string(ctx, insn, false, false);
         return;
       case XO_LSWI:
-        translate_load_store_string(ctx, block, insn, false, true);
+        translate_load_store_string(ctx, insn, false, true);
         return;
       case XO_STSWX:
-        translate_load_store_string(ctx, block, insn, true, false);
+        translate_load_store_string(ctx, insn, true, false);
         return;
       case XO_STSWI:
-        translate_load_store_string(ctx, block, insn, true, true);
+        translate_load_store_string(ctx, insn, true, true);
         return;
 
       /* XO_5 = 0x16 */
@@ -2450,8 +2465,9 @@ static inline void translate_x1F(
         /* icbi implies that already-translated code may have changed, so
          * unconditionally return from this unit.  We currently don't
          * bother checking the invalidation address. */
-        store_live_regs(ctx, block, true, true);
+        store_live_regs(ctx, true, true);
         set_nia_imm(ctx, address + 4);
+        post_insn_callback(ctx, address);
         rtl_add_insn(unit, RTLOP_GOTO, 0, 0, 0, ctx->epilogue_label);
         return;
       case XO_DCBZ: {
@@ -2625,8 +2641,7 @@ static inline void translate_insn(
 
     switch (insn_OPCD(insn)) {
       case OPCD_TWI:
-        translate_trap(ctx, block, address, insn,
-                       rtl_imm32(unit, insn_SIMM(insn)));
+        translate_trap(ctx, address, insn, rtl_imm32(unit, insn_SIMM(insn)));
         return;
 
       case OPCD_MULLI:
@@ -2683,37 +2698,40 @@ static inline void translate_insn(
         return;
 
       case OPCD_BC:
-        translate_branch(ctx, block, address, insn_BO(insn), insn_BI(insn),
+        translate_branch(ctx, address, insn_BO(insn), insn_BI(insn),
                          insn_BD(insn), insn_AA(insn), insn_LK(insn));
         return;
 
       case OPCD_SC: {
         /* Special case: translate sc followed by blr in a single step, to
          * avoid having to return to caller and call a new unit containing
-         * just the blr. */
+         * just the blr.  The scanner will terminate the block at an sc
+         * instruction which is not followed by a blr, so we only need to
+         * check whether this sc is at the end of the block. */
         bool is_sc_blr = false;
         if (address + 7 <= block->start + block->len - 1) {
+            ASSERT(address + 7 == block->start + block->len - 1);
             const uint32_t *memory_base =
                 (const uint32_t *)ctx->handle->setup.guest_memory_base;
             const uint32_t next_insn = bswap_be32(memory_base[(address+4)/4]);
-            if (next_insn == 0x4E800020) {
-                is_sc_blr = true;
-            }
+            ASSERT(next_insn == 0x4E800020);
+            is_sc_blr = true;
         }
         const int nia = is_sc_blr ? get_lr(ctx) : rtl_imm32(unit, address + 4);
-        store_live_regs(ctx, block, true, true);
+        store_live_regs(ctx, true, true);
         set_nia(ctx, nia);
         guest_ppc_flush_state(ctx);
         const int sc_handler = rtl_alloc_register(unit, RTLTYPE_ADDRESS);
         rtl_add_insn(unit, RTLOP_LOAD, sc_handler, ctx->psb_reg, 0,
                      ctx->handle->setup.state_offset_sc_handler);
         rtl_add_insn(unit, RTLOP_CALL, 0, sc_handler, ctx->psb_reg, 0);
+        post_insn_callback(ctx, address);
         rtl_add_insn(unit, RTLOP_RETURN, 0, 0, 0, 0);
         return;
       }  // case OPCD_SC
 
       case OPCD_B:
-        translate_branch(ctx, block, address, 0x14, 0, insn_LI(insn),
+        translate_branch(ctx, address, 0x14, 0, insn_LI(insn),
                          insn_AA(insn), insn_LK(insn));
         return;
 
@@ -2723,7 +2741,7 @@ static inline void translate_insn(
             set_cr(ctx, insn_crfD(insn), get_cr(ctx, insn_crfS(insn)));
             return;
           case XO_BCLR:
-            translate_branch_terminal(ctx, block, address, insn_BO(insn),
+            translate_branch_terminal(ctx, address, insn_BO(insn),
                                       insn_BI(insn), insn_LK(insn),
                                       get_lr(ctx), true);
             return;
@@ -2784,7 +2802,7 @@ static inline void translate_insn(
             translate_logic_cr(ctx, insn, RTLOP_OR, false, false);
             return;
           case XO_BCCTR:
-            translate_branch_terminal(ctx, block, address, insn_BO(insn),
+            translate_branch_terminal(ctx, address, insn_BO(insn),
                                       insn_BI(insn), insn_LK(insn),
                                       get_ctr(ctx), true);
             return;
@@ -2831,7 +2849,7 @@ static inline void translate_insn(
         return;
 
       case OPCD_x1F:
-        translate_x1F(ctx, block, address, insn);
+        translate_x1F(ctx, address, insn);
         return;
 
       case OPCD_LWZ:
@@ -2901,11 +2919,11 @@ static inline void translate_insn(
         return;
 
       case OPCD_LMW:
-        translate_load_store_multiple(ctx, block, insn, false);
+        translate_load_store_multiple(ctx, insn, false);
         return;
 
       case OPCD_STMW:
-        translate_load_store_multiple(ctx, block, insn, true);
+        translate_load_store_multiple(ctx, insn, true);
         return;
 
       default: return;  // FIXME: not yet implemented
@@ -2964,14 +2982,34 @@ bool guest_ppc_translate_block(GuestPPCContext *ctx, int index)
     bool last_was_sc = false;
     for (uint32_t ofs = 0; ofs < block->len; ofs += 4) {
         const uint32_t address = start + ofs;
+        if (ctx->handle->pre_insn_callback) {
+            store_live_regs(ctx, false, false);
+            guest_ppc_flush_state(ctx);
+            const int func = rtl_alloc_register(unit, RTLTYPE_ADDRESS);
+            rtl_add_insn(unit, RTLOP_LOAD_IMM, func, 0, 0,
+                         (uintptr_t)ctx->handle->pre_insn_callback);
+            rtl_add_insn(unit, RTLOP_CALL_TRANSPARENT,
+                         0, func, ctx->psb_reg, rtl_imm32(unit, address));
+        }
+
         const uint32_t insn = bswap_be32(memory_base[address/4]);
-        if (last_was_sc && insn == 0x4E800020) {  // blr
-            /* Special case optimized by the sc translator. */
-            last_was_sc = false;
-            continue;
+        if (last_was_sc) {
+            /* Special case (sc+blr) optimized by the sc translator. */
+            ASSERT(insn == 0x4E800020);  // blr
+            ASSERT(ofs + 4 == block->len);
+            break;
         }
         last_was_sc = (insn_OPCD(insn) == OPCD_SC);
         translate_insn(ctx, block, address, insn);
+
+        /* Explicitly check for the presence of a callback (even though
+         * post_insn_callback() does so too) so we don't repeatedly set
+         * NIA if it's not necessary. */
+        if (ctx->handle->post_insn_callback) {
+            set_nia_imm(ctx, address + 4);
+            post_insn_callback(ctx, address);
+        }
+
         if (UNLIKELY(rtl_get_error_state(unit))) {
             log_ice(ctx->handle, "Failed to translate instruction at 0x%X",
                     address);
@@ -2979,7 +3017,7 @@ bool guest_ppc_translate_block(GuestPPCContext *ctx, int index)
         }
     }
 
-    store_live_regs(ctx, block, true, true);
+    store_live_regs(ctx, true, true);
     set_nia_imm(ctx, start + block->len);
     if (UNLIKELY(rtl_get_error_state(unit))) {
         log_ice(ctx->handle, "Failed to update registers after block end 0x%X",

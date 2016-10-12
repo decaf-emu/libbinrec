@@ -210,6 +210,7 @@ static bool rollback_reg_death(RTLUnit * const unit, const int reg_index)
           case RTLOP_SELECT:
           case RTLOP_CMPXCHG:
           case RTLOP_CALL:
+          case RTLOP_CALL_TRANSPARENT:
             if (insn->src1 == reg_index || insn->src2 == reg_index
              || insn->src3 == reg_index) {
                 goto still_used;
@@ -667,6 +668,7 @@ static inline uint64_t fold_constant(RTLUnit * const unit,
       case RTLOP_GOTO_IF_Z:
       case RTLOP_GOTO_IF_NZ:
       case RTLOP_CALL:
+      case RTLOP_CALL_TRANSPARENT:
       case RTLOP_RETURN:
       case RTLOP_ILLEGAL:
         log_error(unit->handle, "Invalid opcode %u on RESULT register %d",
@@ -884,6 +886,7 @@ static inline bool convert_to_regimm(RTLUnit * const unit,
       case RTLOP_GOTO_IF_Z:
       case RTLOP_GOTO_IF_NZ:
       case RTLOP_CALL:
+      case RTLOP_CALL_TRANSPARENT:
       case RTLOP_RETURN:
       case RTLOP_ILLEGAL:
         return false;
@@ -1264,7 +1267,7 @@ static void maybe_kill_store(RTLUnit * const unit, RTLRegister * const reg)
 
     /* Don't drop instructions with side effects! */
     if (insn->opcode == RTLOP_ATOMIC_INC || insn->opcode == RTLOP_CMPXCHG
-     || insn->opcode == RTLOP_CALL) {
+     || insn->opcode == RTLOP_CALL || insn->opcode == RTLOP_CALL_TRANSPARENT) {
         return;
     }
 

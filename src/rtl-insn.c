@@ -1336,6 +1336,7 @@ bool (* const makefunc_table[])(RTLUnit *, RTLInsn *, int, int, int,
     [RTLOP_GOTO_IF_Z ] = make_goto_cond,
     [RTLOP_GOTO_IF_NZ] = make_goto_cond,
     [RTLOP_CALL      ] = make_call,
+    [RTLOP_CALL_TRANSPARENT] = make_call,
     [RTLOP_RETURN    ] = make_return,
     [RTLOP_ILLEGAL   ] = make_illegal,
 };

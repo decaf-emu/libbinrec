@@ -1003,7 +1003,12 @@ bool guest_ppc_scan(GuestPPCContext *ctx, uint32_t limit)
             (opcd == OPCD_x13 && (insn_XO_10(insn) == XO_BCLR
                                   || insn_XO_10(insn) == XO_BCCTR));
         const bool is_icbi = (opcd == OPCD_x1F && insn_XO_10(insn) == XO_ICBI);
-        if (is_direct_branch || is_indirect_branch || is_invalid || is_icbi) {
+        const bool is_sc =
+            (opcd == OPCD_SC
+             && (insn_count == max_insns - 1
+                 || bswap_be32(memory_base[(address+4)/4]) != 0x4E800020));
+        if (is_direct_branch || is_indirect_branch || is_invalid || is_icbi
+         || is_sc) {
             block->len = (address + 4) - block->start;
             block = NULL;
 
@@ -1043,15 +1048,19 @@ bool guest_ppc_scan(GuestPPCContext *ctx, uint32_t limit)
              * support for translating LK=1 branches to native calls, those
              * should not be treated as terminal here.
              *
-             * icbi instructions always cause a return from translated code,
-             * so they can potentially end the unit as well.
+             * icbi and sc instructions always cause a return from
+             * translated code, so they can potentially end the unit as well.
+             * But make sure not to stop at an sc before a blr so we can
+             * optimize the sc+blr case properly.
              */
             const int is_unconditional_branch =
                 (opcd == OPCD_B || (insn_BO(insn) & 0x14) == 0x14);
-            if (is_invalid || is_icbi || is_unconditional_branch) {
+            if (is_invalid || is_icbi || is_sc || is_unconditional_branch) {
                 ASSERT(ctx->num_blocks > 0);
                 if (ctx->blocks[ctx->num_blocks-1].start <= address) {
-                    break;  // Reached the end of the function.
+                    /* No more blocks follow this one, so we've reached
+                     * the end of the function. */
+                    break;
                 }
             }
         }

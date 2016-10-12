@@ -304,6 +304,8 @@ binrec_t *binrec_create_handle(const binrec_setup_t *setup)
     handle->setup = *setup;
     handle->host_little_endian = arch_is_little_endian(setup->host);
     handle->code_buffer = NULL;
+    handle->pre_insn_callback = NULL;
+    handle->post_insn_callback = NULL;
 
     const int have_malloc = (setup->malloc != NULL);
     const int have_realloc = (setup->realloc != NULL);
@@ -453,6 +455,24 @@ void binrec_clear_readonly_regions(binrec_t *handle)
     memset(handle->partial_readonly_pages, 0xFF,
            sizeof(handle->partial_readonly_pages));
     handle->num_partial_readonly = 0;
+}
+
+/*-----------------------------------------------------------------------*/
+
+void binrec_set_pre_insn_callback(binrec_t *handle,
+                                  void (*callback)(void *, uint32_t))
+{
+    ASSERT(handle);
+    handle->pre_insn_callback = callback;
+}
+
+/*-----------------------------------------------------------------------*/
+
+void binrec_set_post_insn_callback(binrec_t *handle,
+                                   void (*callback)(void *, uint32_t))
+{
+    ASSERT(handle);
+    handle->post_insn_callback = callback;
 }
 
 /*-----------------------------------------------------------------------*/

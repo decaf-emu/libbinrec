@@ -442,7 +442,9 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
     }
 
     if (insn->opcode == RTLOP_SELECT || insn->opcode == RTLOP_CMPXCHG
-     || (insn->opcode == RTLOP_CALL && insn->src3 != 0)) {
+     || ((insn->opcode == RTLOP_CALL || insn->opcode == RTLOP_CALL_TRANSPARENT)
+         && insn->src3 != 0))
+    {
         ASSERT(insn->src3 < unit->next_reg);
         const RTLRegister * const src3_reg = &unit->regs[insn->src3];
         const HostX86RegInfo * const src3_info = &ctx->regs[insn->src3];
@@ -453,13 +455,17 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
         }
     }
 
-    /* If this is a non-tail call, record the set of live caller-saved
-     * registers so the translator knows what to save and restore, and
-     * advance the list pointer so the return-value register (if any)
-     * isn't unnecessarily forced to a callee-saved register. */
-    if (insn->opcode == RTLOP_CALL && !insn->host_data_16) {
-        ASSERT(ctx->nontail_call_list == insn_index);
-        ctx->nontail_call_list = insn->host_data_32;
+    /* If this is a non-tail or transparent call, record the set of live
+     * caller-saved registers so the translator knows what to save and
+     * restore.  For regular (non-transparent) calls, also advance the
+     * list pointer here so the return-value register (if any) isn't
+     * unnecessarily forced to a callee-saved register. */
+    if ((insn->opcode == RTLOP_CALL && !insn->host_data_16)
+     || insn->opcode == RTLOP_CALL_TRANSPARENT) {
+        if (insn->opcode == RTLOP_CALL) {
+            ASSERT(ctx->nontail_call_list == insn_index);
+            ctx->nontail_call_list = insn->host_data_32;
+        }
 
         uint32_t regs_to_save = 0;
         uint32_t caller_saved_regs = ~ctx->callee_saved_regs;
@@ -762,6 +768,7 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
                 break;
 
               case RTLOP_CALL:
+              case RTLOP_CALL_TRANSPARENT:
                 /* There's no relationship between the inputs and output,
                  * so just use the normal allocation algorithm. */
                 break;
@@ -1347,6 +1354,11 @@ static void first_pass_for_block(HostX86Context *ctx, int block_index)
              * since ALU results generally won't be live across a control
              * transfer instruction for the usage patterns of this library.
              */
+            break;
+
+          case RTLOP_CALL_TRANSPARENT:
+            /* We treat all CALL_TRANSPARENT instructions as non-tail. */
+            insn->host_data_16 = 0;
             break;
 
           case RTLOP_RETURN:

@@ -11,13 +11,11 @@
 
 static const uint8_t input[] = {
     0x44,0x00,0x00,0x02,  // sc
-    0x60,0x00,0x00,0x00,  // nop
 };
 
 static const bool expected_success = true;
 
 static const char expected[] =
-    "[info] Scanning terminated at requested limit 0x7\n"
     "    0: LOAD_ARG   r1, 0\n"
     "    1: LOAD_IMM   r2, 0x100000000\n"
     "    2: LABEL      L1\n"
@@ -26,7 +24,7 @@ static const char expected[] =
     "    5: LOAD       r4, 976(r1)\n"
     "    6: CALL       @r4, r1\n"
     "    7: RETURN\n"
-    "    8: LOAD_IMM   r5, 8\n"
+    "    8: LOAD_IMM   r5, 4\n"
     "    9: SET_ALIAS  a1, r5\n"
     "   10: LABEL      L2\n"
     "   11: RETURN\n"

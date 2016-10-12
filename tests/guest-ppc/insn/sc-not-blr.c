@@ -9,16 +9,10 @@
 
 #include "tests/guest-ppc/insn/common.h"
 
-/* Keep the blr outside the range of code to translate; the translator
- * should not optimize this case. */
-static const struct {
-    uint8_t input[4];
-    uint8_t extra[4];
-} input_struct = {
-    {0x44,0x00,0x00,0x02},  // sc
-    {0x4E,0x80,0x00,0x20},  // blr
+static const uint8_t input[] = {
+    0x44,0x00,0x00,0x02,  // sc
+    0x60,0x00,0x00,0x00,  // nop
 };
-#define input input_struct.input
 
 static const bool expected_success = true;
 

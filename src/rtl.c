@@ -495,6 +495,7 @@ static void rtl_describe_register(const RTLRegister *reg,
                      reg->result.src2, reg->result.src3);
             break;
           case RTLOP_CALL:
+          case RTLOP_CALL_TRANSPARENT:
             snprintf(buf, bufsize, "call(...)");
             break;
           default:
@@ -603,6 +604,7 @@ static void rtl_decode_insn(const RTLUnit *unit, uint32_t index,
         [RTLOP_GOTO_IF_Z ] = "GOTO_IF_Z",
         [RTLOP_GOTO_IF_NZ] = "GOTO_IF_NZ",
         [RTLOP_CALL      ] = "CALL",
+        [RTLOP_CALL_TRANSPARENT] = "CALL_TRANSPARENT",
         [RTLOP_RETURN    ] = "RETURN",
         [RTLOP_ILLEGAL   ] = "ILLEGAL",
     };
@@ -825,6 +827,7 @@ static void rtl_decode_insn(const RTLUnit *unit, uint32_t index,
         return;
 
       case RTLOP_CALL:
+      case RTLOP_CALL_TRANSPARENT:
         s += snprintf_assert(s, top - s, "%-10s ", name);
         if (dest) {
             s += snprintf_assert(s, top - s, "r%d, ", dest);

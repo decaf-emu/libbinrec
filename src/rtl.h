@@ -263,7 +263,7 @@ typedef enum RTLOpcode {
     /* Memory load and store operations.  Address operands must be of
      * ADDRESS type, offsets must be in [-32768,+32767], and for 8/16-bit
      * loads, the value operand must be of INT32 type.  Behavior is
-     * undefined if the address is not a multiple of the load size. */
+     * undefined if the address is not a multiple of the access size. */
     RTLOP_LOAD,         // dest = *(typeof(dest) *)(src1 + other)
     RTLOP_LOAD_U8,      // dest = *(uint8_t *)(src1 + other)
     RTLOP_LOAD_S8,      // dest = *(int8_t *)(src1 + other)
@@ -285,8 +285,8 @@ typedef enum RTLOpcode {
     RTLOP_STORE_I16_BR, // *(uint16_t *)(src1 + other) = bswap16(src2)
 
     /* Integer atomic operations.  Address operands (src1) must be of
-     * ADDRESS type; other operands may be of any integral type except
-     * ADDRESS, but (for CMPXCHG) they must all match. */
+     * ADDRESS type; other operands may be of any integral type, but (for
+     * CMPXCHG) they must all match. */
     RTLOP_ATOMIC_INC,   // dest = (*src1)++
     RTLOP_CMPXCHG,      // dest = (*src1==src2 ? (*src1 = other, src2) : *src1)
 
@@ -296,10 +296,18 @@ typedef enum RTLOpcode {
     RTLOP_GOTO_IF_Z,    // if (src1 == 0) goto LABEL(other)
     RTLOP_GOTO_IF_NZ,   // if (src1 != 0) goto LABEL(other)
 
-    /* Call to arbitrary host address.  src1 must be of ADDRESS type.
-     * dest, src2, and other are optional, but must be integer type if
-     * given; if src2 is omitted, other must also be omitted. */
+    /* Call to host address.  src1 must be of ADDRESS type. dest, src2, and
+     * other are optional, but must be integer type if given; if src2 is
+     * omitted, other must also be omitted. */
     RTLOP_CALL,         // dest = (*src1)(src2, other)
+    /* Call to host address.  Functionally identical to CALL, but host
+     * translators should avoid effects on translation state as much as
+     * possible (for example, caller-saved registers should not be avoided
+     * even for registers live across a CALL_TRANSPARENT instruction).
+     * This is intended for the pre- and post-instruction callbacks, so
+     * that using them to debug possible library bugs has only minimal
+     * effect on the generated code. */
+    RTLOP_CALL_TRANSPARENT,  // dest = (*src1)(src2, other)
 
     /* Terminator for generated code (returns to caller; the return value
      * is optional) */

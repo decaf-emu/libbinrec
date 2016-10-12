@@ -299,6 +299,9 @@ static CONST_FUNCTION inline uintptr_t align_up(uintptr_t x, unsigned int align)
 
 /*-----------------------------------------------------------------------*/
 
+/* Definition of the handle structure.  The binrec_t type itself is
+ * declared in include/binrec.h. */
+
 struct binrec_t {
 
     /* Handle configuration, as passed to binrec_create(). */
@@ -328,6 +331,10 @@ struct binrec_t {
     /* Settings for inlining. */
     int max_inline_length;
     int max_inline_depth;
+
+    /* Pre- and post-instruction callbacks (NULL if none). */
+    void (*pre_insn_callback)(void *, uint32_t);
+    void (*post_insn_callback)(void *, uint32_t);
 
     /* Map of read-only pages within the guest address space.  Two bits are
      * allocated to each page; the higher-order bit indicates that the

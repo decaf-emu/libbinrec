@@ -31,6 +31,10 @@
  *      Define this to a string containing the expected log messages (if
  *      any) followed by the expected RTL disassembly (if disassembly was
  *      successful).
+ *
+ * If the preprocessor symbols PRE_INSN_CALLBACK or POST_INSN_CALLBACK are
+ * defined, they will be passed to binrec_set_pre_insn_callback() or
+ * binrec_set_post_insn_callback() respectively.
  */
 
 #include "src/common.h"
@@ -53,6 +57,12 @@ int main(void)
     EXPECT(handle = binrec_create_handle(&final_setup));
 
     binrec_set_code_range(handle, 0, sizeof(input) - 1);
+    #ifdef PRE_INSN_CALLBACK
+        binrec_set_pre_insn_callback(handle, PRE_INSN_CALLBACK);
+    #endif
+    #ifdef POST_INSN_CALLBACK
+        binrec_set_post_insn_callback(handle, POST_INSN_CALLBACK);
+    #endif
 
     RTLUnit *unit;
     EXPECT(unit = rtl_create_unit(handle));

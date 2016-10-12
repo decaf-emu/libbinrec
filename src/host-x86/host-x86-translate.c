@@ -1301,7 +1301,7 @@ static bool append_epilogue(HostX86Context *ctx, bool append_ret)
 /*-----------------------------------------------------------------------*/
 
 /**
- * translate_call:  Translate a CALL instruction.
+ * translate_call:  Translate a CALL or CALL_TRANSPARENT instruction.
  *
  * [Parameters]
  *     ctx: Translation context.
@@ -3118,6 +3118,7 @@ static bool translate_block(HostX86Context *ctx, int block_index)
           }  // case RTLOP_GOTO_IF_Z, RTLOP_GOTO_IF_NZ
 
           case RTLOP_CALL:
+          case RTLOP_CALL_TRANSPARENT:
             handle->code_len = code.len;
             if (!translate_call(ctx, block_index, insn_index)) {
                 return false;
