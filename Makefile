@@ -192,6 +192,12 @@ LIBRARY_SOURCES := $(sort $(wildcard src/*.c src/*/*.c))
 LIBRARY_OBJECTS := $(LIBRARY_SOURCES:%.c=%.o)
 TEST_OBJECTS := $(TEST_SOURCES:%.c=%.o)
 TEST_BINS := $(TEST_SOURCES:%.c=%)
+BENCHMARK_SOURCES := $(sort $(wildcard benchmarks/*.c benchmarks/blobs/*.c))
+BENCHMARK_OBJECTS := $(BENCHMARK_SOURCES:%.c=%.o) \
+                     tests/execute.o tests/log-capture.o \
+                     $(patsubst %.c,%_noopt.o,$(wildcard benchmarks/dhrystone/*.c)) \
+                     $(patsubst %.c,%_opt.o,$(wildcard benchmarks/dhrystone/*.c))
+BENCHMARK_BINS := benchmarks/bench
 
 ###########################################################################
 #################### Helper functions and definitions #####################
@@ -440,7 +446,7 @@ clean:
 
 spotless: clean
 	$(ECHO) 'Removing executable and library files'
-	$(Q)rm -f $(SHARED_LIB) $(STATIC_LIB)
+	$(Q)rm -f $(SHARED_LIB) $(STATIC_LIB) $(BENCHMARK_BINS)
 	$(ECHO) 'Removing coverage output'
 	$(Q)rm -f coverage.txt
 
@@ -482,6 +488,23 @@ tests/coverage-tests.h: $(TEST_SOURCES)
 	        echo "TEST($${file_mangled})"; \
 	    done \
 	) >'$@'
+
+#------------------------- Benchmark build rules -------------------------#
+
+benchmarks/bench: $(BENCHMARK_OBJECTS) $(LIBRARY_OBJECTS)
+	$(ECHO) 'Linking $@'
+	$(Q)$(CC) $(ALL_CFLAGS) $(LDFLAGS) -o '$@' $^ $(LIBS)
+
+benchmarks/dhrystone/%_noopt.o: benchmarks/dhrystone/%.c benchmarks/dhrystone/dhry.h
+	$(ECHO) 'Compiling $< -> $@'
+	$(Q)$(CC) -std=c89 -DBENCHMARK_ONLY -DDHRY_PREFIX=dhry_noopt_ \
+	    -o '$@' -c '$<'
+
+benchmarks/dhrystone/%_opt.o: benchmarks/dhrystone/%.c benchmarks/dhrystone/dhry.h
+	$(ECHO) 'Compiling $< -> $@'
+	$(Q)$(CC) -std=c89 -O2 -fno-inline \
+	    -DBENCHMARK_ONLY -DDHRY_PREFIX=dhry_opt_ \
+	    -o '$@' -c '$<'
 
 #----------------------- Common compilation rules ------------------------#
 

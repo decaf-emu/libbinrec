@@ -11,6 +11,7 @@ syntax: glob
 
 syntax: regexp
 
+^benchmarks/bench$
 ^tests/(api|bitutils|endian|memory)/[^.]+(\.exe)?$
 ^tests/(rtl|(guest|host)-[^./]*)/[^./]*/[^.]+(\.exe)?$
 ^tests/coverage$

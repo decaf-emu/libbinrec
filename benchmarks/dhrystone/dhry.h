@@ -127,6 +127,30 @@
  *              non-executed "else" part was added to the "if" statement in
  *              Func_3, and a non-executed "else" part removed from Proc_3.
  *
+ * Changes (2016-10-13, by Andrew Church):
+ *              If the preprocessor symbol BENCHMARK_ONLY is defined, all
+ *              code not part of the benchmark proper (printf() output,
+ *              time measurement, and so on) is omitted from the compiled
+ *              code.  In this case, the main() function is replaced by a
+ *              function dhry_main() which accepts a single parameter, the
+ *              number of iterations for which to run the benchmark, and
+ *              returns a nonzero value on successful completion or zero
+ *              if an error was detected in the computation results.
+ *
+ *              If the preprocessor symbol DHRY_PREFIX is defined, all
+ *              globally-visible identifiers will have this prepended to
+ *              their names.  For example, if DHRY_PREFIX is "dhry_"
+ *              (without quotes), then identifiers will be renamed
+ *              dhry_Proc_1(), dhry_Ptr_Glob, and so on.  In this case,
+ *              the entry point will also be named "main" with the given
+ *              prefix (dhry_main() in this example).
+ *
+ *              The #include of <stdio.h> for strcpy() and strcmp() has
+ *              been changed to the correct <string.h>.
+ *
+ *              The two Rec_Type buffers allocated in the main routine are
+ *              now allocated directly on the stack rather than via malloc().
+ *
  ***************************************************************************
  *
  * Defines:     The following "Defines" are possible:
@@ -347,6 +371,8 @@
 
 /* Compiler and system dependent definitions: */
 
+#ifndef BENCHMARK_ONLY
+
 #ifndef TIME
 #define TIMES
 #endif
@@ -361,6 +387,8 @@
 
 #define Mic_secs_Per_Second     1000000.0
                 /* Berkeley UNIX C returns process times in seconds/HZ */
+
+#endif  /* BENCHMARK_ONLY */
 
 #ifdef  NOSTRUCTASSIGN
 #define structassign(d, s)      memcpy(&(d), &(s), sizeof(d))
@@ -383,7 +411,7 @@
 
 /* General definitions: */
 
-#include <stdio.h>
+#include <string.h>
                 /* for strcpy, strcmp */
 
 #define Null 0 
@@ -420,4 +448,42 @@ typedef struct record
           } variant;
       } Rec_Type, *Rec_Pointer;
 
+#ifdef DHRY_PREFIX
 
+#define PASTE2(prefix,name)  prefix ## name
+#define PASTE(prefix,name)   PASTE2(prefix, name)
+
+#define Proc_1  PASTE(DHRY_PREFIX, Proc_1)
+#define Proc_2  PASTE(DHRY_PREFIX, Proc_2)
+#define Proc_3  PASTE(DHRY_PREFIX, Proc_3)
+#define Proc_4  PASTE(DHRY_PREFIX, Proc_4)
+#define Proc_5  PASTE(DHRY_PREFIX, Proc_5)
+#define Proc_6  PASTE(DHRY_PREFIX, Proc_6)
+#define Proc_7  PASTE(DHRY_PREFIX, Proc_7)
+#define Proc_8  PASTE(DHRY_PREFIX, Proc_8)
+#define Func_1  PASTE(DHRY_PREFIX, Func_1)
+#define Func_2  PASTE(DHRY_PREFIX, Func_2)
+#define Func_3  PASTE(DHRY_PREFIX, Func_3)
+#define main    PASTE(DHRY_PREFIX, main)
+
+#define Ptr_Glob        PASTE(DHRY_PREFIX, Ptr_Glob)
+#define Next_Ptr_Glob   PASTE(DHRY_PREFIX, Next_Ptr_Glob)
+#define Int_Glob        PASTE(DHRY_PREFIX, Int_Glob)
+#define Bool_Glob       PASTE(DHRY_PREFIX, Bool_Glob)
+#define Ch_1_Glob       PASTE(DHRY_PREFIX, Ch_1_Glob)
+#define Ch_2_Glob       PASTE(DHRY_PREFIX, Ch_2_Glob)
+#define Arr_1_Glob      PASTE(DHRY_PREFIX, Arr_1_Glob)
+#define Arr_2_Glob      PASTE(DHRY_PREFIX, Arr_2_Glob)
+
+#endif  /* DHRY_PREFIX */
+
+#ifdef BENCHMARK_ONLY
+
+#ifndef main
+#define main  dhry_main
+#endif
+
+extern int main(int Number_Of_Runs);
+                /* Benchmark entry point */
+
+#endif

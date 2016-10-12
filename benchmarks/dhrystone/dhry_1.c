@@ -28,15 +28,19 @@ char            Ch_1_Glob,
 int             Arr_1_Glob [50];
 int             Arr_2_Glob [50] [50];
 
-extern char     *malloc ();
 Enumeration     Func_1 ();
   /* forward declaration necessary since Enumeration may not simply be int */
 
 #ifndef REG
-        Boolean Reg = false;
 #define REG
         /* REG becomes defined as empty */
         /* i.e. no register variables   */
+#endif
+
+#ifndef BENCHMARK_ONLY
+
+#ifndef REG
+        Boolean Reg = false;
 #else
         Boolean Reg = true;
 #endif
@@ -69,6 +73,13 @@ float           Microseconds,
 main ()
 /*****/
 
+#else  /* BENCHMARK_ONLY */
+
+int main(Number_Of_Runs)
+REG int Number_Of_Runs;
+
+#endif
+
   /* main program, corresponds to procedures        */
   /* Main and Proc_0 in the Ada version             */
 {
@@ -80,12 +91,17 @@ main ()
         Str_30          Str_1_Loc;
         Str_30          Str_2_Loc;
   REG   int             Run_Index;
+#ifndef BENCHMARK_ONLY
   REG   int             Number_Of_Runs;
+#endif
+
+        Rec_Type        Buf_Next_Ptr_Glob;
+        Rec_Type        Buf_Ptr_Glob;
 
   /* Initializations */
 
-  Next_Ptr_Glob = (Rec_Pointer) malloc (sizeof (Rec_Type));
-  Ptr_Glob = (Rec_Pointer) malloc (sizeof (Rec_Type));
+  Next_Ptr_Glob = &Buf_Next_Ptr_Glob;
+  Ptr_Glob = &Buf_Ptr_Glob;
 
   Ptr_Glob->Ptr_Comp                    = Next_Ptr_Glob;
   Ptr_Glob->Discr                       = Ident_1;
@@ -100,6 +116,8 @@ main ()
         /* Arr_2_Glob [8][7] would have an undefined value.             */
         /* Warning: With 16-Bit processors and Number_Of_Runs > 32000,  */
         /* overflow may occur for this array element.                   */
+
+#ifndef BENCHMARK_ONLY
 
   printf ("\n");
   printf ("Dhrystone Benchmark, Version 2.1 (Language: C)\n");
@@ -135,6 +153,8 @@ main ()
 #ifdef TIME
   Begin_Time = time ( (long *) 0);
 #endif
+
+#endif  /* BENCHMARK_ONLY */
 
   for (Run_Index = 1; Run_Index <= Number_Of_Runs; ++Run_Index)
   {
@@ -181,6 +201,8 @@ main ()
       /* Int_1_Loc == 5 */
 
   } /* loop "for Run_Index" */
+
+#ifndef BENCHMARK_ONLY
 
   /**************/
   /* Stop timer */
@@ -273,6 +295,32 @@ main ()
     printf ("%6.1f \n", Dhrystones_Per_Second);
     printf ("\n");
   }
+
+#else  /* BENCHMARK_ONLY */
+
+  return Int_Glob == 5
+      && Bool_Glob == 1
+      && Ch_1_Glob == 'A'
+      && Ch_2_Glob == 'B'
+      && Arr_1_Glob[8] == 7
+      && Arr_2_Glob[8][7] == Number_Of_Runs + 10
+      && Ptr_Glob->Discr == 0
+      && Ptr_Glob->variant.var_1.Enum_Comp == 2
+      && Ptr_Glob->variant.var_1.Int_Comp == 17
+      && strcmp(Ptr_Glob->variant.var_1.Str_Comp, "DHRYSTONE PROGRAM, SOME STRING") == 0
+      && Next_Ptr_Glob->Ptr_Comp == Ptr_Glob->Ptr_Comp
+      && Next_Ptr_Glob->Discr == 0
+      && Next_Ptr_Glob->variant.var_1.Enum_Comp == 1
+      && Next_Ptr_Glob->variant.var_1.Int_Comp == 18
+      && strcmp(Next_Ptr_Glob->variant.var_1.Str_Comp, "DHRYSTONE PROGRAM, SOME STRING") == 0
+      && Int_1_Loc == 5
+      && Int_2_Loc == 13
+      && Int_3_Loc == 7
+      && Enum_Loc == 1
+      && strcmp(Str_1_Loc, "DHRYSTONE PROGRAM, 1'ST STRING") == 0
+      && strcmp(Str_2_Loc, "DHRYSTONE PROGRAM, 2'ND STRING") == 0;
+
+#endif
   
 }
 
