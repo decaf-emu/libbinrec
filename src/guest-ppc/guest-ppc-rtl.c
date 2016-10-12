@@ -747,11 +747,13 @@ static void translate_branch_label(
     GuestPPCContext *ctx, uint32_t address, int BO, int BI,
     uint32_t target, int target_label)
 {
+    const binrec_t * const handle = ctx->handle;
     RTLUnit * const unit = ctx->unit;
 
     int skip_label;
-    if ((BO & 0x14) == 0) {
-        /* Need an extra label in case the first half of the test fails. */
+    if ((BO & 0x14) == 0
+     || ((BO & 0x14) != 0x14 && handle->use_branch_callback)) {
+        /* Need an extra label in case a non-final test fails. */
         skip_label = rtl_alloc_label(unit);
     } else {
         skip_label = 0;
@@ -780,19 +782,38 @@ static void translate_branch_label(
     } else {
         store_live_regs(ctx, true, false);
     }
+    /* All dirty registers have been stored at this point. */
 
     if (!(BO & 0x10)) {
         const int crN = get_cr(ctx, BI >> 2);
         const int test = rtl_alloc_register(unit, RTLTYPE_INT32);
         rtl_add_insn(unit, RTLOP_ANDI, test, crN, 0, 1 << (3 - (BI & 3)));
-        branch_op = BO & 0x08 ? RTLOP_GOTO_IF_NZ : RTLOP_GOTO_IF_Z;
-        test_reg = test;
+        if (handle->use_branch_callback) {
+            rtl_add_insn(unit, BO & 0x08 ? RTLOP_GOTO_IF_Z : RTLOP_GOTO_IF_NZ,
+                         0, test, 0, skip_label);
+        } else {
+            branch_op = BO & 0x08 ? RTLOP_GOTO_IF_NZ : RTLOP_GOTO_IF_Z;
+            test_reg = test;
+        }
     }
 
-    if (ctx->handle->post_insn_callback) {
+    if (handle->use_branch_callback || handle->post_insn_callback) {
         set_nia_imm(ctx, target);
-        post_insn_callback(ctx, address);
     }
+    post_insn_callback(ctx, address);
+    if (handle->use_branch_callback) {
+        ASSERT(branch_op == RTLOP_GOTO);
+        const int func = rtl_alloc_register(unit, RTLTYPE_ADDRESS);
+        rtl_add_insn(unit, RTLOP_LOAD, func, ctx->psb_reg, 0,
+                     ctx->handle->setup.state_offset_branch_callback);
+        const int rtl_address = rtl_imm32(unit, address);
+        const int callback_result = rtl_alloc_register(unit, RTLTYPE_INT32);
+        rtl_add_insn(unit, RTLOP_CALL,
+                     callback_result, func, ctx->psb_reg, rtl_address);
+        rtl_add_insn(unit, RTLOP_GOTO_IF_Z,
+                     0, callback_result, 0, ctx->epilogue_label);
+    }
+
     rtl_add_insn(unit, branch_op, 0, test_reg, 0, target_label);
 
     if (skip_label) {

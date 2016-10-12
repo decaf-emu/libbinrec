@@ -32,6 +32,9 @@
  *      any) followed by the expected RTL disassembly (if disassembly was
  *      successful).
  *
+ * If the preprocessor symbol BRANCH_CALLBACK is defined, the branch
+ * callback will be enabled.
+ *
  * If the preprocessor symbols PRE_INSN_CALLBACK or POST_INSN_CALLBACK are
  * defined, they will be passed to binrec_set_pre_insn_callback() or
  * binrec_set_post_insn_callback() respectively.
@@ -57,6 +60,9 @@ int main(void)
     EXPECT(handle = binrec_create_handle(&final_setup));
 
     binrec_set_code_range(handle, 0, sizeof(input) - 1);
+    #ifdef BRANCH_CALLBACK
+        binrec_enable_branch_callback(handle, true);
+    #endif
     #ifdef PRE_INSN_CALLBACK
         binrec_set_pre_insn_callback(handle, PRE_INSN_CALLBACK);
     #endif

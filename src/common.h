@@ -332,6 +332,9 @@ struct binrec_t {
     int max_inline_length;
     int max_inline_depth;
 
+    /* Is the branch callback enabled? */
+    bool use_branch_callback;
+
     /* Pre- and post-instruction callbacks (NULL if none). */
     void (*pre_insn_callback)(void *, uint32_t);
     void (*post_insn_callback)(void *, uint32_t);

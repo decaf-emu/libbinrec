@@ -459,6 +459,14 @@ void binrec_clear_readonly_regions(binrec_t *handle)
 
 /*-----------------------------------------------------------------------*/
 
+void binrec_enable_branch_callback(binrec_t *handle, int enable)
+{
+    ASSERT(handle);
+    handle->use_branch_callback = (enable != 0);
+}
+
+/*-----------------------------------------------------------------------*/
+
 void binrec_set_pre_insn_callback(binrec_t *handle,
                                   void (*callback)(void *, uint32_t))
 {

@@ -32,6 +32,7 @@ static const binrec_setup_t setup = {
     .state_offset_timebase_handler = 0x3C8,
     .state_offset_sc_handler = 0x3D0,
     .state_offset_trap_handler = 0x3D8,
+    .state_offset_branch_callback = 0x3E0,
 };
 
 #endif  // TESTS_GUEST_PPC_INSN_COMMON_H

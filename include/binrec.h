@@ -275,9 +275,13 @@ typedef struct binrec_setup_t {
     int state_offset_sc_handler;
     /* Pointer to function to handle trap exceptions */
     int state_offset_trap_handler;
+    /* Pointer to function to call at intra-unit branches (see
+     * binrec_enable_branch_callback()) */
+    int state_offset_branch_callback;
 
     /**
-     * userdata:  Opaque pointer which is passed to all callback functions.
+     * userdata:  Opaque pointer which is passed to all callback functions
+     * below.
      */
     void *userdata;
 
@@ -890,6 +894,43 @@ extern int binrec_add_readonly_region(binrec_t *handle,
 extern void binrec_clear_readonly_regions(binrec_t *handle);
 
 /**
+ * binrec_enable_branch_callback:  Set whether to call a function (pointed
+ * to by the value at the PSB offset given by state_offset_branch_callback)
+ * immediately before a branch to another instruction within the same
+ * translation unit.  If enabled, the callback is called immediately before
+ * taking a branch within the translated code; if the called function
+ * returns zero, the translated code will return to its caller rather than
+ * continuing execution at the branch target.   This can be used to safely
+ * interrupt execution of the guest code ("safely" in the sense of the PSB
+ * being fully updated) at a finer granularity than an entire translation
+ * unit.  The callback is not called for conditional branches which are not
+ * taken or for branches which would return from the translated code in any
+ * case (such as indirect branches).
+ *
+ * The callback receives two parameters: the processor state block pointer
+ * passed to the translated code and the address of the branch instruction,
+ * and returns an int indicating whether to continue execution (nonzero) or
+ * return from the translated code (zero).
+ *
+ * Note that the state of the PSB is indeterminate when the callback is
+ * called; each register field will have either the same value it had at
+ * the start of the unit or some value which was subsequently stored to
+ * that register, but in general, register fields will not contain current
+ * register values.  As an exception, the instruction pointer field (nia
+ * for PowerPC hosts) will always contain the target address of the branch.
+ * If the callback function returns zero to terminate execution, the PSB
+ * will be updated as usual on exit from the translated code.
+ *
+ * Calling this function has no effect on already-translated code.
+ *
+ * [Parameters]
+ *     handle: Handle to operate on.
+ *     enable: True (nonzero) to enable the branch callback, false (zero)
+ *         to disable it.
+ */
+extern void binrec_enable_branch_callback(binrec_t *handle, int enable);
+
+/**
  * binrec_set_pre_insn_callback:  Set a callback function which will be
  * called immediately before executing each guest instruction.  This can
  * be used, for example, to log an execution trace or to record the state
@@ -897,7 +938,7 @@ extern void binrec_clear_readonly_regions(binrec_t *handle);
  * existing callback.
  *
  * The callback receives two parameters: the processor state block pointer
- * passed to the translated code, and the address of the instruction about
+ * passed to the translated code and the address of the instruction about
  * to be executed.
  *
  * Calling this function has no effect on already-translated code.
@@ -926,8 +967,11 @@ extern void binrec_set_pre_insn_callback(binrec_t *handle,
  * an existing callback.
  *
  * The callback receives two parameters: the processor state block pointer
- * passed to the translated code, and the address of the instruction that
+ * passed to the translated code and the address of the instruction that
  * was just executed.
+ *
+ * If both this callback and the branch callback are enabled, this callback
+ * will be called before the branch callback for taken intra-unit branches.
  *
  * Calling this function has no effect on already-translated code.
  *
