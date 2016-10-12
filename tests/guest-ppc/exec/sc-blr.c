@@ -38,9 +38,13 @@ int main(void)
     EXPECT(memory = malloc(0x10000));
 
     static const uint32_t ppc_code[] = {
+        0x7C0802A6,  // mflr r0
+        0x3860101B,  // li r3,0x101B
+        0x7C6803A6,  // mtlr r3
         0x38600001,  // li r3,1
         0x44000002,  // sc
-        0x38600002,  // li r3,2
+        0x4E800020,  // blr
+        0x7C0803A6,  // mtlr r0
         0x4E800020,  // blr
     };
     const uint32_t start_address = 0x1000;
@@ -60,9 +64,9 @@ int main(void)
     }
     EXPECT_STREQ(get_log_messages(), NULL);
 
-    EXPECT_EQ(state.gpr[3], 2);
+    EXPECT_EQ(state.gpr[3], 1);
     EXPECT_EQ(sc_r3, 1);
-    EXPECT_EQ(sc_nia, start_address + 8);
+    EXPECT_EQ(sc_nia, 0x1018);
 
     free(memory);
     return EXIT_SUCCESS;

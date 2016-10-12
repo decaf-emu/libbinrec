@@ -2738,7 +2738,14 @@ static inline void translate_insn(
             ASSERT(next_insn == 0x4E800020);
             is_sc_blr = true;
         }
-        const int nia = is_sc_blr ? get_lr(ctx) : rtl_imm32(unit, address + 4);
+        int nia;
+        if (is_sc_blr) {
+            const int lr = get_lr(ctx);
+            nia = rtl_alloc_register(unit, RTLTYPE_INT32);
+            rtl_add_insn(unit, RTLOP_ANDI, nia, lr, 0, -4);
+        } else {
+            nia = rtl_imm32(unit, address + 4);
+        }
         store_live_regs(ctx, true, true);
         set_nia(ctx, nia);
         guest_ppc_flush_state(ctx);
