@@ -206,7 +206,7 @@ static bool call_guest(GuestArch arch, const Benchmark *benchmark, int count)
                 benchmark->id, arch_names[arch]);
         return false;
     }
-    void *memory = malloc(blob->reserve);
+    void *memory = alloc_guest_memory(blob->reserve);
     if (!memory) {
         fprintf(stderr, "Failed to reserve guest memory (0x%X bytes)\n",
                 blob->reserve);
@@ -232,11 +232,11 @@ static bool call_guest(GuestArch arch, const Benchmark *benchmark, int count)
     if (!call_guest_code(binrec_arch, state, memory, blob->base + blob->entry,
                          NULL)) {
         fprintf(stderr, "Guest code execution failed\n");
-        free(memory);
+        free_guest_memory(memory, blob->reserve);
         return false;
     }
 
-    free(memory);
+    free_guest_memory(memory, blob->reserve);
     return *retval_ptr != 0;
 }
 
