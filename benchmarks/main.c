@@ -80,6 +80,17 @@ static const Benchmark benchmarks[] = {
     },
 };
 
+/*-----------------------------------------------------------------------*/
+
+/* Parameters from the command line. */
+
+static GuestArch arch;
+static const Benchmark *benchmark;
+static int count;
+static unsigned int opt_common;
+static unsigned int opt_guest;
+static unsigned int opt_host;
+
 /*************************************************************************/
 /*************************** Utility routines ****************************/
 /*************************************************************************/
@@ -91,8 +102,8 @@ static const Benchmark benchmarks[] = {
  */
 static int find_guest_arch(const char *name)
 {
-    for (int arch = 0; arch < GUEST_ARCH__NUM; arch++) {
-        if (strcmp(name, arch_names[arch]) == 0) {
+    for (int i = 0; i < GUEST_ARCH__NUM; i++) {
+        if (strcmp(name, arch_names[i]) == 0) {
             return arch;
         }
     }
@@ -118,52 +129,111 @@ static const Benchmark *find_benchmark(const char *id)
 /*-----------------------------------------------------------------------*/
 
 /**
- * process_command_line:  Process the command line arguments and return
- * the selected architecture, benchmark, and iteration count.
+ * process_command_line:  Process command line arguments.
  *
  * [Parameters]
  *     argc: Command line argument count.
  *     argv: Command line argument vector.
- *     arch_ret: Pointer to variable to receive the selected guest
- *         architecture.
- *     benchmark_ret: Pointer to variable to receive a pointer to the
- *         Benchmark structure for the selected benchmark.
- *     count_ret: Pointer to variable to receive the iteration count.
  * [Return value]
  *     True on success, false on error.
  */
-static bool process_command_line(int argc, char **argv, GuestArch *arch_ret,
-                                 const Benchmark **benchmark_ret,
-                                 int *count_ret)
+static bool process_command_line(int argc, char **argv)
 {
-    if (argc > 1 && (strcmp(argv[1], "help") == 0
-                     || strcmp(argv[1], "-h") == 0
-                     || strncmp(argv[1], "--help", strlen(argv[1])) == 0)) {
-        fprintf(stderr, "Usage: %s ARCH-NAME BENCHMARK ITERATION-COUNT\n",
-                argv[0]);
-        fprintf(stderr, "\nValid architectures:\n    native\n");
-        for (int i = 0; i < GUEST_ARCH__NUM; i++) {
-            fprintf(stderr, "    %s\n", arch_names[i]);
+    const char *arg_arch = NULL;
+    const char *arg_benchmark = NULL;
+    const char *arg_count = NULL;
+
+    for (int argi = 1; argi < argc; argi++) {
+        if (strcmp(argv[argi], "help") == 0
+         || strcmp(argv[argi], "-h") == 0
+         || strncmp(argv[argi], "--help", strlen(argv[argi])) == 0) {
+            fprintf(stderr, "Usage: %s [OPTIONS] ARCH-NAME BENCHMARK"
+                    " ITERATION-COUNT\n", argv[0]);
+            fprintf(stderr, "\nOptions:\n"
+                    "    -O[LEVEL]   Select optimizations.\n"
+                    "        -O0         Disable all optimizations (default).\n"
+                    "        -O, -O1     Enable lightweight optimizations.\n"
+                    "        -O2         Enable stronger but more expensive optimizations.\n"
+                    "    -O<NAME>   Enable specific optimizations.\n"
+                    "        -Obasic            Basic optimizations\n"
+                    "        -Odecondition      Branch deconditioning\n"
+                    "        -Odeep-data-flow   Deep data flow analysis (expensive)\n"
+                    "        -Odse              Dead store elimination\n"
+                    "        -Ofold-constants   Constant folding\n"
+            );
+            fprintf(stderr, "\nValid architectures:\n    native\n");
+            for (int i = 0; i < GUEST_ARCH__NUM; i++) {
+                fprintf(stderr, "    %s\n", arch_names[i]);
+            }
+            fprintf(stderr, "\nAvailable benchmarks:\n");
+            int max_len = 0;
+            for (int i = 0; i < lenof(benchmarks); i++) {
+                max_len = max(max_len, (int)strlen(benchmarks[i].id));
+            }
+            for (int i = 0; i < lenof(benchmarks); i++) {
+                fprintf(stderr, "    %-*s  %s\n",
+                        max_len, benchmarks[i].id, benchmarks[i].name);
+            }
+            fprintf(stderr,
+                    "\n"
+                    "Prints the time consumed by the benchmark to stdout in the format:\n"
+                    "    TOTAL-TIME = USER-TIME + SYSTEM-TIME\n"
+                    "where TOTAL-TIME, USER-TIME, and SYSTEM-TIME are in seconds.\n"
+                    "If the benchmark does not complete successfully, nothing is printed.\n");
+            return false;
+        } else if (*argv[argi] == '-') {
+            if (argv[argi][1] == 'O') {
+                const char *name = &argv[argi][2];
+                if (!*name || strcmp(name, "1") == 0) {
+                    opt_common = BINREC_OPT_BASIC
+                               | BINREC_OPT_DECONDITION
+                               | BINREC_OPT_DSE
+                               | BINREC_OPT_FOLD_CONSTANTS;
+                    opt_guest = 0;
+                    opt_host = 0;
+                } else if (strcmp(name, "0") == 0) {
+                    opt_common = 0;
+                    opt_guest = 0;
+                    opt_host = 0;
+                } else if (*name >= '2' && *name <= '9') {
+                    opt_common = BINREC_OPT_BASIC
+                               | BINREC_OPT_DECONDITION
+                               | BINREC_OPT_DEEP_DATA_FLOW
+                               | BINREC_OPT_DSE
+                               | BINREC_OPT_FOLD_CONSTANTS;
+                    opt_guest = 0;
+                    opt_host = 0;
+                } else if (strcmp(name, "basic") == 0) {
+                    opt_common |= BINREC_OPT_BASIC;
+                } else if (strcmp(name, "decondition") == 0) {
+                    opt_common |= BINREC_OPT_DECONDITION;
+                } else if (strcmp(name, "deep-data-flow") == 0) {
+                    opt_common |= BINREC_OPT_DEEP_DATA_FLOW;
+                } else if (strcmp(name, "dse") == 0) {
+                    opt_common |= BINREC_OPT_DSE;
+                } else if (strcmp(name, "fold-constants") == 0) {
+                    opt_common |= BINREC_OPT_FOLD_CONSTANTS;
+                } else {
+                    fprintf(stderr, "Unknown optimization flag %s\n", name);
+                    goto usage;
+                }
+            } else {
+                fprintf(stderr, "Unknown option %s\n", argv[argi]);
+                goto usage;
+            }
+        } else if (!arg_arch) {
+            arg_arch = argv[argi];
+        } else if (!arg_benchmark) {
+            arg_benchmark = argv[argi];
+        } else if (!arg_count) {
+            arg_count = argv[argi];
+        } else {
+            fprintf(stderr, "Wrong number of arguments\n");
+            goto usage;
         }
-        fprintf(stderr, "\nAvailable benchmarks:\n");
-        int max_len = 0;
-        for (int i = 0; i < lenof(benchmarks); i++) {
-            max_len = max(max_len, (int)strlen(benchmarks[i].id));
-        }
-        for (int i = 0; i < lenof(benchmarks); i++) {
-            fprintf(stderr, "    %-*s  %s\n",
-                    max_len, benchmarks[i].id, benchmarks[i].name);
-        }
-        fprintf(stderr,
-                "\n"
-                "Prints the time consumed by the benchmark to stdout in the format:\n"
-                "    TOTAL-TIME = USER-TIME + SYSTEM-TIME\n"
-                "where TOTAL-TIME, USER-TIME, and SYSTEM-TIME are in seconds.\n"
-                "If the benchmark does not complete successfully, nothing is printed.\n");
-        return false;
     }
 
-    if (argc != 4) {
+    if (!arg_count) {
         fprintf(stderr, "Wrong number of arguments\n");
       usage:
         fprintf(stderr, "Usage: %s ARCH-NAME BENCHMARK ITERATION-COUNT\n",
@@ -172,26 +242,26 @@ static bool process_command_line(int argc, char **argv, GuestArch *arch_ret,
         return false;
     }
 
-    if (strcmp(argv[1], "native") == 0) {
-        *arch_ret = GUEST_ARCH_NATIVE;
+    if (strcmp(arg_arch, "native") == 0) {
+        arch = GUEST_ARCH_NATIVE;
     } else {
-        *arch_ret = find_guest_arch(argv[1]);
-        if (*arch_ret == GUEST_ARCH_INVALID) {
-            fprintf(stderr, "Unknown architecture name: %s\n", argv[1]);
+        arch = find_guest_arch(arg_arch);
+        if (arch == GUEST_ARCH_INVALID) {
+            fprintf(stderr, "Unknown architecture name: %s\n", arg_arch);
             goto usage;
         }
     }
 
-    *benchmark_ret = find_benchmark(argv[2]);
-    if (!*benchmark_ret) {
-        fprintf(stderr, "Unknown benchmark: %s\n", argv[2]);
+    benchmark = find_benchmark(arg_benchmark);
+    if (!benchmark) {
+        fprintf(stderr, "Unknown benchmark: %s\n", arg_benchmark);
         goto usage;
     }
 
     char *eos;
-    *count_ret = (int)strtol(argv[3], &eos, 0);
-    if (*eos || *count_ret <= 0) {
-        fprintf(stderr, "Invalid iteration count: %s\n", argv[3]);
+    count = (int)strtol(arg_count, &eos, 0);
+    if (*eos || count <= 0) {
+        fprintf(stderr, "Invalid iteration count: %s\n", arg_count);
         goto usage;
     }
 
@@ -201,17 +271,48 @@ static bool process_command_line(int argc, char **argv, GuestArch *arch_ret,
 /*-----------------------------------------------------------------------*/
 
 /**
- * call_guest:  Call the entry point for the selected guest architecture
- * and benchmark, and return its result.
+ * call_native:  Call the native entry point for the selected benchmark,
+ * and return its result.
  *
- * [Parameters]
- *     arch: Guest architecture.
- *     benchmark: Pointer to Benchmark structure for the benchmark to run.
- *     count: Iteration count.
  * [Return value]
  *     True if the benchmark completed successfully, false on error.
  */
-static bool call_guest(GuestArch arch, const Benchmark *benchmark, int count)
+static bool call_native(void)
+{
+    if (benchmark->native_init) {
+        (*benchmark->native_init)();
+    }
+    const bool result = (*benchmark->native_main)(count);
+    if (!result) {
+        fprintf(stderr, "Benchmark reported failure\n");
+    }
+    if (benchmark->native_fini) {
+        (*benchmark->native_fini)();
+    }
+    return result;
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
+ * configure_binrec:  Configure a libbinrec handle for translation.
+ * Callback passed to call_guest_code().
+ */
+static void configure_binrec(binrec_t *handle)
+{
+    binrec_set_optimization_flags(handle, opt_common, opt_guest, opt_host);
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
+ * call_guest:  Call the entry point for the selected guest architecture
+ * and benchmark, and return its result.
+ *
+ * [Return value]
+ *     True if the benchmark completed successfully, false on error.
+ */
+static bool call_guest(void)
 {
     binrec_arch_t binrec_arch;
     void *state;
@@ -249,14 +350,15 @@ static bool call_guest(GuestArch arch, const Benchmark *benchmark, int count)
 
     bool success = false;
 
-    if (blob->init
-     && !call_guest_code(binrec_arch, state, memory, blob->init, NULL)) {
+    if (blob->init && !call_guest_code(binrec_arch, state, memory, blob->init,
+                                       configure_binrec)) {
         fprintf(stderr, "Guest code init() execution failed\n");
         goto done;
     }
 
     *arg_ptr = count;
-    if (!call_guest_code(binrec_arch, state, memory, blob->main, NULL)) {
+    if (!call_guest_code(binrec_arch, state, memory, blob->main,
+                         configure_binrec)) {
         fprintf(stderr, "Guest code main() execution failed\n");
         goto done;
     }
@@ -266,8 +368,8 @@ static bool call_guest(GuestArch arch, const Benchmark *benchmark, int count)
         fprintf(stderr, "Benchmark reported failure\n");
     }
 
-    if (blob->fini
-     && !call_guest_code(binrec_arch, state, memory, blob->fini, NULL)) {
+    if (blob->fini && !call_guest_code(binrec_arch, state, memory, blob->fini,
+                                       configure_binrec)) {
         fprintf(stderr, "Guest code fini() execution failed\n");
         success = false;
         goto done;
@@ -284,10 +386,7 @@ static bool call_guest(GuestArch arch, const Benchmark *benchmark, int count)
 
 int main(int argc, char **argv)
 {
-    GuestArch arch;
-    const Benchmark *benchmark;
-    int count;
-    if (!process_command_line(argc, argv, &arch, &benchmark, &count)) {
+    if (!process_command_line(argc, argv)) {
         return EXIT_FAILURE;
     }
 
@@ -296,18 +395,9 @@ int main(int argc, char **argv)
 
     int result;
     if (arch == GUEST_ARCH_NATIVE) {
-        if (benchmark->native_init) {
-            (*benchmark->native_init)();
-        }
-        result = (*benchmark->native_main)(count);
-        if (!result) {
-            fprintf(stderr, "Benchmark reported failure\n");
-        }
-        if (benchmark->native_fini) {
-            (*benchmark->native_fini)();
-        }
+        result = call_native();
     } else {
-        result = call_guest(arch, benchmark, count);
+        result = call_guest();
     }
     if (!result) {
         return EXIT_FAILURE;

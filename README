@@ -73,6 +73,23 @@ constants and functions, and wraps most functions in C++ classes for
 convenience.
 
 
+Performance
+-----------
+The following figures were obtained by running the included benchmark
+tool (build with "make benchmarks/bench") on an Intel Core i7-4770S
+running at a clock speed of 3.1GHz.  In all cases, translated code was
+cached using a flat array of translated units (one entry per byte in
+the guest address space).
+
+    Architecture  | dhry_noopt  |  dhry_opt   |
+    /optimization | (MDhry/sec) | (MDhry/sec) |
+   ---------------+-------------+-------------+
+    native        |    15.4     |    35.0     |
+    ppc32 -O0     |     1.95    |     2.65    |
+    ppc32 -O1     |     1.97    |     2.71    |
+    ppc32 -O2     |     2.04    |     2.79    |
+
+
 Limitations
 -----------
 libbinrec assumes that the input program it is given is valid machine
