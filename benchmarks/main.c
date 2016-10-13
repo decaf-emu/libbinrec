@@ -235,7 +235,7 @@ static bool call_guest(GuestArch arch, const Benchmark *benchmark, int count)
       case GUEST_ARCH_PPC_7XX: {
         static PPCState ppc_state;
         memset(&ppc_state, 0, sizeof(ppc_state));
-        ppc_state.gpr[1] = blob->base;
+        ppc_state.gpr[1] = blob->base - 8;  // Leave space for first LR store!
         arg_ptr = &ppc_state.gpr[3];
         retval_ptr = &ppc_state.gpr[3];
         binrec_arch = BINREC_ARCH_PPC_7XX;
