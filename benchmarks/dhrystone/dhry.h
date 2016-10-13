@@ -128,28 +128,79 @@
  *              Func_3, and a non-executed "else" part removed from Proc_3.
  *
  * Changes (2016-10-13, by Andrew Church):
+ *              Initialization of global data has been moved to a separate
+ *              Init() function, which is called from main().  Init() also
+ *              also includes statically declared Rec_Type buffers for the
+ *              Ptr_Glob and Next_Ptr_Glob variables rather than allocating
+ *              those buffers by calling malloc(); this removes the only
+ *              use of dynamically allocated memory in the code.
+ *
  *              If the preprocessor symbol BENCHMARK_ONLY is defined, all
  *              code not part of the benchmark proper (printf() output,
  *              time measurement, and so on) is omitted from the compiled
  *              code.  In this case, the main() function is replaced by a
- *              function dhry_main() which accepts a single parameter, the
- *              number of iterations for which to run the benchmark, and
- *              returns a nonzero value on successful completion or zero
- *              if an error was detected in the computation results.
+ *              function Main() (note capitalization) which accepts a
+ *              single parameter, the number of iterations for which to run
+ *              the benchmark, and returns a nonzero value on successful
+ *              completion or zero if an error was detected in the
+ *              computation results.  In this usage, the caller must call
+ *              Init() before Main().
  *
  *              If the preprocessor symbol DHRY_PREFIX is defined, all
  *              globally-visible identifiers will have this prepended to
  *              their names.  For example, if DHRY_PREFIX is "dhry_"
  *              (without quotes), then identifiers will be renamed
  *              dhry_Proc_1(), dhry_Ptr_Glob, and so on.  In this case,
- *              the entry point will also be named "main" with the given
- *              prefix (dhry_main() in this example).
+ *              the entry points will also receive the given prefix
+ *              (dhry_Init() and dhry_Main() in this example).
  *
  *              The #include of <stdio.h> for strcpy() and strcmp() has
- *              been changed to the correct <string.h>.
+ *              been changed to the correct <string.h>.  <stdio.h> is
+ *              still included (for printf() and scanf()) if BENCHMARK_ONLY
+ *              is not defined.
  *
- *              The two Rec_Type buffers allocated in the main routine are
- *              now allocated directly on the stack rather than via malloc().
+ *              The times() and time() functions are now declared by
+ *              including the appropriate system header (<sys/time.h> and
+ *              <time.h>, respectively) rather than writing the declaration
+ *              inline, since the existing inline declarations were not
+ *              correct.  For times(), if HZ is not defined at compilation
+ *              time, its value is obtained by calling the POSIX sysconf()
+ *              function for the CLK_TCK parameter.
+ *
+ *              The version number output by the program (if BENCHMARK_ONLY
+ *              is not defined) has been changed to "2.1-AC" to reflect the
+ *              above changes.
+ *
+ *              Note that none[*] of these changes affect code within the
+ *              measurement loop.  The only impact on timing is that in a
+ *              BENCHMARK_ONLY compilation, assuming the caller begins
+ *              timing immediately before calling the Main function and
+ *              ends timing as soon as that function returns, the act of
+ *              calling Main() itself (including function prologue and
+ *              epilogue) and the test for correct results are included in
+ *              the total time.  On processors used in current-generation
+ *              personal computers and similar devices, this additional
+ *              time is expected to be well below the threshold of noise
+ *              from system interrupts and other external interference, so
+ *              times measured in the manner described above should be
+ *              compatible with previously measured Dhrystone 2.1 times.
+ *
+ *              [*] The change from <stdio.h> to <string.h> could, in
+ *                  theory, affect the precise sequence of instructions
+ *                  used to call strcpy() and strcmp().  The conditions for
+ *                  this to occur are that <stdio.h> does not include
+ *                  <string.h> or otherwise provide equivalent declarations
+ *                  of strcpy() and strcmp(), and that the CPU architecture
+ *                  ABI mandates different instruction sequences for
+ *                  calling functions with and without prototypes.  I am
+ *                  not aware of any environments in which both conditions
+ *                  hold, though the latter condition is true on PowerPC
+ *                  processors under the System V ABI: callers to an
+ *                  unprototyped or varargs function must set or clear CR
+ *                  bit 6 to indicate whether any floating-point arguments
+ *                  are passed to the function, so the presence of
+ *                  prototypes allows the compiler omit a "crclr"
+ *                  instruction on each strcpy() and strcmp() call.
  *
  ***************************************************************************
  *
@@ -414,6 +465,11 @@
 #include <string.h>
                 /* for strcpy, strcmp */
 
+#ifndef BENCHMARK_ONLY
+#include <stdio.h>
+                /* for printf, scanf */
+#endif
+
 #define Null 0 
                 /* Value of a Null pointer */
 #define true  1
@@ -464,7 +520,8 @@ typedef struct record
 #define Func_1  PASTE(DHRY_PREFIX, Func_1)
 #define Func_2  PASTE(DHRY_PREFIX, Func_2)
 #define Func_3  PASTE(DHRY_PREFIX, Func_3)
-#define main    PASTE(DHRY_PREFIX, main)
+#define Init    PASTE(DHRY_PREFIX, Init)
+#define Main    PASTE(DHRY_PREFIX, Main)
 
 #define Ptr_Glob        PASTE(DHRY_PREFIX, Ptr_Glob)
 #define Next_Ptr_Glob   PASTE(DHRY_PREFIX, Next_Ptr_Glob)
@@ -479,11 +536,10 @@ typedef struct record
 
 #ifdef BENCHMARK_ONLY
 
-#ifndef main
-#define main  dhry_main
-#endif
+extern void Init(void);
+                /* Global data initialization procedure */
 
-extern int main(int Number_Of_Runs);
+extern int Main(int Number_Of_Runs);
                 /* Benchmark entry point */
 
 #endif

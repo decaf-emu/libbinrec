@@ -14,6 +14,7 @@
 #     $0 {noopt|opt} >benchmarks/blobs/ppc32-dhry_{noopt|opt}.c
 # If necessary, set environment variables as follows:
 #     PPC_CC        32-bit PowerPC C cross-compiler
+#     PPC_CFLAGS    Common command-line options for the cross-compiler
 #     PPC_LD        "ld" from the binutils package, built for ppc32
 #     PPC_NM        "nm" from the binutils package, built for ppc32
 #     PPC_OBJCOPY   "objcopy" from the binutils package, built for ppc32
@@ -37,6 +38,7 @@ if ! test -n "$name"; then
 fi
 
 PPC_CC="${PPC_AS-powerpc-eabi-gcc}"
+PPC_CFLAGS="-mcpu=750 -fno-stack-protector"
 PPC_LD="${PPC_LD-powerpc-eabi-ld}"
 PPC_NM="${PPC_NM-powerpc-eabi-nm}"
 PPC_OBJCOPY="${PPC_OBJCOPY-powerpc-eabi-objcopy}"
@@ -47,17 +49,17 @@ trap "rm -r '$tempdir'" EXIT SIGHUP SIGINT SIGQUIT SIGTERM
 base=0x100000
 (
     set -x
-    "$PPC_CC" -mcpu=750 -std=c89 -Ibenchmarks/library $optflags \
-        -DBENCHMARK_ONLY \
+    "$PPC_CC" $PPC_CFLAGS $optflags -std=c89 \
+        -Ibenchmarks/library -DBENCHMARK_ONLY \
         -o "$tempdir/dhry_1.o" -c benchmarks/dhrystone/dhry_1.c
-    "$PPC_CC" -mcpu=750 -std=c89 -Ibenchmarks/library $optflags \
-        -DBENCHMARK_ONLY \
+    "$PPC_CC" $PPC_CFLAGS $optflags -std=c89 \
+        -Ibenchmarks/library -DBENCHMARK_ONLY \
         -o "$tempdir/dhry_2.o" -c benchmarks/dhrystone/dhry_2.c
-    "$PPC_CC" -mcpu=750 -std=c99 -O3 -Wall -I. \
+    "$PPC_CC" $PPC_CFLAGS -std=c99 -O3 -Wall -I. \
         -o "$tempdir/memcpy.o" -c benchmarks/library/memcpy.c
-    "$PPC_CC" -mcpu=750 -std=c99 -O3 -Wall -I. \
+    "$PPC_CC" $PPC_CFLAGS -std=c99 -O3 -Wall -I. \
         -o "$tempdir/strcmp.o" -c benchmarks/library/strcmp.c
-    "$PPC_CC" -mcpu=750 -std=c99 -O3 -Wall -I. \
+    "$PPC_CC" $PPC_CFLAGS -std=c99 -O3 -Wall -I. \
         -o "$tempdir/strcpy.o" -c benchmarks/library/strcpy.c
     "$PPC_LD" -Ttext=${base} --defsym _start=${base} \
         -o "$tempdir/dhry" "$tempdir/dhry_1.o" "$tempdir/dhry_2.o" \
@@ -65,10 +67,25 @@ base=0x100000
     "$PPC_OBJCOPY" -O binary "$tempdir/dhry" "$tempdir/dhry.bin"
 )
 
-entry=$("$PPC_NM" "$tempdir/dhry" | grep ' T dhry_main$' | cut -c1-8)
-entry=$((0x$entry - $base))
+init_entry=$("$PPC_NM" "$tempdir/dhry" | grep ' T Init$' | cut -c1-8)
+if test -z "$init_entry"; then
+    echo >&2 "Init symbol not found"
+    exit 1
+fi
+init_entry=$((0x$init_entry))
+
+main_entry=$("$PPC_NM" "$tempdir/dhry" | grep ' T Main$' | cut -c1-8)
+if test -z "$main_entry"; then
+    echo >&2 "Main symbol not found"
+    exit 1
+fi
+main_entry=$((0x$main_entry))
 
 end=$("$PPC_NM" "$tempdir/dhry" | grep ' B __end$' | cut -c1-8)
+if test -z "$end"; then
+    echo >&2 "__end symbol not found"
+    exit 1
+fi
 reserve=$((0x$end))
 
 echo "#include \"benchmarks/blobs.h\""
@@ -81,5 +98,6 @@ echo "    .data = ${name}_bin,"
 echo "    .size = sizeof(${name}_bin),"
 echo "    .reserve = 0x$(printf %X ${reserve}),"
 echo "    .base = ${base},"
-echo "    .entry = 0x$(printf %X ${entry}),"
+echo "    .init = 0x$(printf %X ${init_entry}),"
+echo "    .main = 0x$(printf %X ${main_entry}),"
 echo "};";

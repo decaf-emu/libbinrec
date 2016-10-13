@@ -10,6 +10,7 @@
 #include "benchmarks/blobs.h"
 #include "benchmarks/common.h"
 #include "tests/execute.h"
+#include <inttypes.h>
 #include <stdio.h>
 
 /*************************************************************************/
@@ -32,8 +33,12 @@ static const char * const arch_names[GUEST_ARCH__NUM] = {
 /*-----------------------------------------------------------------------*/
 
 /* Declarations of native benchmark entry points. */
-extern int dhry_noopt_main(int count);
-extern int dhry_opt_main(int count);
+
+extern void dhry_noopt_Init(void);
+extern int dhry_noopt_Main(int count);
+
+extern void dhry_opt_Init(void);
+extern int dhry_opt_Main(int count);
 
 /*-----------------------------------------------------------------------*/
 
@@ -42,24 +47,36 @@ extern int dhry_opt_main(int count);
 typedef struct Benchmark {
     const char *id;     // Identifier for use in the command line.
     const char *name;   // Human-readable name.
-    /* Entry point for native benchmarking.  Takes an iteration count
-     * and returns success (nonzero) or failure (zero). */
-    int (*native_entry)(int count);
-    /* Guest code blobs  for each guest architecture, using the same
+
+    /* Benchmark initialization routine for native benchmarking, or NULL
+     * if no separate initialization is required. */
+    void (*native_init)(void);
+    /* Benchmark entry point for native benchmarking.  Takes an iteration
+     * count and returns success (nonzero) or failure (zero). */
+    int (*native_main)(int count);
+    /* Benchmark finalization routine for native benchmarking, or NULL
+     * if no separate finalization is required. */
+    void (*native_fini)(void);
+
+    /* Guest code blobs for each guest architecture, using the same
      * function signature for the entry point. */
     const Blob *guest_code[GUEST_ARCH__NUM];
 } Benchmark;
 
 static const Benchmark benchmarks[] = {
     {.id = "dhry_noopt", .name = "Dhrystone (unoptimized)",
-     .native_entry = dhry_noopt_main, .guest_code = {
-            [GUEST_ARCH_PPC_7XX] = &ppc32_dhry_noopt,
-        },
+     .native_init = dhry_noopt_Init,
+     .native_main = dhry_noopt_Main,
+     .guest_code = {
+         [GUEST_ARCH_PPC_7XX] = &ppc32_dhry_noopt,
+     },
     },
     {.id = "dhry_opt", .name = "Dhrystone (optimized)",
-     .native_entry = dhry_opt_main, .guest_code = {
-            [GUEST_ARCH_PPC_7XX] = &ppc32_dhry_opt,
-        },
+     .native_init = dhry_opt_Init,
+     .native_main = dhry_opt_Main,
+     .guest_code = {
+         [GUEST_ARCH_PPC_7XX] = &ppc32_dhry_opt,
+     },
     },
 };
 
@@ -198,6 +215,7 @@ static bool call_guest(GuestArch arch, const Benchmark *benchmark, int count)
 {
     binrec_arch_t binrec_arch;
     void *state;
+    uint32_t *arg_ptr;
     uint32_t *retval_ptr;
 
     const Blob *blob = benchmark->guest_code[arch];
@@ -208,7 +226,7 @@ static bool call_guest(GuestArch arch, const Benchmark *benchmark, int count)
     }
     void *memory = alloc_guest_memory(blob->reserve);
     if (!memory) {
-        fprintf(stderr, "Failed to reserve guest memory (0x%X bytes)\n",
+        fprintf(stderr, "Failed to reserve guest memory (0x%"PRIX64" bytes)\n",
                 blob->reserve);
     }
     memcpy((char *)memory + blob->base, blob->data, blob->size);
@@ -218,10 +236,10 @@ static bool call_guest(GuestArch arch, const Benchmark *benchmark, int count)
         static PPCState ppc_state;
         memset(&ppc_state, 0, sizeof(ppc_state));
         ppc_state.gpr[1] = blob->base;
-        ppc_state.gpr[3] = count;
+        arg_ptr = &ppc_state.gpr[3];
+        retval_ptr = &ppc_state.gpr[3];
         binrec_arch = BINREC_ARCH_PPC_7XX;
         state = &ppc_state;
-        retval_ptr = &ppc_state.gpr[3];
         break;
       }
       default:
@@ -229,15 +247,35 @@ static bool call_guest(GuestArch arch, const Benchmark *benchmark, int count)
         return false;
     }
 
-    if (!call_guest_code(binrec_arch, state, memory, blob->base + blob->entry,
-                         NULL)) {
-        fprintf(stderr, "Guest code execution failed\n");
-        free_guest_memory(memory, blob->reserve);
-        return false;
+    bool success = false;
+
+    if (blob->init
+     && !call_guest_code(binrec_arch, state, memory, blob->init, NULL)) {
+        fprintf(stderr, "Guest code init() execution failed\n");
+        goto done;
     }
 
+    *arg_ptr = count;
+    if (!call_guest_code(binrec_arch, state, memory, blob->main, NULL)) {
+        fprintf(stderr, "Guest code main() execution failed\n");
+        goto done;
+    }
+
+    success = (*retval_ptr != 0);
+    if (!success) {
+        fprintf(stderr, "Benchmark reported failure\n");
+    }
+
+    if (blob->fini
+     && !call_guest_code(binrec_arch, state, memory, blob->fini, NULL)) {
+        fprintf(stderr, "Guest code fini() execution failed\n");
+        success = false;
+        goto done;
+    }
+
+  done:
     free_guest_memory(memory, blob->reserve);
-    return *retval_ptr != 0;
+    return success;
 }
 
 /*************************************************************************/
@@ -258,12 +296,20 @@ int main(int argc, char **argv)
 
     int result;
     if (arch == GUEST_ARCH_NATIVE) {
-        result = (*benchmark->native_entry)(count);
+        if (benchmark->native_init) {
+            (*benchmark->native_init)();
+        }
+        result = (*benchmark->native_main)(count);
+        if (!result) {
+            fprintf(stderr, "Benchmark reported failure\n");
+        }
+        if (benchmark->native_fini) {
+            (*benchmark->native_fini)();
+        }
     } else {
         result = call_guest(arch, benchmark, count);
     }
     if (!result) {
-        fprintf(stderr, "Benchmark reported failure\n");
         return EXIT_FAILURE;
     }
 

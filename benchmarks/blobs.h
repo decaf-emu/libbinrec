@@ -23,10 +23,12 @@
  * will be initialized at the base address and grow downwards. */
 typedef struct Blob {
     const void *data;  // The actual code.
-    uint32_t size;     // Size of the code, in bytes.
-    uint32_t reserve;  // Amount of guest memory to reserve.
+    uint64_t size;     // Size of the code, in bytes.
+    uint64_t reserve;  // Amount of guest memory to reserve.
     uint64_t base;     // Address in guest memory at which to load the code.
-    uint32_t entry;    // Offset of the entry point from the base address.
+    uint64_t init;     // Address of the initialization function, 0 if none.
+    uint64_t main;     // Address of the benchmark entry point.
+    uint64_t fini;     // Address of the finalization function, 0 if none.
 } Blob;
 
 /* Dhrystone */

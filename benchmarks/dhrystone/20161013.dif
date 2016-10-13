@@ -1,38 +1,89 @@
 diff -r 6fbc109affc2 benchmarks/dhrystone/dhry.h
 --- a/benchmarks/dhrystone/dhry.h	Thu Oct 13 02:04:35 2016 +0900
-+++ b/benchmarks/dhrystone/dhry.h	Thu Oct 13 03:03:54 2016 +0900
-@@ -127,6 +127,30 @@
++++ b/benchmarks/dhrystone/dhry.h	Thu Oct 13 23:52:08 2016 +0900
+@@ -127,6 +127,81 @@
   *              non-executed "else" part was added to the "if" statement in
   *              Func_3, and a non-executed "else" part removed from Proc_3.
   *
 + * Changes (2016-10-13, by Andrew Church):
++ *              Initialization of global data has been moved to a separate
++ *              Init() function, which is called from main().  Init() also
++ *              also includes statically declared Rec_Type buffers for the
++ *              Ptr_Glob and Next_Ptr_Glob variables rather than allocating
++ *              those buffers by calling malloc(); this removes the only
++ *              use of dynamically allocated memory in the code.
++ *
 + *              If the preprocessor symbol BENCHMARK_ONLY is defined, all
 + *              code not part of the benchmark proper (printf() output,
 + *              time measurement, and so on) is omitted from the compiled
 + *              code.  In this case, the main() function is replaced by a
-+ *              function dhry_main() which accepts a single parameter, the
-+ *              number of iterations for which to run the benchmark, and
-+ *              returns a nonzero value on successful completion or zero
-+ *              if an error was detected in the computation results.
++ *              function Main() (note capitalization) which accepts a
++ *              single parameter, the number of iterations for which to run
++ *              the benchmark, and returns a nonzero value on successful
++ *              completion or zero if an error was detected in the
++ *              computation results.  In this usage, the caller must call
++ *              Init() before Main().
 + *
 + *              If the preprocessor symbol DHRY_PREFIX is defined, all
 + *              globally-visible identifiers will have this prepended to
 + *              their names.  For example, if DHRY_PREFIX is "dhry_"
 + *              (without quotes), then identifiers will be renamed
 + *              dhry_Proc_1(), dhry_Ptr_Glob, and so on.  In this case,
-+ *              the entry point will also be named "main" with the given
-+ *              prefix (dhry_main() in this example).
++ *              the entry points will also receive the given prefix
++ *              (dhry_Init() and dhry_Main() in this example).
 + *
 + *              The #include of <stdio.h> for strcpy() and strcmp() has
-+ *              been changed to the correct <string.h>.
++ *              been changed to the correct <string.h>.  <stdio.h> is
++ *              still included (for printf() and scanf()) if BENCHMARK_ONLY
++ *              is not defined.
 + *
-+ *              The two Rec_Type buffers allocated in the main routine are
-+ *              now allocated directly on the stack rather than via malloc().
++ *              The times() and time() functions are now declared by
++ *              including the appropriate system header (<sys/time.h> and
++ *              <time.h>, respectively) rather than writing the declaration
++ *              inline, since the existing inline declarations were not
++ *              correct.  For times(), if HZ is not defined at compilation
++ *              time, its value is obtained by calling the POSIX sysconf()
++ *              function for the CLK_TCK parameter.
++ *
++ *              The version number output by the program (if BENCHMARK_ONLY
++ *              is not defined) has been changed to "2.1-AC" to reflect the
++ *              above changes.
++ *
++ *              Note that none[*] of these changes affect code within the
++ *              measurement loop.  The only impact on timing is that in a
++ *              BENCHMARK_ONLY compilation, assuming the caller begins
++ *              timing immediately before calling the Main function and
++ *              ends timing as soon as that function returns, the act of
++ *              calling Main() itself (including function prologue and
++ *              epilogue) and the test for correct results are included in
++ *              the total time.  On processors used in current-generation
++ *              personal computers and similar devices, this additional
++ *              time is expected to be well below the threshold of noise
++ *              from system interrupts and other external interference, so
++ *              times measured in the manner described above should be
++ *              compatible with previously measured Dhrystone 2.1 times.
++ *
++ *              [*] The change from <stdio.h> to <string.h> could, in
++ *                  theory, affect the precise sequence of instructions
++ *                  used to call strcpy() and strcmp().  The conditions for
++ *                  this to occur are that <stdio.h> does not include
++ *                  <string.h> or otherwise provide equivalent declarations
++ *                  of strcpy() and strcmp(), and that the CPU architecture
++ *                  ABI mandates different instruction sequences for
++ *                  calling functions with and without prototypes.  I am
++ *                  not aware of any environments in which both conditions
++ *                  hold, though the latter condition is true on PowerPC
++ *                  processors under the System V ABI: callers to an
++ *                  unprototyped or varargs function must set or clear CR
++ *                  bit 6 to indicate whether any floating-point arguments
++ *                  are passed to the function, so the presence of
++ *                  prototypes allows the compiler omit a "crclr"
++ *                  instruction on each strcpy() and strcmp() call.
 + *
   ***************************************************************************
   *
   * Defines:     The following "Defines" are possible:
-@@ -347,6 +371,8 @@
+@@ -347,6 +422,8 @@
  
  /* Compiler and system dependent definitions: */
  
@@ -41,7 +92,7 @@ diff -r 6fbc109affc2 benchmarks/dhrystone/dhry.h
  #ifndef TIME
  #define TIMES
  #endif
-@@ -362,6 +388,8 @@
+@@ -362,6 +439,8 @@
  #define Mic_secs_Per_Second     1000000.0
                  /* Berkeley UNIX C returns process times in seconds/HZ */
  
@@ -50,16 +101,22 @@ diff -r 6fbc109affc2 benchmarks/dhrystone/dhry.h
  #ifdef  NOSTRUCTASSIGN
  #define structassign(d, s)      memcpy(&(d), &(s), sizeof(d))
  #else
-@@ -383,7 +411,7 @@
+@@ -383,8 +462,13 @@
  
  /* General definitions: */
  
--#include <stdio.h>
 +#include <string.h>
-                 /* for strcpy, strcmp */
++                /* for strcpy, strcmp */
++
++#ifndef BENCHMARK_ONLY
+ #include <stdio.h>
+-                /* for strcpy, strcmp */
++                /* for printf, scanf */
++#endif
  
  #define Null 0 
-@@ -420,4 +448,42 @@
+                 /* Value of a Null pointer */
+@@ -420,4 +504,42 @@
            } variant;
        } Rec_Type, *Rec_Pointer;
  
@@ -79,7 +136,8 @@ diff -r 6fbc109affc2 benchmarks/dhrystone/dhry.h
 +#define Func_1  PASTE(DHRY_PREFIX, Func_1)
 +#define Func_2  PASTE(DHRY_PREFIX, Func_2)
 +#define Func_3  PASTE(DHRY_PREFIX, Func_3)
-+#define main    PASTE(DHRY_PREFIX, main)
++#define Init    PASTE(DHRY_PREFIX, Init)
++#define Main    PASTE(DHRY_PREFIX, Main)
 +
 +#define Ptr_Glob        PASTE(DHRY_PREFIX, Ptr_Glob)
 +#define Next_Ptr_Glob   PASTE(DHRY_PREFIX, Next_Ptr_Glob)
@@ -94,17 +152,16 @@ diff -r 6fbc109affc2 benchmarks/dhrystone/dhry.h
 +
 +#ifdef BENCHMARK_ONLY
 +
-+#ifndef main
-+#define main  dhry_main
-+#endif
++extern void Init(void);
++                /* Global data initialization procedure */
 +
-+extern int main(int Number_Of_Runs);
++extern int Main(int Number_Of_Runs);
 +                /* Benchmark entry point */
 +
 +#endif
 diff -r 6fbc109affc2 benchmarks/dhrystone/dhry_1.c
 --- a/benchmarks/dhrystone/dhry_1.c	Thu Oct 13 02:04:35 2016 +0900
-+++ b/benchmarks/dhrystone/dhry_1.c	Thu Oct 13 03:03:54 2016 +0900
++++ b/benchmarks/dhrystone/dhry_1.c	Thu Oct 13 23:52:08 2016 +0900
 @@ -28,15 +28,19 @@
  int             Arr_1_Glob [50];
  int             Arr_2_Glob [50] [50];
@@ -127,50 +184,105 @@ diff -r 6fbc109affc2 benchmarks/dhrystone/dhry_1.c
  #else
          Boolean Reg = true;
  #endif
-@@ -69,6 +73,13 @@
+@@ -44,15 +48,17 @@
+ /* variables for time measurement: */
+ 
+ #ifdef TIMES
++#include <sys/time.h>
+ struct tms      time_info;
+-extern  int     times ();
+-                /* see library function "times" */
+ #define Too_Small_Time 120
+                 /* Measurements should last at least about 2 seconds */
++#ifndef HZ
++#include <unistd.h>
++                /* for sysconf */
++#endif
+ #endif
+ #ifdef TIME
+-extern long     time();
+-                /* see library function "time"  */
++#include <time.h>
+ #define Too_Small_Time 2
+                 /* Measurements should last at least 2 seconds */
+ #endif
+@@ -65,8 +71,38 @@
+ 
+ /* end of variables for time measurement */
+ 
++#endif  /* BENCHMARK_ONLY */
+ 
++
++void Init(void)
++{
++  static Rec_Type Buf_Next_Ptr_Glob;
++  static Rec_Type Buf_Ptr_Glob;
++
++  Next_Ptr_Glob = &Buf_Next_Ptr_Glob;
++  Ptr_Glob = &Buf_Ptr_Glob;
++
++  Ptr_Glob->Ptr_Comp                    = Next_Ptr_Glob;
++  Ptr_Glob->Discr                       = Ident_1;
++  Ptr_Glob->variant.var_1.Enum_Comp     = Ident_3;
++  Ptr_Glob->variant.var_1.Int_Comp      = 40;
++  strcpy (Ptr_Glob->variant.var_1.Str_Comp, 
++          "DHRYSTONE PROGRAM, SOME STRING");
++
++  Arr_2_Glob [8][7] = 10;
++        /* Was missing in published program. Without this statement,    */
++        /* Arr_2_Glob [8][7] would have an undefined value.             */
++        /* Warning: With 16-Bit processors and Number_Of_Runs > 32000,  */
++        /* overflow may occur for this array element.                   */
++}
++
++
++#ifndef BENCHMARK_ONLY
  main ()
++#else
++int Main(Number_Of_Runs)
++REG int Number_Of_Runs;
++#endif
  /*****/
  
-+#else  /* BENCHMARK_ONLY */
-+
-+int main(Number_Of_Runs)
-+REG int Number_Of_Runs;
-+
-+#endif
-+
    /* main program, corresponds to procedures        */
-   /* Main and Proc_0 in the Ada version             */
- {
-@@ -80,12 +91,17 @@
+@@ -80,29 +116,21 @@
          Str_30          Str_1_Loc;
          Str_30          Str_2_Loc;
    REG   int             Run_Index;
 +#ifndef BENCHMARK_ONLY
    REG   int             Number_Of_Runs;
 +#endif
-+
-+        Rec_Type        Buf_Next_Ptr_Glob;
-+        Rec_Type        Buf_Ptr_Glob;
  
    /* Initializations */
  
 -  Next_Ptr_Glob = (Rec_Pointer) malloc (sizeof (Rec_Type));
 -  Ptr_Glob = (Rec_Pointer) malloc (sizeof (Rec_Type));
-+  Next_Ptr_Glob = &Buf_Next_Ptr_Glob;
-+  Ptr_Glob = &Buf_Ptr_Glob;
- 
-   Ptr_Glob->Ptr_Comp                    = Next_Ptr_Glob;
-   Ptr_Glob->Discr                       = Ident_1;
-@@ -101,6 +117,8 @@
-         /* Warning: With 16-Bit processors and Number_Of_Runs > 32000,  */
-         /* overflow may occur for this array element.                   */
- 
+-
+-  Ptr_Glob->Ptr_Comp                    = Next_Ptr_Glob;
+-  Ptr_Glob->Discr                       = Ident_1;
+-  Ptr_Glob->variant.var_1.Enum_Comp     = Ident_3;
+-  Ptr_Glob->variant.var_1.Int_Comp      = 40;
+-  strcpy (Ptr_Glob->variant.var_1.Str_Comp, 
+-          "DHRYSTONE PROGRAM, SOME STRING");
 +#ifndef BENCHMARK_ONLY
-+
++  Init ();
++#endif
+   strcpy (Str_1_Loc, "DHRYSTONE PROGRAM, 1'ST STRING");
+ 
+-  Arr_2_Glob [8][7] = 10;
+-        /* Was missing in published program. Without this statement,    */
+-        /* Arr_2_Glob [8][7] would have an undefined value.             */
+-        /* Warning: With 16-Bit processors and Number_Of_Runs > 32000,  */
+-        /* overflow may occur for this array element.                   */
++#ifndef BENCHMARK_ONLY
+ 
    printf ("\n");
-   printf ("Dhrystone Benchmark, Version 2.1 (Language: C)\n");
+-  printf ("Dhrystone Benchmark, Version 2.1 (Language: C)\n");
++  printf ("Dhrystone Benchmark, Version 2.1-AC (Language: C)\n");
    printf ("\n");
-@@ -136,6 +154,8 @@
+   if (Reg)
+   {
+@@ -136,6 +164,8 @@
    Begin_Time = time ( (long *) 0);
  #endif
  
@@ -179,7 +291,7 @@ diff -r 6fbc109affc2 benchmarks/dhrystone/dhry_1.c
    for (Run_Index = 1; Run_Index <= Number_Of_Runs; ++Run_Index)
    {
  
-@@ -182,6 +202,8 @@
+@@ -182,6 +212,8 @@
  
    } /* loop "for Run_Index" */
  
@@ -188,7 +300,17 @@ diff -r 6fbc109affc2 benchmarks/dhrystone/dhry_1.c
    /**************/
    /* Stop timer */
    /**************/
-@@ -273,6 +295,32 @@
+@@ -262,6 +294,9 @@
+                         / (float) Number_Of_Runs;
+     Dhrystones_Per_Second = (float) Number_Of_Runs / (float) User_Time;
+ #else
++#ifndef HZ
++    int HZ = sysconf(_SC_CLK_TCK);
++#endif
+     Microseconds = (float) User_Time * Mic_secs_Per_Second 
+                         / ((float) HZ * ((float) Number_Of_Runs));
+     Dhrystones_Per_Second = ((float) HZ * (float) Number_Of_Runs)
+@@ -273,6 +308,32 @@
      printf ("%6.1f \n", Dhrystones_Per_Second);
      printf ("\n");
    }

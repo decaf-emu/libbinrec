@@ -48,15 +48,17 @@ Enumeration     Func_1 ();
 /* variables for time measurement: */
 
 #ifdef TIMES
+#include <sys/time.h>
 struct tms      time_info;
-extern  int     times ();
-                /* see library function "times" */
 #define Too_Small_Time 120
                 /* Measurements should last at least about 2 seconds */
+#ifndef HZ
+#include <unistd.h>
+                /* for sysconf */
+#endif
 #endif
 #ifdef TIME
-extern long     time();
-                /* see library function "time"  */
+#include <time.h>
 #define Too_Small_Time 2
                 /* Measurements should last at least 2 seconds */
 #endif
@@ -69,16 +71,39 @@ float           Microseconds,
 
 /* end of variables for time measurement */
 
+#endif  /* BENCHMARK_ONLY */
 
+
+void Init(void)
+{
+  static Rec_Type Buf_Next_Ptr_Glob;
+  static Rec_Type Buf_Ptr_Glob;
+
+  Next_Ptr_Glob = &Buf_Next_Ptr_Glob;
+  Ptr_Glob = &Buf_Ptr_Glob;
+
+  Ptr_Glob->Ptr_Comp                    = Next_Ptr_Glob;
+  Ptr_Glob->Discr                       = Ident_1;
+  Ptr_Glob->variant.var_1.Enum_Comp     = Ident_3;
+  Ptr_Glob->variant.var_1.Int_Comp      = 40;
+  strcpy (Ptr_Glob->variant.var_1.Str_Comp, 
+          "DHRYSTONE PROGRAM, SOME STRING");
+
+  Arr_2_Glob [8][7] = 10;
+        /* Was missing in published program. Without this statement,    */
+        /* Arr_2_Glob [8][7] would have an undefined value.             */
+        /* Warning: With 16-Bit processors and Number_Of_Runs > 32000,  */
+        /* overflow may occur for this array element.                   */
+}
+
+
+#ifndef BENCHMARK_ONLY
 main ()
-/*****/
-
-#else  /* BENCHMARK_ONLY */
-
-int main(Number_Of_Runs)
+#else
+int Main(Number_Of_Runs)
 REG int Number_Of_Runs;
-
 #endif
+/*****/
 
   /* main program, corresponds to procedures        */
   /* Main and Proc_0 in the Ada version             */
@@ -95,32 +120,17 @@ REG int Number_Of_Runs;
   REG   int             Number_Of_Runs;
 #endif
 
-        Rec_Type        Buf_Next_Ptr_Glob;
-        Rec_Type        Buf_Ptr_Glob;
-
   /* Initializations */
 
-  Next_Ptr_Glob = &Buf_Next_Ptr_Glob;
-  Ptr_Glob = &Buf_Ptr_Glob;
-
-  Ptr_Glob->Ptr_Comp                    = Next_Ptr_Glob;
-  Ptr_Glob->Discr                       = Ident_1;
-  Ptr_Glob->variant.var_1.Enum_Comp     = Ident_3;
-  Ptr_Glob->variant.var_1.Int_Comp      = 40;
-  strcpy (Ptr_Glob->variant.var_1.Str_Comp, 
-          "DHRYSTONE PROGRAM, SOME STRING");
+#ifndef BENCHMARK_ONLY
+  Init ();
+#endif
   strcpy (Str_1_Loc, "DHRYSTONE PROGRAM, 1'ST STRING");
-
-  Arr_2_Glob [8][7] = 10;
-        /* Was missing in published program. Without this statement,    */
-        /* Arr_2_Glob [8][7] would have an undefined value.             */
-        /* Warning: With 16-Bit processors and Number_Of_Runs > 32000,  */
-        /* overflow may occur for this array element.                   */
 
 #ifndef BENCHMARK_ONLY
 
   printf ("\n");
-  printf ("Dhrystone Benchmark, Version 2.1 (Language: C)\n");
+  printf ("Dhrystone Benchmark, Version 2.1-AC (Language: C)\n");
   printf ("\n");
   if (Reg)
   {
@@ -284,6 +294,9 @@ REG int Number_Of_Runs;
                         / (float) Number_Of_Runs;
     Dhrystones_Per_Second = (float) Number_Of_Runs / (float) User_Time;
 #else
+#ifndef HZ
+    int HZ = sysconf(_SC_CLK_TCK);
+#endif
     Microseconds = (float) User_Time * Mic_secs_Per_Second 
                         / ((float) HZ * ((float) Number_Of_Runs));
     Dhrystones_Per_Second = ((float) HZ * (float) Number_Of_Runs)
