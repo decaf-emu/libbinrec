@@ -1,17 +1,31 @@
 diff -r 6fbc109affc2 benchmarks/dhrystone/dhry.h
 --- a/benchmarks/dhrystone/dhry.h	Thu Oct 13 02:04:35 2016 +0900
-+++ b/benchmarks/dhrystone/dhry.h	Thu Oct 13 23:52:08 2016 +0900
-@@ -127,6 +127,81 @@
++++ b/benchmarks/dhrystone/dhry.h	Fri Oct 14 00:26:33 2016 +0900
+@@ -4,11 +4,12 @@
+  *                   "DHRYSTONE" Benchmark Program
+  *                   -----------------------------
+  *                                                                            
+- *  Version:    C, Version 2.1
++ *  Version:    C, Version 2.1-AC
+  *                                                                            
+  *  File:       dhry.h (part 1 of 3)
+  *
+  *  Date:       May 25, 1988
++ *              (Version 2.1-AC: October 16, 2016)
+  *
+  *  Author:     Reinhold P. Weicker
+  *                      Siemens AG, AUT E 51
+@@ -127,6 +128,81 @@
   *              non-executed "else" part was added to the "if" statement in
   *              Func_3, and a non-executed "else" part removed from Proc_3.
   *
-+ * Changes (2016-10-13, by Andrew Church):
++ * Changes for version 2.1-AC (2016-10-13, by Andrew Church):
 + *              Initialization of global data has been moved to a separate
 + *              Init() function, which is called from main().  Init() also
-+ *              also includes statically declared Rec_Type buffers for the
-+ *              Ptr_Glob and Next_Ptr_Glob variables rather than allocating
-+ *              those buffers by calling malloc(); this removes the only
-+ *              use of dynamically allocated memory in the code.
++ *              includes static-linkage Rec_Type buffers for the Ptr_Glob
++ *              and Next_Ptr_Glob variables rather than allocating those
++ *              buffers by calling malloc(); this removes the only use of
++ *              dynamically allocated memory in the code.
 + *
 + *              If the preprocessor symbol BENCHMARK_ONLY is defined, all
 + *              code not part of the benchmark proper (printf() output,
@@ -27,7 +41,7 @@ diff -r 6fbc109affc2 benchmarks/dhrystone/dhry.h
 + *              If the preprocessor symbol DHRY_PREFIX is defined, all
 + *              globally-visible identifiers will have this prepended to
 + *              their names.  For example, if DHRY_PREFIX is "dhry_"
-+ *              (without quotes), then identifiers will be renamed
++ *              (without quotes), then identifiers will be renamed to
 + *              dhry_Proc_1(), dhry_Ptr_Glob, and so on.  In this case,
 + *              the entry points will also receive the given prefix
 + *              (dhry_Init() and dhry_Main() in this example).
@@ -61,7 +75,7 @@ diff -r 6fbc109affc2 benchmarks/dhrystone/dhry.h
 + *              time is expected to be well below the threshold of noise
 + *              from system interrupts and other external interference, so
 + *              times measured in the manner described above should be
-+ *              compatible with previously measured Dhrystone 2.1 times.
++ *              comparable to previously measured Dhrystone 2.1 times.
 + *
 + *              [*] The change from <stdio.h> to <string.h> could, in
 + *                  theory, affect the precise sequence of instructions
@@ -77,13 +91,37 @@ diff -r 6fbc109affc2 benchmarks/dhrystone/dhry.h
 + *                  unprototyped or varargs function must set or clear CR
 + *                  bit 6 to indicate whether any floating-point arguments
 + *                  are passed to the function, so the presence of
-+ *                  prototypes allows the compiler omit a "crclr"
++ *                  prototypes allows the compiler to omit a "crclr"
 + *                  instruction on each strcpy() and strcmp() call.
 + *
   ***************************************************************************
   *
   * Defines:     The following "Defines" are possible:
-@@ -347,6 +422,8 @@
+@@ -167,6 +243,23 @@
+  *                      time in 1/HZ seconds, with HZ = 60 for most systems.
+  *                      CHECK YOUR SYSTEM DESCRIPTION BEFORE YOU JUST APPLY
+  *                      A VALUE.
++ *                      If your system supports the "sysconf" function,
++ *                      which is part of the POSIX standard, you can leave
++ *                      this undefined, and the program will detect the
++ *                      proper value at runtime.
++ *              -DBENCHMARK_ONLY
++ *                      Define to export "Init" and "Main" functions with
++ *                      which the benchmark can be run from an external
++ *                      controlling program.  See notes under History for
++ *                      usage and caveats.
++ *              -DDHRY_PREFIX=prefix
++ *                      Define to prepend "prefix" to all globally visible
++ *                      symbols.  For example, with "-DDHRY_PREFIX=dhry_",
++ *                      the functions will be named "dhry_Func_1",
++ *                      "dhry_Func_2", and so on.  Useful in combination
++ *                      with -DBENCHMARK_ONLY, especially if linking several
++ *                      copies of Dhrystone built with different compilers
++ *                      or compiler options into the same executable file.
+  *
+  ***************************************************************************
+  *
+@@ -347,6 +440,8 @@
  
  /* Compiler and system dependent definitions: */
  
@@ -92,7 +130,7 @@ diff -r 6fbc109affc2 benchmarks/dhrystone/dhry.h
  #ifndef TIME
  #define TIMES
  #endif
-@@ -362,6 +439,8 @@
+@@ -362,6 +457,8 @@
  #define Mic_secs_Per_Second     1000000.0
                  /* Berkeley UNIX C returns process times in seconds/HZ */
  
@@ -101,7 +139,7 @@ diff -r 6fbc109affc2 benchmarks/dhrystone/dhry.h
  #ifdef  NOSTRUCTASSIGN
  #define structassign(d, s)      memcpy(&(d), &(s), sizeof(d))
  #else
-@@ -383,8 +462,13 @@
+@@ -383,8 +480,13 @@
  
  /* General definitions: */
  
@@ -116,7 +154,7 @@ diff -r 6fbc109affc2 benchmarks/dhrystone/dhry.h
  
  #define Null 0 
                  /* Value of a Null pointer */
-@@ -420,4 +504,42 @@
+@@ -420,4 +522,42 @@
            } variant;
        } Rec_Type, *Rec_Pointer;
  
@@ -161,8 +199,22 @@ diff -r 6fbc109affc2 benchmarks/dhrystone/dhry.h
 +#endif
 diff -r 6fbc109affc2 benchmarks/dhrystone/dhry_1.c
 --- a/benchmarks/dhrystone/dhry_1.c	Thu Oct 13 02:04:35 2016 +0900
-+++ b/benchmarks/dhrystone/dhry_1.c	Thu Oct 13 23:52:08 2016 +0900
-@@ -28,15 +28,19 @@
++++ b/benchmarks/dhrystone/dhry_1.c	Fri Oct 14 00:26:33 2016 +0900
+@@ -4,11 +4,12 @@
+  *                   "DHRYSTONE" Benchmark Program
+  *                   -----------------------------
+  *                                                                            
+- *  Version:    C, Version 2.1
++ *  Version:    C, Version 2.1-AC
+  *                                                                            
+  *  File:       dhry_1.c (part 2 of 3)
+  *
+  *  Date:       May 25, 1988
++ *              (Version 2.1-AC: October 16, 2016)
+  *
+  *  Author:     Reinhold P. Weicker
+  *
+@@ -28,15 +29,19 @@
  int             Arr_1_Glob [50];
  int             Arr_2_Glob [50] [50];
  
@@ -184,7 +236,7 @@ diff -r 6fbc109affc2 benchmarks/dhrystone/dhry_1.c
  #else
          Boolean Reg = true;
  #endif
-@@ -44,15 +48,17 @@
+@@ -44,15 +49,17 @@
  /* variables for time measurement: */
  
  #ifdef TIMES
@@ -206,7 +258,7 @@ diff -r 6fbc109affc2 benchmarks/dhrystone/dhry_1.c
  #define Too_Small_Time 2
                  /* Measurements should last at least 2 seconds */
  #endif
-@@ -65,8 +71,38 @@
+@@ -65,8 +72,38 @@
  
  /* end of variables for time measurement */
  
@@ -245,7 +297,7 @@ diff -r 6fbc109affc2 benchmarks/dhrystone/dhry_1.c
  /*****/
  
    /* main program, corresponds to procedures        */
-@@ -80,29 +116,21 @@
+@@ -80,29 +117,21 @@
          Str_30          Str_1_Loc;
          Str_30          Str_2_Loc;
    REG   int             Run_Index;
@@ -282,7 +334,7 @@ diff -r 6fbc109affc2 benchmarks/dhrystone/dhry_1.c
    printf ("\n");
    if (Reg)
    {
-@@ -136,6 +164,8 @@
+@@ -136,6 +165,8 @@
    Begin_Time = time ( (long *) 0);
  #endif
  
@@ -291,7 +343,7 @@ diff -r 6fbc109affc2 benchmarks/dhrystone/dhry_1.c
    for (Run_Index = 1; Run_Index <= Number_Of_Runs; ++Run_Index)
    {
  
-@@ -182,6 +212,8 @@
+@@ -182,6 +213,8 @@
  
    } /* loop "for Run_Index" */
  
@@ -300,7 +352,7 @@ diff -r 6fbc109affc2 benchmarks/dhrystone/dhry_1.c
    /**************/
    /* Stop timer */
    /**************/
-@@ -262,6 +294,9 @@
+@@ -262,6 +295,9 @@
                          / (float) Number_Of_Runs;
      Dhrystones_Per_Second = (float) Number_Of_Runs / (float) User_Time;
  #else
@@ -310,7 +362,7 @@ diff -r 6fbc109affc2 benchmarks/dhrystone/dhry_1.c
      Microseconds = (float) User_Time * Mic_secs_Per_Second 
                          / ((float) HZ * ((float) Number_Of_Runs));
      Dhrystones_Per_Second = ((float) HZ * (float) Number_Of_Runs)
-@@ -273,6 +308,32 @@
+@@ -273,6 +309,32 @@
      printf ("%6.1f \n", Dhrystones_Per_Second);
      printf ("\n");
    }
@@ -343,3 +395,20 @@ diff -r 6fbc109affc2 benchmarks/dhrystone/dhry_1.c
    
  }
  
+diff -r 6fbc109affc2 benchmarks/dhrystone/dhry_2.c
+--- a/benchmarks/dhrystone/dhry_2.c	Thu Oct 13 02:04:35 2016 +0900
++++ b/benchmarks/dhrystone/dhry_2.c	Fri Oct 14 00:26:33 2016 +0900
+@@ -4,11 +4,12 @@
+  *                   "DHRYSTONE" Benchmark Program
+  *                   -----------------------------
+  *                                                                            
+- *  Version:    C, Version 2.1
++ *  Version:    C, Version 2.1-AC
+  *                                                                            
+  *  File:       dhry_2.c (part 3 of 3)
+  *
+  *  Date:       May 25, 1988
++ *              (Version 2.1-AC: October 16, 2016)
+  *
+  *  Author:     Reinhold P. Weicker
+  *

@@ -4,11 +4,12 @@
  *                   "DHRYSTONE" Benchmark Program
  *                   -----------------------------
  *                                                                            
- *  Version:    C, Version 2.1
+ *  Version:    C, Version 2.1-AC
  *                                                                            
  *  File:       dhry.h (part 1 of 3)
  *
  *  Date:       May 25, 1988
+ *              (Version 2.1-AC: October 16, 2016)
  *
  *  Author:     Reinhold P. Weicker
  *                      Siemens AG, AUT E 51
@@ -127,13 +128,13 @@
  *              non-executed "else" part was added to the "if" statement in
  *              Func_3, and a non-executed "else" part removed from Proc_3.
  *
- * Changes (2016-10-13, by Andrew Church):
+ * Changes for version 2.1-AC (2016-10-13, by Andrew Church):
  *              Initialization of global data has been moved to a separate
  *              Init() function, which is called from main().  Init() also
- *              also includes statically declared Rec_Type buffers for the
- *              Ptr_Glob and Next_Ptr_Glob variables rather than allocating
- *              those buffers by calling malloc(); this removes the only
- *              use of dynamically allocated memory in the code.
+ *              includes static-linkage Rec_Type buffers for the Ptr_Glob
+ *              and Next_Ptr_Glob variables rather than allocating those
+ *              buffers by calling malloc(); this removes the only use of
+ *              dynamically allocated memory in the code.
  *
  *              If the preprocessor symbol BENCHMARK_ONLY is defined, all
  *              code not part of the benchmark proper (printf() output,
@@ -149,7 +150,7 @@
  *              If the preprocessor symbol DHRY_PREFIX is defined, all
  *              globally-visible identifiers will have this prepended to
  *              their names.  For example, if DHRY_PREFIX is "dhry_"
- *              (without quotes), then identifiers will be renamed
+ *              (without quotes), then identifiers will be renamed to
  *              dhry_Proc_1(), dhry_Ptr_Glob, and so on.  In this case,
  *              the entry points will also receive the given prefix
  *              (dhry_Init() and dhry_Main() in this example).
@@ -183,7 +184,7 @@
  *              time is expected to be well below the threshold of noise
  *              from system interrupts and other external interference, so
  *              times measured in the manner described above should be
- *              compatible with previously measured Dhrystone 2.1 times.
+ *              comparable to previously measured Dhrystone 2.1 times.
  *
  *              [*] The change from <stdio.h> to <string.h> could, in
  *                  theory, affect the precise sequence of instructions
@@ -199,7 +200,7 @@
  *                  unprototyped or varargs function must set or clear CR
  *                  bit 6 to indicate whether any floating-point arguments
  *                  are passed to the function, so the presence of
- *                  prototypes allows the compiler omit a "crclr"
+ *                  prototypes allows the compiler to omit a "crclr"
  *                  instruction on each strcpy() and strcmp() call.
  *
  ***************************************************************************
@@ -242,6 +243,23 @@
  *                      time in 1/HZ seconds, with HZ = 60 for most systems.
  *                      CHECK YOUR SYSTEM DESCRIPTION BEFORE YOU JUST APPLY
  *                      A VALUE.
+ *                      If your system supports the "sysconf" function,
+ *                      which is part of the POSIX standard, you can leave
+ *                      this undefined, and the program will detect the
+ *                      proper value at runtime.
+ *              -DBENCHMARK_ONLY
+ *                      Define to export "Init" and "Main" functions with
+ *                      which the benchmark can be run from an external
+ *                      controlling program.  See notes under History for
+ *                      usage and caveats.
+ *              -DDHRY_PREFIX=prefix
+ *                      Define to prepend "prefix" to all globally visible
+ *                      symbols.  For example, with "-DDHRY_PREFIX=dhry_",
+ *                      the functions will be named "dhry_Func_1",
+ *                      "dhry_Func_2", and so on.  Useful in combination
+ *                      with -DBENCHMARK_ONLY, especially if linking several
+ *                      copies of Dhrystone built with different compilers
+ *                      or compiler options into the same executable file.
  *
  ***************************************************************************
  *
