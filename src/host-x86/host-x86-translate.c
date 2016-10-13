@@ -814,7 +814,7 @@ static ALWAYS_INLINE void append_jump(
  *    - 15 XMM exchanges with REX prefixes = 180 bytes
  *    - 1 XMM load with a REX prefix = 9 bytes
  * for a total of 294 bytes.  We round up to 320 to potentially help the
- * compiler optimize. */
+ * compiler optimize when using a temporary buffer. */
 #define SETUP_ALIAS_SIZE  320
 
 /**
@@ -836,6 +836,7 @@ static bool setup_aliases_for_block(
 {
     RTLUnit * const unit = ctx->unit;
     const int num_aliases = unit->next_alias;
+    const int last_insn = unit->blocks[block_index].last_insn;
     const uint16_t *current_store = ctx->blocks[block_index].alias_store;
     const uint16_t *next_load = ctx->blocks[target_index].alias_load;
 
@@ -851,21 +852,24 @@ static bool setup_aliases_for_block(
     }
 
     /* First construct a map of which registers get moved where and which
-     * need to be loaded from storage.  We need a separate step for this in
-     * case the target of one move would overwrite the source of another,
-     * in which case we have to use a swap instead.  This can get
-     * particularly tricky if several registers are shifted in a loop (see
-     * tests/host-x86/general/alias-merge-swap-cycle-* for examples). */
-    uint32_t move_targets = 0;  // Bit set = register is a move target
-    uint32_t load_targets = 0;  // Bit set = register is a load target
+     * need to be reloaded from spill slots or loaded from alias storage.
+     * We need a separate step for this in case the target of one move
+     * would overwrite the source of another, in which case we have to use
+     * a swap instead.  This can get particularly tricky if several
+     * registers are shifted in a loop (for some examples, see
+     * tests/host-x86/general/alias-merge-swap-cycle-*). */
+    uint32_t move_targets = 0;    // Bit set = register is a move target
+    uint32_t reload_targets = 0;  // Bit set = register is a reload target
+    uint32_t load_targets = 0;    // Bit set = register is a load target
     uint8_t move_map[32];  // X86Register source for each move target
     uint8_t src_map[32];   // Map from original to current (swapped) registers
                            //    (i.e., "where is this register's value now?")
     uint8_t value_map[32]; // Map from original reg values to current locations
                            //    (i.e., "what does this register now hold?")
     uint8_t src_count[32]; // # of times each host register is used as a source
-    uint16_t load_map[32]; // RTL alias to load into each load target
     uint8_t dest_type[32]; // RTLDataType of each alias, indexed by move target
+    uint16_t reload_map[32]; // RTL register to load into each reload target
+    uint16_t load_map[32]; // RTL alias to load into each load target
     memset(src_count, 0, sizeof(src_count));
     for (int i = 1; i < num_aliases; i++) {
         const int merge_reg = next_load[i];
@@ -875,12 +879,17 @@ static bool setup_aliases_for_block(
             value_map[host_dest] = host_dest;
             const int store_reg = current_store[i];
             if (store_reg) {
-                const X86Register host_src = ctx->regs[store_reg].host_reg;
-                move_targets |= 1u << host_dest;
-                move_map[host_dest] = host_src;
-                src_map[host_src] = host_src;
-                value_map[host_src] = host_src;
-                src_count[host_src]++;
+                if (is_spilled(ctx, store_reg, last_insn)) {
+                    reload_targets |= 1u << host_dest;
+                    reload_map[host_dest] = (uint16_t)store_reg;
+                } else {
+                    const X86Register host_src = ctx->regs[store_reg].host_reg;
+                    move_targets |= 1u << host_dest;
+                    move_map[host_dest] = host_src;
+                    src_map[host_src] = host_src;
+                    value_map[host_src] = host_src;
+                    src_count[host_src]++;
+                }
             } else {
                 load_targets |= 1u << host_dest;
                 load_map[host_dest] = (uint16_t)i;
@@ -925,7 +934,14 @@ static bool setup_aliases_for_block(
         src_count[move_src]--;
     }
 
-    /* Finally, load values from storage which were not live. */
+    /* Finally, load values from storage which were spilled or not live. */
+    while (reload_targets) {
+        const X86Register host_dest = ctz32(reload_targets);
+        reload_targets ^= 1u << host_dest;
+        const int src = reload_map[host_dest];
+        append_load(code, unit->regs[src].type, host_dest,
+                    X86_SP, ctx->regs[src].spill_offset);
+    }
     while (load_targets) {
         const X86Register host_dest = ctz32(load_targets);
         load_targets ^= 1u << host_dest;
