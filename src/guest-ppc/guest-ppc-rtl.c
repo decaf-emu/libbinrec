@@ -1675,6 +1675,9 @@ static inline void translate_muldiv_reg(
 {
     RTLUnit * const unit = ctx->unit;
 
+    const int rA = get_gpr(ctx, insn_rA(insn));
+    const int rB = get_gpr(ctx, insn_rB(insn));
+
     /* For division, we might skip over the actual division operation, so
      * store the target register now.  We handle XER (when OE is set)
      * separately, since we have to set SO|OV anyway on the overflow path. */
@@ -1688,9 +1691,6 @@ static inline void translate_muldiv_reg(
         }
         ctx->live.gpr[rD] = 0;
     }
-
-    const int rA = get_gpr(ctx, insn_rA(insn));
-    const int rB = get_gpr(ctx, insn_rB(insn));
 
     int div_skip_label = 0;
     int xer = 0;
