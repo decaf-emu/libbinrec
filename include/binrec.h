@@ -457,17 +457,11 @@ typedef struct binrec_setup_t {
 #define BINREC_OPT_CALLEE_SAVED_REGS_UNSAFE  (1<<1)
 
 /**
- * BINREC_OPT_DSE:  Perform dead store elimination (DSE) on the translated
- * code, removing instructions whose outputs are not used.
- */
-#define BINREC_OPT_DSE  (1<<2)
-
-/**
  * BINREC_OPT_DECONDITION:  Convert conditional branches and moves with
  * constant conditions to unconditional instructions or NOPs.  This is
  * most useful in conjunction with constant folding.
  */
-#define BINREC_OPT_DECONDITION  (1<<3)
+#define BINREC_OPT_DECONDITION  (1<<2)
 
 /**
  * BINREC_OPT_DEEP_DATA_FLOW:  Perform extended data flow analysis on
@@ -475,7 +469,13 @@ typedef struct binrec_setup_t {
  * This optimization by itself only finds dead stores; enable BINREC_OPT_DSE
  * to remove them from the code stream.
  */
-#define BINREC_OPT_DEEP_DATA_FLOW  (1<<4)
+#define BINREC_OPT_DEEP_DATA_FLOW  (1<<3)
+
+/**
+ * BINREC_OPT_DSE:  Perform dead store elimination (DSE) on the translated
+ * code, removing instructions whose outputs are not used.
+ */
+#define BINREC_OPT_DSE  (1<<4)
 
 /**
  * BINREC_OPT_FOLD_CONSTANTS:  Look for computations whose operands are all

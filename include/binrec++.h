@@ -53,9 +53,9 @@ namespace Feature {
 namespace Optimize {
     const unsigned int BASIC = BINREC_OPT_BASIC;
     const unsigned int CALLEE_SAVED_REGS_UNSAFE = BINREC_OPT_CALLEE_SAVED_REGS_UNSAFE;
-    const unsigned int DSE = BINREC_OPT_DSE;
     const unsigned int DECONDITION = BINREC_OPT_DECONDITION;
     const unsigned int DEEP_DATA_FLOW = BINREC_OPT_DEEP_DATA_FLOW;
+    const unsigned int DSE = BINREC_OPT_DSE;
     const unsigned int FOLD_CONSTANTS = BINREC_OPT_FOLD_CONSTANTS;
     const unsigned int NATIVE_CALLS = BINREC_OPT_NATIVE_CALLS;
     const unsigned int NATIVE_IEEE_TINY = BINREC_OPT_NATIVE_IEEE_TINY;
