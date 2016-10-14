@@ -87,9 +87,9 @@ default command-line options set in the Makefile and etc/* scripts.
     /optimization | (MDhry/sec) | (MDhry/sec) |
    ---------------+-------------+-------------+
     native        |    15.4     |    35.0     |
-    ppc32 -O0     |     1.99    |     2.70    |
-    ppc32 -O1     |     2.00    |     2.74    |
-    ppc32 -O2     |     2.23    |     3.00    |
+    ppc32 -O0     |     2.11    |     2.96    |
+    ppc32 -O1     |     2.12    |     2.97    |
+    ppc32 -O2     |     2.20    |     3.06    |
 
 
 Limitations

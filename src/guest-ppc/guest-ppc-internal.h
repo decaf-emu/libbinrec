@@ -140,14 +140,16 @@ typedef struct GuestPPCBlockInfo {
     uint32_t gpr_changed;
     uint32_t fpr_used;
     uint32_t fpr_changed;
-    uint32_t cr_used;
-    uint32_t cr_changed;
+    uint32_t crb_used;
+    uint32_t crb_changed;
     uint8_t
+        cr_used : 1,  // For insns which access CR as a whole (mfcr/mtcr).
         lr_used : 1,
         ctr_used : 1,
         xer_used : 1,
         fpscr_used : 1;
     uint8_t
+        cr_changed : 1,
         lr_changed : 1,
         ctr_changed : 1,
         xer_changed : 1,
@@ -157,11 +159,19 @@ typedef struct GuestPPCBlockInfo {
     int label;
 } GuestPPCBlockInfo;
 
-/* RTL register set corresponding to guest CPU state. */
+/* RTL register set corresponding to guest CPU state.  CR is recorded as
+ * both 32 1-bit aliases (crb[]) and one 32-bit alias (cr); the semantics
+ * of their interaction are that (1) the base value of CR is the value of
+ * the RTL alias GuestPPCContext.alias.cr, and (2) for each bit b in CR, if
+ * the corresponding bit is set in GuestPPCContext.crb_loaded, the value of
+ * the bit is the value of the RTL alias GuestPPCContext.crb[b], else the
+ * value of the bit is the value of the corresponding bit in the base value
+ * of CR as determined above. */
 typedef struct GuestPPCRegSet {
     uint16_t gpr[32];
     uint16_t fpr[32];
-    uint16_t cr[32];
+    uint16_t crb[32];
+    uint16_t cr;
     uint16_t lr;
     uint16_t ctr;
     uint16_t xer;
@@ -191,11 +201,13 @@ typedef struct GuestPPCContext {
     /* Alias registers for guest CPU state. */
     GuestPPCRegSet alias;
 
-    /* Combined CR field change flags from all basic blocks (used in
-     * merging fields back to a single 32-bit value). */
-    uint32_t cr_changed;
-    /* Mask for CR word equivalent to ~cr_changed. */
-    uint32_t cr_unchanged_mask;
+    /* Set of CR bits which are modified by the unit.  These bits are
+     * stored in the same order as the CR word, so that the MSB corresponds
+     * to CR bit 0. */
+    uint32_t crb_changed;
+    /* Set of CR bits which have been loaded into bit aliases, in the same
+     * bit order as crb_loaded. */
+    uint32_t crb_loaded;
 
     /* RTL registers for each CPU register live in the current block. */
     GuestPPCRegSet live;
@@ -203,8 +215,9 @@ typedef struct GuestPPCContext {
     /* Dirty state of live registers. */
     uint32_t gpr_dirty;
     uint32_t fpr_dirty;
-    uint32_t cr_dirty;
+    uint32_t crb_dirty;
     uint8_t
+        cr_dirty : 1,
         lr_dirty : 1,
         ctr_dirty : 1,
         xer_dirty : 1,

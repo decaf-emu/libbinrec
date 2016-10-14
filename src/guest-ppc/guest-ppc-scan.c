@@ -96,22 +96,31 @@ static inline void mark_fpr_changed(GuestPPCBlockInfo *block, const int index) {
     block->fpr_changed |= 1 << index;
 }
 
-static inline void mark_cr_used(GuestPPCBlockInfo *block, const int index) {
-    if (!(block->cr_changed & (1 << index))) block->cr_used |= 1 << index;
+static inline void mark_crb_used(GuestPPCBlockInfo *block, const int index) {
+    if (!(block->crb_changed & (1 << index))) block->crb_used |= 1 << index;
 }
 
 static inline void mark_crf_used(GuestPPCBlockInfo *block, const int index) {
-    if ((block->cr_changed & (0xFu << (4*index))) != 0xFu << (4*index)) {
-        block->cr_used |= 0xFu << (4*index);
+    const uint32_t mask = 0xF << (4*index);
+    if ((block->crb_changed & mask) != mask) {
+        block->crb_used |= 0xF << (4*index);
     }
 }
 
-static inline void mark_cr_changed(GuestPPCBlockInfo *block, const int index) {
-    block->cr_changed |= 1 << index;
+static inline void mark_cr_used(GuestPPCBlockInfo *block) {
+    if (!block->cr_changed) block->cr_used = 1;
+}
+
+static inline void mark_crb_changed(GuestPPCBlockInfo *block, const int index) {
+    block->crb_changed |= 1 << index;
 }
 
 static inline void mark_crf_changed(GuestPPCBlockInfo *block, const int index) {
-    block->cr_changed |= 0xFu << (4*index);
+    block->crb_changed |= 0xF << (4*index);
+}
+
+static inline void mark_cr_changed(GuestPPCBlockInfo *block) {
+    block->cr_changed = 1;
 }
 
 static inline void mark_lr_used(GuestPPCBlockInfo *block) {
@@ -171,7 +180,7 @@ static void update_used_changed(GuestPPCContext *ctx, GuestPPCBlockInfo *block,
             mark_ctr_changed(block);
         }
         if (!(insn_BO(insn) & 0x10)) {
-            mark_cr_used(block, insn_BI(insn));
+            mark_crb_used(block, insn_BI(insn));
         }
         /* fall through */
       case OPCD_B:
@@ -477,10 +486,10 @@ static void update_used_changed(GuestPPCContext *ctx, GuestPPCBlockInfo *block,
             /* No dependency on crbA/crbB for crclr and crset. */
             if (!((insn_XO_10(insn) == XO_CRXOR || insn_XO_10(insn) == XO_CREQV)
                   && insn_crbA(insn) == insn_crbB(insn))) {
-                mark_cr_used(block, insn_crbA(insn));
-                mark_cr_used(block, insn_crbB(insn));
+                mark_crb_used(block, insn_crbA(insn));
+                mark_crb_used(block, insn_crbB(insn));
             }
-            mark_cr_changed(block, insn_crbD(insn));
+            mark_crb_changed(block, insn_crbD(insn));
             break;
 
           case 0x10:  // bclr/bcctr
@@ -495,7 +504,7 @@ static void update_used_changed(GuestPPCContext *ctx, GuestPPCBlockInfo *block,
                 }
             }
             if (!(insn_BO(insn) & 0x10)) {
-                mark_cr_used(block, insn_BI(insn));
+                mark_crb_used(block, insn_BI(insn));
             }
             if (insn_LK(insn)) {
                 mark_lr_changed(block);
@@ -565,8 +574,17 @@ static void update_used_changed(GuestPPCContext *ctx, GuestPPCBlockInfo *block,
 
           case 0x10:  // mtcrf
             mark_gpr_used(block, insn_rS(insn));
-            /* The data is written directly to the PSB, so we don't mark
-             * specific CR bits as touched by this instruction. */
+            /* CRM==255 (mtcr) is handled specially, without use of the CR
+             * bit aliases. */
+            if (insn_CRM(insn) == 255) {
+                mark_cr_changed(block);
+            } else {
+                for (int crf = 0; crf < 8; crf++) {
+                    if (insn_CRM(insn) & (0x80 >> crf)) {
+                        mark_crf_changed(block, crf);
+                    }
+                }
+            }
             break;
 
           case 0x12:  // mtmsr, mtsr, mtsrin, tlbie
@@ -583,9 +601,7 @@ static void update_used_changed(GuestPPCContext *ctx, GuestPPCBlockInfo *block,
                 mark_gpr_used(block, insn_rS(insn));
             } else {
                 if (insn_XO_10(insn) == XO_MFCR) {
-                    /* mfcr has special handling to load unused fields
-                     * directly from the PSB, so we don't need to mark
-                     * any fields here. */
+                    mark_cr_used(block);
                 } else if (insn_XO_10(insn) == XO_MFSRIN) {
                     mark_gpr_used(block, insn_rB(insn));
                 }

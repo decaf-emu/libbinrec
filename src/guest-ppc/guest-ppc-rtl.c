@@ -45,8 +45,8 @@ static inline int rtl_imm64(RTLUnit * const unit, uint32_t value)
 /*-----------------------------------------------------------------------*/
 
 /**
- * get_gpr, get_fpr, get_cr, get_lr, get_ctr, get_xer, get_fpscr:  Return
- * an RTL register containing the value of the given PowerPC register.
+ * get_gpr, get_fpr, get_cr, get_crb, get_lr, get_ctr, get_xer, get_fpscr:
+ * Return an RTL register containing the value of the given PowerPC register.
  * This will either be the register last used in a corresponding set or get
  * operation, or a newly allocated register (in which case an appropriate
  * GET_ALIAS instruction will also be added).
@@ -54,7 +54,7 @@ static inline int rtl_imm64(RTLUnit * const unit, uint32_t value)
  * [Parameters]
  *     ctx: Translation context.
  *     index: PowerPC register index (get_gpr(), get_fpr()) or CR bit index
- *         (get_cr()).
+ *         (get_crb()).
  * [Return value]
  *     RTL register index.
  */
@@ -86,16 +86,41 @@ static inline int get_fpr(GuestPPCContext * const ctx, int index)
     }
 }
 
-static inline int get_cr(GuestPPCContext * const ctx, int index)
+static inline int get_cr(GuestPPCContext * const ctx)
 {
-    if (ctx->live.cr[index]) {
-        return ctx->live.cr[index];
+    if (ctx->live.cr) {
+        return ctx->live.cr;
     } else {
         RTLUnit * const unit = ctx->unit;
         const int reg = rtl_alloc_register(unit, RTLTYPE_INT32);
-        ASSERT(ctx->alias.cr[index]);
-        rtl_add_insn(unit, RTLOP_GET_ALIAS, reg, 0, 0, ctx->alias.cr[index]);
-        ctx->live.cr[index] = reg;
+        ASSERT(ctx->alias.cr);
+        rtl_add_insn(unit, RTLOP_GET_ALIAS, reg, 0, 0, ctx->alias.cr);
+        ctx->live.cr = reg;
+        return reg;
+    }
+}
+
+static inline int get_crb(GuestPPCContext * const ctx, int index)
+{
+    if (ctx->live.crb[index]) {
+        return ctx->live.crb[index];
+    } else {
+        RTLUnit * const unit = ctx->unit;
+        int reg;
+        ASSERT(ctx->alias.crb[index]);
+        if (ctx->crb_loaded & (0x80000000u >> index)) {
+            reg = rtl_alloc_register(unit, RTLTYPE_INT32);
+            rtl_add_insn(unit, RTLOP_GET_ALIAS,
+                         reg, 0, 0, ctx->alias.crb[index]);
+        } else {
+            ctx->crb_loaded |= 0x80000000u >> index;
+            const int cr = get_cr(ctx);
+            reg = rtl_alloc_register(unit, RTLTYPE_INT32);
+            rtl_add_insn(unit, RTLOP_BFEXT, reg, cr, 0, (31-index) | (1<<8));
+            rtl_add_insn(unit, RTLOP_SET_ALIAS,
+                         0, reg, 0, ctx->alias.crb[index]);
+        }
+        ctx->live.crb[index] = reg;
         return reg;
     }
 }
@@ -159,9 +184,9 @@ static inline int get_fpscr(GuestPPCContext * const ctx)
 /*-----------------------------------------------------------------------*/
 
 /**
- * set_gpr, set_fpr, set_cr, set_lr, set_ctr, set_xer, set_fpscr:  Store
- * the given RTL register to the given PowerPC register.  These functions
- * do not add a SET_ALIAS instruction.
+ * set_gpr, set_fpr, set_cr, set_crb, set_lr, set_ctr, set_xer, set_fpscr:
+ * Store the given RTL register to the given PowerPC register.  These
+ * functions do not add a SET_ALIAS instruction.
  *
  * Complex instructions whose translation includes conditionally-executed
  * code paths must not call these functions from any code which is
@@ -169,8 +194,8 @@ static inline int get_fpscr(GuestPPCContext * const ctx)
  *
  * [Parameters]
  *     ctx: Translation context.
- *     index: PowerPC register index (get_gpr(), get_fpr()) or CR bit index
- *         (get_cr()).
+ *     index: PowerPC register index (set_gpr(), set_fpr()) or CR bit index
+ *         (set_crb()).
  *     reg: Register to store.
  */
 static inline void set_gpr(GuestPPCContext * const ctx, int index, int reg)
@@ -185,10 +210,17 @@ static inline void set_fpr(GuestPPCContext * const ctx, int index, int reg)
     ctx->fpr_dirty |= 1u << index;
 }
 
-static inline void set_cr(GuestPPCContext * const ctx, int index, int reg)
+static inline void set_cr(GuestPPCContext * const ctx, int reg)
 {
-    ctx->live.cr[index] = reg;
-    ctx->cr_dirty |= 1u << index;
+    ctx->live.cr = reg;
+    ctx->cr_dirty = 1;
+}
+
+static inline void set_crb(GuestPPCContext * const ctx, int index, int reg)
+{
+    ctx->live.crb[index] = reg;
+    ctx->crb_dirty |= 1u << index;
+    ctx->crb_loaded |= 0x80000000u >> index;
 }
 
 static inline void set_lr(GuestPPCContext * const ctx, int reg)
@@ -317,13 +349,19 @@ static void store_live_regs(GuestPPCContext *ctx, bool clean, bool clear)
                      0, ctx->live.fpr[index], 0, ctx->alias.fpr[index]);
     }
 
-    uint32_t cr_dirty = ctx->cr_dirty;
-    while (cr_dirty) {
-        const int index = ctz32(cr_dirty);
-        cr_dirty ^= 1u << index;
-        ASSERT(ctx->live.cr[index]);
+    uint32_t crb_dirty = ctx->crb_dirty;
+    while (crb_dirty) {
+        const int index = ctz32(crb_dirty);
+        crb_dirty ^= 1u << index;
+        ASSERT(ctx->live.crb[index]);
         rtl_add_insn(unit, RTLOP_SET_ALIAS,
-                     0, ctx->live.cr[index], 0, ctx->alias.cr[index]);
+                     0, ctx->live.crb[index], 0, ctx->alias.crb[index]);
+    }
+
+    if (ctx->cr_dirty) {
+        ASSERT(ctx->live.cr);
+        rtl_add_insn(unit, RTLOP_SET_ALIAS,
+                     0, ctx->live.cr, 0, ctx->alias.cr);
     }
 
     if (ctx->lr_dirty) {
@@ -353,6 +391,7 @@ static void store_live_regs(GuestPPCContext *ctx, bool clean, bool clear)
     if (clean) {
         ctx->gpr_dirty = 0;
         ctx->fpr_dirty = 0;
+        ctx->crb_dirty = 0;
         ctx->cr_dirty = 0;
         ctx->lr_dirty = 0;
         ctx->ctr_dirty = 0;
@@ -367,7 +406,7 @@ static void store_live_regs(GuestPPCContext *ctx, bool clean, bool clear)
 /*-----------------------------------------------------------------------*/
 
 /**
- * merge_cr:  Merge all CRn aliases (and untouched CR bits from the
+ * merge_cr:  Merge all CR bit aliases (and untouched CR bits from the
  * processor state block) into a 32-bit CR word.
  *
  * [Parameters]
@@ -379,38 +418,44 @@ static int merge_cr(GuestPPCContext *ctx)
 {
     RTLUnit * const unit = ctx->unit;
 
+    uint32_t crb_dirty = ctx->crb_loaded & ctx->crb_changed;
+
     int cr;
-    if (ctx->cr_changed == ~UINT32_C(0)) {
+    if (crb_dirty == ~UINT32_C(0)) {
         cr = 0;
     } else {
-        cr = rtl_alloc_register(unit, RTLTYPE_INT32);
-        rtl_add_insn(unit, RTLOP_LOAD, cr, ctx->psb_reg, 0,
-                     ctx->handle->setup.state_offset_cr);
-        if (ctx->cr_changed != 0) {
+        /* Don't call get_cr() because we don't want to make CR live if
+         * it wasn't already. */
+        if (ctx->live.cr) {
+            cr = ctx->live.cr;
+        } else {
+            cr = rtl_alloc_register(unit, RTLTYPE_INT32);
+            rtl_add_insn(unit, RTLOP_GET_ALIAS, cr, 0, 0, ctx->alias.cr);
+        }
+        if (crb_dirty != 0) {
             const int new_cr = rtl_alloc_register(unit, RTLTYPE_INT32);
-            rtl_add_insn(unit, RTLOP_ANDI,
-                         new_cr, cr, 0, (int32_t)ctx->cr_unchanged_mask);
+            rtl_add_insn(unit, RTLOP_ANDI, new_cr, cr, 0, (int32_t)~crb_dirty);
             cr = new_cr;
         }
     }
 
-    for (int i = 0; i < 32; i++) {
-        if (ctx->cr_changed & (1 << i)) {
-            const int crbN = get_cr(ctx, i);
-            int shifted_crbN;
-            if (i == 31) {
-                shifted_crbN = crbN;
-            } else {
-                shifted_crbN = rtl_alloc_register(unit, RTLTYPE_INT32);
-                rtl_add_insn(unit, RTLOP_SLLI, shifted_crbN, crbN, 0, 31 - i);
-            }
-            if (cr) {
-                const int new_cr = rtl_alloc_register(unit, RTLTYPE_INT32);
-                rtl_add_insn(unit, RTLOP_OR, new_cr, cr, shifted_crbN, 0);
-                cr = new_cr;
-            } else {
-                cr = shifted_crbN;
-            }
+    while (crb_dirty) {
+        const int bit = clz32(crb_dirty);
+        crb_dirty ^= 0x80000000u >> bit;
+        const int crbN = get_crb(ctx, bit);
+        int shifted_crbN;
+        if (bit == 31) {
+            shifted_crbN = crbN;
+        } else {
+            shifted_crbN = rtl_alloc_register(unit, RTLTYPE_INT32);
+            rtl_add_insn(unit, RTLOP_SLLI, shifted_crbN, crbN, 0, 31 - bit);
+        }
+        if (cr) {
+            const int new_cr = rtl_alloc_register(unit, RTLTYPE_INT32);
+            rtl_add_insn(unit, RTLOP_OR, new_cr, cr, shifted_crbN, 0);
+            cr = new_cr;
+        } else {
+            cr = shifted_crbN;
         }
     }
 
@@ -493,10 +538,10 @@ static void update_cr0(GuestPPCContext *ctx, int result)
     rtl_add_insn(unit, RTLOP_SEQI, eq, result, 0, 0);
     const int so = rtl_alloc_register(unit, RTLTYPE_INT32);
     rtl_add_insn(unit, RTLOP_BFEXT, so, get_xer(ctx), 0, XER_SO_SHIFT | 1<<8);
-    set_cr(ctx, 0, lt);
-    set_cr(ctx, 1, gt);
-    set_cr(ctx, 2, eq);
-    set_cr(ctx, 3, so);
+    set_crb(ctx, 0, lt);
+    set_crb(ctx, 1, gt);
+    set_crb(ctx, 2, eq);
+    set_crb(ctx, 3, so);
 }
 
 /*************************************************************************/
@@ -770,7 +815,7 @@ static void translate_branch_label(
     /* All dirty registers have been stored at this point. */
 
     if (!(BO & 0x10)) {
-        const int test = get_cr(ctx, BI);
+        const int test = get_crb(ctx, BI);
         if (handle->use_branch_callback) {
             rtl_add_insn(unit, BO & 0x08 ? RTLOP_GOTO_IF_Z : RTLOP_GOTO_IF_NZ,
                          0, test, 0, skip_label);
@@ -854,7 +899,7 @@ static void translate_branch_terminal(
     }
 
     if (!(BO & 0x10)) {
-        const int test = get_cr(ctx, BI);
+        const int test = get_crb(ctx, BI);
         rtl_add_insn(unit, BO & 0x08 ? RTLOP_GOTO_IF_Z : RTLOP_GOTO_IF_NZ,
                      0, test, 0, skip_label);
     }
@@ -982,10 +1027,10 @@ static inline void translate_compare(
     const int so = rtl_alloc_register(unit, RTLTYPE_INT32);
     rtl_add_insn(unit, RTLOP_BFEXT, so, get_xer(ctx), 0, XER_SO_SHIFT | 1<<8);
 
-    set_cr(ctx, insn_crfD(insn)*4+0, lt);
-    set_cr(ctx, insn_crfD(insn)*4+1, gt);
-    set_cr(ctx, insn_crfD(insn)*4+2, eq);
-    set_cr(ctx, insn_crfD(insn)*4+3, so);
+    set_crb(ctx, insn_crfD(insn)*4+0, lt);
+    set_crb(ctx, insn_crfD(insn)*4+1, gt);
+    set_crb(ctx, insn_crfD(insn)*4+2, eq);
+    set_crb(ctx, insn_crfD(insn)*4+3, so);
 }
 
 /*-----------------------------------------------------------------------*/
@@ -1394,7 +1439,7 @@ static inline void translate_load_store_string(
 /*-----------------------------------------------------------------------*/
 
 /**
- * translate_logic_cr:  Translate a logic instruction operating on CR bits.
+ * translate_logic_crb:  Translate a logic instruction operating on CR bits.
  *
  * [Parameters]
  *     ctx: Translation context.
@@ -1403,15 +1448,15 @@ static inline void translate_load_store_string(
  *     invert_crbB: True if the value of crbB should be inverted.
  *     invert_result: True if the result should be inverted.
  */
-static inline void translate_logic_cr(
+static inline void translate_logic_crb(
     GuestPPCContext *ctx, uint32_t insn, RTLOpcode rtlop, bool invert_crbB,
     bool invert_result)
 {
     RTLUnit * const unit = ctx->unit;
 
-    const int crbA = get_cr(ctx, insn_crbA(insn));
+    const int crbA = get_crb(ctx, insn_crbA(insn));
 
-    int crbB = get_cr(ctx, insn_crbB(insn));
+    int crbB = get_crb(ctx, insn_crbB(insn));
     if (invert_crbB) {
         const int inverted = rtl_alloc_register(unit, RTLTYPE_INT32);
         rtl_add_insn(unit, RTLOP_XORI, inverted, crbB, 0, 1);
@@ -1425,7 +1470,7 @@ static inline void translate_logic_cr(
         rtl_add_insn(unit, RTLOP_XORI, inverted, result, 0, 1);
         result = inverted;
     }
-    set_cr(ctx, insn_crbD(insn), result);
+    set_crb(ctx, insn_crbD(insn), result);
 }
 
 /*-----------------------------------------------------------------------*/
@@ -2172,7 +2217,7 @@ static inline void translate_x1F(
         for (int bit = 0; bit < 4; bit++) {
             const int crb = rtl_alloc_register(unit, RTLTYPE_INT32);
             rtl_add_insn(unit, RTLOP_BFEXT, crb, xer, 0, (31-bit) | (1<<8));
-            set_cr(ctx, insn_crfD(insn)*4 + bit, crb);
+            set_crb(ctx, insn_crfD(insn)*4 + bit, crb);
         }
         const int new_xer = rtl_alloc_register(unit, RTLTYPE_INT32);
         rtl_add_insn(unit, RTLOP_ANDI, new_xer, xer, 0, 0x0FFFFFFF);
@@ -2291,40 +2336,26 @@ static inline void translate_x1F(
         return;
 
       /* XO_5 = 0x10 */
-      case XO_MTCRF: {
-        const int rS = get_gpr(ctx, insn_rS(insn));
-        int cr;
+      case XO_MTCRF:
         if (insn_CRM(insn) == 0xFF) {
-            cr = rS;
+            set_cr(ctx, get_gpr(ctx, insn_rS(insn)));
+            memset(ctx->live.crb, 0, sizeof(ctx->live.crb));
+            ctx->crb_loaded = 0;
+            ctx->crb_dirty = 0;
         } else {
-            uint32_t mask = 0;
+            const int rS = get_gpr(ctx, insn_rS(insn));
             for (int i = 0; i < 8; i++) {
-                if (insn_CRM(insn) & (1 << i)) {
-                    mask |= 0xF << (i*4);
+                if (insn_CRM(insn) & (0x80 >> i)) {
+                    for (int bit = i*4; bit < i*4+4; bit++) {
+                        const int reg = rtl_alloc_register(unit, RTLTYPE_INT32);
+                        rtl_add_insn(unit, RTLOP_BFEXT,
+                                     reg, rS, 0, (31-bit) | (1<<8));
+                        set_crb(ctx, bit, reg);
+                    }
                 }
-            }
-            const int old_cr = rtl_alloc_register(unit, RTLTYPE_INT32);
-            rtl_add_insn(unit, RTLOP_LOAD, old_cr, ctx->psb_reg, 0,
-                         ctx->handle->setup.state_offset_cr);
-            const int masked_cr = rtl_alloc_register(unit, RTLTYPE_INT32);
-            rtl_add_insn(unit, RTLOP_ANDI,
-                         masked_cr, old_cr, 0, (int32_t)~mask);
-            const int masked_rS = rtl_alloc_register(unit, RTLTYPE_INT32);
-            rtl_add_insn(unit, RTLOP_ANDI, masked_rS, rS, 0, (int32_t)mask);
-            cr = rtl_alloc_register(unit, RTLTYPE_INT32);
-            rtl_add_insn(unit, RTLOP_OR, cr, masked_cr, masked_rS, 0);
-        }
-        rtl_add_insn(unit, RTLOP_STORE, 0, ctx->psb_reg, cr,
-                     ctx->handle->setup.state_offset_cr);
-        for (int i = 0; i < 32; i++) {
-            if (ctx->alias.cr[i]) {
-                const int crbN = rtl_alloc_register(unit, RTLTYPE_INT32);
-                rtl_add_insn(unit, RTLOP_BFEXT, crbN, cr, 0, (31-i) | (1<<8));
-                set_cr(ctx, i, crbN);
             }
         }
         return;
-      }  // case XO_MTCRF
 
       /* XO_5 = 0x12 */
       case XO_MTMSR:
@@ -2398,19 +2429,19 @@ static inline void translate_x1F(
         const int flag = rtl_alloc_register(unit, RTLTYPE_INT32);
         rtl_add_insn(unit, RTLOP_LOAD_U8, flag, psb_reg, 0,
                      handle->setup.state_offset_reserve_flag);
+        set_crb(ctx, 0, rtl_imm32(unit, 0));
+        set_crb(ctx, 1, rtl_imm32(unit, 0));
         const int xer = get_xer(ctx);
         const int so = rtl_alloc_register(unit, RTLTYPE_INT32);
         rtl_add_insn(unit, RTLOP_BFEXT, so, xer, 0, XER_SO_SHIFT | 1<<8);
-        /* Can't use set_cr() because of the conditional branches. */
-        ctx->live.cr[0] = rtl_imm32(unit, 0);
-        ctx->live.cr[1] = rtl_imm32(unit, 0);
-        ctx->live.cr[2] = rtl_imm32(unit, 0);
-        ctx->live.cr[3] = so;
-        for (int i = 0; i < 4; i++) {
-            rtl_add_insn(unit, RTLOP_SET_ALIAS,
-                         0, ctx->live.cr[i], 0, ctx->alias.cr[i]);
-        }
-        ctx->cr_dirty &= ~(0xF << 28);
+        set_crb(ctx, 3, so);
+        /* Can't use set_crb() for the eq bit because of the conditional
+         * branches. */
+        rtl_add_insn(unit, RTLOP_SET_ALIAS,
+                     0, rtl_imm32(unit, 0), 0, ctx->alias.crb[2]);
+        ctx->live.crb[2] = 0;
+        ctx->crb_dirty &= ~(1u << 29);
+        ctx->crb_loaded |= 0x80000000u >> 29;
         rtl_add_insn(unit, RTLOP_GOTO_IF_Z, 0, flag, 0, skip_label);
         rtl_add_insn(unit, RTLOP_STORE_I8, 0, psb_reg, rtl_imm32(unit, 0),
                      handle->setup.state_offset_reserve_flag);
@@ -2438,9 +2469,8 @@ static inline void translate_x1F(
         rtl_add_insn(unit, RTLOP_SEQ, success, result, old_value, 0);
         rtl_add_insn(unit, RTLOP_GOTO_IF_Z, 0, success, 0, skip_label);
 
-        ctx->live.cr[2] = rtl_imm32(unit, 1);
         rtl_add_insn(unit, RTLOP_SET_ALIAS,
-                     0, ctx->live.cr[2], 0, ctx->alias.cr[2]);
+                     0, rtl_imm32(unit, 1), 0, ctx->alias.crb[2]);
 
         rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, skip_label);
 
@@ -2754,8 +2784,8 @@ static inline void translate_insn(
         switch ((PPCExtendedOpcode13)insn_XO_10(insn)) {
           case XO_MCRF:
             for (int i = 0; i < 4; i++) {
-                set_cr(ctx, insn_crfD(insn)*4 + i,
-                       get_cr(ctx, insn_crfS(insn)*4 + i));
+                set_crb(ctx, insn_crfD(insn)*4 + i,
+                        get_crb(ctx, insn_crfS(insn)*4 + i));
             }
             return;
           case XO_BCLR:
@@ -2768,48 +2798,48 @@ static inline void translate_insn(
              * but the usage frequency of crnot is probably not very high
              * in typical code and the potential speed gain is minimal, so
              * we don't bother with special handling. */
-            translate_logic_cr(ctx, insn, RTLOP_OR, false, true);
+            translate_logic_crb(ctx, insn, RTLOP_OR, false, true);
             return;
-          case XO_RFI:  // rfi
+          case XO_RFI:
             translate_unimplemented_insn(ctx, address, insn);
             return;
           case XO_CRANDC:
-            translate_logic_cr(ctx, insn, RTLOP_AND, true, false);
+            translate_logic_crb(ctx, insn, RTLOP_AND, true, false);
             return;
           case XO_ISYNC:
             // FIXME: We currently act as if all instructions are sequential.
             return;
           case XO_CRXOR:
             if (insn_crbA(insn) == insn_crbB(insn)) {  // crclr
-                set_cr(ctx, insn_crbD(insn), rtl_imm32(unit,0));
+                set_crb(ctx, insn_crbD(insn), rtl_imm32(unit,0));
             } else {
-                translate_logic_cr(ctx, insn, RTLOP_XOR, false, false);
+                translate_logic_crb(ctx, insn, RTLOP_XOR, false, false);
             }
             return;
           case XO_CRNAND:
-            translate_logic_cr(ctx, insn, RTLOP_AND, false, true);
+            translate_logic_crb(ctx, insn, RTLOP_AND, false, true);
             return;
           case XO_CRAND:
-            translate_logic_cr(ctx, insn, RTLOP_AND, false, false);
+            translate_logic_crb(ctx, insn, RTLOP_AND, false, false);
             return;
           case XO_CREQV:
             if (insn_crbA(insn) == insn_crbB(insn)) {  // crset
-                set_cr(ctx, insn_crbD(insn), rtl_imm32(unit,1));
+                set_crb(ctx, insn_crbD(insn), rtl_imm32(unit,1));
             } else {
                 /* See note at XO_EQV under opcode 0x1F (though it's less
                  * likely to help in this case). */
-                translate_logic_cr(ctx, insn, RTLOP_XOR, true, false);
+                translate_logic_crb(ctx, insn, RTLOP_XOR, true, false);
             }
             return;
           case XO_CRORC:
-            translate_logic_cr(ctx, insn, RTLOP_OR, true, false);
+            translate_logic_crb(ctx, insn, RTLOP_OR, true, false);
             return;
           case XO_CROR:
             /* "cror crbD,crbA,crbB" is also known as "crmove crbD,crbA",
              * but the usage frequency of crmove is probably not very high
              * in typical code and the potential speed gain is minimal, so
              * we don't bother with special handling. */
-            translate_logic_cr(ctx, insn, RTLOP_OR, false, false);
+            translate_logic_crb(ctx, insn, RTLOP_OR, false, false);
             return;
           case XO_BCCTR:
             translate_branch_terminal(ctx, address, insn_BO(insn),
@@ -2983,7 +3013,7 @@ bool guest_ppc_translate_block(GuestPPCContext *ctx, int index)
     memset(&ctx->live, 0, sizeof(ctx->live));
     ctx->gpr_dirty = 0;
     ctx->fpr_dirty = 0;
-    ctx->cr_dirty = 0;
+    ctx->crb_dirty = 0;
     ctx->lr_dirty = 0;
     ctx->ctr_dirty = 0;
     ctx->xer_dirty = 0;
@@ -3048,10 +3078,13 @@ void guest_ppc_flush_state(GuestPPCContext *ctx)
 
     RTLUnit * const unit = ctx->unit;
 
-    if (ctx->cr_changed) {
+    if (ctx->crb_changed) {
         const int cr = merge_cr(ctx);
-        rtl_add_insn(unit, RTLOP_STORE, 0, ctx->psb_reg, cr,
-                     ctx->handle->setup.state_offset_cr);
+        rtl_add_insn(unit, RTLOP_SET_ALIAS, 0, cr, 0, ctx->alias.cr);
+        if (ctx->live.cr) {
+            ctx->live.cr = cr;
+        }
+        ctx->cr_dirty = 0;
     }
 }
 

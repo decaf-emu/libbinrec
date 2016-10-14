@@ -39,7 +39,7 @@ int main(void)
     EXPECT_STREQ(get_log_messages(), NULL);
 
     int exitcode = EXIT_SUCCESS;
-    const int expected_errors = 1081;
+    const int expected_errors = 1079;
     const int result = state.gpr[3];
     if (result < 0) {
         exitcode = EXIT_FAILURE;

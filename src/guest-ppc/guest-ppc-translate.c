@@ -58,12 +58,14 @@ static bool init_unit(GuestPPCContext *ctx)
     uint32_t gpr_changed = 0;
     uint32_t fpr_used = 0;
     uint32_t fpr_changed = 0;
-    uint32_t cr_used = 0;
-    uint32_t cr_changed = 0;
+    uint32_t crb_used = 0;
+    uint32_t crb_changed = 0;
+    bool cr_used = false;
     bool lr_used = false;
     bool ctr_used = false;
     bool xer_used = false;
     bool fpscr_used = false;
+    bool cr_changed = false;
     bool lr_changed = false;
     bool ctr_changed = false;
     bool xer_changed = false;
@@ -73,6 +75,8 @@ static bool init_unit(GuestPPCContext *ctx)
         gpr_changed |= ctx->blocks[i].gpr_changed;
         fpr_used |= ctx->blocks[i].fpr_used;
         fpr_changed |= ctx->blocks[i].fpr_changed;
+        crb_used |= ctx->blocks[i].crb_used;
+        crb_changed |= ctx->blocks[i].crb_changed;
         cr_used |= ctx->blocks[i].cr_used;
         cr_changed |= ctx->blocks[i].cr_changed;
         lr_used |= ctx->blocks[i].lr_used;
@@ -84,8 +88,7 @@ static bool init_unit(GuestPPCContext *ctx)
         fpscr_used |= ctx->blocks[i].fpscr_used;
         fpscr_changed |= ctx->blocks[i].fpscr_changed;
     }
-    ctx->cr_changed = cr_changed;
-    ctx->cr_unchanged_mask = ~bitrev32(cr_changed);
+    ctx->crb_changed = bitrev32(crb_changed);
 
     /* Allocate alias registers for all required guest registers. */
 
@@ -102,26 +105,16 @@ static bool init_unit(GuestPPCContext *ctx)
             rtl_set_alias_storage(unit, ctx->alias.fpr[i], ctx->psb_reg,
                                   ctx->handle->setup.state_offset_fpr + i*16);
         }
+
+        if ((crb_used | crb_changed) & (1 << i)) {
+            ctx->alias.crb[i] = rtl_alloc_alias_register(unit, RTLTYPE_INT32);
+        }
     }
 
-    int cr = 0;
-    for (int i = 0; i < 32; i++) {
-        if ((cr_used | cr_changed) & (1 << i)) {
-            ctx->alias.cr[i] = rtl_alloc_alias_register(unit, RTLTYPE_INT32);
-            /* We have to load these aliases unconditionally because a
-             * store-only field might have the store skipped (due to a
-             * conditional branch within the unit, for example) and then
-             * we'd end up loading an uninitialized stack value when
-             * merging back into the PSB at the end of the unit. */
-            if (!cr) {
-                cr = rtl_alloc_register(unit, RTLTYPE_INT32);
-                rtl_add_insn(unit, RTLOP_LOAD, cr, ctx->psb_reg, 0,
-                             ctx->handle->setup.state_offset_cr);
-            }
-            const int crbN = rtl_alloc_register(unit, RTLTYPE_INT32);
-            rtl_add_insn(unit, RTLOP_BFEXT, crbN, cr, 0, (31 - i) | 1<<8);
-            rtl_add_insn(unit, RTLOP_SET_ALIAS, 0, crbN, 0, ctx->alias.cr[i]);
-        }
+    if (crb_used || crb_changed || cr_used || cr_changed) {
+        ctx->alias.cr = rtl_alloc_alias_register(unit, RTLTYPE_INT32);
+        rtl_set_alias_storage(unit, ctx->alias.cr, ctx->psb_reg,
+                              ctx->handle->setup.state_offset_cr);
     }
 
     if (lr_used || lr_changed) {
