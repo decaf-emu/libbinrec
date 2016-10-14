@@ -359,6 +359,7 @@ static void store_live_regs(GuestPPCContext *ctx, bool clean, bool clear)
     }
     if (clear) {
         memset(&ctx->live, 0, sizeof(ctx->live));
+        memset(&ctx->live_cr_bit, 0, sizeof(ctx->live_cr_bit));
     }
 }
 
@@ -512,6 +513,10 @@ static void update_cr0(GuestPPCContext *ctx, int result)
     rtl_add_insn(unit, RTLOP_OR, cr0, cr0_3, lt_shifted, 0);
 
     set_cr(ctx, 0, cr0);
+    ctx->live_cr_bit[0] = lt;
+    ctx->live_cr_bit[1] = gt;
+    ctx->live_cr_bit[2] = eq;
+    ctx->live_cr_bit[3] = so;
 }
 
 /*************************************************************************/
@@ -785,9 +790,12 @@ static void translate_branch_label(
     /* All dirty registers have been stored at this point. */
 
     if (!(BO & 0x10)) {
-        const int crN = get_cr(ctx, BI >> 2);
-        const int test = rtl_alloc_register(unit, RTLTYPE_INT32);
-        rtl_add_insn(unit, RTLOP_ANDI, test, crN, 0, 1 << (3 - (BI & 3)));
+        int test = ctx->live_cr_bit[BI];
+        if (!test) {
+            const int crN = get_cr(ctx, BI >> 2);
+            test = rtl_alloc_register(unit, RTLTYPE_INT32);
+            rtl_add_insn(unit, RTLOP_ANDI, test, crN, 0, 1 << (3 - (BI & 3)));
+        }
         if (handle->use_branch_callback) {
             rtl_add_insn(unit, BO & 0x08 ? RTLOP_GOTO_IF_Z : RTLOP_GOTO_IF_NZ,
                          0, test, 0, skip_label);
@@ -871,9 +879,12 @@ static void translate_branch_terminal(
     }
 
     if (!(BO & 0x10)) {
-        const int crN = get_cr(ctx, BI >> 2);
-        const int test = rtl_alloc_register(unit, RTLTYPE_INT32);
-        rtl_add_insn(unit, RTLOP_ANDI, test, crN, 0, 1 << (3 - (BI & 3)));
+        int test = ctx->live_cr_bit[BI];
+        if (!test) {
+            const int crN = get_cr(ctx, BI >> 2);
+            test = rtl_alloc_register(unit, RTLTYPE_INT32);
+            rtl_add_insn(unit, RTLOP_ANDI, test, crN, 0, 1 << (3 - (BI & 3)));
+        }
         rtl_add_insn(unit, BO & 0x08 ? RTLOP_GOTO_IF_Z : RTLOP_GOTO_IF_NZ,
                      0, test, 0, skip_label);
     }
@@ -1460,6 +1471,7 @@ static inline void translate_logic_cr(
         rtl_add_insn(unit, RTLOP_XORI, inverted, result, 0, 1);
         result = inverted;
     }
+    ctx->live_cr_bit[insn_crbD(insn)] = result;
 
     const int crfD = get_cr(ctx, insn_crbD(insn) >> 2);
     const int new_crfD = rtl_alloc_register(unit, RTLTYPE_INT32);
@@ -2999,6 +3011,7 @@ bool guest_ppc_translate_block(GuestPPCContext *ctx, int index)
     }
 
     memset(&ctx->live, 0, sizeof(ctx->live));
+    memset(&ctx->live_cr_bit, 0, sizeof(ctx->live_cr_bit));
     ctx->gpr_dirty = 0;
     ctx->fpr_dirty = 0;
     ctx->cr_dirty = 0;

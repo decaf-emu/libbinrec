@@ -197,6 +197,11 @@ typedef struct GuestPPCContext {
     /* RTL registers for each CPU register live in the current block. */
     GuestPPCRegSet live;
 
+    /* Live RTL registers for each CR bit, if available.  (Used to avoid a
+     * dependency on the entire CR field output from a comparison or Rc=1
+     * instruction.) */
+    uint16_t live_cr_bit[32];
+
     /* Dirty state of live registers. */
     uint32_t gpr_dirty;
     uint32_t fpr_dirty;
