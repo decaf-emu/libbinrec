@@ -98,14 +98,18 @@ static bool init_unit(GuestPPCContext *ctx)
             rtl_set_alias_storage(unit, ctx->alias.gpr[i], ctx->psb_reg,
                                   ctx->handle->setup.state_offset_gpr + i*4);
         }
+    }
 
+    for (int i = 0; i < 32; i++) {
         if ((fpr_used | fpr_changed) & (1 << i)) {
             ctx->alias.fpr[i] =
                 rtl_alloc_alias_register(unit, RTLTYPE_V2_FLOAT64);
             rtl_set_alias_storage(unit, ctx->alias.fpr[i], ctx->psb_reg,
                                   ctx->handle->setup.state_offset_fpr + i*16);
         }
+    }
 
+    for (int i = 0; i < 32; i++) {
         if ((crb_used | crb_changed) & (1 << i)) {
             ctx->alias.crb[i] = rtl_alloc_alias_register(unit, RTLTYPE_INT32);
         }
@@ -164,7 +168,7 @@ static bool add_epilogue(GuestPPCContext *ctx)
     RTLUnit * const unit = ctx->unit;
 
     rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, ctx->epilogue_label);
-    guest_ppc_flush_state(ctx);
+    guest_ppc_flush_cr(ctx, false);
     rtl_add_insn(unit, RTLOP_RETURN, 0, 0, 0, 0);
 
     if (UNLIKELY(rtl_get_error_state(unit))) {

@@ -11,7 +11,7 @@
 
 static const uint8_t input[] = {
     0x60,0x00,0x00,0x00,  // nop
-    0x40,0x82,0x00,0x08,  // bne 0xC
+    0x41,0x80,0x00,0x08,  // blt 0xC
     0x48,0x00,0x00,0x00,  // b 0x8
     0x60,0x00,0x00,0x00,  // nop
 };
@@ -24,8 +24,9 @@ static const char expected[] =
     "    1: LOAD_IMM   r2, 0x100000000\n"
     "    2: LABEL      L1\n"
     "    3: GET_ALIAS  r3, a3\n"
-    "    4: ANDI       r4, r3, 536870912\n"
-    "    5: GOTO_IF_Z  r4, L3\n"
+    /* This should not trigger an operand assertion on constant range. */
+    "    4: ANDI       r4, r3, -2147483648\n"
+    "    5: GOTO_IF_NZ r4, L3\n"
     "    6: LOAD_IMM   r5, 8\n"
     "    7: SET_ALIAS  a1, r5\n"
     "    8: LABEL      L2\n"

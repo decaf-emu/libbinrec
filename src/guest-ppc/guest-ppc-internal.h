@@ -229,14 +229,15 @@ typedef struct GuestPPCContext {
 /*************************************************************************/
 
 /**
- * guest_ppc_flush_state:  Flush all cached state (in RTL aliases) to the
- * processor state block.
+ * guest_ppc_flush_cr:  Flush all CR bit aliases to the full CR register.
  *
  * [Parameters]
  *     ctx: Translation context.
+ *     make_live: True to leave the flushed CR value live in its alias,
+ *         false to leave the alias liveness state unchanged.
  */
-#define guest_ppc_flush_state INTERNAL(guest_ppc_flush_state)
-extern void guest_ppc_flush_state(GuestPPCContext *ctx);
+#define guest_ppc_flush_cr INTERNAL(guest_ppc_flush_cr)
+extern void guest_ppc_flush_cr(GuestPPCContext *ctx, bool make_live);
 
 /**
  * guest_ppc_scan:  Scan guest memory to find the range of addresses to

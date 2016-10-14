@@ -76,12 +76,12 @@ convenience.
 Performance
 -----------
 The following figures were obtained by running the included benchmark
-tool (build with "make benchmarks/bench") on an Intel Core i7-4770S
-running at a clock speed of 3.1GHz.  In all cases, translated code was
-cached using a flat array of pointers to translated units (one entry per
-byte in the guest address space).  The benchmark program and guest
-binaries were built using GCC 5.4 and GNU binutils 2.26.1, using the
-default command-line options set in the Makefile and etc/* scripts.
+tool (which can be built with "make benchmarks/bench") on an Intel Core
+i7-4770S running at a clock speed of 3.1GHz.  In all cases, translated
+code was cached using a flat array of pointers to translated units (one
+entry per byte in the guest address space).  The benchmark program and
+guest binaries were built using GCC 5.4 and GNU binutils 2.26.1, using
+the default command-line options set in the Makefile and etc/* scripts.
 
     Architecture  | dhry_noopt  |  dhry_opt   |
     /optimization | (MDhry/sec) | (MDhry/sec) |

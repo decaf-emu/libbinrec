@@ -10,7 +10,7 @@
 #include "tests/guest-ppc/insn/common.h"
 
 static const uint8_t input[] = {
-    0x7C,0x6F,0xF1,0x20,  // mtcrf r3
+    0x7C,0x6F,0xF1,0x20,  // mtcr r3
 };
 
 static const bool expected_success = true;
@@ -21,7 +21,7 @@ static const char expected[] =
     "    1: LOAD_IMM   r2, 0x100000000\n"
     "    2: LABEL      L1\n"
     "    3: GET_ALIAS  r3, a2\n"
-    "    4: STORE      928(r1), r3\n"
+    "    4: SET_ALIAS  a3, r3\n"
     "    5: LOAD_IMM   r4, 4\n"
     "    6: SET_ALIAS  a1, r4\n"
     "    7: LABEL      L2\n"
@@ -29,6 +29,7 @@ static const char expected[] =
     "\n"
     "Alias 1: int32 @ 956(r1)\n"
     "Alias 2: int32 @ 268(r1)\n"
+    "Alias 3: int32 @ 928(r1)\n"
     "\n"
     "Block 0: <none> --> [0,1] --> 1\n"
     "Block 1: 0 --> [2,6] --> 2\n"
