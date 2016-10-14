@@ -140,14 +140,14 @@ typedef struct GuestPPCBlockInfo {
     uint32_t gpr_changed;
     uint32_t fpr_used;
     uint32_t fpr_changed;
+    uint32_t cr_used;
+    uint32_t cr_changed;
     uint8_t
-        cr_used : 1,
         lr_used : 1,
         ctr_used : 1,
         xer_used : 1,
         fpscr_used : 1;
     uint8_t
-        cr_changed : 1,
         lr_changed : 1,
         ctr_changed : 1,
         xer_changed : 1,
@@ -161,7 +161,7 @@ typedef struct GuestPPCBlockInfo {
 typedef struct GuestPPCRegSet {
     uint16_t gpr[32];
     uint16_t fpr[32];
-    uint16_t cr;
+    uint16_t cr[32];
     uint16_t lr;
     uint16_t ctr;
     uint16_t xer;
@@ -191,19 +191,20 @@ typedef struct GuestPPCContext {
     /* Alias registers for guest CPU state. */
     GuestPPCRegSet alias;
 
+    /* Combined CR field change flags from all basic blocks (used in
+     * merging fields back to a single 32-bit value). */
+    uint32_t cr_changed;
+    /* Mask for CR word equivalent to ~cr_changed. */
+    uint32_t cr_unchanged_mask;
+
     /* RTL registers for each CPU register live in the current block. */
     GuestPPCRegSet live;
-
-    /* Live RTL registers for each CR bit, if available.  (Used to avoid
-     * a dependency on the entire CR output from a comparison or Rc=1
-     * instruction.) */
-    uint16_t live_cr_bit[32];
 
     /* Dirty state of live registers. */
     uint32_t gpr_dirty;
     uint32_t fpr_dirty;
+    uint32_t cr_dirty;
     uint8_t
-        cr_dirty : 1,
         lr_dirty : 1,
         ctr_dirty : 1,
         xer_dirty : 1,
