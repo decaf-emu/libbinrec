@@ -3,6 +3,9 @@
 # No copyright is claimed on this file.
 #
 # Update history:
+#    - 2016-10-14: Fixed cases in which mtcrf and mcrxr tests could leave
+#         blank failure records.
+#    - 2016-10-14: Made the icbi test a little more semantically sensible.
 #    - 2016-10-12: Added missing tests for ps_merge instructions with Rc=1.
 #    - 2016-10-12: Fixed incorrect encoding of mftb in mftbu tests.  (The
 #         error has no impact on correctness, only on the usefulness of
@@ -993,10 +996,9 @@ get_load_address:
 0: lis %r3,0x0200
    mtcrf 64,%r3
    bl record
-   bgt 1f
-   addi %r6,%r6,32
-1: beq cr1,0f
-   addi %r6,%r6,32
+   ble 1f
+   beq cr1,0f
+1: addi %r6,%r6,32
 
    ########################################################################
    # 2.4.3 Condition Register Logical Instructions
@@ -11041,6 +11043,7 @@ get_load_address:
    lis %r3,0x2000
    addi %r3,%r3,0x11
    mtxer %r3
+   bl record
    mcrxr cr7
    mfcr %r3
    mfxer %r7
@@ -11060,15 +11063,17 @@ get_load_address:
    # program state; they are included only to ensure that instruction
    # decoders properly accept the instructions.
 
+   # Load r11 with the address of label 2.
 0: bl 1f
-   b 0f
+2: b 0f
 1: mflr %r11
    blr
 
    # icbi
-0: li %r3,4
+0: li %r3,0f-2b
    icbi %r11,%r3
-0: lis %r0,0x8000
+0: addi %r11,%r11,0f-2b
+   lis %r0,0x8000
    icbi 0,%r11
 
    ########################################################################

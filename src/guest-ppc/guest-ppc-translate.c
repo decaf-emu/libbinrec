@@ -7,6 +7,7 @@
  * NO WARRANTY is provided with this software.
  */
 
+#include "src/bitutils.h"
 #include "src/common.h"
 #include "src/guest-ppc.h"
 #include "src/guest-ppc/guest-ppc-internal.h"
@@ -57,8 +58,8 @@ static bool init_unit(GuestPPCContext *ctx)
     uint32_t gpr_changed = 0;
     uint32_t fpr_used = 0;
     uint32_t fpr_changed = 0;
-    uint8_t cr_used = 0;
-    uint8_t cr_changed = 0;
+    uint32_t cr_used = 0;
+    uint32_t cr_changed = 0;
     bool lr_used = false;
     bool ctr_used = false;
     bool xer_used = false;
@@ -84,6 +85,7 @@ static bool init_unit(GuestPPCContext *ctx)
         fpscr_changed |= ctx->blocks[i].fpscr_changed;
     }
     ctx->cr_changed = cr_changed;
+    ctx->cr_unchanged_mask = ~bitrev32(cr_changed);
 
     /* Allocate alias registers for all required guest registers. */
 
@@ -103,7 +105,7 @@ static bool init_unit(GuestPPCContext *ctx)
     }
 
     int cr = 0;
-    for (int i = 0; i < 8; i++) {
+    for (int i = 0; i < 32; i++) {
         if ((cr_used | cr_changed) & (1 << i)) {
             ctx->alias.cr[i] = rtl_alloc_alias_register(unit, RTLTYPE_INT32);
             /* We have to load these aliases unconditionally because a
@@ -116,9 +118,9 @@ static bool init_unit(GuestPPCContext *ctx)
                 rtl_add_insn(unit, RTLOP_LOAD, cr, ctx->psb_reg, 0,
                              ctx->handle->setup.state_offset_cr);
             }
-            const int crN = rtl_alloc_register(unit, RTLTYPE_INT32);
-            rtl_add_insn(unit, RTLOP_BFEXT, crN, cr, 0, ((7 - i) * 4) | 4<<8);
-            rtl_add_insn(unit, RTLOP_SET_ALIAS, 0, crN, 0, ctx->alias.cr[i]);
+            const int crbN = rtl_alloc_register(unit, RTLTYPE_INT32);
+            rtl_add_insn(unit, RTLOP_BFEXT, crbN, cr, 0, (31 - i) | 1<<8);
+            rtl_add_insn(unit, RTLOP_SET_ALIAS, 0, crbN, 0, ctx->alias.cr[i]);
         }
     }
 

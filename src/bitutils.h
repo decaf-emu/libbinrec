@@ -13,6 +13,9 @@
 #ifndef SRC_COMMON_H
     #include "src/common.h"
 #endif
+#ifndef SRC_ENDIAN_H
+    #include "src/endian.h"
+#endif
 
 /*
  * Similarly to the endian conversion functions, the compiler-specific
@@ -22,6 +25,20 @@
 
 /*************************************************************************/
 /*************************************************************************/
+
+/**
+ * bitrev32:  Reverse the order of the bits in the given value.
+ */
+static ALWAYS_INLINE CONST_FUNCTION uint32_t bitrev32(uint32_t x)
+{
+    x = bswap32(x);
+    x = (x & 0xF0F0F0F0) >> 4 | (x & 0x0F0F0F0F) << 4;
+    x = (x & 0xCCCCCCCC) >> 2 | (x & 0x33333333) << 2;
+    x = (x & 0xAAAAAAAA) >> 1 | (x & 0x55555555) << 1;
+    return x;
+}
+
+/*-----------------------------------------------------------------------*/
 
 /**
  * clz32, clz64:  Return the number of leading (high-end) zero bits in the

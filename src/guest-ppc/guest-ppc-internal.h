@@ -103,13 +103,13 @@
  *
  * UGQR0-7, which use the same SPR numbers as GQR0-7 with bit 0x10 (the
  * "supervisor-mode register" bit) cleared, are not documented in the
- * PowerPC 750CL manual, but at least some implementations [1] treat them
- * as user-mode equivalents to GQR0-7, allowing user-mode programs to
- * access those registers.  It is not known whether a stock 750CL supports
- * these registers, but we assume that a program which accesses the UGQRs
- * is intended to run on an implementation of the architecture which
- * supports them, so we don't use a subarchitecture identifier or feature
- * flag to explicitly enable them.
+ * PowerPC 750CL manual, but at least some implementations[1] treat them as
+ * user-mode equivalents to GQR0-7, allowing user-mode programs to access
+ * those registers.  It is not known whether a stock 750CL supports these
+ * registers, but we assume that a program which accesses the UGQRs is
+ * intended to run on an implementation of the architecture which supports
+ * them, so we don't use a subarchitecture identifier or feature flag to
+ * explicitly enable them.
  *
  * [1] Notably the "Broadway" and "Espresso" processors used in the
  *     Nintendo Wii and Wii U game systems, respectively.  The GQRs (though
@@ -122,6 +122,7 @@
 #define SPR_TBL     268
 #define SPR_TBU     269
 #define SPR_UGQR(n) (896 + (n))
+#define SPR_GQR(n)  (912 + (n))
 
 /*************************************************************************/
 /*********************** Internal data structures ************************/
@@ -139,8 +140,8 @@ typedef struct GuestPPCBlockInfo {
     uint32_t gpr_changed;
     uint32_t fpr_used;
     uint32_t fpr_changed;
-    uint8_t cr_used;
-    uint8_t cr_changed;
+    uint32_t cr_used;
+    uint32_t cr_changed;
     uint8_t
         lr_used : 1,
         ctr_used : 1,
@@ -160,7 +161,7 @@ typedef struct GuestPPCBlockInfo {
 typedef struct GuestPPCRegSet {
     uint16_t gpr[32];
     uint16_t fpr[32];
-    uint16_t cr[8];
+    uint16_t cr[32];
     uint16_t lr;
     uint16_t ctr;
     uint16_t xer;
@@ -192,20 +193,17 @@ typedef struct GuestPPCContext {
 
     /* Combined CR field change flags from all basic blocks (used in
      * merging fields back to a single 32-bit value). */
-    uint8_t cr_changed;
+    uint32_t cr_changed;
+    /* Mask for CR word equivalent to ~cr_changed. */
+    uint32_t cr_unchanged_mask;
 
     /* RTL registers for each CPU register live in the current block. */
     GuestPPCRegSet live;
 
-    /* Live RTL registers for each CR bit, if available.  (Used to avoid a
-     * dependency on the entire CR field output from a comparison or Rc=1
-     * instruction.) */
-    uint16_t live_cr_bit[32];
-
     /* Dirty state of live registers. */
     uint32_t gpr_dirty;
     uint32_t fpr_dirty;
-    uint8_t cr_dirty;
+    uint32_t cr_dirty;
     uint8_t
         lr_dirty : 1,
         ctr_dirty : 1,
