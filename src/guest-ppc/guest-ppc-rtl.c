@@ -2818,9 +2818,9 @@ static inline void translate_insn(
          * just the blr.  The scanner will terminate the block at an sc
          * instruction which is not followed by a blr, so we only need to
          * check whether this sc is at the end of the block. */
-        bool is_sc_blr;
-        if (address + 7 <= block->start + block->len - 1) {
-            ASSERT(address + 7 == block->start + block->len - 1);
+        bool is_sc_blr = false;
+        if (address + 4 < block->start + block->len) {
+            ASSERT(address + 8 == block->start + block->len);
             const uint32_t *memory_base =
                 (const uint32_t *)ctx->handle->setup.guest_memory_base;
             const uint32_t next_insn = bswap_be32(memory_base[(address+4)/4]);

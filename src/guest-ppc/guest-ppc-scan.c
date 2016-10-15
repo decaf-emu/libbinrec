@@ -1015,7 +1015,8 @@ bool guest_ppc_scan(GuestPPCContext *ctx, uint32_t limit)
 
         /* Terminate the block if this is a branch or invalid instruction,
          * or at icbi.  Also terminate the entire unit if this looks like
-         * the end of a function. */
+         * the end of a function.  But make sure not to stop at an sc
+         * before a blr so we can optimize the sc+blr case properly. */
         const PPCOpcode opcd = insn_OPCD(insn);
         const bool is_direct_branch = ((opcd & ~0x02) == OPCD_BC);
         const bool is_indirect_branch =
@@ -1069,8 +1070,6 @@ bool guest_ppc_scan(GuestPPCContext *ctx, uint32_t limit)
              *
              * icbi and sc instructions always cause a return from
              * translated code, so they can potentially end the unit as well.
-             * But make sure not to stop at an sc before a blr so we can
-             * optimize the sc+blr case properly.
              */
             const int is_unconditional_branch =
                 (opcd == OPCD_B || (insn_BO(insn) & 0x14) == 0x14);
