@@ -447,7 +447,8 @@ static void store_live_regs(GuestPPCContext *ctx, bool clean, bool clear)
 
 /**
  * merge_cr:  Merge all CR bit aliases (and untouched CR bits from the
- * processor state block) into a 32-bit CR word.
+ * processor state block) into a 32-bit CR word.  Helper for
+ * guest_ppc_flush_cr().
  *
  * [Parameters]
  *     ctx: Translation context.
@@ -461,24 +462,23 @@ static int merge_cr(GuestPPCContext *ctx, bool make_live)
     RTLUnit * const unit = ctx->unit;
 
     uint32_t crb_dirty = ctx->crb_loaded & ctx->crb_changed;
+    ASSERT(crb_dirty != 0);  // We won't be called if there's nothing to merge.
 
     int cr;
     if (crb_dirty == ~UINT32_C(0)) {
         cr = 0;
     } else {
+        int old_cr;
         if (make_live) {
-            cr = get_cr(ctx);
+            old_cr = get_cr(ctx);
         } else if (ctx->live.cr) {
-            cr = ctx->live.cr;
+            old_cr = ctx->live.cr;
         } else {
-            cr = rtl_alloc_register(unit, RTLTYPE_INT32);
-            rtl_add_insn(unit, RTLOP_GET_ALIAS, cr, 0, 0, ctx->alias.cr);
+            old_cr = rtl_alloc_register(unit, RTLTYPE_INT32);
+            rtl_add_insn(unit, RTLOP_GET_ALIAS, old_cr, 0, 0, ctx->alias.cr);
         }
-        if (crb_dirty != 0) {
-            const int new_cr = rtl_alloc_register(unit, RTLTYPE_INT32);
-            rtl_add_insn(unit, RTLOP_ANDI, new_cr, cr, 0, (int32_t)~crb_dirty);
-            cr = new_cr;
-        }
+        cr = rtl_alloc_register(unit, RTLTYPE_INT32);
+        rtl_add_insn(unit, RTLOP_ANDI, cr, old_cr, 0, (int32_t)~crb_dirty);
     }
 
     while (crb_dirty) {

@@ -3007,25 +3007,20 @@ static bool translate_block(HostX86Context *ctx, int block_index)
             }
 
             /* Reload src1 and src3, if needed. */
-            bool moved_src2 = false;
             if (is_spilled(ctx, src1, insn_index)) {
                 append_load_gpr(&code, RTLTYPE_ADDRESS, host_temp,
                                 X86_SP, ctx->regs[src1].spill_offset);
                 host_src1 = host_temp;
                 host_temp = host_dest;
+                /* Make sure we're not about to overwrite src2 if src3 is
+                 * also spilled (the register allocator guarantees this). */
+                ASSERT(!(!is_spilled(ctx, src2, insn_index)
+                         && host_dest == ctx->regs[src2].host_reg));
                 /* temp_index is only used to check the assertion below
                  * that no more than two temporary registers are used. */
                 temp_index++;
             }
             if (is_spilled(ctx, insn->src3, insn_index)) {
-                const X86Register host_src2 = ctx->regs[src2].host_reg;
-                if (host_temp == host_src2 && !is_spilled(ctx, src2, insn_index)) {
-                    /* We'd move src2 to rAX eventually, but do it now so
-                     * we don't overwrite it when reloading src3. */
-                    append_insn_ModRM_reg(&code, is64, X86OP_MOV_Gv_Ev,
-                                          X86_AX, host_src2);
-                    moved_src2 = true;
-                }
                 append_load_gpr(&code, unit->regs[insn->src3].type, host_temp,
                                 X86_SP, ctx->regs[insn->src3].spill_offset);
                 host_src3 = host_temp;
@@ -3057,10 +3052,8 @@ static bool translate_block(HostX86Context *ctx, int block_index)
                     host_src3 = host_dest;
                 }
             }
-            if (!moved_src2) {
-                append_move_or_load_gpr(&code, ctx, unit, insn_index,
-                                        X86_AX, src2);
-            }
+            append_move_or_load_gpr(&code, ctx, unit, insn_index,
+                                    X86_AX, src2);
 
             /* Do the actual compare-and-swap. */
             append_opcode(&code, X86OP_LOCK);
