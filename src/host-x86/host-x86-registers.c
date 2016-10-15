@@ -766,8 +766,22 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
                  * register (which will be R15).  For this reason, we
                  * deliberately avoid rAX for the output register even
                  * though doing so requires an additional MOV after the
-                 * CMPXCHG completes. */
+                 * CMPXCHG completes.  On the other hand, if the input
+                 * operands are not spilled then we may have to contort
+                 * ourselves to avoid clobbering input values as we move
+                 * src2 to rAX; to avoid that complexity, we require that
+                 * dest not be allocated to the same register as any
+                 * (non-spilled) input operand. */
                 avoid_regs |= 1u << X86_AX;
+                if (!src1_info->spilled) {
+                    avoid_regs |= 1u << src1_info->host_reg;
+                }
+                if (!src2_info->spilled) {
+                    avoid_regs |= 1u << src2_info->host_reg;
+                }
+                if (!ctx->regs[insn->src3].spilled) {
+                    avoid_regs |= 1u << ctx->regs[insn->src3].host_reg;
+                }
                 break;
 
               case RTLOP_CALL:
@@ -885,8 +899,8 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
             /* These technically don't need to be avoided if they're
              * spilled, but it's not worth the extra cycles to check.
              * Likewise below. */
-            temp_avoid |= 1u << ctx->regs[src1].host_reg
-                        | 1u << ctx->regs[src2].host_reg;
+            temp_avoid |= 1u << src1_info->host_reg
+                        | 1u << src2_info->host_reg;
             break;
           case RTLOP_DIVU:
           case RTLOP_DIVS:
@@ -894,17 +908,17 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
              * or if it's allocated to src2 (even if src2 dies here). */
             need_temp = (ctx->reg_map[X86_DX] != 0
                          || ctx->regs[src2].host_reg == X86_DX);
-            temp_avoid |= 1u << ctx->regs[src1].host_reg
-                        | 1u << ctx->regs[src2].host_reg;
+            temp_avoid |= 1u << src1_info->host_reg
+                        | 1u << src2_info->host_reg;
             break;
           case RTLOP_MODU:
           case RTLOP_MODS:
             /* Temporary needed to save RAX if it's live across this insn
              * or if it's allocated to src2 (even if src2 dies here). */
             need_temp = (ctx->reg_map[X86_AX] != 0
-                         || ctx->regs[src2].host_reg == X86_AX);
-            temp_avoid |= 1u << ctx->regs[src1].host_reg
-                        | 1u << ctx->regs[src2].host_reg;
+                         || src2_info->host_reg == X86_AX);
+            temp_avoid |= 1u << src1_info->host_reg
+                        | 1u << src2_info->host_reg;
             break;
           case RTLOP_SLL:
           case RTLOP_SRL:
@@ -938,8 +952,8 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
                           && dest_info->host_reg == src1_info->host_reg)
                          || src2_info->spilled
                          || src2_reg->death > insn_index);
-            temp_avoid |= 1u << ctx->regs[src1].host_reg
-                        | 1u << ctx->regs[src2].host_reg;
+            temp_avoid |= 1u << src1_info->host_reg
+                        | 1u << src2_info->host_reg;
             break;
           case RTLOP_LOAD_IMM:
             /* Temporary needed if loading a nonzero floating-point value. */
@@ -957,12 +971,13 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
              * which (along with rAX and the output register) gives us the
              * GPRs we need for the instruction.  We use the temp_allocated
              * flag to indicate to the translator whether to save rAX, but
-             * we actually save rAX in R15 or XMM15; see the translation
-             * logic for details. */
+             * we actually save rAX in R15 or XMM15, and we use R15 as the
+             * temporary if not saving rAX; see the translation logic for
+             * details. */
             need_temp = (ctx->reg_map[X86_AX] != 0);
             temp_avoid |= 1u << X86_AX
-                        | 1u << ctx->regs[src1].host_reg
-                        | 1u << ctx->regs[src2].host_reg
+                        | 1u << src1_info->host_reg
+                        | 1u << src2_info->host_reg
                         | 1u << ctx->regs[insn->src3].host_reg;
             break;
           default:

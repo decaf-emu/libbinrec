@@ -47,9 +47,9 @@ static const uint8_t expected_code[] = {
     0xB8,0x03,0x00,0x00,0x00,           // mov $3,%eax
     0xBA,0x04,0x00,0x00,0x00,           // mov $4,%edx
     0xF0,0x0F,0xB1,0x11,                // lock cmpxchg %edx,(%rcx)
-    0x8B,0xC8,                          // mov %eax,%ecx
+    0x8B,0xF8,                          // mov %eax,%edi
     0x8B,0xC6,                          // mov %esi,%eax
-    0xF7,0xE1,                          // mul %ecx
+    0xF7,0xE7,                          // mul %edi
     0x41,0x5F,                          // pop %r15
     0xC3,                               // ret
 };

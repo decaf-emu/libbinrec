@@ -3036,7 +3036,10 @@ static bool translate_block(HostX86Context *ctx, int block_index)
              * operand is in rAX, save it in the destination register;
              * note that we don't need to restore it from dest later,
              * since if it's live past this instruction, it will already
-             * have been saved in (and be restored from) R15 or XMM15. */
+             * have been saved in (and be restored from) R15 or XMM15.
+             * We also don't have to worry about clobbering anything
+             * that's already in dest, since the register allocator avoids
+             * reusing the register of any unspilled input operand. */
             if (host_src1 == X86_AX || host_src3 == X86_AX) {
                 ASSERT(temp_index < 2);
                 /* If we saved RAX to R15 above, this MOV is technically
