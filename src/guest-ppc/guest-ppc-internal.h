@@ -222,6 +222,11 @@ typedef struct GuestPPCContext {
         ctr_dirty : 1,
         xer_dirty : 1,
         fpscr_dirty : 1;
+
+    /* True if the next instruction should be skipped.  Used when
+     * optimizing a pair of instructions as a unit, such as sc followed
+     * by blr (which becomes a tail call to the system call handler). */
+    bool skip_next_insn;
 } GuestPPCContext;
 
 /*************************************************************************/
