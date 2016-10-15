@@ -411,7 +411,7 @@ typedef struct binrec_setup_t {
  *   change the results of certain floating-point operations relative to
  *   the results returned by guest code running on its native hardware,
  *   but the IEEE floating-point specification allows either of two
- *   behaviors, so with respect to that specification, the optimizaed code
+ *   behaviors, so with respect to that specification, the optimized code
  *   is no less correct than the original.  As long as the guest code was
  *   written to follow the specifications rather than the precise behavior
  *   of the guest hardware, it will still behave correctly under these
@@ -453,6 +453,8 @@ typedef struct binrec_setup_t {
  *
  * This optimization is UNSAFE: if the assumption described above is
  * violated by guest code, the translated code will not behave correctly.
+ *
+ * This optimization is not currently implemented.
  */
 #define BINREC_OPT_CALLEE_SAVED_REGS_UNSAFE  (1<<1)
 
@@ -504,6 +506,8 @@ typedef struct binrec_setup_t {
  * nonstandard ways (such as a call to the next instruction to obtain the
  * instruction's address) can potentially cause a host stack overflow if
  * executed too often without returning control to the client program.
+ *
+ * This optimization is not currently implemented.
  */
 #define BINREC_OPT_NATIVE_CALLS  (1<<6)
 
@@ -526,6 +530,12 @@ typedef struct binrec_setup_t {
  * operations can always be translated directly to native instructions
  * (at least with regard to tininess), and this flag has no effect on
  * translation.
+ *
+ * This optimization is specification-safe: as long as guest code follows
+ * the IEEE 754 specifications, it will behave correctly under this
+ * optimization.
+ *
+ * This optimization is not currently implemented.
  */
 #define BINREC_OPT_NATIVE_IEEE_TINY  (1<<7)
 
@@ -547,6 +557,8 @@ typedef struct binrec_setup_t {
  *
  * This optimization is UNSAFE: if the assumption described above is
  * violated by guest code, the translated code will not behave correctly.
+ *
+ * This optimization is not currently implemented.
  */
 #define BINREC_OPT_STACK_FRAMES_UNSAFE  (1<<8)
 
@@ -573,6 +585,8 @@ typedef struct binrec_setup_t {
  *
  * This optimization is UNSAFE: if the assumption described above is
  * violated by guest code, the translated code will not behave correctly.
+ *
+ * This optimization is not currently implemented.
  */
 #define BINREC_OPT_G_PPC_CONSTANT_GQRS_UNSAFE  (1<<0)
 
@@ -595,18 +609,38 @@ typedef struct binrec_setup_t {
  * If this optimization is disabled, the translator will attempt to match
  * the precise behavior of the guest architecture, at the cost of several
  * additional host instructions per affected guest instruction.
+ *
+ * This optimization is not currently implemented.
  */
 #define BINREC_OPT_G_PPC_NATIVE_RECIPROCAL  (1<<1)
 
 /*------------ Host-architecture-specific optimization flags ------------*/
 
 /**
+ * BINREC_OPT_H_X86_ADDRESS_OPERANDS:  Encode certain address calculations
+ * directly in a load, store, or atomic instruction when feasible.  If the
+ * address operand of such an instruction is not referenced by any other
+ * instruction (after the one that sets it), then:
+ *
+ * - If the address is the sum of a register and a constant, and the sum of
+ *   that constant and the offset encoded in the instruction is within the
+ *   range of a 32-bit signed integer, eliminate the addition and use the
+ *   combined offset as the access offset in the instruction.
+ *
+ * - If the address is the sum of two registers, eliminate the addition and
+ *   encode the access using the base-plus-index format.
+ */
+#define BINREC_OPT_H_X86_ADDRESS_OPERANDS  (1<<0)
+
+/**
  * BINREC_OPT_H_X86_CONDITION_CODES:  Track the state of the condition
  * codes in the EFLAGS register, and avoid adding an explicit TEST
  * instruction for a register if the condition codes already reflect the
  * value of that register.
+ *
+ * This optimization is not currently implemented.
  */
-#define BINREC_OPT_H_X86_CONDITION_CODES  (1<<0)
+#define BINREC_OPT_H_X86_CONDITION_CODES  (1<<1)
 
 /**
  * BINREC_OPT_H_X86_FIXED_REGS:  When an instruction requires an operand to
@@ -615,7 +649,7 @@ typedef struct binrec_setup_t {
  * This requires an extra pass over the translated machine code during
  * register allocation.
  */
-#define BINREC_OPT_H_X86_FIXED_REGS  (1<<1)
+#define BINREC_OPT_H_X86_FIXED_REGS  (1<<2)
 
 /**
  * BINREC_OPT_H_X86_FORWARD_CONDITIONS:  When a register used as the
@@ -623,8 +657,10 @@ typedef struct binrec_setup_t {
  * comparison, forward the comparison condition to the branch or move
  * instruction instead of storing the comparison result in a register and
  * testing the zeroness of that register.
+ *
+ * This optimization is not currently implemented.
  */
-#define BINREC_OPT_H_X86_FORWARD_CONDITIONS  (1<<2)
+#define BINREC_OPT_H_X86_FORWARD_CONDITIONS  (1<<3)
 
 /**
  * BINREC_OPT_H_X86_MEMORY_OPERANDS:  Make use of register-memory forms of
@@ -643,15 +679,19 @@ typedef struct binrec_setup_t {
  * If this optimization is disabled, all computational instructions will
  * be performed in registers, and loads and stores will be translated as
  * separate instructions.
+ *
+ * This optimization is not currently implemented.
  */
-#define BINREC_OPT_H_X86_MEMORY_OPERANDS  (1<<3)
+#define BINREC_OPT_H_X86_MEMORY_OPERANDS  (1<<4)
 
 /**
  * BINREC_OPT_H_X86_SETCC_ZX:  Detect when the only the low byte of the
  * result of a comparison instruction is used, and suppress zero-extension
  * of the result to the full operand size (32 or 64 bits).
+ *
+ * This optimization is not currently implemented.
  */
-#define BINREC_OPT_H_X86_SETCC_ZX  (1<<4)
+#define BINREC_OPT_H_X86_SETCC_ZX  (1<<5)
 
 /*************************************************************************/
 /******** Interface: Library and runtime environment information *********/

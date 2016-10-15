@@ -31,6 +31,20 @@
  * - Assembly instructions in comments (particularly in tests) follow
  *   AT&T syntax, as seen in GCC-style inline assembly: for example,
  *   "movl $0x1234,(%rsp)" rather than "MOV DWORD PTR [RSP],1234h".
+ *
+ * Usage of RTLInsn host_data_16 and host_data_32 fields:
+ *
+ * - For load-type and store-type instructions (including atomics):
+ *      - If host_data_16 is nonzero, it gives a register to be used as the
+ *        index in a SIB-form memory access; src1 is then the SIB base.
+ *      - If host_data_32 is nonzero, it gives a 32-bit access offset which
+ *        overrides the value in the offset field.
+ *
+ * - For the CALL group of instructions:
+ *      - host_data_16 indicates whether the call is a tail call (nonzero)
+ *        or a non-tail call (zero).
+ *      - host_data_32 is a bitmap of registers which need to be saved and
+ *        restored around the call.
  */
 
 /*************************************************************************/
@@ -240,7 +254,21 @@ extern bool host_x86_allocate_registers(HostX86Context *ctx);
  */
 #define host_x86_int_arg_register INTERNAL(host_x86_int_arg_register)
 extern PURE_FUNCTION int host_x86_int_arg_register(
-    HostX86Context *ctx, int index);
+    const HostX86Context *ctx, int index);
+
+/**
+ * host_x86_optimize_address:  Attempt to optimize the address operand to
+ * the given instruction (which must be a load, store, or atomic
+ * instruction).  If successful and if dead store elimination
+ * (BINREC_OPT_DSE) is enabled, also kill any instructions which set
+ * registers that were only used in the address calculation.
+ *
+ * [Parameters]
+ *     ctx: Translation context.
+ *     index: Instruction index in ctx->unit->insns[].
+ */
+#define host_x86_optimize_address INTERNAL(host_x86_optimize_address)
+extern void host_x86_optimize_address(HostX86Context *ctx, int insn_index);
 
 /*************************************************************************/
 /*************************************************************************/

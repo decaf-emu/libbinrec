@@ -48,7 +48,8 @@
  * be required, so this does not add undue register pressure.
  *
  * Before the register allocation pass itself, we perform a more
- * lightweight scan of the code stream for three purposes:
+ * lightweight scan of the code (see first_pass_for_block()) for two
+ * primary purposes:
  *
  * - We record which RTL registers are stored in which aliases at the end
  *   of each block; this information is used to try and allocate the same
@@ -61,11 +62,9 @@
  *   a bitmask of host registers which should be saved and restored around
  *   the call by the code generator.
  *
- * - If the FIXED_REGS optimization is enabled, then we allocate hardware
- *   registers for operands which must be in specific registers (such as
- *   shift counts, which must be in CL).  We do this as part of the same
- *   pass to avoid the cost of looping over the entire unit an additional
- *   time.
+ * During the first pass, we also perform any enabled optimizations on the
+ * RTL instruction stream; we do this as part of the same pass to avoid the
+ * cost of looping over the entire unit an additional time.
  *
  * Resolution of alias references occurs in several stages, depending on
  * the nature of the reference:
@@ -458,6 +457,19 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
         }
     }
 
+    if (insn->opcode >= RTLOP_LOAD && insn->opcode <= RTLOP_CMPXCHG
+     && insn->host_data_16 != 0) {
+        ASSERT(insn->host_data_16 < unit->next_reg);
+        const int index = insn->host_data_16;
+        const RTLRegister * const index_reg = &unit->regs[index];
+        const HostX86RegInfo * const index_info = &ctx->regs[index];
+        ASSERT((index_reg->source != RTLREG_UNDEFINED)
+               == index_info->host_allocated);
+        if (index_reg->death == insn_index) {
+            unassign_register(ctx, index, index_info);
+        }
+    }
+
     /* If this is a non-tail or transparent call, record the set of live
      * caller-saved registers so the translator knows what to save and
      * restore.  For regular (non-transparent) calls, also advance the
@@ -782,6 +794,10 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
                 if (!ctx->regs[insn->src3].spilled) {
                     avoid_regs |= 1u << ctx->regs[insn->src3].host_reg;
                 }
+                if (insn->host_data_16
+                 && !ctx->regs[insn->host_data_16].spilled) {
+                    avoid_regs |= 1u << ctx->regs[insn->host_data_16].host_reg;
+                }
                 break;
 
               case RTLOP_CALL:
@@ -965,8 +981,8 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
             break;
           case RTLOP_CMPXCHG:
             /* CMPXCHG can require up to two temporaries.  It can be tricky
-             * to work out the proper number, so we play it safe: we
-             * allocate one temporary (not in rAX) unconditionally and
+             * to work out the proper number, so we play it safe: we ensure
+             * we have at least one temporary (not in rAX), and we allocate
              * another to save rAX if it's live across this instruction,
              * which (along with rAX and the output register) gives us the
              * GPRs we need for the instruction.  We use the temp_allocated
@@ -979,6 +995,9 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
                         | 1u << src1_info->host_reg
                         | 1u << src2_info->host_reg
                         | 1u << ctx->regs[insn->src3].host_reg;
+            if (insn->host_data_16) {
+                temp_avoid |= 1u << ctx->regs[insn->host_data_16].host_reg;
+            }
             break;
           default:
             need_temp = false;
@@ -1327,10 +1346,42 @@ static void first_pass_for_block(HostX86Context *ctx, int block_index)
             break;
           }  // case RTLOP_{SLL,SRL,SRA,ROL,ROR}
 
+          case RTLOP_LOAD:
+          case RTLOP_LOAD_U8:
+          case RTLOP_LOAD_S8:
+          case RTLOP_LOAD_U16:
+          case RTLOP_LOAD_S16:
+          case RTLOP_STORE:
+          case RTLOP_STORE_I8:
+          case RTLOP_STORE_I16:
+          case RTLOP_LOAD_BR:
+          case RTLOP_LOAD_U16_BR:
+          case RTLOP_LOAD_S16_BR:
+          case RTLOP_STORE_BR:
+          case RTLOP_STORE_I16_BR:
+          case RTLOP_ATOMIC_INC:
+            insn->host_data_16 = 0;
+            insn->host_data_32 = 0;
+            if (ctx->handle->host_opt & BINREC_OPT_H_X86_ADDRESS_OPERANDS) {
+                /* This could potentially kill a register to which we've
+                 * already assigned a fixed address, but at worst that
+                 * will just result in suboptimal register allocation, so
+                 * we don't worry about it. */
+                host_x86_optimize_address(ctx, insn_index);
+            }
+            break;
+
           case RTLOP_CMPXCHG: {
+            insn->host_data_16 = 0;  // Address optimization, as above.
+            insn->host_data_32 = 0;
+            if (ctx->handle->host_opt & BINREC_OPT_H_X86_ADDRESS_OPERANDS) {
+                host_x86_optimize_address(ctx, insn_index);
+            }
+
             if (!do_fixed_regs) {
                 break;
             }
+
             const RTLRegister *src2_reg = &unit->regs[insn->src2];
             HostX86RegInfo *src2_info = &ctx->regs[insn->src2];
             if (!src2_info->host_allocated
@@ -1588,7 +1639,7 @@ bool host_x86_allocate_registers(HostX86Context *ctx)
 
 /*-----------------------------------------------------------------------*/
 
-int host_x86_int_arg_register(HostX86Context *ctx, int index)
+int host_x86_int_arg_register(const HostX86Context *ctx, int index)
 {
     ASSERT(ctx);
     ASSERT(ctx->handle);
