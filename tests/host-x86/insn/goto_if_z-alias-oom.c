@@ -36,7 +36,7 @@ static int add_rtl(RTLUnit *unit)
 static const uint8_t expected_code[] = {};
 
 static const char expected_log[] =
-    "[error] No memory for alias setup for block 0->0\n"
+    "[error] No memory for register reload for block 0->0\n"
     "[error] Out of memory while generating code\n";
 
 
