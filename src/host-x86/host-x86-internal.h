@@ -34,11 +34,17 @@
  *
  * Usage of RTLInsn host_data_16 and host_data_32 fields:
  *
- * - For load-type and store-type instructions (including atomics):
+ * - For load-type and atomic instructions:
  *      - If host_data_16 is nonzero, it gives a register to be used as the
  *        index in a SIB-form memory access; src1 is then the SIB base.
  *      - If host_data_32 is nonzero, it gives a 32-bit access offset which
  *        overrides the value in the offset field.
+ *
+ * - For store-type instructions:
+ *      - offset is not used; instead, if the value to store is spilled,
+ *        src3 holds a temporary register (X86Register) for reloading it.
+ *      - host_data_16 holds the optional index register, as for loads.
+ *      - host_data_32 always holds the access offset (even if zero).
  *
  * - For the CALL group of instructions:
  *      - host_data_16 indicates whether the call is a tail call (nonzero)

@@ -120,8 +120,7 @@
  * in case all other registers are in use, since it simplifies code
  * generation logic if only the destination register can cause a spill.
  * We also reserve both R15 and XMM15 as temporaries for reloading spilled
- * values in SET_ALIAS instructions, since those instructions don't have a
- * destination register with which we can associate a temporary.
+ * values in SET_ALIAS instructions.
  */
 #define RESERVED_REGS  (1u<<X86_SP | 1u<<X86_R15 | 1u<<X86_XMM15)
 
@@ -387,10 +386,12 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
     /* Special cases for store-type instructions.  These instructions
      * don't have destination register operands, so we don't have a place
      * to record an arbitrary temporary register for reloading spilled
-     * values; instead, we unconditionally use R15 or XMM15 (as
+     * value; instead, we unconditionally use R15 or XMM15 (as
      * appropriate) to store the reloaded value, so we need to mark the
      * relevant register as touched so it's saved and restored in the
-     * prologue/epilogue if needed. */
+     * prologue/epilogue if needed.  For reloading store source values,
+     * we co-opt the offset (a.k.a. src3) field of the instruction to
+     * avoid having to save GPRs to XMM registers if possible. */
     switch (insn->opcode) {
       case RTLOP_SET_ALIAS:
         if (src1_info->spilled) {
@@ -403,22 +404,47 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
       case RTLOP_STORE_I8:
       case RTLOP_STORE_I16:
       case RTLOP_STORE_BR:
-      case RTLOP_STORE_I16_BR:
-        if (src1_info->spilled) {
+      case RTLOP_STORE_I16_BR: {
+        if (insn->host_data_32 == 0) {
+            insn->host_data_32 = insn->offset;
+        }
+        bool used_r15 = false;
+        const int src3 = insn->host_data_16;
+        if (src1_info->spilled || (src3 && ctx->regs[src3].spilled)) {
             ctx->block_regs_touched |= 1u << X86_R15;
+            used_r15 = true;
         }
         if (src2_info->spilled) {
-            /* We load the value to be stored into XMM15 regardless of its
-             * type.  If src1 is also spilled, it's already occupying R15,
-             * and even if not, it simplifies the logic (and thus reduces
-             * compilation time) to just use a fixed register, especially
-             * since this ought to be an unlikely case.  For narrow-integer
-             * and byte-reversed stores, since we can't store directly from
-             * XMM15, we instead use it to hold the value of RAX, which we
-             * use as the value register. */
-            ctx->block_regs_touched |= 1u << X86_XMM15;
+            int value_temp;
+            if (rtl_register_is_int(src2_reg)) {
+                value_temp = get_gpr(ctx, 0);
+                if (value_temp < 0) {
+                    if (insn->opcode == RTLOP_STORE) {
+                        /* For a plain store, we can just reload into and
+                         * store from an XMM register. */
+                        value_temp = X86_XMM15;
+                    } else {
+                        value_temp = X86_R15;
+                        /* If the address also used R15, we have nowhere to
+                         * load the value into.  The code generator will
+                         * detect this case and save some other GPR to
+                         * XMM15, so mark XMM15 as touched. */
+                        if (used_r15) {
+                            ctx->block_regs_touched |= 1u << X86_XMM15;
+                        }
+                    }
+                }
+            } else {  // non-integer
+                value_temp = get_xmm(ctx, 0);
+                if (value_temp < 0) {
+                    value_temp = X86_XMM15;
+                }
+            }
+            insn->src3 = (uint16_t)value_temp;
+            ctx->block_regs_touched |= 1u << value_temp;
         }
         break;
+      }  // case RTLOP_STORE*
     }
 
     if (src1) {

@@ -270,7 +270,7 @@ static ALWAYS_INLINE void append_insn(
  *     code: Output code buffer.
  *     is64: True to prepend REX.W to an integer instruction, false otherwise.
  *     opcode: Instruction opcode.
- *     reg: Register index.
+ *     reg: Register.
  */
 static ALWAYS_INLINE void append_insn_R(
     CodeBuffer *code, bool is64, X86Opcode opcode, X86Register reg)
@@ -296,8 +296,8 @@ static ALWAYS_INLINE void append_insn_R(
  *     code: Output code buffer.
  *     is64: True to prepend REX.W to an integer instruction, false otherwise.
  *     opcode: Instruction opcode.
- *     reg1: Register index (or sub-opcode) for ModR/M reg field.
- *     reg2: Register index for ModR/M r/m field.
+ *     reg1: Register (or sub-opcode) for ModR/M reg field.
+ *     reg2: Register for ModR/M r/m field.
  */
 static ALWAYS_INLINE void append_insn_ModRM_reg(
     CodeBuffer *code, bool is64, X86Opcode opcode, X86Register reg1,
@@ -328,10 +328,10 @@ static ALWAYS_INLINE void append_insn_ModRM_reg(
  *     code: Output code buffer.
  *     is64: True to prepend REX.W to an integer instruction, false otherwise.
  *     opcode: Instruction opcode.
- *     reg: Register index (or sub-opcode) for ModR/M reg field.
- *     base: Base register index for memory address.
- *     index: Index register index for memory address, or -1 to omit the
- *         index.  Must not be X86_SP.
+ *     reg: Register (or sub-opcode) for ModR/M reg field.
+ *     base: Base register for memory address.
+ *     index: Index register for memory address, or -1 to omit the index.
+ *         Must not be X86_SP.
  *     offset: Constant offset for memory address.
  */
 static ALWAYS_INLINE void append_insn_ModRM_mem(
@@ -691,9 +691,9 @@ static ALWAYS_INLINE void append_move_or_load_gpr(
  *     ctx: Translation context.
  *     insn_index: Index of current instruction in ctx->unit->insns[].
  *     fallback: Register to use as a fallback for reloads.
- *     base_ret: Pointer to variable to receive the base register index
+ *     base_ret: Pointer to variable to receive the base register
  *         (X86Register).
- *     index_ret: Pointer to variable to receive the host register index
+ *     index_ret: Pointer to variable to receive the index register
  *         (X86Register), or -1 if there is no index register for the access.
  */
 static ALWAYS_INLINE void reload_base_and_index(
@@ -746,6 +746,67 @@ static ALWAYS_INLINE void reload_base_and_index(
     } else {
         *index_ret = -1;
     }
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
+ * reload_store_source_gpr:  Return the GPR containing the data value for
+ * an integer store instruction.  If necessary, save RAX in XMM15; the
+ * caller needs to restore it after the store in this case.
+ *
+ * [Parameters]
+ *     code: Output code buffer.
+ *     ctx: Translation context.
+ *     insn_index: Index of current instruction in ctx->unit->insns[].
+ *     host_base_ptr: Pointer to Base register for address (X86Register).
+ *         May be modified on return.
+ *     host_index_ptr: Pointer to index register for address (X86Register,
+ *         -1 if none).  May be modified on return.
+ *     host_value_ret: Pointer to variable to receive the value register
+ *         (X86Register).
+ * [Return value]
+ *     True if RAX was saved to XMM15, false otherwise.
+ */
+static ALWAYS_INLINE bool reload_store_source_gpr(
+    CodeBuffer *code, const HostX86Context *ctx, int insn_index,
+    X86Register *host_base_ptr, int *host_index_ptr,
+    X86Register *host_value_ret)
+{
+    const RTLUnit * const unit = ctx->unit;
+    const RTLInsn * const insn = &unit->insns[insn_index];
+
+    if (!is_spilled(ctx, insn->src2, insn_index)) {
+        *host_value_ret = ctx->regs[insn->src2].host_reg;
+        return false;
+    }
+
+    X86Register host_value = insn->src3;
+    if (host_value != *host_base_ptr && (int)host_value != *host_index_ptr) {
+        append_load_gpr(code, unit->regs[insn->src2].type, host_value,
+                        X86_SP, ctx->regs[insn->src2].spill_offset);
+        *host_value_ret = host_value;
+        return false;
+    }
+
+    ASSERT(host_value == X86_R15);
+    /* If we get here, base or index is in R15 due to a spill reload.
+     * For an indexed access, if one of the two registers is unspilled, we
+     * always use that register as the base (see reload_base_and_index()),
+     * so host_index will be R15.  If both registers are spilled or it's
+     * not an indexed access, host_index will be -1.  So we only need to
+     * check host_base for RAX collision here. */
+    ASSERT(*host_index_ptr != X86_AX);
+    if (*host_base_ptr == X86_AX) {
+        append_insn_ModRM_reg(code, true, X86OP_ADD_Gv_Ev, X86_R15, X86_AX);
+        *host_base_ptr = X86_R15;
+        *host_index_ptr = -1;
+    }
+    append_insn_ModRM_reg(code, true, X86OP_MOVD_V_E, X86_XMM15, X86_AX);
+    append_load_gpr(code, unit->regs[insn->src2].type, X86_AX,
+                    X86_SP, ctx->regs[insn->src2].spill_offset);
+    *host_value_ret = X86_AX;
+    return true;
 }
 
 /*-----------------------------------------------------------------------*/
@@ -2856,18 +2917,23 @@ static bool translate_block(HostX86Context *ctx, int block_index)
             int host_index;
             reload_base_and_index(&code, ctx, insn_index, X86_R15,
                                   &host_base, &host_index);
+            const int32_t offset = (int32_t)insn->host_data_32;
             X86Register host_value = ctx->regs[src2].host_reg;
-            const int32_t offset =
-                insn->host_data_32 ? (int32_t)insn->host_data_32 : insn->offset;
             RTLDataType type = unit->regs[src2].type;
             if (is_spilled(ctx, src2, insn_index)) {
-                if (rtl_type_is_int(type)) {
+                /* src3 is our value temporary (see register allocation).
+                 * For plain stores, if we run out of GPRs we'll just use
+                 * XMM15 instead, so there's no collision with the base
+                 * or index register. */
+                host_value = insn->src3;
+                ASSERT(host_value != host_base
+                       && (int)host_value != host_index);
+                if (host_value >= X86_XMM0 && rtl_type_is_int(type)) {
                     type = (type == RTLTYPE_INT32
                             ? RTLTYPE_FLOAT32 : RTLTYPE_FLOAT64);
                 }
-                append_load(&code, type, X86_XMM15,
+                append_load(&code, type, host_value,
                             X86_SP, -1, ctx->regs[src2].spill_offset);
-                host_value = X86_XMM15;
             }
             append_store(&code, type, host_value,
                          host_base, host_index, offset);
@@ -2879,19 +2945,10 @@ static bool translate_block(HostX86Context *ctx, int block_index)
             int host_index;
             reload_base_and_index(&code, ctx, insn_index, X86_R15,
                                   &host_base, &host_index);
-            X86Register host_value = ctx->regs[src2].host_reg;
-            const int32_t offset =
-                insn->host_data_32 ? (int32_t)insn->host_data_32 : insn->offset;
-            bool saved_ax = false;
-            if (is_spilled(ctx, src2, insn_index)) {
-                ASSERT(unit->regs[src2].type == RTLTYPE_INT32);
-                append_insn_ModRM_reg(&code, true, X86OP_MOVD_V_E,
-                                      X86_XMM15, X86_AX);
-                append_load_gpr(&code, RTLTYPE_INT32, X86_AX,
-                            X86_SP, ctx->regs[src2].spill_offset);
-                host_value = X86_AX;
-                saved_ax = true;
-            }
+            const int32_t offset = (int32_t)insn->host_data_32;
+            X86Register host_value;
+            const bool saved_ax = reload_store_source_gpr(
+                &code, ctx, insn_index, &host_base, &host_index, &host_value);
             maybe_append_empty_rex(&code, host_value, host_base);
             append_insn_ModRM_mem(&code, false, X86OP_MOV_Eb_Gb,
                                   host_value, host_base, host_index, offset);
@@ -2907,19 +2964,10 @@ static bool translate_block(HostX86Context *ctx, int block_index)
             int host_index;
             reload_base_and_index(&code, ctx, insn_index, X86_R15,
                                   &host_base, &host_index);
-            X86Register host_value = ctx->regs[src2].host_reg;
-            const int32_t offset =
-                insn->host_data_32 ? (int32_t)insn->host_data_32 : insn->offset;
-            bool saved_ax = false;
-            if (is_spilled(ctx, src2, insn_index)) {
-                ASSERT(unit->regs[src2].type == RTLTYPE_INT32);
-                append_insn_ModRM_reg(&code, true, X86OP_MOVD_V_E,
-                                      X86_XMM15, X86_AX);
-                append_load_gpr(&code, RTLTYPE_INT32, X86_AX,
-                                X86_SP, ctx->regs[src2].spill_offset);
-                host_value = X86_AX;
-                saved_ax = true;
-            }
+            const int32_t offset = (int32_t)insn->host_data_32;
+            X86Register host_value;
+            const bool saved_ax = reload_store_source_gpr(
+                &code, ctx, insn_index, &host_base, &host_index, &host_value);
             append_opcode(&code, X86OP_OPERAND_SIZE);
             append_insn_ModRM_mem(&code, false, X86OP_MOV_Ev_Gv,
                                   host_value, host_base, host_index, offset);
@@ -3011,25 +3059,15 @@ static bool translate_block(HostX86Context *ctx, int block_index)
             int host_index;
             reload_base_and_index(&code, ctx, insn_index, X86_R15,
                                   &host_base, &host_index);
-            X86Register host_value = ctx->regs[src2].host_reg;
-            const int32_t offset =
-                insn->host_data_32 ? (int32_t)insn->host_data_32 : insn->offset;
-            bool saved_ax = false;
-            if (is_spilled(ctx, src2, insn_index)) {
-                append_insn_ModRM_reg(&code, true, X86OP_MOVD_V_E,
-                                      X86_XMM15, X86_AX);
-                host_value = X86_AX;
-                saved_ax = true;
-            }
+            const int32_t offset = (int32_t)insn->host_data_32;
+            X86Register host_value;
+            const bool saved_ax = reload_store_source_gpr(
+                &code, ctx, insn_index, &host_base, &host_index, &host_value);
             switch (unit->regs[src2].type) {
               case RTLTYPE_INT32:
               case RTLTYPE_INT64:
               case RTLTYPE_ADDRESS: {
                 const bool is64 = (unit->regs[src2].type != RTLTYPE_INT32);
-                if (saved_ax) {
-                    append_load_gpr(&code, unit->regs[src2].type, X86_AX,
-                                    X86_SP, ctx->regs[src2].spill_offset);
-                }
                 if (handle->setup.host_features & BINREC_FEATURE_X86_MOVBE) {
                     append_insn_ModRM_mem(&code, is64, X86OP_MOVBE_My_Gy,
                                           host_value, host_base, host_index,
@@ -3039,7 +3077,8 @@ static bool translate_block(HostX86Context *ctx, int block_index)
                     append_insn_ModRM_mem(&code, is64, X86OP_MOV_Ev_Gv,
                                           host_value, host_base, host_index,
                                           offset);
-                    if (!saved_ax && unit->regs[src2].death > insn_index) {
+                    if (!is_spilled(ctx, src2, insn_index)
+                     && unit->regs[src2].death > insn_index) {
                         append_insn_R(&code, is64, X86OP_BSWAP_rAX,
                                       host_value);
                     }
@@ -3062,24 +3101,16 @@ static bool translate_block(HostX86Context *ctx, int block_index)
             int host_index;
             reload_base_and_index(&code, ctx, insn_index, X86_R15,
                                   &host_base, &host_index);
-            X86Register host_value = ctx->regs[src2].host_reg;
-            const int32_t offset =
-                insn->host_data_32 ? (int32_t)insn->host_data_32 : insn->offset;
-            bool saved_ax = false;
-            if (is_spilled(ctx, src2, insn_index)) {
-                ASSERT(unit->regs[src2].type == RTLTYPE_INT32);
-                append_insn_ModRM_reg(&code, true, X86OP_MOVD_V_E,
-                                      X86_XMM15, X86_AX);
-                append_load_gpr(&code, RTLTYPE_INT32, X86_AX,
-                                X86_SP, ctx->regs[src2].spill_offset);
-                host_value = X86_AX;
-                saved_ax = true;
-            }
+            const int32_t offset = (int32_t)insn->host_data_32;
+            X86Register host_value;
+            const bool saved_ax = reload_store_source_gpr(
+                &code, ctx, insn_index, &host_base, &host_index, &host_value);
             if (handle->setup.host_features & BINREC_FEATURE_X86_MOVBE) {
                 append_insn_ModRM_mem(&code, false, X86OP_MOVBE_Mw_Gw,
                                       host_value, host_base, host_index,
                                       offset);
-            } else if (saved_ax || unit->regs[src2].death <= insn_index) {
+            } else if (is_spilled(ctx, src2, insn_index)
+                       || unit->regs[src2].death <= insn_index) {
                 append_insn_R(&code, false, X86OP_BSWAP_rAX, host_value);
                 append_insn_ModRM_reg(&code, false, X86OP_SHIFT_Ev_Ib,
                                       X86OP_SHIFT_SHR, host_value);

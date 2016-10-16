@@ -13,9 +13,8 @@
 
 static const binrec_setup_t setup = {
     .host = BINREC_ARCH_X86_64_WINDOWS,  // To check whether XMM15 is pushed.
-    .host_features = BINREC_FEATURE_X86_MOVBE,
 };
-static const unsigned int host_opt = 0;
+static const unsigned int host_opt = BINREC_OPT_H_X86_ADDRESS_OPERANDS;
 
 static int add_rtl(RTLUnit *unit)
 {
@@ -25,16 +24,24 @@ static int add_rtl(RTLUnit *unit)
         EXPECT(rtl_add_insn(unit, RTLOP_NOP, dummy_regs[i], 0, 0, 0));
     }
 
-    int reg1, reg2;
-    EXPECT(reg1 = rtl_alloc_register(unit, RTLTYPE_INT64));
+    int reg1, reg2, reg3, reg4, reg5;
+    EXPECT(reg1 = rtl_alloc_register(unit, RTLTYPE_INT32));  // Spilled.
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg1, 0, 0, 1));
-    EXPECT(reg2 = rtl_alloc_register(unit, RTLTYPE_ADDRESS));
+    EXPECT(reg2 = rtl_alloc_register(unit, RTLTYPE_ADDRESS));  // Spilled.
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg2, 0, 0, 2));
-    EXPECT(rtl_add_insn(unit, RTLOP_STORE_BR, 0, reg2, reg1, 0));
-    for (int i = 0; i < lenof(dummy_regs); i++) {
+    EXPECT(reg3 = rtl_alloc_register(unit, RTLTYPE_INT32));
+    EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg3, 0, 0, 3));
+    EXPECT(rtl_add_insn(unit, RTLOP_NOP, 0, dummy_regs[0], 0, 0));
+    EXPECT(reg4 = rtl_alloc_register(unit, RTLTYPE_ADDRESS));  // Gets RAX.
+    EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg4, 0, 0, 4));
+    EXPECT(reg5 = rtl_alloc_register(unit, RTLTYPE_ADDRESS)); // Optimized out.
+    EXPECT(rtl_add_insn(unit, RTLOP_ADD, reg5, reg2, reg4, 0));
+    EXPECT(rtl_add_insn(unit, RTLOP_STORE_I8, 0, reg5, reg1, 0));
+    for (int i = 1; i < lenof(dummy_regs); i++) {
         EXPECT(rtl_add_insn(unit, RTLOP_NOP, 0, dummy_regs[i], 0, 0));
     }
     EXPECT(rtl_add_insn(unit, RTLOP_NOP, 0, reg1, reg2, 0));
+    EXPECT(rtl_add_insn(unit, RTLOP_NOP, 0, reg3, 0, 0));
 
     return EXIT_SUCCESS;
 }
@@ -48,13 +55,22 @@ static const uint8_t expected_code[] = {
     0x41,0x55,                          // push %r13
     0x41,0x56,                          // push %r14
     0x41,0x57,                          // push %r15
-    0x48,0x83,0xEC,0x08,                // sub $8,%rsp
+    0x48,0x83,0xEC,0x28,                // sub $40,%rsp
+    0x44,0x0F,0x29,0x7C,0x24,0x10,      // movaps %xmm15,16(%rsp)
     0x41,0xBE,0x01,0x00,0x00,0x00,      // mov $1,%r14d
-    0x4C,0x89,0x34,0x24,                // mov %r14,(%rsp)
+    0x44,0x89,0x34,0x24,                // mov %r14d,(%rsp)
     0x41,0xBE,0x02,0x00,0x00,0x00,      // mov $2,%r14d
-    0x4C,0x8B,0x3C,0x24,                // mov (%rsp),%r15
-    0x4D,0x0F,0x38,0xF1,0x3E,           // movbe %r15,(%r14)
-    0x48,0x83,0xC4,0x08,                // add $8,%rsp
+    0x4C,0x89,0x74,0x24,0x08,           // mov %r14,8(%rsp)
+    0x41,0xBE,0x03,0x00,0x00,0x00,      // mov $3,%r14d
+    0xB8,0x04,0x00,0x00,0x00,           // mov $4,%eax
+    0x4C,0x8B,0x7C,0x24,0x08,           // mov 8(%rsp),%r15
+    0x4C,0x03,0xF8,                     // add %rax,%r15
+    0x66,0x4C,0x0F,0x6E,0xF8,           // movq %rax,%xmm15
+    0x8B,0x04,0x24,                     // mov (%rsp),%eax
+    0x41,0x88,0x07,                     // mov %al,(%r15)
+    0x66,0x4C,0x0F,0x7E,0xF8,           // movq %xmm15,%rax
+    0x44,0x0F,0x28,0x7C,0x24,0x10,      // movaps 16(%rsp),%xmm15
+    0x48,0x83,0xC4,0x28,                // add $40,%rsp
     0x41,0x5F,                          // pop %r15
     0x41,0x5E,                          // pop %r14
     0x41,0x5D,                          // pop %r13
