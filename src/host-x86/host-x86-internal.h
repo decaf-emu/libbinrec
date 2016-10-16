@@ -157,6 +157,10 @@ typedef struct HostX86BlockInfo {
     /* Label targeted by the unresolved branch, or 0 if it targets the
      * function epilogue. */
     int unresolved_branch_target;
+
+    /* Mapping from x86 to RTL registers on entry to the block.  Used to
+     * reload spilled registers at backward branch instructions. */
+    uint16_t initial_reg_map[32];
 } HostX86BlockInfo;
 
 /* Context block used to maintain translation state. */

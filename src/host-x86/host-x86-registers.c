@@ -1057,6 +1057,10 @@ static bool allocate_regs_for_block(HostX86Context *ctx, int block_index)
     const RTLBlock * const block = &unit->blocks[block_index];
     HostX86BlockInfo *block_info = &ctx->blocks[block_index];
 
+    STATIC_ASSERT(sizeof(block_info->initial_reg_map) == sizeof(ctx->reg_map),
+                  "Register map size mismatch");
+    memcpy(block_info->initial_reg_map, ctx->reg_map, sizeof(ctx->reg_map));
+
     /* Reserved registers are excluded from the free set but don't count
      * as touched. */
     ctx->block_regs_touched = ~(ctx->regs_free | (RESERVED_REGS));

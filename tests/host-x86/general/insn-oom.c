@@ -22,31 +22,9 @@ static const unsigned int host_opt = 0;
 
 static int add_rtl(RTLUnit *unit)
 {
-    /* Allocate enough dummy registers to use 128 bytes of stack space
-     * and force subsequent spills to use 32-bit displacements. */
-    int regs1[30];
-    for (int i = 0; i < lenof(regs1); i++) {
-        EXPECT(regs1[i] = rtl_alloc_register(unit, RTLTYPE_INT64));
-        EXPECT(rtl_add_insn(unit, RTLOP_NOP, regs1[i], 0, 0, 0));
-    }
-
-    int label;
-    EXPECT(label = rtl_alloc_label(unit));
-    EXPECT(rtl_add_insn(unit, RTLOP_GOTO, 0, 0, 0, label));
-
-    int regs2[14];  // Generate enough jumped spills to trigger OOM.
-    for (int i = 0; i < lenof(regs2); i++) {
-        EXPECT(regs2[i] = rtl_alloc_register(unit, RTLTYPE_INT32));
-        EXPECT(rtl_add_insn(unit, RTLOP_NOP, regs2[i], 0, 0, 0));
-    }
-    for (int i = 0; i < lenof(regs2); i++) {
-        EXPECT(rtl_add_insn(unit, RTLOP_NOP, 0, regs2[i], 0, 0));
-    }
-
-    EXPECT(rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, label));
-
-    for (int i = 0; i < lenof(regs1); i++) {
-        EXPECT(rtl_add_insn(unit, RTLOP_NOP, 0, regs1[i], 0, 0));
+    /* Add enough NOPs to get past the space reserved for the prologue. */
+    for (int i = 0; i < 13; i++) {
+        EXPECT(rtl_add_insn(unit, RTLOP_NOP, 0, 0, 0, 1));
     }
 
     return EXIT_SUCCESS;
@@ -55,6 +33,7 @@ static int add_rtl(RTLUnit *unit)
 static const uint8_t expected_code[] = {};
 
 static const char expected_log[] =
+    "[error] No memory for instruction at 12\n"
     "[error] Out of memory while generating code\n";
 
 
@@ -84,7 +63,7 @@ int main(void)
 
     EXPECT(rtl_finalize_unit(unit));
 
-    handle->code_buffer_size = 200;
+    handle->code_buffer_size = 128;
     handle->code_alignment = 16;
     EXPECT(handle->code_buffer = binrec_code_malloc(
                handle, handle->code_buffer_size, handle->code_alignment));

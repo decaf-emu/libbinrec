@@ -32,10 +32,15 @@ static int add_rtl(RTLUnit *unit)
 
     int label;
     EXPECT(label = rtl_alloc_label(unit));
-    EXPECT(rtl_add_insn(unit, RTLOP_GOTO_IF_Z,
-                        0, regs1[lenof(regs1)-1], 0, label));
+    EXPECT(rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, label));
 
-    int regs2[14];  // Generate enough jumped spills to trigger OOM.
+    /* Add NOPs to pad out the space reserved for end-of-block alias setup. */
+    for (int i = 0; i < 46; i++) {
+        EXPECT(rtl_add_insn(unit, RTLOP_NOP, 0, 0, 0, 1));
+    }
+    /* Generate enough jumped spills to trigger OOM, but leave at least
+     * one unspilled register so we test both code paths. */
+    int regs2[13];
     for (int i = 0; i < lenof(regs2); i++) {
         EXPECT(regs2[i] = rtl_alloc_register(unit, RTLTYPE_INT32));
         EXPECT(rtl_add_insn(unit, RTLOP_NOP, regs2[i], 0, 0, 0));
@@ -44,7 +49,7 @@ static int add_rtl(RTLUnit *unit)
         EXPECT(rtl_add_insn(unit, RTLOP_NOP, 0, regs2[i], 0, 0));
     }
 
-    EXPECT(rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, label));
+    EXPECT(rtl_add_insn(unit, RTLOP_GOTO, 0, 0, 0, label));
 
     for (int i = 0; i < lenof(regs1); i++) {
         EXPECT(rtl_add_insn(unit, RTLOP_NOP, 0, regs1[i], 0, 0));
@@ -56,6 +61,7 @@ static int add_rtl(RTLUnit *unit)
 static const uint8_t expected_code[] = {};
 
 static const char expected_log[] =
+    "[error] No memory for backward spill crossing at 103\n"
     "[error] Out of memory while generating code\n";
 
 
@@ -85,7 +91,7 @@ int main(void)
 
     EXPECT(rtl_finalize_unit(unit));
 
-    handle->code_buffer_size = 200;
+    handle->code_buffer_size = 600;
     handle->code_alignment = 16;
     EXPECT(handle->code_buffer = binrec_code_malloc(
                handle, handle->code_buffer_size, handle->code_alignment));

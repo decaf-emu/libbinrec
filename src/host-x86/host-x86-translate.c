@@ -901,6 +901,8 @@ static bool setup_aliases_for_block(
         ctx->handle->code_len = code->len;
         if (UNLIKELY(!binrec_ensure_code_space(ctx->handle,
                                                SETUP_ALIAS_SIZE))) {
+            log_error(ctx->handle, "No memory for alias setup for block"
+                      " %d->%d", block_index, target_index);
             return false;
         }
         code->buffer = ctx->handle->code_buffer;
@@ -1049,15 +1051,18 @@ static bool check_alias_conflicts(const HostX86Context *ctx, int block_index,
 /*-----------------------------------------------------------------------*/
 
 /**
- * handle_jumped_spills:  Copy live registers which are not spilled at the
- * current instruction but are spilled at the target instruction into their
- * spill slots.  Used for branches which jump over spills.
+ * handle_jumped_spills:  Update the current state of the stack and host
+ * register file to match that at the target of the given branch
+ * instruction.  For forward branches, we copy live registers which are not
+ * currently spilled but are spilled at the target instruction into their
+ * spill slots; for backward branches, we reload registers which are
+ * currently spilled but are not spilled at the target instruction.  Used
+ * for branches which jump over spills.
  *
  * [Parameters]
  *     code: Code buffer.
  *     ctx: Translation context.
  *     branch_insn: Index of branch instruction in ctx->unit->insns[].
- *     target_insn: Index of branch target instruction in ctx->unit->insns[].
  * [Return value]
  *     True on success, false if out of memory.
  */
@@ -1071,31 +1076,73 @@ static bool handle_jumped_spills(CodeBuffer *code, const HostX86Context *ctx,
     ASSERT(target_block >= 0);
     const int target_insn = unit->blocks[target_block].first_insn;
 
-    for (int i = 0; i < 32; i++) {
-        const int reg_index = ctx->reg_map[i];
-        if (reg_index) {
-            const RTLRegister *reg = &unit->regs[reg_index];
-            if (reg->death >= target_insn
-             && is_spilled(ctx, reg_index, target_insn)) {
-                /* The register can't be spilled if it's in the live map. */
-                ASSERT(!is_spilled(ctx, reg_index, branch_insn));
-                /* Worst-case size: 9 bytes (REX XMM store) */
-                const int MAX_SPILL_SIZE = 9;
-                if (UNLIKELY(code->buffer_size - code->len < MAX_SPILL_SIZE)) {
-                    ASSERT(code->buffer == ctx->handle->code_buffer);
-                    ctx->handle->code_len = code->len;
-                    if (UNLIKELY(!binrec_ensure_code_space(ctx->handle,
-                                                           MAX_SPILL_SIZE))) {
-                        return false;
+    /* The worst-case size of a spill or reload instruction is 9 bytes
+     * (XMM load/store with REX prefix). */
+    const int MAX_SPILL_SIZE = 9;
+
+    if (target_insn > branch_insn) {
+
+        for (int i = 0; i < 32; i++) {
+            const int reg_index = ctx->reg_map[i];
+            if (reg_index) {
+                const RTLRegister *reg = &unit->regs[reg_index];
+                if (reg->death >= target_insn
+                 && is_spilled(ctx, reg_index, target_insn)) {
+                    /* The register can't be spilled if it's in the live map. */
+                    ASSERT(!is_spilled(ctx, reg_index, branch_insn));
+                    if (UNLIKELY(code->buffer_size - code->len
+                                 < MAX_SPILL_SIZE)) {
+                        ASSERT(code->buffer == ctx->handle->code_buffer);
+                        ctx->handle->code_len = code->len;
+                        if (UNLIKELY(!binrec_ensure_code_space(
+                                         ctx->handle, MAX_SPILL_SIZE))) {
+                            log_error(ctx->handle, "No memory for forward"
+                                      " spill crossing at %d", branch_insn);
+                            return false;
+                        }
+                        code->buffer = ctx->handle->code_buffer;
+                        code->buffer_size = ctx->handle->code_buffer_size;
                     }
-                    code->buffer = ctx->handle->code_buffer;
-                    code->buffer_size = ctx->handle->code_buffer_size;
+                    const HostX86RegInfo *reg_info = &ctx->regs[reg_index];
+                    append_store(code, reg->type, reg_info->host_reg,
+                                 X86_SP, -1, reg_info->spill_offset);
                 }
-                const HostX86RegInfo *reg_info = &ctx->regs[reg_index];
-                append_store(code, reg->type, reg_info->host_reg,
-                             X86_SP, -1, reg_info->spill_offset);
             }
         }
+
+    } else {  // target_insn < branch_insn
+
+        const HostX86BlockInfo *target_info = &ctx->blocks[target_block];
+
+        for (int i = 0; i < 32; i++) {
+            const int reg_index = target_info->initial_reg_map[i];
+            if (reg_index) {
+                const RTLRegister *reg = &unit->regs[reg_index];
+                /* The register's live range should have been extended to
+                 * the last backward branch that targets a block where
+                 * it's live. */
+                ASSERT(reg->death >= branch_insn);
+                if (is_spilled(ctx, reg_index, branch_insn)) {
+                    if (UNLIKELY(code->buffer_size - code->len
+                                 < MAX_SPILL_SIZE)) {
+                        ASSERT(code->buffer == ctx->handle->code_buffer);
+                        ctx->handle->code_len = code->len;
+                        if (UNLIKELY(!binrec_ensure_code_space(
+                                         ctx->handle, MAX_SPILL_SIZE))) {
+                            log_error(ctx->handle, "No memory for backward"
+                                      " spill crossing at %d", branch_insn);
+                            return false;
+                        }
+                        code->buffer = ctx->handle->code_buffer;
+                        code->buffer_size = ctx->handle->code_buffer_size;
+                    }
+                    const HostX86RegInfo *reg_info = &ctx->regs[reg_index];
+                    append_load(code, reg->type, reg_info->host_reg,
+                                X86_SP, -1, reg_info->spill_offset);
+                }
+            }
+        }
+
     }
 
     return true;
@@ -1261,6 +1308,7 @@ static bool append_prologue(HostX86Context *ctx)
             code_offset += alignment - (code_offset % alignment);
         }
         if (UNLIKELY(!binrec_ensure_code_space(handle, code_offset))) {
+            log_error(handle, "No memory for Windows SEH data");
             return false;
         }
 
@@ -1281,6 +1329,7 @@ static bool append_prologue(HostX86Context *ctx)
      *    9 * 8 high XMM saves
      * for a total of 107 bytes. */
     if (UNLIKELY(!binrec_ensure_code_space(handle, 107))) {
+        log_error(handle, "No memory for unit prologue");
         return false;
     }
 
@@ -1367,6 +1416,7 @@ static bool append_epilogue(HostX86Context *ctx, bool append_ret)
     /* The maximum size of the epilogue is the same as the maximum size of
      * the prologue, plus 1 for the RET instruction. */
     if (UNLIKELY(!binrec_ensure_code_space(handle, 108))) {
+        log_error(handle, "No memory for unit epilogue");
         return false;
     }
 
@@ -1722,6 +1772,8 @@ static bool translate_block(HostX86Context *ctx, int block_index)
         if (UNLIKELY(code.len + MAX_INSN_LEN > code.buffer_size)) {
             handle->code_len = code.len;
             if (UNLIKELY(!binrec_ensure_code_space(handle, MAX_INSN_LEN))) {
+                log_error(handle, "No memory for instruction at %d",
+                          insn_index);
                 return false;
             }
             code.buffer = handle->code_buffer;
@@ -3184,7 +3236,7 @@ static bool translate_block(HostX86Context *ctx, int block_index)
             if (insn->host_data_16) {
                 HostX86RegInfo *index_info = &ctx->regs[insn->host_data_16];
                 if (is_spilled(ctx, insn->host_data_16, insn_index)) {
-                    log_warning(ctx->handle, "Slow reload of spilled CMPXCHG"
+                    log_warning(handle, "Slow reload of spilled CMPXCHG"
                                 " index register");
                     index_spilled = true;
                     ASSERT(unit->regs[insn->host_data_16].type
