@@ -144,6 +144,7 @@ static bool process_command_line(int argc, char **argv)
     const char *arg_count = NULL;
 
     for (int argi = 1; argi < argc; argi++) {
+
         if (strcmp(argv[argi], "help") == 0
          || strcmp(argv[argi], "-h") == 0
          || strncmp(argv[argi], "--help", strlen(argv[argi])) == 0) {
@@ -154,12 +155,15 @@ static bool process_command_line(int argc, char **argv)
                     "        -O0         Disable all optimizations (default).\n"
                     "        -O, -O1     Enable lightweight optimizations.\n"
                     "        -O2         Enable stronger but more expensive optimizations.\n"
-                    "    -O<NAME>   Enable specific optimizations.\n"
+                    "    -O<NAME>   Enable specific global optimizations.\n"
                     "        -Obasic            Basic optimizations\n"
                     "        -Odecondition      Branch deconditioning\n"
                     "        -Odeep-data-flow   Deep data flow analysis (expensive)\n"
                     "        -Odse              Dead store elimination\n"
                     "        -Ofold-constants   Constant folding\n"
+                    "    -H<NAME>   Enable specific host optimizations.\n"
+                    "        -Hx86-address-op   Address operand optimization\n"
+                    "        -Hx86-fixed-regs   Smarter register allocation\n"
             );
             fprintf(stderr, "\nValid architectures:\n    native\n");
             for (int i = 0; i < GUEST_ARCH__NUM; i++) {
@@ -179,30 +183,48 @@ static bool process_command_line(int argc, char **argv)
                     "Prints the time consumed by the benchmark to stdout in the format:\n"
                     "    TOTAL-TIME = USER-TIME + SYSTEM-TIME\n"
                     "where TOTAL-TIME, USER-TIME, and SYSTEM-TIME are in seconds.\n"
-                    "If the benchmark does not complete successfully, nothing is printed.\n");
+                    "If the benchmark does not complete successfully, nothing is printed\n"
+                    "to stdout, and an appropriate error message is written to stderr.\n");
             return false;
+
         } else if (*argv[argi] == '-') {
-            if (argv[argi][1] == 'O') {
+
+            if (argv[argi][1] == 'H') {
                 const char *name = &argv[argi][2];
-                if (!*name || strcmp(name, "1") == 0) {
-                    opt_common = BINREC_OPT_BASIC
-                               | BINREC_OPT_DECONDITION
-                               | BINREC_OPT_DSE
-                               | BINREC_OPT_FOLD_CONSTANTS;
-                    opt_guest = 0;
-                    opt_host = 0;
-                } else if (strcmp(name, "0") == 0) {
+                if (!*name) {
+                    fprintf(stderr, "Missing host optimization flag\n");
+                    goto usage;
+                } else if (strcmp(name, "x86-address-op") == 0) {
+                    opt_common |= BINREC_OPT_H_X86_ADDRESS_OPERANDS;
+                } else if (strcmp(name, "x86-fixed-regs") == 0) {
+                    opt_common |= BINREC_OPT_H_X86_FIXED_REGS;
+                } else {
+                    fprintf(stderr, "Unknown host optimization flag %s\n",
+                            name);
+                    goto usage;
+                }
+
+            } else if (argv[argi][1] == 'O') {
+                const char *name = &argv[argi][2];
+                if (!*name || (*name >= '0' && *name <= '9' && !name[1])) {
+                    const binrec_arch_t native_arch = binrec_native_arch();
                     opt_common = 0;
                     opt_guest = 0;
                     opt_host = 0;
-                } else if (*name >= '2' && *name <= '9') {
-                    opt_common = BINREC_OPT_BASIC
-                               | BINREC_OPT_DECONDITION
-                               | BINREC_OPT_DEEP_DATA_FLOW
-                               | BINREC_OPT_DSE
-                               | BINREC_OPT_FOLD_CONSTANTS;
-                    opt_guest = 0;
-                    opt_host = 0;
+                    if (*name >= '1') {
+                        opt_common |= BINREC_OPT_BASIC
+                                    | BINREC_OPT_DECONDITION
+                                    | BINREC_OPT_DSE
+                                    | BINREC_OPT_FOLD_CONSTANTS;
+                        if (native_arch == BINREC_ARCH_X86_64_SYSV
+                         || native_arch == BINREC_ARCH_X86_64_WINDOWS) {
+                            opt_host |= BINREC_OPT_H_X86_ADDRESS_OPERANDS;
+                            opt_host |= BINREC_OPT_H_X86_FIXED_REGS;
+                        }
+                    }
+                    if (*name >= '2') {
+                        opt_common |= BINREC_OPT_DEEP_DATA_FLOW;
+                    }
                 } else if (strcmp(name, "basic") == 0) {
                     opt_common |= BINREC_OPT_BASIC;
                 } else if (strcmp(name, "decondition") == 0) {
@@ -214,13 +236,16 @@ static bool process_command_line(int argc, char **argv)
                 } else if (strcmp(name, "fold-constants") == 0) {
                     opt_common |= BINREC_OPT_FOLD_CONSTANTS;
                 } else {
-                    fprintf(stderr, "Unknown optimization flag %s\n", name);
+                    fprintf(stderr, "Unknown global optimization flag %s\n",
+                            name);
                     goto usage;
                 }
+
             } else {
                 fprintf(stderr, "Unknown option %s\n", argv[argi]);
                 goto usage;
             }
+
         } else if (!arg_arch) {
             arg_arch = argv[argi];
         } else if (!arg_benchmark) {
