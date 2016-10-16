@@ -31,7 +31,8 @@ void host_x86_optimize_address(HostX86Context * const ctx, int insn_index)
     const int src1 = insn->src1;
     RTLRegister * const src1_reg = &unit->regs[src1];
 
-    if (src1_reg->source != RTLREG_RESULT) {
+    if (src1_reg->source != RTLREG_RESULT
+     && src1_reg->source != RTLREG_RESULT_NOFOLD) {
         return;  // Can't optimize.
     }
 
