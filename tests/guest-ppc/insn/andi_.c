@@ -10,7 +10,7 @@
 #include "tests/guest-ppc/insn/common.h"
 
 static const uint8_t input[] = {
-    0x70,0x03,0x12,0x34,  // andi. r3,r0,4660
+    0x70,0x03,0xAB,0xCD,  // andi. r3,r0,43981
 };
 
 static const bool expected_success = true;
@@ -21,7 +21,7 @@ static const char expected[] =
     "    1: LOAD_IMM   r2, 0x100000000\n"
     "    2: LABEL      L1\n"
     "    3: GET_ALIAS  r3, a2\n"
-    "    4: ANDI       r4, r3, 4660\n"
+    "    4: ANDI       r4, r3, 43981\n"
     "    5: SLTSI      r5, r4, 0\n"
     "    6: SGTSI      r6, r4, 0\n"
     "    7: SEQI       r7, r4, 0\n"
