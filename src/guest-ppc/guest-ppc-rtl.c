@@ -46,14 +46,15 @@ static inline int rtl_imm64(RTLUnit * const unit, uint32_t value)
 
 /**
  * get_insn_at:  Return the instruction word at the given address, or zero
- * if the given address is outside the current block.
+ * if the given address is outside the current block.  The address is
+ * assumed to be properly aligned.
  */
 static inline PURE_FUNCTION uint32_t get_insn_at(
     GuestPPCContext * const ctx, GuestPPCBlockInfo * const block,
     const uint32_t address)
 {
-    if (address >= block->start
-     && address + 3 <= block->start + block->len - 1) {
+    ASSERT((address & 3) == 0);
+    if (address >= block->start && address < block->start + block->len) {
         const uint32_t *memory_base =
             (const uint32_t *)ctx->handle->setup.guest_memory_base;
         return bswap_be32(memory_base[address/4]);
@@ -2257,13 +2258,15 @@ static void translate_unimplemented_insn(
  *
  * [Parameters]
  *     ctx: Translation context.
+ *     block: Basic block being translated.
  *     address: Address of instruction being translated.
  *     insn: Instruction word.
  * [Return value]
  *     True on success, false on error.
  */
 static inline void translate_x1F(
-    GuestPPCContext * const ctx, const uint32_t address, const uint32_t insn)
+    GuestPPCContext * const ctx, GuestPPCBlockInfo * const block,
+    const uint32_t address, const uint32_t insn)
 {
     RTLUnit * const unit = ctx->unit;
 
@@ -2668,6 +2671,46 @@ static inline void translate_x1F(
 
       /* XO_5 = 0x1A */
       case XO_CNTLZW:
+        if (!insn_Rc(insn)
+         && ((get_insn_at(ctx, block, address+4) & 0xFFE0FFFE)
+             == (OPCD_RLWINM<<26 | insn_rA(insn)<<21 | 27<<11 | 5<<6 | 31<<1)))
+        {
+            /* "cntlzw temp,rX; srwi rY,temp,5" is a common PowerPC idiom
+             * for comparing a value to zero and getting the result as an
+             * integer rather than a condition flag.  If the temporary is
+             * different from the output registers, we leave the cntlzw in
+             * place in case its result happens to also be used elsewhere;
+             * dead store elimination will remove it if not. */
+            const uint32_t next_insn = get_insn_at(ctx, block, address+4);
+            const int cntlzw_rS = insn_rS(insn);
+            const int rlwinm_rA = insn_rA(next_insn);
+            const int value = get_gpr(ctx, cntlzw_rS);
+            /* Don't append the CLZ until after we retrieve the input
+             * operand value, to correctly handle the case of cntlzw rN,rN
+             * (overwriting the input operand). */
+            if ((int)insn_rA(insn) != rlwinm_rA) {
+                translate_bitmisc(ctx, insn, RTLOP_CLZ);
+            }
+            const int result = rtl_alloc_register(unit, RTLTYPE_INT32);
+            rtl_add_insn(unit, RTLOP_SEQI, result, value, 0, 0);
+            set_gpr(ctx, rlwinm_rA, result);
+            if (insn_Rc(next_insn)) {
+                const int lt = rtl_imm32(unit, 0);
+                const int gt = result;
+                const int eq = rtl_alloc_register(unit, RTLTYPE_INT32);
+                rtl_add_insn(unit, RTLOP_XORI, eq, result, 0, 1);
+                const int xer = get_xer(ctx);
+                const int so = rtl_alloc_register(unit, RTLTYPE_INT32);
+                rtl_add_insn(unit, RTLOP_BFEXT,
+                             so, xer, 0, XER_SO_SHIFT | 1<<8);
+                set_crb(ctx, 0, lt);
+                set_crb(ctx, 1, gt);
+                set_crb(ctx, 2, eq);
+                set_crb(ctx, 3, so);
+            }
+            ctx->skip_next_insn = true;
+            return;
+        }
         translate_bitmisc(ctx, insn, RTLOP_CLZ);
         return;
       case XO_EXTSH:
@@ -2927,38 +2970,6 @@ static inline void translate_insn(
         return;
 
       case OPCD_RLWINM:
-        if ((get_insn_at(ctx, block, address-4) & 0xFC1F03FE)
-            == (OPCD_x1F<<26 | insn_rS(insn)<<16 | XO_CNTLZW<<1)
-         && insn_SH(insn) == 27
-         && insn_MB(insn) == 5
-         && insn_ME(insn) == 31) {
-            /* "cntlzw temp,rX; srwi rY,temp,5" is a common PowerPC idiom
-             * for comparing a value to zero and getting the result as an
-             * integer rather than a condition flag.  We leave the cntlzw
-             * in place in case its result happens to also be used
-             * elsewhere; dead store elimination will remove it if not. */
-            const int cntlzw_rS = insn_rS(get_insn_at(ctx, block, address-4));
-            const int rlwinm_rA = insn_rA(insn);
-            const int value = get_gpr(ctx, cntlzw_rS);
-            const int result = rtl_alloc_register(unit, RTLTYPE_INT32);
-            rtl_add_insn(unit, RTLOP_SEQI, result, value, 0, 0);
-            set_gpr(ctx, rlwinm_rA, result);
-            if (insn_Rc(insn)) {
-                const int lt = rtl_imm32(unit, 0);
-                const int gt = result;
-                const int eq = rtl_alloc_register(unit, RTLTYPE_INT32);
-                rtl_add_insn(unit, RTLOP_XORI, eq, result, 0, 1);
-                const int xer = get_xer(ctx);
-                const int so = rtl_alloc_register(unit, RTLTYPE_INT32);
-                rtl_add_insn(unit, RTLOP_BFEXT,
-                             so, xer, 0, XER_SO_SHIFT | 1<<8);
-                set_crb(ctx, 0, lt);
-                set_crb(ctx, 1, gt);
-                set_crb(ctx, 2, eq);
-                set_crb(ctx, 3, so);
-            }
-            return;
-        }
         translate_rotate_mask(ctx, insn, true, false);
         return;
 
@@ -2994,7 +3005,7 @@ static inline void translate_insn(
         return;
 
       case OPCD_x1F:
-        translate_x1F(ctx, address, insn);
+        translate_x1F(ctx, block, address, insn);
         return;
 
       case OPCD_LWZ:
