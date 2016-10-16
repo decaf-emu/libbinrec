@@ -419,6 +419,19 @@ extern bool rtl_add_insn(RTLUnit *unit, RTLOpcode opcode,
 extern int rtl_alloc_register(RTLUnit *unit, RTLDataType type);
 
 /**
+ * rtl_make_unfoldable:  Prevent the given register from being used in
+ * constant folding, even if it would otherwise be foldable.  This
+ * function must be called after adding the instruction that sets the
+ * register.
+ *
+ * [Parameters]
+ *     unit: RTLUnit containing register to mark.
+ *     reg: Register number to mark.
+ */
+#define rtl_make_unfoldable INTERNAL(rtl_make_unfoldable)
+extern void rtl_make_unfoldable(RTLUnit *unit, int reg);
+
+/**
  * rtl_make_unique_pointer:  Mark the given register as being a "unique
  * pointer", which points to a region of memory which will never be accessed
  * except through this register (or another register copied from it).

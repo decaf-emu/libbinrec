@@ -38,14 +38,17 @@ static bool init_unit(GuestPPCContext *ctx)
     /* Allocate a register for the guest processor state block, and fetch
      * the state block pointer from the function parameter. */
     ctx->psb_reg = rtl_alloc_register(unit, RTLTYPE_ADDRESS);
-    rtl_make_unique_pointer(unit, ctx->psb_reg);
     rtl_add_insn(unit, RTLOP_LOAD_ARG, ctx->psb_reg, 0, 0, 0);
+    rtl_make_unique_pointer(unit, ctx->psb_reg);
 
-    /* Allocate and initialize a register for the host memory base. */
+    /* Allocate and initialize a register for the host memory base.  Make
+     * it unfoldable since that will generally result in better host code
+     * (base with 32-bit displacement instead of absolute 64-bit address). */
     ctx->membase_reg = rtl_alloc_register(unit, RTLTYPE_ADDRESS);
-    rtl_make_unique_pointer(unit, ctx->membase_reg);
     rtl_add_insn(unit, RTLOP_LOAD_IMM, ctx->membase_reg, 0, 0,
                  ctx->handle->setup.host_memory_base);
+    rtl_make_unique_pointer(unit, ctx->membase_reg);
+    rtl_make_unfoldable(unit, ctx->membase_reg);
 
     /* Allocate an alias register for the output NIA. */
     ctx->alias.nia = rtl_alloc_alias_register(unit, RTLTYPE_INT32);

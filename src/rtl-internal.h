@@ -133,6 +133,7 @@ STATIC_ASSERT(sizeof(RTLInsn) == 16, "RTLInsn should be 16 bytes long for best p
 typedef enum RTLRegType_ {
     RTLREG_UNDEFINED = 0,       // Not yet defined to anything
     RTLREG_CONSTANT,            // Constant value
+    RTLREG_CONSTANT_NOFOLD,     // Constant value (folding disallowed)
     RTLREG_FUNC_ARG,            // Function argument
     RTLREG_MEMORY,              // Memory reference
     RTLREG_ALIAS,               // Loaded from an alias register
@@ -593,6 +594,21 @@ extern int format_int(char *buf, int bufsize, RTLDataType type, uint64_t value);
 extern int format_float(char *buf, int bufsize, float value);
 #define format_double INTERNAL(format_double)
 extern int format_double(char *buf, int bufsize, double value);
+
+/**
+ * rtl_type_name:  Return an appropriate name for the given data type.
+ */
+extern CONST_FUNCTION const char *rtl_type_name(RTLDataType type);
+
+/**
+ * rtl_type_suffix:  Return an appropriate suffix for the given data type.
+ */
+extern CONST_FUNCTION const char *type_suffix(RTLDataType type);
+
+/**
+ * rtl_source_name:  Return an appropriate name for the given register source.
+ */
+extern CONST_FUNCTION const char *rtl_source_name(RTLRegType source);
 
 /*************************************************************************/
 /*************************************************************************/

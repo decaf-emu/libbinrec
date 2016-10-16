@@ -43,7 +43,7 @@ int main(void)
     EXPECT_EQ(unit->regs[1].unique_pointer, 0);
     EXPECT_STREQ(get_log_messages(),
                  "[error] rtl_make_unique_pointer: Register 1 has invalid"
-                 " type (must be ADDRESS)\n");
+                 " type int32 (must be address)\n");
     clear_log_messages();
 
     rtl_destroy_unit(unit);

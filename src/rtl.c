@@ -18,7 +18,7 @@
 #include <stdio.h>
 
 /*************************************************************************/
-/*********************** Exported utility routines ***********************/
+/************* Exported utility routines (library-internal) **************/
 /*************************************************************************/
 
 FORMAT(3, 4)
@@ -92,6 +92,59 @@ int format_double(char *buf, int bufsize, double value)
         }
         return n;
     }
+}
+
+/*-----------------------------------------------------------------------*/
+
+const char *rtl_type_name(RTLDataType type)
+{
+    static const char * const names[] = {
+        [RTLTYPE_INT32     ] = "int32",
+        [RTLTYPE_INT64     ] = "int64",
+        [RTLTYPE_ADDRESS   ] = "address",
+        [RTLTYPE_FLOAT32   ] = "float32",
+        [RTLTYPE_FLOAT64   ] = "float64",
+        [RTLTYPE_V2_FLOAT64] = "float64[2]",
+    };
+    ASSERT(type > 0 && type < lenof(names));
+    ASSERT(names[type]);
+    return names[type];
+}
+
+/*-----------------------------------------------------------------------*/
+
+const char *type_suffix(RTLDataType type)
+{
+    static const char * const suffixes[] = {
+        [RTLTYPE_INT32     ] = "i32",
+        [RTLTYPE_INT64     ] = "i64",
+        [RTLTYPE_ADDRESS   ] = "addr",
+        [RTLTYPE_FLOAT32   ] = "f32",
+        [RTLTYPE_FLOAT64   ] = "f64",
+        [RTLTYPE_V2_FLOAT64] = "f64x2",
+    };
+    ASSERT(type > 0 && type < lenof(suffixes));
+    ASSERT(suffixes[type]);
+    return suffixes[type];
+}
+
+/*-----------------------------------------------------------------------*/
+
+const char *rtl_source_name(RTLRegType source)
+{
+    static const char * const names[] = {
+        [RTLREG_UNDEFINED      ] = "undefined",
+        [RTLREG_CONSTANT       ] = "constant",
+        [RTLREG_CONSTANT_NOFOLD] = "constant_unfoldable",
+        [RTLREG_FUNC_ARG       ] = "argument",
+        [RTLREG_MEMORY         ] = "memory",
+        [RTLREG_ALIAS          ] = "alias",
+        [RTLREG_RESULT         ] = "result",
+        [RTLREG_RESULT_NOFOLD  ] = "result_unfoldable",
+    };
+    ASSERT((unsigned int)source < lenof(names));
+    ASSERT(names[source]);
+    return names[source];
 }
 
 /*************************************************************************/
@@ -263,26 +316,6 @@ static NOINLINE bool rtl_add_insn_with_new_block(
 /*-----------------------------------------------------------------------*/
 
 /**
- * type_suffix:  Return an appropriate suffix for the given data type.
- */
-static const char *type_suffix(RTLDataType type)
-{
-    static const char * const suffixes[] = {
-        [RTLTYPE_INT32     ] = "i32",
-        [RTLTYPE_INT64     ] = "i64",
-        [RTLTYPE_ADDRESS   ] = "addr",
-        [RTLTYPE_FLOAT32   ] = "f32",
-        [RTLTYPE_FLOAT64   ] = "f64",
-        [RTLTYPE_V2_FLOAT64] = "f64x2",
-    };
-    ASSERT(type > 0 && type < lenof(suffixes));
-    ASSERT(suffixes[type]);
-    return suffixes[type];
-}
-
-/*-----------------------------------------------------------------------*/
-
-/**
  * rtl_describe_register:  Generate a string describing the contents of the
  * given RTL register.
  *
@@ -309,6 +342,7 @@ static void rtl_describe_register(const RTLRegister *reg,
         return;
 
       case RTLREG_CONSTANT:
+      case RTLREG_CONSTANT_NOFOLD:
         switch ((RTLDataType)reg->type) {
           case RTLTYPE_FLOAT32:
             format_float(buf, bufsize, reg->value.f32);
@@ -891,19 +925,8 @@ static void rtl_describe_alias(const RTLUnit *unit, int index,
     char *s = buf;
     char * const top = buf + bufsize;
 
-    static const char * const type_names[] = {
-        [RTLTYPE_INT32     ] = "int32",
-        [RTLTYPE_INT64     ] = "int64",
-        [RTLTYPE_ADDRESS   ] = "address",
-        [RTLTYPE_FLOAT32   ] = "float",
-        [RTLTYPE_FLOAT64   ] = "double",
-        [RTLTYPE_V2_FLOAT64] = "double[2]",
-    };
-    ASSERT(alias->type > 0 && alias->type < lenof(type_names));
-    ASSERT(type_names[alias->type]);
-
     s += snprintf_assert(s, top - s, "Alias %d: %s",
-                         index, type_names[alias->type]);
+                         index, rtl_type_name(alias->type));
     if (alias->base) {
         s += snprintf_assert(s, top - s, " @ %d(r%d)",
                              alias->offset, alias->base);
@@ -1190,6 +1213,30 @@ int rtl_alloc_register(RTLUnit *unit, RTLDataType type)
 
 /*-----------------------------------------------------------------------*/
 
+void rtl_make_unfoldable(RTLUnit *unit, int reg)
+{
+    ASSERT(unit != NULL);
+    ASSERT(!unit->finalized);
+    ASSERT(unit->regs != NULL);
+
+    if (UNLIKELY(reg == 0 || reg >= unit->next_reg)) {
+        log_error(unit->handle, "rtl_make_unfoldable: Invalid register %d",
+                  reg);
+        return;
+    }
+    if (unit->regs[reg].source == RTLREG_CONSTANT) {
+        unit->regs[reg].source = RTLREG_CONSTANT_NOFOLD;
+    } else if (unit->regs[reg].source == RTLREG_RESULT) {
+        unit->regs[reg].source = RTLREG_RESULT_NOFOLD;
+    } else {
+        log_error(unit->handle, "rtl_make_unfoldable: Register %d has"
+                  " invalid source %s (must be constant or result)", reg,
+                  rtl_source_name(unit->regs[reg].source));
+    }
+}
+
+/*-----------------------------------------------------------------------*/
+
 void rtl_make_unique_pointer(RTLUnit *unit, int reg)
 {
     ASSERT(unit != NULL);
@@ -1203,7 +1250,8 @@ void rtl_make_unique_pointer(RTLUnit *unit, int reg)
     }
     if (UNLIKELY(unit->regs[reg].type != RTLTYPE_ADDRESS)) {
         log_error(unit->handle, "rtl_make_unique_pointer: Register %d has"
-                  " invalid type (must be ADDRESS)", reg);
+                  " invalid type %s (must be address)", reg,
+                  rtl_type_name(unit->regs[reg].type));
         return;
     }
 
