@@ -1099,12 +1099,14 @@ static bool allocate_regs_for_block(HostX86Context *ctx, int block_index)
         }
     }
 
-    /* Registers used in SET_ALIAS instructions may have had their live
-     * ranges extended past the last instruction that referenced them.
-     * Make sure to properly free their host registers. */
+    /* Registers used in SET_ALIAS instructions, or registers which died
+     * in this block but have a control flow edge returning to a block in
+     * which they were live, may have had their live ranges extended past
+     * the last instruction that referenced them.  Make sure to properly
+     * free their host registers. */
     const int32_t last_insn = block->last_insn;
-    for (int alias = 1; alias < unit->next_alias; alias++) {
-        const int reg = block_info->alias_store[alias];
+    for (int i = 0; i < 32; i++) {
+        const int reg = ctx->reg_map[i];
         if (reg && unit->regs[reg].death == last_insn) {
             const HostX86RegInfo *reg_info = &ctx->regs[reg];
             ASSERT(reg_info->host_allocated);
