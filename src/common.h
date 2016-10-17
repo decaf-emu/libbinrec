@@ -229,11 +229,12 @@ struct RTLUnit;
 #elif IS_MSVC(1,0)
     #define STATIC_ASSERT(expr, message)  static_assert(expr, message)
 #else
-    #define STATIC_ASSERT(expr, message)  do { \
-        struct static_assert { \
+    #define STATIC_ASSERT_(line, expr, message)  \
+        struct static_assert_##line { \
             int _error_if_negative : 1 - 2 * ((expr) == 0); \
-        }; \
-    } while (0)
+        }
+    #define STATIC_ASSERT(expr, message) \
+        STATIC_ASSERT_(__LINE__, expr, message)
 #endif
 
 /**

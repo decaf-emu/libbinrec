@@ -25,7 +25,7 @@ int main(void)
     }
 
     PPCState state;
-    uint8_t *memory;
+    void *memory;
     EXPECT(memory = setup_750cl(&state));
 
     if (!call_guest_code(BINREC_ARCH_PPC_7XX, &state, memory,
@@ -50,7 +50,7 @@ int main(void)
                expected_errors, result);
         printf("Error log follows:\n");
         const uint32_t *error_log =
-            (const uint32_t *)(memory + PPC750CL_ERROR_LOG_ADDRESS);
+            (const uint32_t *)((uintptr_t)memory + PPC750CL_ERROR_LOG_ADDRESS);
         for (int i = 0; i < result; i++, error_log += 8) {
             printf("    %08X %08X  %08X %08X  %08X %08X\n",
                    bswap_be32(error_log[0]), bswap_be32(error_log[1]),

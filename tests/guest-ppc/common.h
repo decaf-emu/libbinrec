@@ -12,7 +12,7 @@
 
 #include "src/endian.h"
 
-static inline void memcpy_be32(uint8_t *dest, const uint32_t *src, size_t len)
+static inline void memcpy_be32(void *dest, const uint32_t *src, size_t len)
 {
     for (size_t i = 0; i+3 < len; i += 4) {
         ((uint32_t *)dest)[i/4] = bswap_be32(src[i/4]);

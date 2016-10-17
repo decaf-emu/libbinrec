@@ -407,7 +407,7 @@ static const uint32_t ppc_code[] = {
     0x4E800020,  // blr
 };
 
-static uint8_t *memory;
+static void *memory;
 
 static int trap_count;  // Number of traps seen so far.
 static uint32_t trap_insns[lenof(ppc_code)];  // List of trap-causing insns.
@@ -709,7 +709,7 @@ int main(void)
 
     EXPECT(memory = malloc(0x10000));
     const uint32_t start_address = 0x1000;
-    memcpy_be32(memory + start_address, ppc_code, sizeof(ppc_code));
+    memcpy_be32((uint8_t *)memory + start_address, ppc_code, sizeof(ppc_code));
 
     PPCState state;
     memset(&state, 0, sizeof(state));

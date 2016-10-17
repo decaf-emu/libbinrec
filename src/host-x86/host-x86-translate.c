@@ -297,12 +297,11 @@ static ALWAYS_INLINE void append_insn_R(
  *     code: Output code buffer.
  *     is64: True to prepend REX.W to an integer instruction, false otherwise.
  *     opcode: Instruction opcode.
- *     reg1: Register (or sub-opcode) for ModR/M reg field.
+ *     reg1: Register or sub-opcode for ModR/M reg field.
  *     reg2: Register for ModR/M r/m field.
  */
 static ALWAYS_INLINE void append_insn_ModRM_reg(
-    CodeBuffer *code, bool is64, X86Opcode opcode, X86Register reg1,
-    X86Register reg2)
+    CodeBuffer *code, bool is64, X86Opcode opcode, int reg1, X86Register reg2)
 {
     uint8_t rex = is64 ? X86_REX_W : 0;
     if (reg1 & 8) {
@@ -329,14 +328,14 @@ static ALWAYS_INLINE void append_insn_ModRM_reg(
  *     code: Output code buffer.
  *     is64: True to prepend REX.W to an integer instruction, false otherwise.
  *     opcode: Instruction opcode.
- *     reg: Register (or sub-opcode) for ModR/M reg field.
+ *     reg: Register or sub-opcode for ModR/M reg field.
  *     base: Base register for memory address.
  *     index: Index register for memory address, or -1 to omit the index.
  *         Must not be X86_SP.
  *     offset: Constant offset for memory address.
  */
 static ALWAYS_INLINE void append_insn_ModRM_mem(
-    CodeBuffer *code, bool is64, X86Opcode opcode, X86Register reg,
+    CodeBuffer *code, bool is64, X86Opcode opcode, int reg,
     X86Register base, int index, int32_t offset)
 {
     uint8_t rex = is64 ? X86_REX_W : 0;
@@ -402,13 +401,13 @@ static ALWAYS_INLINE void append_insn_ModRM_mem(
  *     code: Output code buffer.
  *     is64: True to prepend REX.W to an integer instruction, false otherwise.
  *     opcode: Instruction opcode.
- *     reg1: Register index (or sub-opcode) for ModR/M reg field.
+ *     reg1: Register index or sub-opcode for ModR/M reg field.
  *     ctx: Translation context.
  *     insn_index: Index of current instruction in ctx->unit->insns[].
  *     rtl_reg2: RTL register index from which to set ModR/M r/m field.
  */
 static ALWAYS_INLINE void append_insn_ModRM_ctx(
-    CodeBuffer *code, bool is64, X86Opcode opcode, X86Register reg1,
+    CodeBuffer *code, bool is64, X86Opcode opcode, int reg1,
     HostX86Context *ctx, int insn_index, int rtl_reg2)
 {
     if (is_spilled(ctx, rtl_reg2, insn_index)) {
@@ -2256,7 +2255,7 @@ static bool translate_block(HostX86Context *ctx, int block_index)
                                       X86_AX, host_src1);
             }
 
-            X86Opcode opcode;
+            X86UnaryOpcode opcode;
             if (insn->opcode == RTLOP_DIVU) {
                 append_insn_ModRM_reg(&code, false, X86OP_XOR_Gv_Ev,
                                       X86_DX, X86_DX);
@@ -2320,7 +2319,7 @@ static bool translate_block(HostX86Context *ctx, int block_index)
             }
             ASSERT(divisor != X86_DX);
 
-            X86Opcode opcode;
+            X86UnaryOpcode opcode;
             if (insn->opcode == RTLOP_MODU) {
                 append_insn_ModRM_reg(&code, false, X86OP_XOR_Gv_Ev,
                                       X86_DX, X86_DX);
@@ -2359,7 +2358,7 @@ static bool translate_block(HostX86Context *ctx, int block_index)
             ASSERT(host_dest != X86_CX);
             ASSERT(host_dest != host_src2 || src2_spilled);
             const bool is64 = (unit->regs[src1].type != RTLTYPE_INT32);
-            const X86Opcode opcode = (
+            const X86ShiftOpcode opcode = (
                 insn->opcode == RTLOP_SLL ? X86OP_SHIFT_SHL :
                 insn->opcode == RTLOP_SRL ? X86OP_SHIFT_SHR :
                 insn->opcode == RTLOP_SRA ? X86OP_SHIFT_SAR :
@@ -2755,7 +2754,7 @@ static bool translate_block(HostX86Context *ctx, int block_index)
              * unsigned here to simplify range testing. */
             const uint32_t imm = (uint32_t)insn->src_imm;
             const bool is64 = (unit->regs[src1].type != RTLTYPE_INT32);
-            const X86Opcode opcode = (
+            const X86ImmOpcode opcode = (
                 insn->opcode == RTLOP_ADDI ? X86OP_IMM_ADD :
                 insn->opcode == RTLOP_ANDI ? X86OP_IMM_AND :
                 insn->opcode == RTLOP_ORI ? X86OP_IMM_OR :
@@ -2797,7 +2796,7 @@ static bool translate_block(HostX86Context *ctx, int block_index)
             const X86Register host_dest = ctx->regs[dest].host_reg;
             const uint8_t shift_count = (uint8_t)insn->src_imm;
             const bool is64 = (unit->regs[src1].type != RTLTYPE_INT32);
-            const X86Opcode opcode = (
+            const X86ShiftOpcode opcode = (
                 insn->opcode == RTLOP_SLLI ? X86OP_SHIFT_SHL :
                 insn->opcode == RTLOP_SRLI ? X86OP_SHIFT_SHR :
                 insn->opcode == RTLOP_SRAI ? X86OP_SHIFT_SAR :

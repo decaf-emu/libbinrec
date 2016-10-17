@@ -272,6 +272,8 @@ ifeq ($(CC_TYPE),clang)
         $(call if-true,WARNINGS_AS_ERRORS,-Werror) \
         -Wall -Wextra -Wcast-align -Winit-self -Wpointer-arith -Wshadow \
         -Wwrite-strings -Wundef -Wno-unused-parameter -Wvla
+    # Apple's Clang complains about unused static inline functions (sigh).
+    BASE_FLAGS += -Wno-unused-function
     BASE_CFLAGS = $(BASE_FLAGS) -std=c99 \
         -Wmissing-declarations -Wstrict-prototypes
     GCOV = llvm-cov
@@ -315,15 +317,15 @@ else
 endif
 
 ifneq ($(filter darwin%,$(OSTYPE)),)
-    SHARED_LIB_FULLNAME = $(subst .dylib,.$(VERSION).dylib,$(SHARED_LIB))
+    SHARED_LIB_FULLNAME = $(subst .dylib,.$(VERSION_MAJOR).dylib,$(SHARED_LIB))
     SHARED_LIB_LINKNAME = $(subst .dylib,.$(VERSION_MAJOR).dylib,$(SHARED_LIB))
     SHARED_LIB_LDFLAGS = \
         -dynamiclib \
-        -install_name '$(LIBDIR)/$(SHARED_LIB_FULLNAME)' \
-        -compatibility_version $(firstword $(subst ., ,$(VERSION))) \
+        -install_name '@rpath/$(SHARED_LIB_FULLNAME)' \
+        -compatibility_version $(VERSION_MAJOR) \
         -current_version $(VERSION) \
         -Wl,-single_module
-    RPATH_LDFLAG = -install_name @rpath/$1
+    RPATH_LDFLAG = -Wl,-rpath,$1
 else ifneq ($(filter mingw%,$(ARCH)),)
     SHARED_LIB_FULLNAME = $(SHARED_LIB)
     SHARED_LIB_LDFLAGS = \

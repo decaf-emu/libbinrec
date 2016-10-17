@@ -1197,9 +1197,9 @@ static void first_pass_for_block(HostX86Context *ctx, int block_index)
         (ctx->handle->host_opt & BINREC_OPT_H_X86_FIXED_REGS) != 0;
 
     const int num_aliases = unit->next_alias;
-    block_info->alias_load = (uint16_t *)((char *)ctx->alias_buffer
+    block_info->alias_load = (uint16_t *)((uintptr_t)ctx->alias_buffer
                                           + block_index * (4 * num_aliases));
-    block_info->alias_store = (uint16_t *)((char *)ctx->alias_buffer
+    block_info->alias_store = (uint16_t *)((uintptr_t)ctx->alias_buffer
                                            + block_index * (4 * num_aliases)
                                            + (2 * num_aliases));
     memset(ctx->last_set_alias, -1,

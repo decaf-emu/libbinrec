@@ -1344,11 +1344,12 @@ void rtl_opt_alias_data_flow(RTLUnit *unit)
         return;
     }
     memset(alias_info_buf + ptr_array_size, 0, alias_info_size);
-    AliasRef **alias_info = (AliasRef **)alias_info_buf;
+    /* Casts through void * are to suppress cast-alignment warnings. */
+    AliasRef **alias_info = (AliasRef **)(void *)alias_info_buf;
     for (int i = 0; i < unit->num_blocks; i++) {
         alias_info[i] =
-            (AliasRef *)(alias_info_buf + ptr_array_size
-                         + (sizeof(AliasRef) * i * unit->next_alias));
+            (AliasRef *)(void *)(alias_info_buf + ptr_array_size
+                                 + (sizeof(AliasRef) * i * unit->next_alias));
     }
 
     /* Look up alias references in each block.  We only record the last
