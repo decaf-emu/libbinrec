@@ -2426,11 +2426,14 @@ static bool translate_block(HostX86Context *ctx, int block_index)
                 append_insn_ModRM_ctx(&code, is64, X86OP_BSR, host_dest,
                                       ctx, insn_index, src1);
                 append_insn_R(&code, false, X86OP_MOV_rAX_Iv, host_temp);
-                append_imm32(&code, 32);
+                append_imm32(&code, is64 ? 127 : 63);
                 /* This can always be a 32-bit operation regardless of the
                  * input data type. */
                 append_insn_ModRM_reg(&code, false, X86OP_CMOVZ,
                                       host_dest, host_temp);
+                append_insn_ModRM_reg(&code, false, X86OP_IMM_Ev_Ib,
+                                      X86OP_IMM_XOR, host_dest);
+                append_imm8(&code, is64 ? 63 : 31);
             }
             break;
           }  // case RTLOP_CLZ
