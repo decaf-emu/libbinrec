@@ -747,6 +747,10 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
                  * (which is clobbered by both input and output) in any
                  * case. */
                 if (!ctx->reg_map[X86_DX]) {
+                    /* Currently there are no cases in which a MULH/DIV/MOD
+                     * output register can be forced to avoid its natural
+                     * location.  Assert on that just to be safe. */
+                    ASSERT(!(avoid_regs & (1u << X86_DX)));
                     host_allocated = true;
                     dest_info->host_reg = X86_DX;
                     assign_register(ctx, dest, X86_DX);
@@ -761,6 +765,7 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
                  * src2 since we use dest to store src2 if src2 is in the
                  * way of the fixed input registers. */
                 if (!ctx->reg_map[X86_AX] && src2_info->host_reg != X86_AX) {
+                    ASSERT(!(avoid_regs & (1u << X86_AX)));
                     host_allocated = true;
                     dest_info->host_reg = X86_AX;
                     assign_register(ctx, dest, X86_AX);
@@ -775,6 +780,7 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
               case RTLOP_MODS:
                 /* As for DIVU/DIVS. */
                 if (!ctx->reg_map[X86_DX] && src2_info->host_reg != X86_DX) {
+                    ASSERT(!(avoid_regs & (1u << X86_DX)));
                     host_allocated = true;
                     dest_info->host_reg = X86_DX;
                     assign_register(ctx, dest, X86_DX);
@@ -867,7 +873,8 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
                         src1_ok = true;
                         break;
                     }
-                    if (src1_ok) {
+                    if (src1_ok
+                     && !(avoid_regs & (1u << src1_info->host_reg))) {
                         host_allocated = true;
                         dest_info->host_reg = src1_info->host_reg;
                         ctx->reg_map[dest_info->host_reg] = dest;
@@ -902,7 +909,7 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
                         /* Make sure it's also not chosen by the regular
                          * allocator. */
                         avoid_regs |= 1u << src2_info->host_reg;
-                    } else {
+                    } else if (!(avoid_regs & (1u << src2_info->host_reg))) {
                         host_allocated = true;
                         dest_info->host_reg = src2_info->host_reg;
                         ctx->reg_map[dest_info->host_reg] = dest;
@@ -1290,7 +1297,7 @@ static void first_pass_for_block(HostX86Context *ctx, int block_index)
             }
             /* For div/mod, we only care about putting the result in rAX or
              * rDX (as appropriate) and the dividend in rAX.  Putting the
-             * divisor in either rAX or rDX will just force us to move it
+             * divisor in either rAX or rDX would just force us to move it
              * out of the way later. */
             const RTLRegister *dest_reg = &unit->regs[insn->dest];
             HostX86RegInfo *dest_info = &ctx->regs[insn->dest];
