@@ -6,6 +6,7 @@ syntax: glob
 *.d.tmp
 *.a
 *.so
+*.so.*
 *.dylib
 *.gcno
 *.gcda
