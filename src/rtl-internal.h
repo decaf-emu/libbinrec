@@ -238,22 +238,34 @@ typedef struct RTLBlock {
     /* unit->insns[] index of the last instruction in the block.
      * last_insn < first_insn indicates an empty block. */
     int32_t last_insn;
+
+    /* If there are any entering control flow edges from blocks located
+     * after this block in the code stream, this field gives the
+     * unit->insns[] index of the last instruction in the latest of those
+     * blocks, which is the minimum instruction through which any register
+     * live on entry to this block must be live.  Otherwise, this field is
+     * set to zero. */
+    int32_t min_death;
+
     /* unit->blocks[] index of the next block in the code stream (excluding
      * dropped blocks); -1 indicates the end of the code stream. */
     int16_t next_block;
     /* unit->blocks[] index of the previous block in the code stream, or
      * -1 if this is the first block. */
     int16_t prev_block;
-    /* unit->blocks[] indices of predecessor blocks in the flow graph; -1
-     * indicates an unused slot.  Holes in the list are not permitted.
-     * entries[0] is always the fall-through edge from the previous block
-     * if that edge exists.  (rtl_block_*() functions take care of all
-     * these details.) */
+
+    /* unit->blocks[] indices of predecessor blocks in the control flow
+     * graph; -1 indicates an unused slot.  Holes in the list are not
+     * permitted.  entries[0] is always the fall-through edge from the
+     * previous block, if that edge exists.  (rtl_block_*() functions take
+     * care of all these details.) */
     int16_t entries[7];
+
     /* unit->blocks[] index of an extension block used to hold additional
      * entry edges that don't fit in entries[], or -1 if none.  See
      * RTLExtraEntryBlock for format. */
     int16_t entry_overflow;
+
     /* unit->blocks[] indices of successor blocks.  Note that a terminating
      * insstruction can go at most two places (conditional GOTO: branch
      * target and fall-through path).  exits[0] is always the fall-through

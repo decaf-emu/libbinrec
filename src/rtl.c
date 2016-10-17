@@ -206,8 +206,8 @@ static bool add_block_edges(RTLUnit * const unit)
 
 /**
  * update_live_ranges:  Update the live range of any register live at the
- * beginning block targeted by a backward branch so that the register is
- * live through all branches that target the block.
+ * beginning of a block targeted by a backward branch so that the register
+ * is live through all branches that target the block.
  *
  * Worst-case execution time is O(n*m) in the number of blocks (n) and the
  * number of registers (m).  However, the register scan is only required
@@ -224,9 +224,10 @@ static void update_live_ranges(RTLUnit * const unit)
     ASSERT(unit->blocks != NULL);
     ASSERT(unit->regs != NULL);
 
-    int block_index;
-    for (block_index = 0; block_index < unit->num_blocks; block_index++) {
-        const RTLBlock * const block = &unit->blocks[block_index];
+    for (int block_index = 0; block_index != -1;
+         block_index = unit->blocks[block_index].next_block)
+    {
+        RTLBlock * const block = &unit->blocks[block_index];
         int latest_entry_block = -1;
         for (int entry_index = block_index; entry_index >= 0;
              entry_index = unit->blocks[entry_index].entry_overflow)
@@ -242,6 +243,7 @@ static void update_live_ranges(RTLUnit * const unit)
         if (latest_entry_block >= block_index) {
             const int birth_limit = block->first_insn;
             const int min_death = unit->blocks[latest_entry_block].last_insn;
+            block->min_death = min_death;
             for (int reg = unit->first_live_reg;
                  reg != 0 && unit->regs[reg].birth < birth_limit;
                  reg = unit->regs[reg].live_link)

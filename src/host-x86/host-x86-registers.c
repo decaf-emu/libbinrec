@@ -1615,12 +1615,27 @@ static void update_alias_live_ranges(HostX86Context *ctx, int block_index)
                     const int32_t last_insn =
                         unit->blocks[predecessor].last_insn;
                     if (unit->regs[reg].death < last_insn) {
+                        /* If we extend the live range through any blocks
+                         * with control flow edges entering from later
+                         * blocks, we also need to extend the live range
+                         * through the latest of those blocks (and so on). */
                         unit->regs[reg].death = last_insn;
+                        for (int j = 0;
+                             j != -1 && unit->blocks[j].first_insn <= unit->regs[reg].death;
+                             j = unit->blocks[j].next_block)
+                        {
+                            if (unit->regs[reg].death < unit->blocks[j].min_death) {
+                                unit->regs[reg].death = unit->blocks[j].min_death;
+                            }
+                        }
                     }
                 }
             }
         }
     }
+    /* Dim lights danced briefly in the black eyes of the bird as, deep in
+     * its instructional address space, bracket after bracket was finally
+     * closing, if clauses were finally ending, repeat loops halting... */
 }
 
 /*************************************************************************/

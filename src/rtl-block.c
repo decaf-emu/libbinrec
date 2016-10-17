@@ -77,6 +77,7 @@ bool rtl_block_add(RTLUnit *unit)
 
     unit->blocks[index].first_insn = 0;
     unit->blocks[index].last_insn = -1;
+    unit->blocks[index].min_death = 0;
     for (int i = 0; i < lenof(unit->blocks[index].entries); i++) {
         unit->blocks[index].entries[i] = -1;
     }
