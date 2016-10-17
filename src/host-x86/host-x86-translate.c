@@ -3220,6 +3220,7 @@ static bool translate_block(HostX86Context *ctx, int block_index)
             const bool is64 = (unit->regs[dest].type != RTLTYPE_INT32);
             append_insn_R(&code, false, X86OP_MOV_rAX_Iv, host_dest);
             append_imm32(&code, 1);
+            append_opcode(&code, X86OP_LOCK);
             append_insn_ModRM_mem(
                 &code, is64, X86OP_XADD_Ev_Gv, host_dest,
                 host_base, host_index, insn->host_data_32);

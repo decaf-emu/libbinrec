@@ -35,7 +35,7 @@ static const uint8_t expected_code[] = {
     /* ECX should not be reused as the output since we need to clobber it
      * before using it as the access address. */
     0xBA,0x01,0x00,0x00,0x00,           // mov $1,%edx
-    0x0F,0xC1,0x11,                     // xadd %edx,(%rcx)
+    0xF0,0x0F,0xC1,0x11,                // lock xadd %edx,(%rcx)
     0x48,0x83,0xC4,0x08,                // add $8,%rsp
     0xC3,                               // ret
 };
