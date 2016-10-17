@@ -559,13 +559,24 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
 
         if (host_allocated) {
             const X86Register host_reg = dest_info->host_reg;
-            assign_register(ctx, dest, host_reg);
-            /* This must have been the first register on the fixed-regs
-             * list.  Advance the list pointer so we don't have to scan
-             * over this register again. */
-            ASSERT(ctx->fixed_reg_list == dest);
-            ctx->fixed_reg_list = dest_info->next_fixed;
-        } else {
+            /* Even though we check for collisions during the fixed-regs
+             * pass, collisions could be introduced by optimization, such
+             * as when extending the live range of ADD operands when the
+             * ADD is eliminated by address operand optimization. */
+            if (!ctx->reg_map[host_reg]) {
+                assign_register(ctx, dest, host_reg);
+                /* This must have been the first register on the fixed-regs
+                 * list.  Advance the list pointer so we don't have to scan
+                 * over this register again. */
+                ASSERT(ctx->fixed_reg_list == dest);
+                ctx->fixed_reg_list = dest_info->next_fixed;
+            } else {
+                /* We lost our register, so allocate a new one below. */
+                host_allocated = false;
+            }
+        }
+
+        if (!host_allocated) {
             /* Make sure not to collide with any registers that have
              * already been allocated. */
             for (int r = ctx->fixed_reg_list; r; r = ctx->regs[r].next_fixed) {
@@ -1252,9 +1263,9 @@ static void first_pass_for_block(HostX86Context *ctx, int block_index)
                 ASSERT(!(dest_info->avoid_regs & (1u << X86_DX)));
                 dest_info->host_allocated = true;
                 dest_info->host_reg = X86_DX;
-                /* If both src1 and src2 are candidates for getting DX,
+                /* If both src1 and src2 are candidates for getting rDX,
                  * choose the one which was born earlier, since the other
-                 * will have a better chance of getting AX below. */
+                 * will have a better chance of getting rAX below. */
                 const bool src1_ok = (!src1_info->host_allocated
                                       && src1_reg->death == insn_index
                                       && src1_reg->birth >= ctx->last_dx_death);
@@ -1615,11 +1626,9 @@ bool host_x86_allocate_registers(HostX86Context *ctx)
     ctx->nontail_call_list = -1;
     ctx->last_nontail_call = -1;
     ctx->fixed_reg_list = 0;
-    if (ctx->handle->host_opt & BINREC_OPT_H_X86_FIXED_REGS) {
-        ctx->last_ax_death = -1;
-        ctx->last_cx_death = -1;
-        ctx->last_dx_death = -1;
-    }
+    ctx->last_ax_death = -1;
+    ctx->last_cx_death = -1;
+    ctx->last_dx_death = -1;
     for (int block_index = 0; block_index >= 0;
          block_index = unit->blocks[block_index].next_block)
     {
