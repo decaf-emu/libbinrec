@@ -962,6 +962,7 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
             temp_avoid |= 1u << src1_info->host_reg
                         | 1u << src2_info->host_reg;
             break;
+
           case RTLOP_DIVU:
           case RTLOP_DIVS:
             /* Temporary needed to save RDX if it's live across this insn
@@ -971,6 +972,7 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
             temp_avoid |= 1u << src1_info->host_reg
                         | 1u << src2_info->host_reg;
             break;
+
           case RTLOP_MODU:
           case RTLOP_MODS:
             /* Temporary needed to save RAX if it's live across this insn
@@ -980,6 +982,7 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
             temp_avoid |= 1u << src1_info->host_reg
                         | 1u << src2_info->host_reg;
             break;
+
           case RTLOP_SLL:
           case RTLOP_SRL:
           case RTLOP_SRA:
@@ -988,6 +991,7 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
             /* Temporary needed if rCX is live and src2 is spilled. */
             need_temp = (ctx->reg_map[X86_CX] != 0 && ctx->regs[src2].spilled);
             break;
+
           case RTLOP_CLZ:
             /* Temporary needed if using BSR instead of LZCNT to count bits.
              * The temporary can never overlap the input for single-input
@@ -995,6 +999,7 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
             need_temp = !(ctx->handle->setup.host_features
                           & BINREC_FEATURE_X86_LZCNT);
             break;
+
           case RTLOP_BFEXT:
             /* Temporary needed for mask if extracting from the high half
              * of a 64-bit value (but not the very top, since that's
@@ -1003,6 +1008,7 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
                          && insn->bitfield.start + insn->bitfield.count < 64
                          && insn->bitfield.count > 32);
             break;
+
           case RTLOP_BFINS:
             /* Temporary needed if inserting into a 64-bit src1 whose
              * register is reused as the destination (so we have somewhere
@@ -1015,14 +1021,42 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
             temp_avoid |= 1u << src1_info->host_reg
                         | 1u << src2_info->host_reg;
             break;
+
           case RTLOP_LOAD_IMM:
             /* Temporary needed if loading a nonzero floating-point value. */
             need_temp = (!rtl_register_is_int(dest_reg) && insn->src_imm != 0);
             break;
-          case RTLOP_ATOMIC_INC:
-            /* Temporary needed if src1 is spilled. */
-            need_temp = src1_info->spilled;
+
+          case RTLOP_LOAD:
+          case RTLOP_LOAD_U8:
+          case RTLOP_LOAD_S8:
+          case RTLOP_LOAD_U16:
+          case RTLOP_LOAD_S16:
+          case RTLOP_LOAD_BR:
+          case RTLOP_LOAD_U16_BR:
+          case RTLOP_LOAD_S16_BR:
+            /* Temporary needed if indexed addressing is used and the base
+             * or index is spilled. */
+            if (insn->host_data_16) {
+                need_temp = src1_info->spilled
+                          | ctx->regs[insn->host_data_16].spilled;
+                temp_avoid = 1u << src1_info->host_reg
+                           | 1u << ctx->regs[insn->host_data_16].host_reg;
+            } else {
+                need_temp = false;
+            }
             break;
+
+          case RTLOP_ATOMIC_INC:
+            /* Temporary needed if the base or index is spilled. */
+            need_temp = src1_info->spilled;
+            temp_avoid = 1u << src1_info->host_reg;
+            if (insn->host_data_16) {
+                need_temp |= ctx->regs[insn->host_data_16].spilled;
+                temp_avoid |= 1u << ctx->regs[insn->host_data_16].host_reg;
+            }
+            break;
+
           case RTLOP_CMPXCHG:
             /* CMPXCHG can require up to two temporaries.  It can be tricky
              * to work out the proper number, so we play it safe: we ensure
@@ -1043,6 +1077,7 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
                 temp_avoid |= 1u << ctx->regs[insn->host_data_16].host_reg;
             }
             break;
+
           default:
             need_temp = false;
             break;

@@ -64,8 +64,8 @@ static const uint8_t expected_code[] = {
     0x41,0x56,                          // push %r14
     0x48,0x83,0xEC,0x10,                // sub $16,%rsp
     0x48,0x89,0x34,0x24,                // mov %rsi,(%rsp)
-    0x48,0x8B,0x0C,0x24,                // mov (%rsp),%rcx
-    0x8B,0x0C,0x0F,                     // mov (%rdi,%rcx),%ecx
+    0x48,0x8B,0x04,0x24,                // mov (%rsp),%rax
+    0x8B,0x0C,0x07,                     // mov (%rdi,%rax),%ecx
     0x8B,0xC1,                          // mov %ecx,%eax
     0xD3,0xE0,                          // shl %cl,%eax
     0x48,0x83,0xC4,0x10,                // add $16,%rsp

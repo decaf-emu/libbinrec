@@ -50,11 +50,13 @@ static const uint8_t expected_code[] = {
     0x41,0x54,                          // push %r12
     0x41,0x55,                          // push %r13
     0x41,0x56,                          // push %r14
-    0x48,0x83,0xEC,0x10,                // sub $16,%rsp
+    0x41,0x57,                          // push %r15
+    0x48,0x83,0xEC,0x08,                // sub $8,%rsp
     0x48,0x89,0x3C,0x24,                // mov %rdi,(%rsp)
-    0x48,0x03,0x34,0x24,                // add (%rsp),%rsi
-    0x8B,0x36,                          // mov (%rsi),%esi
-    0x48,0x83,0xC4,0x10,                // add $16,%rsp
+    0x4C,0x8B,0x3C,0x24,                // mov (%rsp),%r15
+    0x42,0x8B,0x34,0x3E,                // mov (%rsi,%r15),%esi
+    0x48,0x83,0xC4,0x08,                // add $8,%rsp
+    0x41,0x5F,                          // pop %r15
     0x41,0x5E,                          // pop %r14
     0x41,0x5D,                          // pop %r13
     0x41,0x5C,                          // pop %r12

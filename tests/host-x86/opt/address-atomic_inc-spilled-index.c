@@ -32,14 +32,16 @@ static int add_rtl(RTLUnit *unit)
     for (int i = 0; i < lenof(dummy_reg); i++) {
         EXPECT(rtl_add_insn(unit, RTLOP_NOP, 0, dummy_reg[i], 0, 0));
     }
-    /* reg1 (rather than reg2) is spilled due to its being src1 in the
-     * next instruction. */
 
-    int reg3, reg4;
+    int reg3, reg4, reg5;
+    /* Make a copy of reg1 so reg2 has the later death and thus gets
+     * spilled. */
     EXPECT(reg3 = rtl_alloc_register(unit, RTLTYPE_ADDRESS));
-    EXPECT(rtl_add_insn(unit, RTLOP_ADD, reg3, reg1, reg2, 0));
-    EXPECT(reg4 = rtl_alloc_register(unit, RTLTYPE_INT32));
-    EXPECT(rtl_add_insn(unit, RTLOP_LOAD, reg4, reg3, 0, 0));
+    EXPECT(rtl_add_insn(unit, RTLOP_MOVE, reg3, reg1, 0, 0));
+    EXPECT(reg4 = rtl_alloc_register(unit, RTLTYPE_ADDRESS));
+    EXPECT(rtl_add_insn(unit, RTLOP_ADD, reg4, reg3, reg2, 0));
+    EXPECT(reg5 = rtl_alloc_register(unit, RTLTYPE_INT32));
+    EXPECT(rtl_add_insn(unit, RTLOP_ATOMIC_INC, reg5, reg4, 0, 0));
 
     return EXIT_SUCCESS;
 }
@@ -51,9 +53,10 @@ static const uint8_t expected_code[] = {
     0x41,0x55,                          // push %r13
     0x41,0x56,                          // push %r14
     0x48,0x83,0xEC,0x10,                // sub $16,%rsp
-    0x48,0x89,0x3C,0x24,                // mov %rdi,(%rsp)
+    0x48,0x89,0x34,0x24,                // mov %rsi,(%rsp)
     0x48,0x8B,0x0C,0x24,                // mov (%rsp),%rcx
-    0x8B,0x04,0x0E,                     // mov (%rsi,%rcx),%eax
+    0xB8,0x01,0x00,0x00,0x00,           // mov $1,%eax
+    0x0F,0xC1,0x04,0x0F,                // xadd %eax,(%rdi,%rcx)
     0x48,0x83,0xC4,0x10,                // add $16,%rsp
     0x41,0x5E,                          // pop %r14
     0x41,0x5D,                          // pop %r13

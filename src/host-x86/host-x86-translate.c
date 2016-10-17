@@ -683,136 +683,6 @@ static ALWAYS_INLINE void append_move_or_load_gpr(
 /*-----------------------------------------------------------------------*/
 
 /**
- * reload_base_and_index:  Return the host registers containing the values
- * of the base and (if present) index registers for the given memory access
- * instruction, reloading spilled registers if necessary.
- *
- * [Parameters]
- *     code: Output code buffer.
- *     ctx: Translation context.
- *     insn_index: Index of current instruction in ctx->unit->insns[].
- *     fallback: Register to use as a fallback for reloads.
- *     base_ret: Pointer to variable to receive the base register
- *         (X86Register).
- *     index_ret: Pointer to variable to receive the index register
- *         (X86Register), or -1 if there is no index register for the access.
- */
-static ALWAYS_INLINE void reload_base_and_index(
-    CodeBuffer *code, const HostX86Context *ctx, int insn_index,
-    X86Register fallback, X86Register *base_ret, int *index_ret)
-{
-    const RTLUnit * const unit = ctx->unit;
-    const RTLInsn * const insn = &unit->insns[insn_index];
-    int base = insn->src1;
-    int index = insn->host_data_16;
-
-    /* For indexed accesses, if base is spilled but index is not, swap the
-     * two registers.  This ensures that if the fallback register overlaps
-     * the index register (such as in a load operation when the destination
-     * is the same as the index register), we don't clobber the index when
-     * we reload the base. */
-    if (index
-     && is_spilled(ctx, base, insn_index)
-     && !is_spilled(ctx, index, insn_index)) {
-        const int temp = base;
-        base = index;
-        index = temp;
-    }
-
-    if (!is_spilled(ctx, base, insn_index)) {
-        *base_ret = ctx->regs[base].host_reg;
-    } else {
-        ASSERT(ctx->unit->regs[base].type == RTLTYPE_ADDRESS);
-        append_load(code, RTLTYPE_ADDRESS, fallback,
-                    X86_SP, -1, ctx->regs[base].spill_offset);
-        *base_ret = fallback;
-    }
-
-    if (index) {
-        if (!is_spilled(ctx, index, insn_index)) {
-            *index_ret = ctx->regs[index].host_reg;
-        } else {
-            ASSERT(ctx->unit->regs[index].type == RTLTYPE_ADDRESS);
-            if (*base_ret == fallback) {
-                append_insn_ModRM_mem(
-                    code, true, X86OP_ADD_Gv_Ev, fallback,
-                    X86_SP, -1, ctx->regs[index].spill_offset);
-                *index_ret = -1;
-            } else {
-                append_load(code, RTLTYPE_ADDRESS, fallback,
-                            X86_SP, -1, ctx->regs[index].spill_offset);
-                *index_ret = fallback;
-            }
-        }
-    } else {
-        *index_ret = -1;
-    }
-}
-
-/*-----------------------------------------------------------------------*/
-
-/**
- * reload_store_source_gpr:  Return the GPR containing the data value for
- * an integer store instruction.  If necessary, save RAX in XMM15; the
- * caller needs to restore it after the store in this case.
- *
- * [Parameters]
- *     code: Output code buffer.
- *     ctx: Translation context.
- *     insn_index: Index of current instruction in ctx->unit->insns[].
- *     host_base_ptr: Pointer to Base register for address (X86Register).
- *         May be modified on return.
- *     host_index_ptr: Pointer to index register for address (X86Register,
- *         -1 if none).  May be modified on return.
- *     host_value_ret: Pointer to variable to receive the value register
- *         (X86Register).
- * [Return value]
- *     True if RAX was saved to XMM15, false otherwise.
- */
-static ALWAYS_INLINE bool reload_store_source_gpr(
-    CodeBuffer *code, const HostX86Context *ctx, int insn_index,
-    X86Register *host_base_ptr, int *host_index_ptr,
-    X86Register *host_value_ret)
-{
-    const RTLUnit * const unit = ctx->unit;
-    const RTLInsn * const insn = &unit->insns[insn_index];
-
-    if (!is_spilled(ctx, insn->src2, insn_index)) {
-        *host_value_ret = ctx->regs[insn->src2].host_reg;
-        return false;
-    }
-
-    X86Register host_value = insn->src3;
-    if (host_value != *host_base_ptr && (int)host_value != *host_index_ptr) {
-        append_load_gpr(code, unit->regs[insn->src2].type, host_value,
-                        X86_SP, ctx->regs[insn->src2].spill_offset);
-        *host_value_ret = host_value;
-        return false;
-    }
-
-    ASSERT(host_value == X86_R15);
-    /* If we get here, base or index is in R15 due to a spill reload.
-     * For an indexed access, if one of the two registers is unspilled, we
-     * always use that register as the base (see reload_base_and_index()),
-     * so host_index will be R15.  If both registers are spilled or it's
-     * not an indexed access, host_index will be -1.  So we only need to
-     * check host_base for RAX collision here. */
-    ASSERT(*host_index_ptr != X86_AX);
-    if (*host_base_ptr == X86_AX) {
-        append_insn_ModRM_reg(code, true, X86OP_ADD_Gv_Ev, X86_R15, X86_AX);
-        *host_base_ptr = X86_R15;
-        *host_index_ptr = -1;
-    }
-    append_insn_ModRM_reg(code, true, X86OP_MOVD_V_E, X86_XMM15, X86_AX);
-    append_load_gpr(code, unit->regs[insn->src2].type, X86_AX,
-                    X86_SP, ctx->regs[insn->src2].spill_offset);
-    *host_value_ret = X86_AX;
-    return true;
-}
-
-/*-----------------------------------------------------------------------*/
-
-/**
  * append_test_reg:  Append an instruction to test the value of the given
  * integer RTL register for zeroness.
  */
@@ -919,6 +789,183 @@ static ALWAYS_INLINE void append_jump(
         append_imm32(code, 0);
         block_info->unresolved_branch_target = label;
     }
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
+ * reload_base_and_index:  Return the host registers containing the values
+ * of the base and (if present) index registers for the given memory access
+ * instruction, reloading spilled registers if necessary.
+ *
+ * [Parameters]
+ *     code: Output code buffer.
+ *     ctx: Translation context.
+ *     insn_index: Index of current instruction in ctx->unit->insns[].
+ *     fallback: Register to use as a fallback for reloads.
+ *     base_ret: Pointer to variable to receive the base register
+ *         (X86Register).
+ *     index_ret: Pointer to variable to receive the index register
+ *         (X86Register), or -1 if there is no index register for the access.
+ */
+static ALWAYS_INLINE void reload_base_and_index(
+    CodeBuffer *code, const HostX86Context *ctx, int insn_index,
+    X86Register fallback, X86Register *base_ret, int *index_ret)
+{
+    const RTLUnit * const unit = ctx->unit;
+    const RTLInsn * const insn = &unit->insns[insn_index];
+    int base = insn->src1;
+    int index = insn->host_data_16;
+
+    /* For indexed accesses, if base is spilled but index is not, swap the
+     * two registers.  This ensures that if the fallback register overlaps
+     * the index register (such as in a load operation when the destination
+     * is the same as the index register), we don't clobber the index when
+     * we reload the base. */
+    if (index && is_spilled(ctx, base, insn_index)
+              && !is_spilled(ctx, index, insn_index)) {
+        const int temp = base;
+        base = index;
+        index = temp;
+    }
+
+    /* Save the current output position in case we end up needing to load
+     * the index first (for the 64+32 add case below). */
+    const long base_reload_pos = code->len;
+
+    if (!is_spilled(ctx, base, insn_index)) {
+        *base_ret = ctx->regs[base].host_reg;
+    } else {
+        /* This could be INT32/INT64 if address operand optimization
+         * eliminated a ZCAST. */
+        ASSERT(rtl_register_is_int(&unit->regs[base]));
+        append_load(code, unit->regs[base].type, fallback,
+                    X86_SP, -1, ctx->regs[base].spill_offset);
+        *base_ret = fallback;
+    }
+
+    if (index) {
+        if (!is_spilled(ctx, index, insn_index)) {
+            *index_ret = ctx->regs[index].host_reg;
+        } else {
+            ASSERT(rtl_register_is_int(&unit->regs[index]));
+            if (*base_ret == fallback) {
+                /* We should always have a separate temporary if we have to
+                 * reload a spilled index. */
+                ASSERT(is_spilled(ctx, base, insn_index));
+                if (unit->regs[index].type != RTLTYPE_INT32) {
+                    append_insn_ModRM_mem(
+                        code, true, X86OP_ADD_Gv_Ev, fallback,
+                        X86_SP, -1, ctx->regs[index].spill_offset);
+                } else if (unit->regs[base].type != RTLTYPE_INT32) {
+                    /* The base register is 64 bits, so we can load the
+                     * index first and add the base from its spill slot. */
+                    code->len = base_reload_pos;
+                    append_load(code, RTLTYPE_INT32, fallback,
+                                X86_SP, -1, ctx->regs[index].spill_offset);
+                    append_insn_ModRM_mem(
+                        code, true, X86OP_ADD_Gv_Ev, fallback,
+                        X86_SP, -1, ctx->regs[base].spill_offset);
+                } else {
+                    /* This is tricky: we have to add two 32-bit values
+                     * from memory and get a 64-bit sum without using any
+                     * other registers or memory.  Since both values are
+                     * 32 bits wide, there'll be at most a carry of 1 into
+                     * the high word, so we do the addition in 32 bits and
+                     * handle the carry manually.  Fortunately, this case
+                     * should be extremely rare in practice. */
+                    log_warning(ctx->handle, "Slow add of spilled 32-bit"
+                                    " base and index at %d", insn_index);
+                    append_insn_ModRM_mem(
+                        code, false, X86OP_ADD_Gv_Ev, fallback,  // 32-bit add!
+                        X86_SP, -1, ctx->regs[index].spill_offset);
+                    const long jump_pos = code->len;
+                    append_jump_raw(code, X86OP_JNC_Jb, X86OP_JNC_Jz, 0);
+                    const long jump_end = code->len;
+                    ASSERT(jump_end == jump_pos + 2);
+                    append_insn_ModRM_reg(code, true, X86OP_SHIFT_Ev_Ib,
+                                          X86OP_SHIFT_ROR, fallback);
+                    append_imm8(code, 32);
+                    append_insn_ModRM_reg(code, true, X86OP_IMM_Ev_Ib,
+                                          X86OP_IMM_ADD, fallback);
+                    append_imm8(code, 1);
+                    append_insn_ModRM_reg(code, true, X86OP_SHIFT_Ev_Ib,
+                                          X86OP_SHIFT_ROR, fallback);
+                    append_imm8(code, 32);
+                    ASSERT(code->len - jump_end <= 127);
+                    code->buffer[jump_end-1] = (uint8_t)(code->len - jump_end);
+                }
+                *index_ret = -1;
+            } else {
+                append_load(code, unit->regs[index].type, fallback,
+                            X86_SP, -1, ctx->regs[index].spill_offset);
+                *index_ret = fallback;
+            }
+        }
+    } else {
+        *index_ret = -1;
+    }
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
+ * reload_store_source_gpr:  Return the GPR containing the data value for
+ * an integer store instruction.  If necessary, save RAX in XMM15; the
+ * caller needs to restore it after the store in this case.
+ *
+ * [Parameters]
+ *     code: Output code buffer.
+ *     ctx: Translation context.
+ *     insn_index: Index of current instruction in ctx->unit->insns[].
+ *     host_base_ptr: Pointer to Base register for address (X86Register).
+ *         May be modified on return.
+ *     host_index_ptr: Pointer to index register for address (X86Register,
+ *         -1 if none).  May be modified on return.
+ *     host_value_ret: Pointer to variable to receive the value register
+ *         (X86Register).
+ * [Return value]
+ *     True if RAX was saved to XMM15, false otherwise.
+ */
+static ALWAYS_INLINE bool reload_store_source_gpr(
+    CodeBuffer *code, const HostX86Context *ctx, int insn_index,
+    X86Register *host_base_ptr, int *host_index_ptr,
+    X86Register *host_value_ret)
+{
+    const RTLUnit * const unit = ctx->unit;
+    const RTLInsn * const insn = &unit->insns[insn_index];
+
+    if (!is_spilled(ctx, insn->src2, insn_index)) {
+        *host_value_ret = ctx->regs[insn->src2].host_reg;
+        return false;
+    }
+
+    X86Register host_value = insn->src3;
+    if (host_value != *host_base_ptr && (int)host_value != *host_index_ptr) {
+        append_load_gpr(code, unit->regs[insn->src2].type, host_value,
+                        X86_SP, ctx->regs[insn->src2].spill_offset);
+        *host_value_ret = host_value;
+        return false;
+    }
+
+    ASSERT(host_value == X86_R15);
+    /* If we get here, base or index is in R15 due to a spill reload.
+     * For an indexed access, if one of the two registers is unspilled, we
+     * always use that register as the base (see reload_base_and_index()),
+     * so host_index will be R15.  If both registers are spilled or it's
+     * not an indexed access, host_index will be -1.  So we only need to
+     * check host_base for RAX collision here. */
+    ASSERT(*host_index_ptr != X86_AX);
+    if (*host_base_ptr == X86_AX) {
+        append_insn_ModRM_reg(code, true, X86OP_ADD_Gv_Ev, X86_R15, X86_AX);
+        *host_base_ptr = X86_R15;
+        *host_index_ptr = -1;
+    }
+    append_insn_ModRM_reg(code, true, X86OP_MOVD_V_E, X86_XMM15, X86_AX);
+    append_load_gpr(code, unit->regs[insn->src2].type, X86_AX,
+                    X86_SP, ctx->regs[insn->src2].spill_offset);
+    *host_value_ret = X86_AX;
+    return true;
 }
 
 /*************************************************************************/
@@ -2870,10 +2917,13 @@ static bool translate_block(HostX86Context *ctx, int block_index)
           }  // case RTLOP_LOAD_ARG
 
           case RTLOP_LOAD: {
-            const X86Register host_dest = ctx->regs[dest].host_reg;
+            const HostX86RegInfo * const dest_info = &ctx->regs[dest];
+            const X86Register host_dest = dest_info->host_reg;
+            const X86Register host_temp = (dest_info->temp_allocated
+                                           ? dest_info->host_temp : host_dest);
             X86Register host_base;
             int host_index;
-            reload_base_and_index(&code, ctx, insn_index, host_dest,
+            reload_base_and_index(&code, ctx, insn_index, host_temp,
                                   &host_base, &host_index);
             const int32_t offset =
                 insn->host_data_32 ? (int32_t)insn->host_data_32 : insn->offset;
@@ -2884,10 +2934,13 @@ static bool translate_block(HostX86Context *ctx, int block_index)
 
           case RTLOP_LOAD_U8:
           case RTLOP_LOAD_S8: {
-            const X86Register host_dest = ctx->regs[dest].host_reg;
+            const HostX86RegInfo * const dest_info = &ctx->regs[dest];
+            const X86Register host_dest = dest_info->host_reg;
+            const X86Register host_temp = (dest_info->temp_allocated
+                                           ? dest_info->host_temp : host_dest);
             X86Register host_base;
             int host_index;
-            reload_base_and_index(&code, ctx, insn_index, host_dest,
+            reload_base_and_index(&code, ctx, insn_index, host_temp,
                                   &host_base, &host_index);
             const int32_t offset =
                 insn->host_data_32 ? (int32_t)insn->host_data_32 : insn->offset;
@@ -2900,10 +2953,13 @@ static bool translate_block(HostX86Context *ctx, int block_index)
 
           case RTLOP_LOAD_U16:
           case RTLOP_LOAD_S16: {
-            const X86Register host_dest = ctx->regs[dest].host_reg;
+            const HostX86RegInfo * const dest_info = &ctx->regs[dest];
+            const X86Register host_dest = dest_info->host_reg;
+            const X86Register host_temp = (dest_info->temp_allocated
+                                           ? dest_info->host_temp : host_dest);
             X86Register host_base;
             int host_index;
-            reload_base_and_index(&code, ctx, insn_index, host_dest,
+            reload_base_and_index(&code, ctx, insn_index, host_temp,
                                   &host_base, &host_index);
             const int32_t offset =
                 insn->host_data_32 ? (int32_t)insn->host_data_32 : insn->offset;
@@ -2981,10 +3037,13 @@ static bool translate_block(HostX86Context *ctx, int block_index)
           }  // case RTLOP_STORE_I16
 
           case RTLOP_LOAD_BR: {
-            const X86Register host_dest = ctx->regs[dest].host_reg;
+            const HostX86RegInfo * const dest_info = &ctx->regs[dest];
+            const X86Register host_dest = dest_info->host_reg;
+            const X86Register host_temp = (dest_info->temp_allocated
+                                           ? dest_info->host_temp : host_dest);
             X86Register host_base;
             int host_index;
-            reload_base_and_index(&code, ctx, insn_index, host_dest,
+            reload_base_and_index(&code, ctx, insn_index, host_temp,
                                   &host_base, &host_index);
             const int32_t offset =
                 insn->host_data_32 ? (int32_t)insn->host_data_32 : insn->offset;
@@ -3014,10 +3073,13 @@ static bool translate_block(HostX86Context *ctx, int block_index)
 
           case RTLOP_LOAD_U16_BR:
           case RTLOP_LOAD_S16_BR: {
-            const X86Register host_dest = ctx->regs[dest].host_reg;
+            const HostX86RegInfo * const dest_info = &ctx->regs[dest];
+            const X86Register host_dest = dest_info->host_reg;
+            const X86Register host_temp = (dest_info->temp_allocated
+                                           ? dest_info->host_temp : host_dest);
             X86Register host_base;
             int host_index;
-            reload_base_and_index(&code, ctx, insn_index, host_dest,
+            reload_base_and_index(&code, ctx, insn_index, host_temp,
                                   &host_base, &host_index);
             const int32_t offset =
                 insn->host_data_32 ? (int32_t)insn->host_data_32 : insn->offset;
@@ -3146,6 +3208,10 @@ static bool translate_block(HostX86Context *ctx, int block_index)
             const X86Register host_dest = ctx->regs[dest].host_reg;
             X86Register host_base;
             int host_index;
+            /* A temporary register is only allocated if there are any
+             * spill reloads, but if there are no reloads then the fallback
+             * register isn't used anyway, so it's safe to pass host_temp
+             * without checking temp_allocated. */
             reload_base_and_index(&code, ctx, insn_index,
                                   ctx->regs[dest].host_temp,
                                   &host_base, &host_index);
