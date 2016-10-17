@@ -223,6 +223,7 @@ static bool process_command_line(int argc, char **argv)
                          || native_arch == BINREC_ARCH_X86_64_WINDOWS) {
                             opt_host |= BINREC_OPT_H_X86_ADDRESS_OPERANDS;
                             opt_host |= BINREC_OPT_H_X86_BRANCH_ALIGNMENT;
+                            opt_host |= BINREC_OPT_H_X86_CONDITION_CODES;
                             opt_host |= BINREC_OPT_H_X86_FIXED_REGS;
                         }
                     }

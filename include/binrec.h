@@ -644,8 +644,6 @@ typedef struct binrec_setup_t {
  * codes in the EFLAGS register, and avoid adding an explicit TEST or CMP
  * instruction for a register if the condition codes already reflect the
  * value of that register.
- *
- * This optimization is not currently implemented.
  */
 #define BINREC_OPT_H_X86_CONDITION_CODES  (1<<2)
 

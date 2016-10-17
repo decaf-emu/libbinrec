@@ -683,7 +683,9 @@ static ALWAYS_INLINE void append_move_or_load_gpr(
 
 /**
  * append_test_reg:  Append an instruction to test the value of the given
- * integer RTL register for zeroness.
+ * integer RTL register for zeroness.  If the CONDITION_CODES optimization
+ * is enabled, skip the test if EFLAGS is already set appropriately, and
+ * update EFLAGS state fields appropriately otherwise.
  */
 static ALWAYS_INLINE void append_test_reg(
     HostX86Context *ctx, const RTLUnit *unit, int insn_index,
@@ -691,11 +693,21 @@ static ALWAYS_INLINE void append_test_reg(
 {
     ASSERT(rtl_register_is_int(&unit->regs[reg]));
 
+    if (ctx->last_test_reg == reg) {
+        return;
+    }
+
     if (is_spilled(ctx, reg, insn_index)) {
         const bool is64 = (unit->regs[reg].type != RTLTYPE_INT32);
         append_insn_ModRM_mem(code, is64, X86OP_IMM_Ev_Ib, X86OP_IMM_CMP,
                               X86_SP, -1, ctx->regs[reg].spill_offset);
         append_imm8(code, 0);
+        if (ctx->handle->host_opt & BINREC_OPT_H_X86_CONDITION_CODES) {
+            ctx->last_test_reg = reg;
+            ctx->last_cmp_reg = reg;
+            ctx->last_cmp_target = 0;
+            ctx->last_cmp_imm = 0;
+        }
     } else {
         const X86Register host_reg = ctx->regs[reg].host_reg;
         uint8_t rex = 0;
@@ -711,6 +723,10 @@ static ALWAYS_INLINE void append_test_reg(
             append_opcode(code, X86OP_TEST_Ev_Gv);
         }
         append_ModRM(code, X86MOD_REG, host_reg & 7, host_reg & 7);
+        if (ctx->handle->host_opt & BINREC_OPT_H_X86_CONDITION_CODES) {
+            ctx->last_test_reg = reg;
+            ctx->last_cmp_reg = 0;
+        }
     }
 }
 
@@ -1839,6 +1855,11 @@ static bool translate_block(HostX86Context *ctx, int block_index)
     block_info->unresolved_branch_offset = -1;
     bool fall_through = true;  // Does code fall through to the next block?
 
+    ctx->last_test_reg = 0;
+    ctx->last_cmp_reg = 0;
+    ctx->last_cmp_target = 0;
+    ctx->last_cmp_imm = 0;
+
     for (int insn_index = block->first_insn; insn_index <= block->last_insn;
          insn_index++)
     {
@@ -2041,6 +2062,13 @@ static bool translate_block(HostX86Context *ctx, int block_index)
           }  // case RTLOP_SEXT8, RTLOP_SEXT16
 
           case RTLOP_NEG:
+            if (handle->host_opt & BINREC_OPT_H_X86_CONDITION_CODES) {
+                ctx->last_test_reg = dest;
+                ctx->last_cmp_reg = dest;
+                ctx->last_cmp_target = 0;
+                ctx->last_cmp_imm = 0;
+            }
+            /* Fall through to common NEG/NOT handling. */
           case RTLOP_NOT: {
             const X86Register host_dest = ctx->regs[dest].host_reg;
             const X86Register host_src1 = ctx->regs[src1].host_reg;
@@ -2082,6 +2110,16 @@ static bool translate_block(HostX86Context *ctx, int block_index)
                 append_insn_ModRM_ctx(&code, is64, opcode, host_dest,
                                       ctx, insn_index, src2);
             }
+            if (handle->host_opt & BINREC_OPT_H_X86_CONDITION_CODES) {
+                ctx->last_test_reg = dest;
+                if (insn->opcode == RTLOP_ADD || insn->opcode == RTLOP_SUB) {
+                    ctx->last_cmp_reg = dest;
+                    ctx->last_cmp_target = 0;
+                    ctx->last_cmp_imm = 0;
+                } else {
+                    ctx->last_cmp_reg = 0;
+                }
+            }
             break;
           }  // case RTLOP_{ADD,SUB,AND,OR,XOR}
 
@@ -2103,6 +2141,10 @@ static bool translate_block(HostX86Context *ctx, int block_index)
                 append_insn_ModRM_ctx(&code, is64, opcode, host_dest,
                                       ctx, insn_index, src2);
             }
+            /* We don't need to test the CONDITION_CODES optimization
+             * flag if we're just clearing the current state. */
+            ctx->last_test_reg = 0;
+            ctx->last_cmp_reg = 0;
             break;
           }  // case RTLOP_MUL
 
@@ -2196,6 +2238,9 @@ static bool translate_block(HostX86Context *ctx, int block_index)
                 append_insn_ModRM_reg(&code, true, X86OP_MOV_Gv_Ev,
                                       X86_AX, ctx->regs[dest].host_temp);
             }
+
+            ctx->last_test_reg = 0;
+            ctx->last_cmp_reg = 0;
             break;
           }  // case RTLOP_MULH[US]
 
@@ -2280,6 +2325,9 @@ static bool translate_block(HostX86Context *ctx, int block_index)
                 append_insn_ModRM_reg(&code, true, X86OP_MOV_Gv_Ev,
                                       X86_DX, ctx->regs[dest].host_temp);
             }
+
+            ctx->last_test_reg = 0;
+            ctx->last_cmp_reg = 0;
             break;
           }  // case RTLOP_DIV[US]
 
@@ -2344,6 +2392,9 @@ static bool translate_block(HostX86Context *ctx, int block_index)
                 append_insn_ModRM_reg(&code, true, X86OP_MOV_Gv_Ev,
                                       X86_AX, ctx->regs[dest].host_temp);
             }
+
+            ctx->last_test_reg = 0;
+            ctx->last_cmp_reg = 0;
             break;
           }  // case RTLOP_MOD[US]
 
@@ -2411,6 +2462,10 @@ static bool translate_block(HostX86Context *ctx, int block_index)
                                           X86_CX, host_src2);
                 }
             }
+            /* The shift instructions don't change any flags if the shift
+             * count is zero, so we can't rely on the state of ZF. */
+            ctx->last_test_reg = 0;
+            ctx->last_cmp_reg = 0;
             break;
           }  // case RTLOP_{SLL,SRL,SRA,ROL,ROR}
 
@@ -2434,6 +2489,10 @@ static bool translate_block(HostX86Context *ctx, int block_index)
                 append_insn_ModRM_reg(&code, false, X86OP_IMM_Ev_Ib,
                                       X86OP_IMM_XOR, host_dest);
                 append_imm8(&code, is64 ? 63 : 31);
+            }
+            if (handle->host_opt & BINREC_OPT_H_X86_CONDITION_CODES) {
+                ctx->last_test_reg = dest;
+                ctx->last_cmp_reg = 0;
             }
             break;
           }  // case RTLOP_CLZ
@@ -2472,8 +2531,15 @@ static bool translate_block(HostX86Context *ctx, int block_index)
                                 X86_SP, ctx->regs[src1].spill_offset);
                 host_src1 = host_dest;
             }
-            append_insn_ModRM_ctx(&code, is64, X86OP_CMP_Gv_Ev, host_src1,
-                                  ctx, insn_index, src2);
+            if (!(ctx->last_cmp_reg == src1 && ctx->last_cmp_target == src2)) {
+                append_insn_ModRM_ctx(&code, is64, X86OP_CMP_Gv_Ev, host_src1,
+                                      ctx, insn_index, src2);
+                if (handle->host_opt & BINREC_OPT_H_X86_CONDITION_CODES) {
+                    ctx->last_test_reg = 0;
+                    ctx->last_cmp_reg = src1;
+                    ctx->last_cmp_target = src2;
+                }
+            }
             /* Registers SP-DI require a REX prefix (even if empty) to
              * access the low byte as a byte register.  For these
              * instructions, there is no other register to worry about,
@@ -2569,6 +2635,9 @@ static bool translate_block(HostX86Context *ctx, int block_index)
                 append_insn_ModRM_reg(&code, is64, X86OP_MOV_Gv_Ev,
                                       host_dest, host_shifted);
             }
+
+            ctx->last_test_reg = 0;
+            ctx->last_cmp_reg = 0;
             break;
           }  // case RTLOP_BFEXT
 
@@ -2728,6 +2797,8 @@ static bool translate_block(HostX86Context *ctx, int block_index)
             append_insn_ModRM_reg(&code, is64, X86OP_OR_Gv_Ev,
                                   host_dest, host_newbits);
 
+            ctx->last_test_reg = 0;
+            ctx->last_cmp_reg = 0;
             break;
           }  // case RTLOP_BFINS
 
@@ -2773,6 +2844,16 @@ static bool translate_block(HostX86Context *ctx, int block_index)
                                       opcode, host_dest);
                 append_imm32(&code, imm);
             }
+            if (handle->host_opt & BINREC_OPT_H_X86_CONDITION_CODES) {
+                ctx->last_test_reg = dest;
+                if (insn->opcode == RTLOP_ADDI) {
+                    ctx->last_cmp_reg = dest;
+                    ctx->last_cmp_target = 0;
+                    ctx->last_cmp_imm = 0;
+                } else {
+                    ctx->last_cmp_reg = 0;
+                }
+            }
             break;
           }  // case RTLOP_{ADDI,ANDI,ORI,XORI}
 
@@ -2789,6 +2870,8 @@ static bool translate_block(HostX86Context *ctx, int block_index)
                                       host_dest, ctx, insn_index, src1);
                 append_imm32(&code, imm);
             }
+            ctx->last_test_reg = 0;
+            ctx->last_cmp_reg = 0;
             break;
           }  // case RTLOP_MULI
 
@@ -2809,6 +2892,14 @@ static bool translate_block(HostX86Context *ctx, int block_index)
             append_insn_ModRM_reg(&code, is64, X86OP_SHIFT_Ev_Ib,
                                   opcode, host_dest);
             append_imm8(&code, shift_count);
+            if (handle->host_opt & BINREC_OPT_H_X86_CONDITION_CODES) {
+                if ((shift_count & 0xFF) != 0) {
+                    ctx->last_test_reg = dest;
+                } else {
+                    ctx->last_test_reg = 0;
+                }
+                ctx->last_cmp_reg = 0;
+            }
             break;
           }  // case RTLOP_{SLLI,SRLI,SRAI,RORI}
 
@@ -2827,16 +2918,29 @@ static bool translate_block(HostX86Context *ctx, int block_index)
                 insn->opcode == RTLOP_SGTSI ? X86OP_SETG :
                              /* RTLOP_SEQI */ X86OP_SETZ);
 
-            if (imm + 128 < 256) {
-                append_insn_ModRM_ctx(
-                    &code, is64, X86OP_IMM_Ev_Ib, X86OP_IMM_CMP,
-                    ctx, insn_index, src1);
-                append_imm8(&code, (uint8_t)imm);
+            if (insn->opcode == RTLOP_SEQI && imm == 0) {
+                append_test_reg(ctx, unit, insn_index, &code, src1);
             } else {
-                append_insn_ModRM_ctx(
-                    &code, is64, X86OP_IMM_Ev_Iz, X86OP_IMM_CMP,
-                    ctx, insn_index, src1);
-                append_imm32(&code, imm);
+                if (!(ctx->last_cmp_reg == src1 && ctx->last_cmp_target == 0
+                      && ctx->last_cmp_imm == (int32_t)imm)) {
+                    if (imm + 128 < 256) {
+                        append_insn_ModRM_ctx(
+                            &code, is64, X86OP_IMM_Ev_Ib, X86OP_IMM_CMP,
+                            ctx, insn_index, src1);
+                        append_imm8(&code, (uint8_t)imm);
+                    } else {
+                        append_insn_ModRM_ctx(
+                            &code, is64, X86OP_IMM_Ev_Iz, X86OP_IMM_CMP,
+                            ctx, insn_index, src1);
+                        append_imm32(&code, imm);
+                    }
+                    if (handle->host_opt & BINREC_OPT_H_X86_CONDITION_CODES) {
+                        ctx->last_test_reg = (imm == 0 ? src1 : 0);
+                        ctx->last_cmp_reg = src1;
+                        ctx->last_cmp_target = 0;
+                        ctx->last_cmp_imm = imm;
+                    }
+                }
             }
 
             maybe_append_empty_rex(&code, host_dest, host_dest, -1);
@@ -3100,7 +3204,7 @@ static bool translate_block(HostX86Context *ctx, int block_index)
                 /* rorw $8,%reg would be slightly more compact, but that
                  * incurs both a rotate penalty and a partial register
                  * stall when subsequently using the full 32-bit register.
-                 * The byte-XCHG idiom (e.g. XCHG AH,AL) similarly seems
+                 * The byte-XCHG idiom (e.g. XCHG AH,AL) seems similarly
                  * likely to cause a partial register stall, and we could
                  * only use it with AX through DX anyway, so we don't do
                  * that either.  Modern processors should all support
@@ -3109,6 +3213,10 @@ static bool translate_block(HostX86Context *ctx, int block_index)
                 append_insn_ModRM_reg(&code, false, X86OP_SHIFT_Ev_Ib,
                                       X86OP_SHIFT_SHR, host_dest);
                 append_imm8(&code, 16);
+                if (handle->host_opt & BINREC_OPT_H_X86_CONDITION_CODES) {
+                    ctx->last_test_reg = dest;
+                    ctx->last_cmp_reg = 0;
+                }
                 if (insn->opcode == RTLOP_LOAD_U16_BR) {
                     break;  // Already zero-extended.
                 }
@@ -3185,6 +3293,12 @@ static bool translate_block(HostX86Context *ctx, int block_index)
                 append_insn_ModRM_mem(&code, false, X86OP_MOV_Ev_Gv,
                                       host_value, host_base, host_index,
                                       offset);
+                /* We can't treat this as a test of the register because
+                 * there might be data in the high 16 bits.  (And on this
+                 * code path, the register is dead anyway so we'd never
+                 * test against it.) */
+                ctx->last_test_reg = 0;
+                ctx->last_cmp_reg = 0;
             } else {
                 append_opcode(&code, X86OP_OPERAND_SIZE);
                 append_insn_ModRM_reg(&code, false, X86OP_SHIFT_Ev_Ib,
@@ -3198,6 +3312,8 @@ static bool translate_block(HostX86Context *ctx, int block_index)
                 append_insn_ModRM_reg(&code, false, X86OP_SHIFT_Ev_Ib,
                                       X86OP_SHIFT_ROR, host_value);
                 append_imm8(&code, 8);
+                ctx->last_test_reg = 0;
+                ctx->last_cmp_reg = 0;
             }
             if (saved_ax) {
                 append_insn_ModRM_reg(&code, true, X86OP_MOVD_E_V,
@@ -3224,6 +3340,12 @@ static bool translate_block(HostX86Context *ctx, int block_index)
             append_insn_ModRM_mem(
                 &code, is64, X86OP_XADD_Ev_Gv, host_dest,
                 host_base, host_index, insn->host_data_32);
+            if (handle->host_opt & BINREC_OPT_H_X86_CONDITION_CODES) {
+                ctx->last_test_reg = dest;
+                ctx->last_cmp_reg = dest;
+                ctx->last_cmp_target = 0;
+                ctx->last_cmp_imm = 0;
+            }
             break;
           }  // case RTLOP_ATOMIC_INC
 
@@ -3359,6 +3481,12 @@ static bool translate_block(HostX86Context *ctx, int block_index)
                 }
             }
 
+            if (handle->host_opt & BINREC_OPT_H_X86_CONDITION_CODES) {
+                ctx->last_test_reg = 0;
+                ctx->last_cmp_reg = dest;
+                ctx->last_cmp_target = src2;
+                ctx->last_cmp_imm = 0;
+            }
             break;
           }  // case RTLOP_CMPXCHG
 
@@ -3548,6 +3676,8 @@ static bool translate_block(HostX86Context *ctx, int block_index)
             code.buffer_size = handle->code_buffer_size;
             code.len = handle->code_len;
             initial_len = code.len;  // Suppress output length check.
+            ctx->last_test_reg = 0;
+            ctx->last_cmp_reg = 0;
             break;
 
           case RTLOP_RETURN:

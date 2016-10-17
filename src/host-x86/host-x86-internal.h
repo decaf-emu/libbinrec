@@ -202,6 +202,19 @@ typedef struct HostX86Context {
     /* Bitmap of registers which have been used in the current block. */
     uint32_t block_regs_touched;
 
+    /* Register whose state is currently reflected in the Z flag, or 0 if
+     * none/unknown. */
+    uint16_t last_test_reg;
+    /* Register whose less/greater state is currently reflected in EFLAGS,
+     * or 0 if none/unknown. */
+    uint16_t last_cmp_reg;
+    /* Register against which last_cmp_reg was compared, or 0 if the
+     * comparison was to an immediate value. */
+    uint16_t last_cmp_target;
+    /* Immediate value against which last_cmp_reg was compared, if
+     * last_cmp_target == 0. */
+    int32_t last_cmp_imm;
+
     /* First CALL instruction which is not a tail call, or -1 if there is
      * no such instruction.  Subsequent non-tail calls are linked via the
      * RTLInsn.host_data_32 field (only valid during register allocation).
