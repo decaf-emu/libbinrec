@@ -33,8 +33,7 @@ static const uint8_t expected_code[] = {
     0xBB,0x01,0x00,0x00,0x00,           // mov $1,%ebx
     0xFF,0xD3,                          // call *%rbx
     0x48,0x8B,0xC3,                     // mov %rbx,%rax
-    0xE9,0x00,0x00,0x00,0x00,           // jmp epilogue
-    0x5B,                               // epilogue: pop %rbx
+    0x5B,                               // pop %rbx
     0xC3,                               // ret
 };
 

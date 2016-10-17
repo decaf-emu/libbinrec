@@ -14,17 +14,17 @@
 static const binrec_setup_t setup = {
     .host = BINREC_ARCH_X86_64_SYSV,
 };
-static const unsigned int host_opt = BINREC_OPT_H_X86_FIXED_REGS;
+static const unsigned int host_opt = 0;
 
 static int add_rtl(RTLUnit *unit)
 {
-    /* Just make sure the lack of a value doesn't crash the allocator. */
     EXPECT(rtl_add_insn(unit, RTLOP_RETURN, 0, 0, 0, 0));
     return EXIT_SUCCESS;
 }
 
 static const uint8_t expected_code[] = {
     0x48,0x83,0xEC,0x08,                // sub $8,%rsp
+    /* "jmp epilogue" is omitted. */
     0x48,0x83,0xC4,0x08,                // add $8,%rsp
     0xC3,                               // ret
 };

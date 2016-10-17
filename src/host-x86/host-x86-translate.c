@@ -3412,9 +3412,15 @@ static bool translate_block(HostX86Context *ctx, int block_index)
                 append_move_or_load_gpr(&code, ctx, unit, insn_index,
                                         X86_AX, src1);
             }
-            /* We use label 0 (normally invalid) to indicate a jump to the
-             * function epilogue. */
-            append_jump(&code, block_info, X86OP_JMP_Jb, X86OP_JMP_Jz, 0, -1);
+            /* If this instruction terminates the last block in the unit,
+             * we don't need an explicit jump to the epilogue. */
+            ASSERT(insn_index == block->last_insn);
+            if (block->next_block >= 0) {
+                /* We use label 0 (normally invalid) to indicate a jump to
+                 * the function epilogue. */
+                append_jump(&code, block_info,
+                            X86OP_JMP_Jb, X86OP_JMP_Jz, 0, -1);
+            }
             fall_through = false;
             break;
 
