@@ -83,14 +83,23 @@ ENABLE_OPERAND_SANITY_CHECKS = 1
 INSTALL_PKGCONFIG = 0
 
 
+# STATIC_TESTS:  If this variable is set to 1, test programs will be linked
+# to the static library regardless of whether BUILD_SHARED is enabled.
+#
+# The default is 0 (test programs will be linked to the shared libray if
+# BUILD_SHARED is set to 1).
+
+STATIC_TESTS = 0
+
+
 # STRIP_TESTS:  If this variable is set to 1, test programs will be built
 # with debugging information removed.  This makes it harder to debug the
 # programs in the debugger, but it can provide a significant savings in
 # disk space consumed by the tests.
 #
-# The default is 1 (test programs will be stripped).
+# The default is 0 (test programs will not be stripped).
 
-STRIP_TESTS = 1
+STRIP_TESTS = 0
 
 
 # TESTS:  If this variable is not empty, it gives a list of tests to be
@@ -314,17 +323,21 @@ ifneq ($(filter darwin%,$(OSTYPE)),)
         -compatibility_version $(firstword $(subst ., ,$(VERSION))) \
         -current_version $(VERSION) \
         -Wl,-single_module
+    RPATH_LDFLAG = -install_name @rpath/$1
 else ifneq ($(filter mingw%,$(ARCH)),)
     SHARED_LIB_FULLNAME = $(SHARED_LIB)
     SHARED_LIB_LDFLAGS = \
         -shared \
         -Wl,--enable-auto-image-base \
         -Xlinker --out-implib -Xlinker '$@.a'
+    # There's no way to hardcode a shared object path on Windows.
+    STATIC_TESTS = 1
 else
     SHARED_LIB_FULLNAME = $(SHARED_LIB).$(VERSION)
     SHARED_LIB_LINKNAME = $(SHARED_LIB).$(VERSION_MAJOR)
     SHARED_LIB_CFLAGS = -fPIC
     SHARED_LIB_LDFLAGS = -shared -Wl,-soname=$(SHARED_LIB_LINKNAME)
+    RPATH_LDFLAG = -Wl,-rpath,$1
 endif
 
 
@@ -446,7 +459,8 @@ clean:
 
 spotless: clean
 	$(ECHO) 'Removing executable and library files'
-	$(Q)rm -f $(SHARED_LIB) $(STATIC_LIB) $(BENCHMARK_BINS)
+	$(Q)rm -f $(SHARED_LIB) $(SHARED_LIB_LINKNAME) $(STATIC_LIB) \
+	    $(BENCHMARK_BINS)
 	$(ECHO) 'Removing coverage output'
 	$(Q)rm -f coverage.txt
 
@@ -455,6 +469,11 @@ spotless: clean
 $(SHARED_LIB): $(LIBRARY_OBJECTS:%.o=%_so.o)
 	$(ECHO) 'Linking $@'
 	$(Q)$(CC) $(SHARED_LIB_LDFLAGS) -o '$@' $^
+
+ifneq ($(SHARED_LIB_LINKNAME),)
+$(SHARED_LIB_LINKNAME): $(SHARED_LIB)
+	ln -sf '$<' '$@'
+endif
 
 $(STATIC_LIB): $(LIBRARY_OBJECTS)
 	$(ECHO) 'Archiving $@'
@@ -469,12 +488,28 @@ TEST_UTILITY_OBJECTS = \
     tests/log-capture.o \
     tests/mem-wrappers.o
 
-$(TEST_BINS) : %: %.o $(TEST_UTILITY_OBJECTS) $(STATIC_LIB)
+TEST_LIB = tests/libtest.a
+
+SHARED_TESTS := $(call if-true,STATIC_TESTS,0,$(call if-true,BUILD_SHARED,1,0))
+TEST_SHARED_LIB_TARGET := $(call if-true,$(SHARED_TESTS),\
+                              $(or $(SHARED_LIB_LINKNAME),$(SHARED_LIB)),\
+                              $(STATIC_LIB))
+
+$(TEST_BINS) : %: %.o $(TEST_LIB) $(TEST_SHARED_LIB_TARGET)
 	$(ECHO) 'Linking $@'
-	$(Q)$(CC) $(LDFLAGS) -o '$@' $^ $(LIBS)
+	$(Q)$(CC) $(LDFLAGS) -o '$@' $^ $(LIBS) \
+	    $(call if-true,SHARED_TESTS,$(call RPATH_LDFLAG,$(abspath .)))
 	$(Q)$(call if-true,STRIP_TESTS,strip '$@')
 
-tests/coverage: tests/coverage-main.o $(TEST_UTILITY_OBJECTS:%.o=%_cov.o) $(LIBRARY_OBJECTS:%.o=%_cov.o) $(TEST_SOURCES:%.c=%_cov.o)
+$(TEST_LIB): $(TEST_UTILITY_OBJECTS)
+	$(ECHO) 'Archiving $@'
+	$(Q)$(AR) rcu '$@' $^
+	$(Q)$(RANLIB) '$@'
+
+tests/coverage: tests/coverage-main.o \
+                $(TEST_UTILITY_OBJECTS:%.o=%_cov.o) \
+                $(LIBRARY_OBJECTS:%.o=%_cov.o) \
+                $(TEST_SOURCES:%.c=%_cov.o)
 	$(ECHO) 'Linking $@'
 	$(Q)$(CC) $(ALL_CFLAGS) $(LDFLAGS) -o '$@' $^ $(LIBS) --coverage
 
