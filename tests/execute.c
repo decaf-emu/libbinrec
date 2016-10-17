@@ -17,7 +17,7 @@
 
 #include <stdio.h>
 
-#if defined(__linux__)
+#if defined(__linux__) || defined(__APPLE__)
     #include <sys/mman.h>
     #ifndef MAP_ANONYMOUS
         #define MAP_ANONYMOUS  0x20
@@ -45,7 +45,7 @@ static void *make_callable(void *code, long code_size)
 {
     void *func;
 
-#if defined(__linux__)
+#if defined(__linux__) || defined(__APPLE__)
     /* Prepend the data size to the buffer so we know how much to free in
      * free_callable().  We prepend 64 bytes to preserve cache alignment. */
     long alloc_size = code_size + 64;
@@ -80,7 +80,7 @@ static void *make_callable(void *code, long code_size)
  */
 static void free_callable(void *ptr)
 {
-#if defined(__linux__)
+#if defined(__linux__) || defined(__APPLE__)
     long *base = (long *)((uintptr_t)ptr - 64);
     munmap(base, *base);
 #elif defined(_WIN32)
