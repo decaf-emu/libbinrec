@@ -451,7 +451,7 @@ coverage: tests/coverage
 
 clean:
 	$(ECHO) 'Removing object and dependency files'
-	$(Q)find src tests \( -name '*.[do]' -o -name \*.d~ -o \*.d.tmp \) -exec rm '{}' +
+	$(Q)find src tests \( -name '*.[do]' -o -name \*.d~ -o -name \*.d.tmp \) -exec rm '{}' +
 	$(Q)rm -f tests/coverage-tests.h
 	$(ECHO) 'Removing test executables'
 	$(Q)rm -f $(TEST_BINS) tests/coverage
