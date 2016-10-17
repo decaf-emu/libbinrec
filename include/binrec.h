@@ -633,14 +633,21 @@ typedef struct binrec_setup_t {
 #define BINREC_OPT_H_X86_ADDRESS_OPERANDS  (1<<0)
 
 /**
+ * BINREC_OPT_H_X86_BRANCH_ALIGNMENT:  Align branch targets to a multiple
+ * of 16 bytes by inserting NOP instructions at appropriate points in the
+ * generated code stream.
+ */
+#define BINREC_OPT_H_X86_BRANCH_ALIGNMENT  (1<<1)
+
+/**
  * BINREC_OPT_H_X86_CONDITION_CODES:  Track the state of the condition
- * codes in the EFLAGS register, and avoid adding an explicit TEST
+ * codes in the EFLAGS register, and avoid adding an explicit TEST or CMP
  * instruction for a register if the condition codes already reflect the
  * value of that register.
  *
  * This optimization is not currently implemented.
  */
-#define BINREC_OPT_H_X86_CONDITION_CODES  (1<<1)
+#define BINREC_OPT_H_X86_CONDITION_CODES  (1<<2)
 
 /**
  * BINREC_OPT_H_X86_FIXED_REGS:  When an instruction requires an operand to
@@ -649,7 +656,7 @@ typedef struct binrec_setup_t {
  * This requires an extra pass over the translated machine code during
  * register allocation.
  */
-#define BINREC_OPT_H_X86_FIXED_REGS  (1<<2)
+#define BINREC_OPT_H_X86_FIXED_REGS  (1<<3)
 
 /**
  * BINREC_OPT_H_X86_FORWARD_CONDITIONS:  When a register used as the
@@ -660,7 +667,7 @@ typedef struct binrec_setup_t {
  *
  * This optimization is not currently implemented.
  */
-#define BINREC_OPT_H_X86_FORWARD_CONDITIONS  (1<<3)
+#define BINREC_OPT_H_X86_FORWARD_CONDITIONS  (1<<4)
 
 /**
  * BINREC_OPT_H_X86_MEMORY_OPERANDS:  Make use of register-memory forms of
@@ -682,7 +689,7 @@ typedef struct binrec_setup_t {
  *
  * This optimization is not currently implemented.
  */
-#define BINREC_OPT_H_X86_MEMORY_OPERANDS  (1<<4)
+#define BINREC_OPT_H_X86_MEMORY_OPERANDS  (1<<5)
 
 /**
  * BINREC_OPT_H_X86_SETCC_ZX:  Detect when the only the low byte of the
@@ -691,7 +698,7 @@ typedef struct binrec_setup_t {
  *
  * This optimization is not currently implemented.
  */
-#define BINREC_OPT_H_X86_SETCC_ZX  (1<<5)
+#define BINREC_OPT_H_X86_SETCC_ZX  (1<<6)
 
 /*************************************************************************/
 /******** Interface: Library and runtime environment information *********/

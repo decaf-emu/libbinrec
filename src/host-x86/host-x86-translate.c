@@ -3366,6 +3366,81 @@ static bool translate_block(HostX86Context *ctx, int block_index)
             ASSERT(insn->label > 0);
             ASSERT(insn->label < unit->next_label);
             ASSERT(ctx->label_offsets[insn->label] < 0);
+            if (handle->host_opt & BINREC_OPT_H_X86_BRANCH_ALIGNMENT) {
+                switch (code.len & 15) {
+                  case 1:
+                    append_opcode(&code, X86OP_OPERAND_SIZE);
+                    append_opcode(&code, X86OP_NOP_Ev);
+                    append_ModRM_SIB(&code, X86MOD_DISP8, 0, 0, 0, 0);
+                    append_imm8(&code, 0);
+                    goto nop9;
+                  case 2:
+                    append_opcode(&code, X86OP_NOP_Ev);
+                    append_ModRM_SIB(&code, X86MOD_DISP8, 0, 0, 0, 0);
+                    append_imm8(&code, 0);
+                    goto nop9;
+                  case 3:
+                    append_opcode(&code, X86OP_NOP_Ev);
+                    append_ModRM(&code, X86MOD_DISP8, 0, 0);
+                    append_imm8(&code, 0);
+                    goto nop9;
+                  case 4:
+                    append_opcode(&code, X86OP_NOP_Ev);
+                    append_ModRM(&code, X86MOD_DISP0, 0, 0);
+                    goto nop9;
+                  case 5:
+                    append_opcode(&code, X86OP_OPERAND_SIZE);
+                    append_opcode(&code, X86OP_NOP);
+                    goto nop9;
+                  case 6:
+                    append_opcode(&code, X86OP_NOP);
+                    /* fall through */
+                  case 7: nop9:
+                    append_opcode(&code, X86OP_OPERAND_SIZE);
+                    append_opcode(&code, X86OP_NOP_Ev);
+                    append_ModRM_SIB(&code, X86MOD_DISP32, 0, 0, 0, 0);
+                    append_imm32(&code, 0);
+                    break;
+                  case 8:
+                    append_opcode(&code, X86OP_NOP_Ev);
+                    append_ModRM_SIB(&code, X86MOD_DISP32, 0, 0, 0, 0);
+                    append_imm32(&code, 0);
+                    break;
+                  case 9:
+                    append_opcode(&code, X86OP_NOP_Ev);
+                    append_ModRM(&code, X86MOD_DISP32, 0, 0);
+                    append_imm32(&code, 0);
+                    break;
+                  case 10:
+                    append_opcode(&code, X86OP_OPERAND_SIZE);
+                    append_opcode(&code, X86OP_NOP_Ev);
+                    append_ModRM_SIB(&code, X86MOD_DISP8, 0, 0, 0, 0);
+                    append_imm8(&code, 0);
+                    break;
+                  case 11:
+                    append_opcode(&code, X86OP_NOP_Ev);
+                    append_ModRM_SIB(&code, X86MOD_DISP8, 0, 0, 0, 0);
+                    append_imm8(&code, 0);
+                    break;
+                  case 12:
+                    append_opcode(&code, X86OP_NOP_Ev);
+                    append_ModRM(&code, X86MOD_DISP8, 0, 0);
+                    append_imm8(&code, 0);
+                    break;
+                  case 13:
+                    append_opcode(&code, X86OP_NOP_Ev);
+                    append_ModRM(&code, X86MOD_DISP0, 0, 0);
+                    break;
+                  case 14:
+                    append_opcode(&code, X86OP_OPERAND_SIZE);
+                    append_opcode(&code, X86OP_NOP);
+                    break;
+                  case 15:
+                    append_opcode(&code, X86OP_NOP);
+                    break;
+                }
+                ASSERT((code.len & 15) == 0);
+            }
             ctx->label_offsets[insn->label] = code.len;
             break;
 

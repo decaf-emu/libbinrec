@@ -156,14 +156,15 @@ static bool process_command_line(int argc, char **argv)
                     "        -O, -O1     Enable lightweight optimizations.\n"
                     "        -O2         Enable stronger but more expensive optimizations.\n"
                     "    -O<NAME>   Enable specific global optimizations.\n"
-                    "        -Obasic            Basic optimizations\n"
-                    "        -Odecondition      Branch deconditioning\n"
-                    "        -Odeep-data-flow   Deep data flow analysis (expensive)\n"
-                    "        -Odse              Dead store elimination\n"
-                    "        -Ofold-constants   Constant folding\n"
+                    "        -Obasic              Basic optimizations\n"
+                    "        -Odecondition        Branch deconditioning\n"
+                    "        -Odeep-data-flow     Deep data flow analysis (expensive)\n"
+                    "        -Odse                Dead store elimination\n"
+                    "        -Ofold-constants     Constant folding\n"
                     "    -H<NAME>   Enable specific host optimizations.\n"
-                    "        -Hx86-address-op   Address operand optimization\n"
-                    "        -Hx86-fixed-regs   Smarter register allocation\n"
+                    "        -Hx86-address-op     Address operand optimization\n"
+                    "        -Hx86-branch-align   Branch target alignment\n"
+                    "        -Hx86-fixed-regs     Smarter register allocation\n"
             );
             fprintf(stderr, "\nValid architectures:\n    native\n");
             for (int i = 0; i < GUEST_ARCH__NUM; i++) {
@@ -196,6 +197,8 @@ static bool process_command_line(int argc, char **argv)
                     goto usage;
                 } else if (strcmp(name, "x86-address-op") == 0) {
                     opt_common |= BINREC_OPT_H_X86_ADDRESS_OPERANDS;
+                } else if (strcmp(name, "x86-branch-align") == 0) {
+                    opt_common |= BINREC_OPT_H_X86_BRANCH_ALIGNMENT;
                 } else if (strcmp(name, "x86-fixed-regs") == 0) {
                     opt_common |= BINREC_OPT_H_X86_FIXED_REGS;
                 } else {
@@ -219,6 +222,7 @@ static bool process_command_line(int argc, char **argv)
                         if (native_arch == BINREC_ARCH_X86_64_SYSV
                          || native_arch == BINREC_ARCH_X86_64_WINDOWS) {
                             opt_host |= BINREC_OPT_H_X86_ADDRESS_OPERANDS;
+                            opt_host |= BINREC_OPT_H_X86_BRANCH_ALIGNMENT;
                             opt_host |= BINREC_OPT_H_X86_FIXED_REGS;
                         }
                     }
