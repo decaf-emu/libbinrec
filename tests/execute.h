@@ -58,12 +58,16 @@ typedef struct PPCState {
  *     address: Address at which to start executing code.
  *     configure_handle: Pointer to function to set up translation
  *         parameters, or NULL to leave parameters at the defaults.
+ *     translated_code_callback: Pointer to function which will be called
+ *         for each translated unit of code, or NULL for no callback.
  * [Return value]
  *     True if code was successfully executed; false if translation failed.
  */
 extern bool call_guest_code(
     binrec_arch_t arch, void *state, void *memory, uint32_t address,
-    void (*configure_handle)(binrec_t *handle));
+    void (*configure_handle)(binrec_t *handle),
+    void (*generated_code_callback)(uint32_t address, void *code,
+                                    long code_size));
 
 /*************************************************************************/
 /*************************************************************************/

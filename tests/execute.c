@@ -98,10 +98,13 @@ static void free_callable(void *ptr)
  *     handle: Translation handle.
  *     address: Guest address from which to execute.
  *     arg: Argument to pass to the translated code.
+ *     translated_code_callback: Function to call after translating code,
+ *         or NULL for none.
  * [Return value]
  *     True on success, false on translation error.
  */
-static bool call(binrec_t *handle, uint32_t address, void *arg)
+static bool call(binrec_t *handle, uint32_t address, void *arg,
+    void (*translated_code_callback)(uint32_t, void *, long))
 {
     if (address < func_table_base) {
         if (func_table_limit > func_table_base) {
@@ -144,6 +147,9 @@ static bool call(binrec_t *handle, uint32_t address, void *arg)
             fprintf(stderr, "Failed to translate code at 0x%X\n", address);
             return false;
         }
+        if (translated_code_callback) {
+            (*translated_code_callback)(address, code, code_size);
+        }
         GuestCode func = make_callable(code, code_size);
         free(code);
         if (!func) {
@@ -182,7 +188,9 @@ static void clear_cache(void)
 
 bool call_guest_code(
     binrec_arch_t arch, void *state, void *memory, uint32_t address,
-    void (*configure_handle)(binrec_t *handle))
+    void (*configure_handle)(binrec_t *handle),
+    void (*translated_code_callback)(uint32_t address, void *code,
+                                    long code_size))
 {
     ASSERT(arch == BINREC_ARCH_PPC_7XX);
     PPCState *state_ppc = state;
@@ -227,7 +235,7 @@ bool call_guest_code(
     state_ppc->lr = RETURN_ADDRESS;
     state_ppc->nia = address;
     while (state_ppc->nia != RETURN_ADDRESS) {
-        if (!call(handle, state_ppc->nia, state_ppc)) {
+        if (!call(handle, state_ppc->nia, state_ppc, translated_code_callback)) {
             clear_cache();
             binrec_destroy_handle(handle);
             return false;

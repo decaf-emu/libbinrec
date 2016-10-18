@@ -10,6 +10,8 @@
 #include "benchmarks/blobs.h"
 #include "benchmarks/common.h"
 #include "tests/execute.h"
+
+#include <errno.h>
 #include <inttypes.h>
 #include <stdio.h>
 
@@ -90,6 +92,7 @@ static int count;
 static unsigned int opt_common;
 static unsigned int opt_guest;
 static unsigned int opt_host;
+static bool dump;
 
 /*************************************************************************/
 /*************************** Utility routines ****************************/
@@ -151,21 +154,22 @@ static bool process_command_line(int argc, char **argv)
             fprintf(stderr, "Usage: %s [OPTIONS] ARCH-NAME BENCHMARK"
                     " ITERATION-COUNT\n", argv[0]);
             fprintf(stderr, "\nOptions:\n"
+                    "    -d          Dump the translated code to disk.\n"
+                    "    -H<NAME>    Enable specific host optimizations.\n"
+                    "        -Hx86-address-op     Address operand optimization\n"
+                    "        -Hx86-branch-align   Branch target alignment\n"
+                    "        -Hx86-cond-codes     Condition code reuse\n"
+                    "        -Hx86-fixed-regs     Smarter register allocation\n"
                     "    -O[LEVEL]   Select optimizations.\n"
                     "        -O0         Disable all optimizations (default).\n"
                     "        -O, -O1     Enable lightweight optimizations.\n"
                     "        -O2         Enable stronger but more expensive optimizations.\n"
-                    "    -O<NAME>   Enable specific global optimizations.\n"
+                    "    -O<NAME>    Enable specific global optimizations.\n"
                     "        -Obasic              Basic optimizations\n"
                     "        -Odecondition        Branch deconditioning\n"
                     "        -Odeep-data-flow     Deep data flow analysis (expensive)\n"
                     "        -Odse                Dead store elimination\n"
                     "        -Ofold-constants     Constant folding\n"
-                    "    -H<NAME>   Enable specific host optimizations.\n"
-                    "        -Hx86-address-op     Address operand optimization\n"
-                    "        -Hx86-branch-align   Branch target alignment\n"
-                    "        -Hx86-cond-codes     Condition code reuse\n"
-                    "        -Hx86-fixed-regs     Smarter register allocation\n"
             );
             fprintf(stderr, "\nValid architectures:\n    native\n");
             for (int i = 0; i < GUEST_ARCH__NUM; i++) {
@@ -191,7 +195,10 @@ static bool process_command_line(int argc, char **argv)
 
         } else if (*argv[argi] == '-') {
 
-            if (argv[argi][1] == 'H') {
+            if (strcmp(argv[argi], "-d") == 0) {
+                dump = true;
+
+            } else if (argv[argi][1] == 'H') {
                 const char *name = &argv[argi][2];
                 if (!*name) {
                     fprintf(stderr, "Missing host optimization flag\n");
@@ -339,6 +346,28 @@ static void configure_binrec(binrec_t *handle)
 /*-----------------------------------------------------------------------*/
 
 /**
+ * dump_translated_code:  Callback passed to call_guest_code() to dump
+ * each unit of translated code to a file.
+ */
+static void dump_translated_code(uint32_t address, void *code, long code_size)
+{
+    char filename[16];
+    ASSERT(snprintf(filename, sizeof(filename), "%08X.bin", address)
+           < (int)sizeof(filename));
+    FILE *f = fopen(filename, "wb");
+    if (!f) {
+        fprintf(stderr, "open(%s): %s\n", filename, strerror(errno));
+    } else {
+        if (fwrite(code, code_size, 1, f) != 1) {
+            fprintf(stderr, "write(%s): %s\n", filename, strerror(errno));
+        }
+        fclose(f);
+    }
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
  * call_guest:  Call the entry point for the selected guest architecture
  * and benchmark, and return its result.
  *
@@ -384,14 +413,16 @@ static bool call_guest(void)
     bool success = false;
 
     if (blob->init && !call_guest_code(binrec_arch, state, memory, blob->init,
-                                       configure_binrec)) {
+                                       configure_binrec,
+                                       dump ? dump_translated_code : NULL)) {
         fprintf(stderr, "Guest code init() execution failed\n");
         goto done;
     }
 
     *arg_ptr = count;
     if (!call_guest_code(binrec_arch, state, memory, blob->main,
-                         configure_binrec)) {
+                         configure_binrec,
+                         dump ? dump_translated_code : NULL)) {
         fprintf(stderr, "Guest code main() execution failed\n");
         goto done;
     }
@@ -402,7 +433,8 @@ static bool call_guest(void)
     }
 
     if (blob->fini && !call_guest_code(binrec_arch, state, memory, blob->fini,
-                                       configure_binrec)) {
+                                       configure_binrec,
+                                       dump ? dump_translated_code : NULL)) {
         fprintf(stderr, "Guest code fini() execution failed\n");
         success = false;
         goto done;

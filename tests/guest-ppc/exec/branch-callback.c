@@ -70,7 +70,7 @@ int main(void)
     branch_counter = 0;
 
     if (!call_guest_code(BINREC_ARCH_PPC_7XX, &state, memory, start_address,
-                         NULL)) {
+                         NULL, NULL)) {
         const char *log_messages = get_log_messages();
         if (log_messages) {
             fputs(log_messages, stdout);

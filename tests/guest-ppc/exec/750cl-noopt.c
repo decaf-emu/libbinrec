@@ -29,7 +29,7 @@ int main(void)
     EXPECT(memory = setup_750cl(&state));
 
     if (!call_guest_code(BINREC_ARCH_PPC_7XX, &state, memory,
-                         PPC750CL_START_ADDRESS, NULL)) {
+                         PPC750CL_START_ADDRESS, NULL, NULL)) {
         const char *log_messages = get_log_messages();
         if (log_messages) {
             fputs(log_messages, stderr);

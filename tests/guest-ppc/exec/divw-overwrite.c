@@ -47,7 +47,7 @@ int main(void)
     memset(&state, 0, sizeof(state));
 
     if (!call_guest_code(BINREC_ARCH_PPC_7XX, &state, memory, start_address,
-                         NULL)) {
+                         NULL, NULL)) {
         const char *log_messages = get_log_messages();
         if (log_messages) {
             fputs(log_messages, stdout);
@@ -59,7 +59,7 @@ int main(void)
     EXPECT_EQ(state.gpr[4], 2);
 
     if (!call_guest_code(BINREC_ARCH_PPC_7XX, &state, memory,
-                         start_address + 20, NULL)) {
+                         start_address + 20, NULL, NULL)) {
         const char *log_messages = get_log_messages();
         if (log_messages) {
             fputs(log_messages, stdout);
