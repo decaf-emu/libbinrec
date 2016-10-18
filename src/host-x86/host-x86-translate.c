@@ -2407,7 +2407,6 @@ static bool translate_block(HostX86Context *ctx, int block_index)
             const X86Register host_src2 = ctx->regs[src2].host_reg;
             const bool src2_spilled = is_spilled(ctx, src2, insn_index);
             ASSERT(host_dest != X86_CX);
-            ASSERT(host_dest != host_src2 || src2_spilled);
             const bool is64 = (unit->regs[src1].type != RTLTYPE_INT32);
             const X86ShiftOpcode opcode = (
                 insn->opcode == RTLOP_SLL ? X86OP_SHIFT_SHL :
@@ -2439,9 +2438,16 @@ static bool translate_block(HostX86Context *ctx, int block_index)
                 append_load_gpr(&code, RTLTYPE_INT32, X86_CX,
                                 X86_SP, ctx->regs[src1].spill_offset);
             } else if (host_src2 != X86_CX) {
-                append_insn_ModRM_reg(&code, true, X86OP_XCHG_Ev_Gv,
-                                      X86_CX, host_src2);
-                swapped_cx = true;
+                const int current_cx = ctx->reg_map[X86_CX];
+                if (!current_cx || unit->regs[current_cx].death < insn_index
+                 || is_spilled(ctx, current_cx, insn_index)) {
+                    append_insn_ModRM_reg(&code, false, X86OP_MOV_Gv_Ev,
+                                          X86_CX, host_src2);
+                } else {
+                    append_insn_ModRM_reg(&code, true, X86OP_XCHG_Ev_Gv,
+                                          X86_CX, host_src2);
+                    swapped_cx = true;
+                }
             }
 
             append_insn_ModRM_reg(&code, is64, X86OP_SHIFT_Ev_CL,

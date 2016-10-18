@@ -869,10 +869,11 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
                       case RTLOP_ROR:
                         /* src1==src2 should normally never happen (unless
                          * the input is doing something bizarre), but if it
-                         * does it'll confuse the translator, so avoid that
-                         * case as well. */
+                         * does and CX is in use, the code generator will
+                         * get confused, so avoid that case as well. */
                         src1_ok = (src1_info->host_reg != X86_CX
-                                   && src1 != src2);
+                                   && !(src1 == src2
+                                        && ctx->reg_map[X86_CX] != 0));
                         break;
                       case RTLOP_BFINS:
                         src1_ok = (src1_info->host_reg != src2_info->host_reg);
