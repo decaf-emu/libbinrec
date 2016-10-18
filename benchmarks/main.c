@@ -164,6 +164,7 @@ static bool process_command_line(int argc, char **argv)
                     "    -H<NAME>   Enable specific host optimizations.\n"
                     "        -Hx86-address-op     Address operand optimization\n"
                     "        -Hx86-branch-align   Branch target alignment\n"
+                    "        -Hx86-cond-codes     Condition code reuse\n"
                     "        -Hx86-fixed-regs     Smarter register allocation\n"
             );
             fprintf(stderr, "\nValid architectures:\n    native\n");
@@ -199,6 +200,8 @@ static bool process_command_line(int argc, char **argv)
                     opt_common |= BINREC_OPT_H_X86_ADDRESS_OPERANDS;
                 } else if (strcmp(name, "x86-branch-align") == 0) {
                     opt_common |= BINREC_OPT_H_X86_BRANCH_ALIGNMENT;
+                } else if (strcmp(name, "x86-cond-codes") == 0) {
+                    opt_common |= BINREC_OPT_H_X86_CONDITION_CODES;
                 } else if (strcmp(name, "x86-fixed-regs") == 0) {
                     opt_common |= BINREC_OPT_H_X86_FIXED_REGS;
                 } else {
@@ -221,10 +224,10 @@ static bool process_command_line(int argc, char **argv)
                                     | BINREC_OPT_FOLD_CONSTANTS;
                         if (native_arch == BINREC_ARCH_X86_64_SYSV
                          || native_arch == BINREC_ARCH_X86_64_WINDOWS) {
-                            opt_host |= BINREC_OPT_H_X86_ADDRESS_OPERANDS;
-                            opt_host |= BINREC_OPT_H_X86_BRANCH_ALIGNMENT;
-                            opt_host |= BINREC_OPT_H_X86_CONDITION_CODES;
-                            opt_host |= BINREC_OPT_H_X86_FIXED_REGS;
+                            opt_host |= BINREC_OPT_H_X86_ADDRESS_OPERANDS
+                                      | BINREC_OPT_H_X86_BRANCH_ALIGNMENT
+                                      | BINREC_OPT_H_X86_CONDITION_CODES
+                                      | BINREC_OPT_H_X86_FIXED_REGS;
                         }
                     }
                     if (*name >= '2') {
