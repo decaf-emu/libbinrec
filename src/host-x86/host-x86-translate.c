@@ -2439,8 +2439,7 @@ static bool translate_block(HostX86Context *ctx, int block_index)
                                 X86_SP, ctx->regs[src1].spill_offset);
             } else if (host_src2 != X86_CX) {
                 const int current_cx = ctx->reg_map[X86_CX];
-                if (!current_cx || unit->regs[current_cx].death < insn_index
-                 || is_spilled(ctx, current_cx, insn_index)) {
+                if (!current_cx || unit->regs[current_cx].death < insn_index) {
                     append_insn_ModRM_reg(&code, false, X86OP_MOV_Gv_Ev,
                                           X86_CX, host_src2);
                 } else {
