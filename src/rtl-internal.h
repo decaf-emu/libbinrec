@@ -629,13 +629,3 @@ extern CONST_FUNCTION const char *rtl_source_name(RTLRegType source);
 /*************************************************************************/
 
 #endif  // SRC_RTL_INTERNAL_H
-
-/*
- * Local variables:
- *   c-file-style: "stroustrup"
- *   c-file-offsets: ((case-label . *) (statement-case-intro . *))
- *   indent-tabs-mode: nil
- * End:
- *
- * vim: expandtab shiftwidth=4:
- */
