@@ -2926,8 +2926,9 @@ static bool translate_block(HostX86Context *ctx, int block_index)
             if (insn->opcode == RTLOP_SEQI && imm == 0) {
                 append_test_reg(ctx, unit, insn_index, &code, src1);
             } else {
-                if (!(ctx->last_cmp_reg == src1 && ctx->last_cmp_target == 0
-                      && ctx->last_cmp_imm == (int32_t)imm)) {
+                if (ctx->last_cmp_reg != src1
+                 || ctx->last_cmp_target != 0
+                 || ctx->last_cmp_imm != (int32_t)imm) {
                     if (imm + 128 < 256) {
                         append_insn_ModRM_ctx(
                             &code, is64, X86OP_IMM_Ev_Ib, X86OP_IMM_CMP,

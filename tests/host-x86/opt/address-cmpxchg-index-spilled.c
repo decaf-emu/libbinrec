@@ -71,6 +71,11 @@ static const uint8_t expected_code[] = {
 };
 
 static const char expected_log[] =
+    #ifdef RTL_DEBUG_OPTIMIZE
+        "[info] Killing instruction 26\n"
+        "[info] r1 no longer used, setting death = birth\n"
+        "[info] Extending r1 live range to 27\n"
+    #endif
     "[warning] Slow reload of spilled CMPXCHG index register\n";
 
 #include "tests/rtl-translate-test.i"

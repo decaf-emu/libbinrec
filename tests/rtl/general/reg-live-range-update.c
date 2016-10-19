@@ -37,8 +37,9 @@ int main(void)
     EXPECT_EQ(unit->regs[reg1].death, 2);
     EXPECT_EQ(unit->regs[reg2].birth, 2);
     EXPECT_EQ(unit->regs[reg2].death, 2);
-
     EXPECT(rtl_finalize_unit(unit));
+
+    rtl_update_live_ranges(unit);
     /* reg1's live range is extended to the backward branch. */
     EXPECT_EQ(unit->regs[reg1].birth, 0);
     EXPECT_EQ(unit->regs[reg1].death, 3);

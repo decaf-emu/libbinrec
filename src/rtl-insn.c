@@ -96,6 +96,7 @@ static bool make_nop(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
     if (src2 != 0) {
         OPERAND_ASSERT(unit->regs[src2].source != RTLREG_UNDEFINED);
     }
+    OPERAND_ASSERT(!(src1 == 0 && src2 != 0));
 #endif
 
     insn->dest = dest;

@@ -34,10 +34,12 @@ int main(void)
     EXPECT(rtl_add_insn(unit, RTLOP_MOVE, reg2, reg1, 0, 0));
     EXPECT(rtl_add_insn(unit, RTLOP_MOVE, reg3, reg2, 0, 0));
     EXPECT(rtl_add_insn(unit, RTLOP_MOVE, reg4, reg3, 0, 0));
+    EXPECT(rtl_add_insn(unit, RTLOP_NOP, 0, 0, 0, 0));
     /* Set invalid opcodes and register sources.  These cases will never
      * be encountered in ordinary usage; this test is just to exercise the
      * default cases in various switch blocks. */
     unit->insns[1].opcode = (RTLOpcode)0;
+    unit->insns[4].src2 = reg4;
     unit->regs[reg2].result.opcode = (RTLOpcode)0;
     unit->regs[reg3].source = (RTLRegType)255;
 
@@ -52,8 +54,9 @@ int main(void)
                  "           r2: <invalid result opcode 0>\n"
                  "    3: MOVE       r4, r3\n"
                  "           r3: <invalid register source 255>\n"
+                 "    4: NOP        -, <missing operand>, r4\n"
                  "\n"
-                 "Block 0: <none> --> [0,3] --> <none>\n");
+                 "Block 0: <none> --> [0,4] --> <none>\n");
 
     rtl_destroy_unit(unit);
     binrec_destroy_handle(handle);

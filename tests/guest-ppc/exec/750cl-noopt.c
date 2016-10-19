@@ -36,7 +36,20 @@ int main(void)
         }
         FAIL("Failed to execute guest code");
     }
-    EXPECT_STREQ(get_log_messages(), NULL);
+
+    const char *log = get_log_messages();
+    if (!log) {
+        log = "";
+    }
+    while (*log) {
+        if (strncmp(log, "[info]", 6) != 0) {
+            break;
+        }
+        log += strcspn(log, "\n");
+        ASSERT(*log == '\n');
+        log++;
+    }
+    EXPECT_STREQ(log, "");
 
     int exitcode = EXIT_SUCCESS;
     const int expected_errors = 1077;

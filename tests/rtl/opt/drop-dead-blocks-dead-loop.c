@@ -28,10 +28,12 @@ static const char expected[] =
     #ifdef RTL_DEBUG_OPTIMIZE
         "[info] Branch at 2 has a cycle, not threading\n"
         "[info] Dropping dead block 1 (1-2)\n"
+        "[info] Killing instruction 2\n"
+        "[info] Killing instruction 1\n"
     #endif
     "    0: RETURN\n"
-    "    1: LABEL      L1\n"
-    "    2: GOTO       L1\n"
+    "    1: NOP\n"
+    "    2: NOP\n"
     "\n"
     "Block 0: <none> --> [0,0] --> <none>\n"
     ;

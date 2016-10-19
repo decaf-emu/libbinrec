@@ -18,136 +18,6 @@
 #include <stdio.h>
 
 /*************************************************************************/
-/************* Exported utility routines (library-internal) **************/
-/*************************************************************************/
-
-FORMAT(3, 4)
-int snprintf_assert(char *buf, size_t size, const char *format, ...)
-{
-    va_list args;
-    va_start(args, format);
-    int result = vsnprintf(buf, size, format, args);
-    va_end(args);
-    ASSERT((size_t)result < size);
-    return result;
-}
-
-/*-----------------------------------------------------------------------*/
-
-int format_int(char *buf, int bufsize, RTLDataType type, uint64_t value)
-{
-    switch (type) {
-      case RTLTYPE_INT32:
-        if ((uint32_t)value + 0x8000 >= 0x18000) {
-            /* i.e., value is outside [-0x8000,+0xFFFF] */
-            return snprintf_assert(buf, bufsize, "0x%X", (uint32_t)value);
-        } else {
-            return snprintf_assert(buf, bufsize, "%d", (int32_t)value);
-        }
-      case RTLTYPE_INT64:
-        if (value + 0x8000 >= 0x18000) {
-            return snprintf_assert(buf, bufsize, "0x%"PRIX64, value);
-        } else {
-            return snprintf_assert(buf, bufsize, "%d", (int32_t)value);
-        }
-      default:
-        ASSERT(type == RTLTYPE_ADDRESS);
-        return snprintf_assert(buf, bufsize, "0x%"PRIX64, value);
-    }
-}
-
-/*-----------------------------------------------------------------------*/
-
-int format_float(char *buf, int bufsize, float value)
-{
-    if (isnan(value)) {
-        return snprintf_assert(buf, bufsize, "nan(0x%X)",
-                               float_to_bits(value) & 0x007FFFFF);
-    } else if (isinf(value)) {
-        return snprintf_assert(buf, bufsize, value < 0.0f ? "-inf" : "inf");
-    } else {
-        int n = snprintf_assert(buf, bufsize, "%.8g", value);
-        if (!strchr(buf, '.')) {
-            n += snprintf_assert(buf+n, bufsize-n, ".0");
-        }
-        n += snprintf_assert(buf+n, bufsize-n, "f");
-        return n;
-    }
-}
-
-/*-----------------------------------------------------------------------*/
-
-int format_double(char *buf, int bufsize, double value)
-{
-    if (isnan(value)) {
-        return snprintf_assert(
-            buf, bufsize, "nan(0x%"PRIX64")",
-            double_to_bits(value) & UINT64_C(0x000FFFFFFFFFFFFF));
-    } else if (isinf(value)) {
-        return snprintf_assert(buf, bufsize, value < 0.0 ? "-inf" : "inf");
-    } else {
-        int n = snprintf_assert(buf, bufsize, "%.17g", value);
-        if (!strchr(buf, '.')) {
-            n += snprintf_assert(buf+n, bufsize-n, ".0");
-        }
-        return n;
-    }
-}
-
-/*-----------------------------------------------------------------------*/
-
-const char *rtl_type_name(RTLDataType type)
-{
-    static const char * const names[] = {
-        [RTLTYPE_INT32     ] = "int32",
-        [RTLTYPE_INT64     ] = "int64",
-        [RTLTYPE_ADDRESS   ] = "address",
-        [RTLTYPE_FLOAT32   ] = "float32",
-        [RTLTYPE_FLOAT64   ] = "float64",
-        [RTLTYPE_V2_FLOAT64] = "float64[2]",
-    };
-    ASSERT(type > 0 && type < lenof(names));
-    ASSERT(names[type]);
-    return names[type];
-}
-
-/*-----------------------------------------------------------------------*/
-
-const char *rtl_type_suffix(RTLDataType type)
-{
-    static const char * const suffixes[] = {
-        [RTLTYPE_INT32     ] = "i32",
-        [RTLTYPE_INT64     ] = "i64",
-        [RTLTYPE_ADDRESS   ] = "addr",
-        [RTLTYPE_FLOAT32   ] = "f32",
-        [RTLTYPE_FLOAT64   ] = "f64",
-        [RTLTYPE_V2_FLOAT64] = "f64x2",
-    };
-    ASSERT(type > 0 && type < lenof(suffixes));
-    ASSERT(suffixes[type]);
-    return suffixes[type];
-}
-
-/*-----------------------------------------------------------------------*/
-
-const char *rtl_source_name(RTLRegType source)
-{
-    static const char * const names[] = {
-        [RTLREG_UNDEFINED      ] = "undefined",
-        [RTLREG_CONSTANT       ] = "constant",
-        [RTLREG_CONSTANT_NOFOLD] = "constant_unfoldable",
-        [RTLREG_FUNC_ARG       ] = "argument",
-        [RTLREG_MEMORY         ] = "memory",
-        [RTLREG_ALIAS          ] = "alias",
-        [RTLREG_RESULT         ] = "result",
-        [RTLREG_RESULT_NOFOLD  ] = "result_unfoldable",
-    };
-    ASSERT((unsigned int)source < lenof(names));
-    ASSERT(names[source]);
-    return names[source];
-}
-
-/*************************************************************************/
 /**************************** Local routines *****************************/
 /*************************************************************************/
 
@@ -200,61 +70,6 @@ static bool add_block_edges(RTLUnit * const unit)
     }
 
     return true;
-}
-
-/*-----------------------------------------------------------------------*/
-
-/**
- * update_live_ranges:  Update the live range of any register live at the
- * beginning of a block targeted by a backward branch so that the register
- * is live through all branches that target the block.
- *
- * Worst-case execution time is O(n*m) in the number of blocks (n) and the
- * number of registers (m).  However, the register scan is only required
- * for blocks targeted by backward branches, and it terminates at the first
- * register born within or after the targeted block.
- *
- * [Parameters]
- *     unit: RTL unit.
- */
-static void update_live_ranges(RTLUnit * const unit)
-{
-    ASSERT(unit != NULL);
-    ASSERT(unit->insns != NULL);
-    ASSERT(unit->blocks != NULL);
-    ASSERT(unit->regs != NULL);
-
-    for (int block_index = 0; block_index != -1;
-         block_index = unit->blocks[block_index].next_block)
-    {
-        RTLBlock * const block = &unit->blocks[block_index];
-        int latest_entry_block = -1;
-        for (int entry_index = block_index; entry_index >= 0;
-             entry_index = unit->blocks[entry_index].entry_overflow)
-        {
-            const RTLBlock * const entry_block = &unit->blocks[entry_index];
-            for (int i = 0; (i < lenof(entry_block->entries)
-                             && entry_block->entries[i] >= 0); i++) {
-                if (block->entries[i] > latest_entry_block) {
-                    latest_entry_block = block->entries[i];
-                }
-            }
-        }
-        if (latest_entry_block >= block_index) {
-            const int birth_limit = block->first_insn;
-            const int min_death = unit->blocks[latest_entry_block].last_insn;
-            block->min_death = min_death;
-            for (int reg = unit->first_live_reg;
-                 reg != 0 && unit->regs[reg].birth < birth_limit;
-                 reg = unit->regs[reg].live_link)
-            {
-                if (unit->regs[reg].death >= birth_limit
-                 && unit->regs[reg].death < min_death) {
-                    unit->regs[reg].death = min_death;
-                }
-            }
-        }
-    }
 }
 
 /*-----------------------------------------------------------------------*/
@@ -678,6 +493,9 @@ static void rtl_decode_insn(const RTLUnit *unit, uint32_t index,
                 s += snprintf_assert(s, top - s, ", r%d", insn->src1);
             }
             if (insn->src2) {
+                if (!insn->src1) {
+                    s += snprintf_assert(s, top - s, ", <missing operand>");
+                }
                 s += snprintf_assert(s, top - s, ", r%d", insn->src2);
             }
             if (insn->src_imm) {
@@ -1392,9 +1210,6 @@ bool rtl_finalize_unit(RTLUnit *unit)
         return false;
     }
 
-    /* Update live ranges for registers used in loops. */
-    update_live_ranges(unit);
-
     unit->finalized = true;
     return true;
 }
@@ -1441,12 +1256,7 @@ bool rtl_optimize_unit(RTLUnit *unit, unsigned int flags)
     if (flags & BINREC_OPT_BASIC) {
         rtl_opt_thread_branches(unit);
         rtl_opt_drop_dead_blocks(unit);
-        rtl_opt_drop_dead_branches(unit);
-        if (flags & BINREC_OPT_DSE) {
-            /* Clear out any stores which are no longer used after
-             * dead branch dropping. */
-            rtl_opt_drop_dead_stores(unit);
-        }
+        rtl_opt_drop_dead_branches(unit, (flags & BINREC_OPT_DSE) != 0);
     }
 
     /* Free the "seen" flag buffer before returning. */

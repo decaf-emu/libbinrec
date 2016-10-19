@@ -24,6 +24,7 @@ static int add_rtl(RTLUnit *unit)
 static const char expected[] =
     #ifdef RTL_DEBUG_OPTIMIZE
         "[info] Dropping dead block 1 (1-1)\n"
+        "[info] Killing instruction 1\n"
     #endif
     "    0: RETURN\n"
     "    1: NOP\n"

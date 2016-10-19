@@ -30,14 +30,18 @@ static int add_rtl(RTLUnit *unit)
 static const char expected[] =
     #ifdef RTL_DEBUG_OPTIMIZE
         "[info] Branch at 3 has a cycle, not threading\n"
-        "[info] Dropping dead block 1 (2-3)\n"
         "[info] Dropping dead block 2 (4-4)\n"
+        "[info] Killing instruction 4\n"
+        "[info] Dropping dead block 1 (2-3)\n"
+        "[info] Killing instruction 3\n"
+        "[info] r1 no longer used, setting death = birth\n"
+        "[info] Killing instruction 2\n"
     #endif
     "    0: LOAD_ARG   r1, 0\n"
     "    1: RETURN\n"
-    "    2: LABEL      L1\n"
-    "    3: GOTO_IF_Z  r1, L1\n"
-    "    4: GOTO       L1\n"
+    "    2: NOP\n"
+    "    3: NOP\n"
+    "    4: NOP\n"
     "\n"
     "Block 0: <none> --> [0,1] --> <none>\n"
     ;

@@ -463,13 +463,6 @@ extern int rtl_alloc_alias_register(RTLUnit *unit, RTLDataType type);
 /**
  * rtl_set_alias_storage:  Define the storage location for an alias register.
  *
- * Currently, using a constant value (including an operation which could be
- * folded to a constant) as an alias base may cause the register to be
- * eliminated during optimization, which in turn may cause alias load and
- * store operations to be translated incorrectly.  Alias bases should
- * always be non-constant values, such as function arguments or values
- * loaded from (non-read-only) memory.
- *
  * Binding a memory location to an alias register with this function has
  * the following implications:
  *

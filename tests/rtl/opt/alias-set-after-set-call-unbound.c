@@ -39,7 +39,7 @@ static int add_rtl(RTLUnit *unit)
 
 static const char expected[] =
     #ifdef RTL_DEBUG_OPTIMIZE
-        "[info] Dropping dead store to a1 at 3\n"
+        "[info] Killing instruction 3\n"
         "[info] r2 no longer used, setting death = birth\n"
     #endif
     "    0: LOAD_IMM   r1, 0x1\n"

@@ -68,6 +68,11 @@ static const uint8_t expected_code[] = {
     0xC3,                               // ret
 };
 
-static const char expected_log[] = "";
+static const char expected_log[] =
+    #ifdef RTL_DEBUG_OPTIMIZE
+        "[info] Killing instruction 2\n"
+        "[info] Killing instruction 4\n"
+    #endif
+    "";
 
 #include "tests/rtl-translate-test.i"

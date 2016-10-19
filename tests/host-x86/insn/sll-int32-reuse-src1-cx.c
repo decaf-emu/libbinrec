@@ -28,7 +28,7 @@ static int add_rtl(RTLUnit *unit)
     EXPECT(reg3 = rtl_alloc_register(unit, RTLTYPE_INT32));
     /* Can't reuse ECX since CL is needed for the shift count. */
     EXPECT(rtl_add_insn(unit, RTLOP_SLL, reg3, reg1, reg2, 0));
-    EXPECT(rtl_add_insn(unit, RTLOP_NOP, 0, 0, reg2, 0));
+    EXPECT(rtl_add_insn(unit, RTLOP_NOP, 0, reg2, 0, 0));
 
     return EXIT_SUCCESS;
 }

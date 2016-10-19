@@ -18,9 +18,9 @@
 
 /**
  * is_reg_killable:  Return whether the given register has no references
- * other than the instruction that sets it and the given instruction
- * (implying that the register can be eliminated with no effect on other
- * code).
+ * between the instruction that sets it and the given instruction (implying
+ * that the register can be eliminated with no effect on other code if the
+ * register dies at the given instruction).
  *
  * [Parameters]
  *     unit: RTL unit.
@@ -34,25 +34,11 @@ static PURE_FUNCTION bool is_reg_killable(
     const RTLUnit * const unit, const int reg_index, const int insn_index)
 {
     const RTLRegister * const reg = &unit->regs[reg_index];
-
-    if (reg->death != insn_index) {
+    if (reg->death > insn_index) {
         return false;
+    } else {
+        return rtl_opt_prev_reg_use(unit, reg_index, insn_index) == reg->birth;
     }
-    for (int i = insn_index - 1; i > reg->birth; i--) {
-        const RTLInsn * const check_insn = &unit->insns[i];
-        if (check_insn->src1 == reg_index || check_insn->src2 == reg_index) {
-            return false;
-        }
-        const bool has_src3 = (check_insn->opcode == RTLOP_SELECT
-                            || check_insn->opcode == RTLOP_CMPXCHG
-                            || check_insn->opcode == RTLOP_CALL
-                            || check_insn->opcode == RTLOP_CALL_TRANSPARENT);
-        if (has_src3 && check_insn->src3 == reg_index) {
-            return false;
-        }
-    }
-
-    return true;
 }
 
 /*-----------------------------------------------------------------------*/
@@ -63,20 +49,13 @@ static PURE_FUNCTION bool is_reg_killable(
  * [Parameters]
  *     unit: RTL unit.
  *     reg_index: Register to eliminate.
+ *     dse: True to recursively eliminate dead registers.
  */
-static void kill_reg(const RTLUnit * const unit, const int reg_index)
+static void kill_reg(RTLUnit * const unit, const int reg_index, bool dse)
 {
     RTLRegister * const reg = &unit->regs[reg_index];
-    RTLInsn * const birth_insn = &unit->insns[reg->birth];
-
-    birth_insn->opcode = RTLOP_NOP;
-    birth_insn->dest = 0;
-    birth_insn->src1 = 0;
-    birth_insn->src2 = 0;
-    birth_insn->src_imm = 0;
-
-    reg->live = false;
     reg->death = reg->birth;
+    rtl_opt_kill_insn(unit, reg->birth, dse);
 }
 
 /*-----------------------------------------------------------------------*/
@@ -96,16 +75,19 @@ static void kill_reg(const RTLUnit * const unit, const int reg_index)
  *     it was not eliminated).
  */
 static int maybe_eliminate_zcast(
-    const RTLUnit * const unit, const int reg_index, const int insn_index)
+    RTLUnit * const unit, const int reg_index, const int insn_index)
 {
     RTLRegister * const reg = &unit->regs[reg_index];
 
     if ((reg->source == RTLREG_RESULT || reg->source == RTLREG_RESULT_NOFOLD)
-     && reg->result.opcode == RTLOP_ZCAST
-     && is_reg_killable(unit, reg_index, insn_index)) {
+     && reg->result.opcode == RTLOP_ZCAST) {
         const int zcast_src = reg->result.src1;
-        kill_reg(unit, reg_index);
-        return zcast_src;
+        if (is_reg_killable(unit, reg_index, insn_index)) {
+            /* Don't kill recursively because we want to keep the source
+             * operand. */
+            kill_reg(unit, reg_index, false);
+            return zcast_src;
+        }
     }
 
     return reg_index;
@@ -178,7 +160,7 @@ void host_x86_optimize_address(HostX86Context * const ctx, int insn_index)
 
     /* Eliminate the addition instruction and its output. */
     const int add_insn_index = src1_reg->birth;
-    kill_reg(unit, src1);
+    kill_reg(unit, src1, false);
 
     /* If either operand is the output of a ZCAST instruction (and is not
      * used elsewhere), replace it with the ZCAST input and eliminate the
@@ -204,9 +186,17 @@ void host_x86_optimize_address(HostX86Context * const ctx, int insn_index)
     /* Extend the live ranges of the operands in case they died before
      * the memory access instruction. */
     if (unit->regs[addend1].death < insn_index) {
+#ifdef RTL_DEBUG_OPTIMIZE
+        log_info(unit->handle, "Extending r%d live range to %d",
+                 addend1, insn_index);
+#endif
         unit->regs[addend1].death = insn_index;
     }
     if (addend2 && unit->regs[addend2].death < insn_index) {
+#ifdef RTL_DEBUG_OPTIMIZE
+        log_info(unit->handle, "Extending r%d live range to %d",
+                 addend2, insn_index);
+#endif
         unit->regs[addend2].death = insn_index;
     }
 }

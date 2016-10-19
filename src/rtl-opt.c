@@ -98,6 +98,65 @@ static inline uint64_t reg_value_i64(const RTLRegister * const reg)
 /*-----------------------------------------------------------------------*/
 
 /**
+ * opcode_has_src3:  Return whether the given opcode takes a third source
+ * register in the RTLInsn.src3 field.
+ */
+static inline CONST_FUNCTION bool opcode_has_src3(RTLOpcode opcode)
+{
+    return opcode == RTLOP_SELECT
+        || opcode == RTLOP_CMPXCHG
+        || opcode == RTLOP_CALL
+        || opcode == RTLOP_CALL_TRANSPARENT;
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
+ * opcode_has_alias:  Return whether the given opcode takes an alias index
+ * in the RTLInsn.alias field.
+ */
+static inline CONST_FUNCTION bool opcode_has_alias(RTLOpcode opcode)
+{
+    return opcode == RTLOP_GET_ALIAS
+        || opcode == RTLOP_SET_ALIAS;
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
+ * prev_reg_use:  Return the latest use of the given register prior to the
+ * given instruction.  Equivalent to (and used to implement)
+ * rtl_opt_prev_reg_use(), but implemented as a static function to allow
+ * inlining in this file.
+ *
+ * [Parameters]
+ *     unit: RTL unit.
+ *     reg_index: Index of register to check.
+ *     insn_index: Instruction index to use as endpoint of check.
+ * [Return value]
+ *     Instruction index of the latest reference to reg_index before
+ *     insn_index.
+ */
+static inline PURE_FUNCTION int prev_reg_use(
+    const RTLUnit * const unit, const int reg_index, const int insn_index)
+{
+    const RTLRegister * const reg = &unit->regs[reg_index];
+    for (int prev_use = insn_index - 1; prev_use > reg->birth; prev_use--) {
+        const RTLInsn * const insn = &unit->insns[prev_use];
+        if (insn->src1 == reg_index || insn->src2 == reg_index
+         || (opcode_has_src3(insn->opcode) && insn->src3 == reg_index)
+         || (opcode_has_alias(insn->opcode)
+             && unit->aliases[insn->alias].base == reg_index))
+        {
+            return prev_use;
+        }
+    }
+    return reg->birth;
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
  * rollback_reg_death:  Roll back the given register's death time to the
  * previous instruction (before reg->death) at which it is referenced.
  *
@@ -108,41 +167,27 @@ static inline uint64_t reg_value_i64(const RTLRegister * const reg)
  *     True if the register is no longer referenced after being set,
  *     false otherwise.
  */
-static bool rollback_reg_death(RTLUnit * const unit, const int reg_index)
+static bool rollback_reg_death(const RTLUnit * const unit, const int reg_index)
 {
     ASSERT(unit);
     ASSERT(reg_index);
     ASSERT(unit->regs[reg_index].live);
 
     RTLRegister * const reg = &unit->regs[reg_index];
-
-    for (int insn_index = reg->death-1; insn_index > reg->birth; insn_index--) {
-        const RTLInsn * const insn = &unit->insns[insn_index];
-        if (insn->src1 == reg_index || insn->src2 == reg_index) {
-          still_used:
+    reg->death = prev_reg_use(unit, reg_index, reg->death);
+    if (reg->death > reg->birth) {
 #ifdef RTL_DEBUG_OPTIMIZE
-            log_info(unit->handle, "r%d still used at %d",
-                     reg_index, insn_index);
+        log_info(unit->handle, "r%d death rolled back to %d",
+                 reg_index, reg->death);
 #endif
-            reg->death = insn_index;
-            return false;
-        }
-        const bool has_src3 = (insn->opcode == RTLOP_SELECT
-                            || insn->opcode == RTLOP_CMPXCHG
-                            || insn->opcode == RTLOP_CALL
-                            || insn->opcode == RTLOP_CALL_TRANSPARENT);
-        if (has_src3 && insn->src3 == reg_index) {
-            goto still_used;
-        }
-    }  // for (insn_index)
-
-    /* If we got this far, nothing else uses the register. */
+        return false;
+    } else {
 #ifdef RTL_DEBUG_OPTIMIZE
-    log_info(unit->handle, "r%d no longer used, setting death = birth",
-             reg_index);
+        log_info(unit->handle, "r%d no longer used, setting death = birth",
+                 reg_index);
 #endif
-    reg->death = reg->birth;
-    return true;
+        return true;
+    }
 }
 
 /*-----------------------------------------------------------------------*/
@@ -1137,34 +1182,6 @@ static bool is_alias_store_visible(RTLUnit * const unit, AliasRef **alias_info,
 /*-----------------------------------------------------------------------*/
 
 /**
- * kill_alias_store:  Kill (change to NOP) the given SET_ALIAS instruction.
- *
- * [Parameters]
- *     unit: RTL unit.
- *     insn_index: Index of instruction to kill.
- */
-static void kill_alias_store(RTLUnit * const unit, const int insn_index)
-{
-    ASSERT(unit);
-    ASSERT(unit->insns[insn_index].opcode == RTLOP_SET_ALIAS);
-
-    RTLInsn *insn = &unit->insns[insn_index];
-#ifdef RTL_DEBUG_OPTIMIZE
-    log_info(unit->handle, "Dropping dead store to a%d at %d",
-             insn->alias, insn_index);
-#endif
-    const int src1 = insn->src1;
-    insn->opcode = RTLOP_NOP;
-    insn->src1 = 0;
-    insn->src_imm = 0;
-    if (unit->regs[src1].death == insn_index) {
-        rollback_reg_death(unit, src1);
-    }
-}
-
-/*-----------------------------------------------------------------------*/
-
-/**
  * maybe_kill_store:  Kill (change to NOP) the instruction that sets the
  * given register if the instruction is a killable one.  Recurseive helper
  * for rtl_opt_drop_dead_stores().
@@ -1192,38 +1209,7 @@ static void maybe_kill_store(RTLUnit * const unit, RTLRegister * const reg)
     log_info(unit->handle, "Dropping dead store to r%d at %d",
              insn->dest, insn_index);
 #endif
-
-    if (insn->src1) {
-        RTLRegister * const src1_reg = &unit->regs[insn->src1];
-        if (src1_reg->death == insn_index) {
-            if (rollback_reg_death(unit, insn->src1)) {
-                maybe_kill_store(unit, src1_reg);
-            }
-        }
-    }
-    if (insn->src2) {
-        RTLRegister * const src2_reg = &unit->regs[insn->src2];
-        if (src2_reg->death == insn_index) {
-            if (rollback_reg_death(unit, insn->src2)) {
-                maybe_kill_store(unit, src2_reg);
-            }
-        }
-    }
-    if (insn->opcode == RTLOP_SELECT) {
-        ASSERT(insn->src3);
-        RTLRegister * const src3_reg = &unit->regs[insn->src3];
-        if (src3_reg->death == insn_index) {
-            if (rollback_reg_death(unit, insn->src3)) {
-                maybe_kill_store(unit, src3_reg);
-            }
-        }
-    }
-
-    insn->opcode = RTLOP_NOP;
-    insn->dest = 0;
-    insn->src1 = 0;
-    insn->src2 = 0;
-    insn->src_imm = 0;
+    rtl_opt_kill_insn(unit, reg->birth, true);
 }
 
 /*-----------------------------------------------------------------------*/
@@ -1324,6 +1310,64 @@ static void visit_block(RTLUnit * const unit, const int block_index)
 /********************** Internal interface routines **********************/
 /*************************************************************************/
 
+int rtl_opt_prev_reg_use(const RTLUnit *unit, int reg_index, int insn_index)
+{
+    return prev_reg_use(unit, reg_index, insn_index);
+}
+
+/*-----------------------------------------------------------------------*/
+
+void rtl_opt_kill_insn(RTLUnit *unit, int insn_index, bool dse)
+{
+    RTLInsn * const insn = &unit->insns[insn_index];
+    /* Make sure to update alias base live ranges as well! */
+    const int src1 = (insn->opcode == RTLOP_GET_ALIAS
+                      ? unit->aliases[insn->alias].base : insn->src1);
+    const int src2 = (insn->opcode == RTLOP_SET_ALIAS
+                      ? unit->aliases[insn->alias].base : insn->src2);
+    const int src3 = opcode_has_src3(insn->opcode) ? insn->src3 : 0;
+
+#ifdef RTL_DEBUG_OPTIMIZE
+    log_info(unit->handle, "Killing instruction %d", insn_index);
+#endif
+
+    /* SSA implies the destination register is no longer live. */
+    if (insn->dest) {
+        ASSERT(unit->regs[insn->dest].death == insn_index);
+        unit->regs[insn->dest].live = false;
+    }
+
+    /* Rewrite the instruction to an empty NOP, which will be skipped by
+     * the output translator. */
+    insn->opcode = RTLOP_NOP;
+    insn->dest = 0;
+    insn->src1 = 0;
+    insn->src2 = 0;
+    insn->src_imm = 0;
+
+    /* Update live ranges of input operands as appropriate.  Do src1 last
+     * to try and maximize tail recursion. */
+    ASSERT(src2 == 0 || src1 != 0);
+    ASSERT(src3 == 0 || src2 != 0);
+    if (src3 && unit->regs[src3].death == insn_index) {
+        if (rollback_reg_death(unit, src3) && dse) {
+            rtl_opt_kill_insn(unit, unit->regs[src3].birth, dse);
+        }
+    }
+    if (src2 && unit->regs[src2].death == insn_index) {
+        if (rollback_reg_death(unit, src2) && dse) {
+            rtl_opt_kill_insn(unit, unit->regs[src2].birth, dse);
+        }
+    }
+    if (src1 && unit->regs[src1].death == insn_index) {
+        if (rollback_reg_death(unit, src1) && dse) {
+            rtl_opt_kill_insn(unit, unit->regs[src1].birth, dse);
+        }
+    }
+}
+
+/*-----------------------------------------------------------------------*/
+
 void rtl_opt_alias_data_flow(RTLUnit *unit)
 {
     ASSERT(unit);
@@ -1370,7 +1414,7 @@ void rtl_opt_alias_data_flow(RTLUnit *unit)
             switch (insn->opcode) {
               case RTLOP_SET_ALIAS:
                 if (alias_ref->has_set && !alias_ref->set_used) {
-                    kill_alias_store(unit, alias_ref->set_insn);
+                    rtl_opt_kill_insn(unit, alias_ref->set_insn, false);
                 }
                 alias_ref->has_set = true;
                 alias_ref->set_used = false;
@@ -1415,7 +1459,7 @@ void rtl_opt_alias_data_flow(RTLUnit *unit)
                        sizeof(*unit->block_seen) * unit->num_blocks);
                 if (!is_alias_store_visible(unit, alias_info, alias,
                                             block_index)) {
-                    kill_alias_store(unit, alias_ref->set_insn);
+                    rtl_opt_kill_insn(unit, alias_ref->set_insn, false);
                 }
             }
         }
@@ -1511,18 +1555,26 @@ void rtl_opt_drop_dead_blocks(RTLUnit *unit)
     memset(unit->block_seen, 0, unit->num_blocks * sizeof(*unit->block_seen));
     visit_block(unit, 0);
 
-    /* Remove all blocks which are not reachable. */
-    for (int i = 0; i >= 0; i = unit->blocks[i].next_block) {
+    /* Remove all blocks which are not reachable, and kill all instructions
+     * in removed blocks so that register live ranges properly reflect the
+     * remaining code.  Do this in reverse order to avoid false warnings
+     * about skipped initializations. */
+    for (int i = unit->last_block; i >= 0; i = unit->blocks[i].prev_block) {
         RTLBlock * const block = &unit->blocks[i];
         if (!unit->block_seen[i]) {
 #ifdef RTL_DEBUG_OPTIMIZE
             log_info(unit->handle, "Dropping dead block %d (%d-%d)",
                      i, block->first_insn, block->last_insn);
 #endif
+            /* The first block is always reachable by definition, so any
+             * unreachable block should have a valid prev_block pointer. */
             ASSERT(block->prev_block >= 0);
             unit->blocks[block->prev_block].next_block = block->next_block;
             if (block->next_block >= 0) {
                 unit->blocks[block->next_block].prev_block = block->prev_block;
+            } else {
+                ASSERT(unit->last_block == i);
+                unit->last_block = block->prev_block;
             }
             /* Remove all exiting edges (required since some edges may go
              * to non-dead blocks).  Note that we can just iterate on
@@ -1530,6 +1582,16 @@ void rtl_opt_drop_dead_blocks(RTLUnit *unit)
              * the array downward after removing the edge. */
             while (block->exits[0] >= 0) {
                 rtl_block_remove_edge(unit, i, 0);
+            }
+            /* Kill all instructions in the block. */
+            for (int j = block->last_insn; j >= block->first_insn; j--) {
+                const RTLInsn * const insn = &unit->insns[j];
+                if (insn->dest && UNLIKELY(unit->regs[insn->dest].death > j)) {
+                    log_warning(unit->handle, "Initialization of r%d at %d"
+                                " is unreachable", insn->dest, j);
+                } else {
+                    rtl_opt_kill_insn(unit, j, false);
+                }
             }
         }
     }
@@ -1539,7 +1601,7 @@ void rtl_opt_drop_dead_blocks(RTLUnit *unit)
 
 /*-----------------------------------------------------------------------*/
 
-void rtl_opt_drop_dead_branches(RTLUnit *unit)
+void rtl_opt_drop_dead_branches(RTLUnit *unit, bool dse)
 {
     ASSERT(unit);
     ASSERT(unit->insns);
@@ -1560,15 +1622,7 @@ void rtl_opt_drop_dead_branches(RTLUnit *unit)
                 log_info(unit->handle, "Dropping branch at %d to next"
                          " insn", block->last_insn);
 #endif
-                if (opcode == RTLOP_GOTO_IF_Z || opcode == RTLOP_GOTO_IF_NZ) {
-                    if (unit->regs[insn->src1].death == block->last_insn) {
-                        rollback_reg_death(unit, insn->src1);
-                    }
-                }
-                insn->opcode = RTLOP_NOP;
-                insn->src1 = 0;
-                insn->src2 = 0;
-                insn->src_imm = 0;
+                rtl_opt_kill_insn(unit, block->last_insn, dse);
             }
         }
     }

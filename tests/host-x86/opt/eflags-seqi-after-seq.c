@@ -26,7 +26,7 @@ static int add_rtl(RTLUnit *unit)
     EXPECT(reg3 = rtl_alloc_register(unit, RTLTYPE_INT32));
     EXPECT(rtl_add_insn(unit, RTLOP_SEQ, reg3, reg1, reg2, 0));
     EXPECT(reg4 = rtl_alloc_register(unit, RTLTYPE_INT32));
-    EXPECT(rtl_add_insn(unit, RTLOP_SEQI, reg4, reg1, 0, 0));
+    EXPECT(rtl_add_insn(unit, RTLOP_SEQI, reg4, reg1, 0, 4));
 
     return EXIT_SUCCESS;
 }
@@ -38,7 +38,7 @@ static const uint8_t expected_code[] = {
     0x3B,0xC1,                          // cmp %ecx,%eax
     0x0F,0x94,0xC1,                     // setz %cl
     0x0F,0xB6,0xC9,                     // movzbl %cl,%ecx
-    0x85,0xC0,                          // test %eax,%eax
+    0x83,0xF8,0x04,                     // cmp $4,%eax
     0x0F,0x94,0xC0,                     // setz %al
     0x0F,0xB6,0xC0,                     // movzbl %al,%eax
     0x48,0x83,0xC4,0x08,                // add $8,%rsp

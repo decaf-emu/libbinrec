@@ -1137,6 +1137,16 @@ static bool allocate_regs_for_block(HostX86Context *ctx, int block_index)
     const RTLBlock * const block = &unit->blocks[block_index];
     HostX86BlockInfo *block_info = &ctx->blocks[block_index];
 
+#ifdef ENABLE_OPERAND_SANITY_CHECKS
+    for (int i = 0; i < 32; i++) {
+        const int reg = ctx->reg_map[i];
+        if (reg && unit->regs[reg].death < block->first_insn) {
+            log_ice(ctx->handle, "Register %d in live set but not live on"
+                    " entry to block %d", reg, block_index);
+            return false;
+        }
+    }
+#endif
     STATIC_ASSERT(sizeof(block_info->initial_reg_map) == sizeof(ctx->reg_map),
                   "Register map size mismatch");
     memcpy(block_info->initial_reg_map, ctx->reg_map, sizeof(ctx->reg_map));
@@ -1161,7 +1171,7 @@ static bool allocate_regs_for_block(HostX86Context *ctx, int block_index)
     const int32_t last_insn = block->last_insn;
     for (int i = 0; i < 32; i++) {
         const int reg = ctx->reg_map[i];
-        if (reg && unit->regs[reg].death == last_insn) {
+        if (reg && unit->regs[reg].death <= last_insn) {
             const HostX86RegInfo *reg_info = &ctx->regs[reg];
             ASSERT(reg_info->host_allocated);
             unassign_register(ctx, reg, reg_info);
@@ -1191,7 +1201,7 @@ static void first_pass_for_block(HostX86Context *ctx, int block_index)
     ASSERT(block_index >= 0);
     ASSERT(block_index < ctx->unit->num_blocks);
 
-    const RTLUnit * const unit = ctx->unit;
+    RTLUnit * const unit = ctx->unit;
     const RTLBlock * const block = &unit->blocks[block_index];
     HostX86BlockInfo * const block_info = &ctx->blocks[block_index];
     const bool do_fixed_regs =
@@ -1259,11 +1269,9 @@ static void first_pass_for_block(HostX86Context *ctx, int block_index)
                  * place so its value gets stored to the associated storage. */
                 if (!block_info->has_nontail_call
                  || !unit->aliases[insn->alias].base) {
-                    RTLInsn *last_set =
-                        &unit->insns[ctx->last_set_alias[insn->alias]];
-                    last_set->opcode = RTLOP_NOP;
-                    last_set->src1 = 0;
-                    last_set->src_imm = 0;
+                    rtl_opt_kill_insn(
+                        unit, ctx->last_set_alias[insn->alias],
+                        (ctx->handle->common_opt & BINREC_OPT_DSE) != 0);
                 }
             }
             block_info->alias_store[insn->alias] = insn->src1;
@@ -1672,6 +1680,9 @@ bool host_x86_allocate_registers(HostX86Context *ctx)
             alias->offset = allocate_frame_slot(ctx, alias->type);
         }
     }
+
+    /* Update live ranges for registers live at backward branch targets. */
+    rtl_update_live_ranges(unit);
 
     /* First pass: record alias info, and allocate fixed regs if enabled. */
     ctx->nontail_call_list = -1;

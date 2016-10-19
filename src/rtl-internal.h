@@ -436,6 +436,41 @@ static inline void rtl_free(const RTLUnit *unit, void *ptr)
 /*---------------------------- Optimization -----------------------------*/
 
 /**
+ * rtl_opt_prev_reg_use:  Return the latest use of the given register prior
+ * to the given instruction.  If the register is not referenced by any
+ * instructions between its birth and the given instruction, the index of
+ * its birth instruction is returned.
+ *
+ * [Parameters]
+ *     unit: RTL unit.
+ *     reg_index: Index of register to check.
+ *     insn_index: Instruction index to use as endpoint of check.
+ * [Return value]
+ *     Instruction index of the latest reference to reg_index before
+ *     insn_index.
+ */
+extern PURE_FUNCTION int rtl_opt_prev_reg_use(
+    const RTLUnit *unit, int reg_index, int insn_index);
+
+/**
+ * rtl_opt_kill_insn:  Replace the given instruction with a NOP.  If any
+ * of the instruction's input operands died at that instruction, roll their
+ * deaths back to the previous instruction at which they are referenced; if
+ * such a register has no other references after the instruction that sets
+ * it and if dse is true, recursively kill the instruction that sets it.
+ *
+ * Helper function for optimization routines.
+ *
+ * [Parameters]
+ *     unit: RTL unit.
+ *     insn_index: Index of instruction to kill.
+ *     dse: True to recursively kill stores which become dead; false to
+ *         leave them alone.
+ */
+#define rtl_opt_kill_insn INTERNAL(rtl_opt_kill_insn)
+extern void rtl_opt_kill_insn(RTLUnit *unit, int insn_index, bool dse);
+
+/**
  * rtl_opt_alias_data_flow:  Analyze data flow through aliases in the given
  * unit and eliminate SET_ALIAS instructions which are not visible to any
  * subsequent alias references.  Aliases with bound storage (from
@@ -487,9 +522,11 @@ extern void rtl_opt_drop_dead_blocks(RTLUnit *unit);
  *
  * [Parameters]
  *     unit: RTL unit.
+ *     dse: True to eliminate dead stores resulting from dropped branches,
+ *         false to leave dead stores alone.
  */
 #define rtl_opt_drop_dead_branches INTERNAL(rtl_opt_drop_dead_branches)
-extern void rtl_opt_drop_dead_branches(RTLUnit *unit);
+extern void rtl_opt_drop_dead_branches(RTLUnit *unit, bool dse);
 
 /**
  * rtl_opt_drop_dead_stores:  Search an RTL unit for instructions that
@@ -624,6 +661,22 @@ extern CONST_FUNCTION const char *rtl_type_suffix(RTLDataType type);
  */
 #define rtl_source_name INTERNAL(rtl_source_name)
 extern CONST_FUNCTION const char *rtl_source_name(RTLRegType source);
+
+/**
+ * rtl_update_live_ranges:  Update the live range of any register live at
+ * the beginning of a block targeted by a backward branch so that the
+ * register is live through all branches that target the block.
+ *
+ * Worst-case execution time is O(n*m) in the number of blocks (n) and the
+ * number of registers (m).  However, the register scan is only required
+ * for blocks targeted by backward branches, and it terminates at the first
+ * register born within or after the targeted block.
+ *
+ * [Parameters]
+ *     unit: RTL unit.
+ */
+#define rtl_update_live_ranges INTERNAL(rtl_update_live_ranges)
+extern void rtl_update_live_ranges(RTLUnit *unit);
 
 /*************************************************************************/
 /*************************************************************************/
