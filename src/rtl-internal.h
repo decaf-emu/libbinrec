@@ -610,16 +610,19 @@ extern int format_double(char *buf, int bufsize, double value);
 /**
  * rtl_type_name:  Return an appropriate name for the given data type.
  */
+#define rtl_type_name INTERNAL(rtl_type_name)
 extern CONST_FUNCTION const char *rtl_type_name(RTLDataType type);
 
 /**
  * rtl_type_suffix:  Return an appropriate suffix for the given data type.
  */
-extern CONST_FUNCTION const char *type_suffix(RTLDataType type);
+#define rtl_type_suffix INTERNAL(rtl_type_suffix)
+extern CONST_FUNCTION const char *rtl_type_suffix(RTLDataType type);
 
 /**
  * rtl_source_name:  Return an appropriate name for the given register source.
  */
+#define rtl_source_name INTERNAL(rtl_source_name)
 extern CONST_FUNCTION const char *rtl_source_name(RTLRegType source);
 
 /*************************************************************************/

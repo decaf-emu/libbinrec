@@ -113,7 +113,7 @@ const char *rtl_type_name(RTLDataType type)
 
 /*-----------------------------------------------------------------------*/
 
-const char *type_suffix(RTLDataType type)
+const char *rtl_type_suffix(RTLDataType type)
 {
     static const char * const suffixes[] = {
         [RTLTYPE_INT32     ] = "i32",
@@ -370,7 +370,7 @@ static void rtl_describe_register(const RTLRegister *reg,
                     ? (reg->memory.is_signed ? "s16" : "u16")
                     : (reg->memory.is_signed ? "s8" : "u8"));
         } else {
-            type = type_suffix(reg->type);
+            type = rtl_type_suffix(reg->type);
         }
         snprintf(buf, bufsize, "@%d(r%d).%s%s",
                  reg->memory.offset, reg->memory.base, type,
@@ -522,11 +522,11 @@ static void rtl_describe_register(const RTLRegister *reg,
             break;
           case RTLOP_ATOMIC_INC:
             snprintf(buf, bufsize, "atomic_inc((r%d).%s)",
-                     reg->result.src1, type_suffix(reg->type));
+                     reg->result.src1, rtl_type_suffix(reg->type));
             break;
           case RTLOP_CMPXCHG:
             snprintf(buf, bufsize, "cmpxchg((r%d).%s, r%d, r%d)",
-                     reg->result.src1, type_suffix(reg->type),
+                     reg->result.src1, rtl_type_suffix(reg->type),
                      reg->result.src2, reg->result.src3);
             break;
           case RTLOP_CALL:
