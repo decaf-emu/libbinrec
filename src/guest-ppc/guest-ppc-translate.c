@@ -29,11 +29,14 @@ static bool init_unit(GuestPPCContext *ctx)
 {
     RTLUnit * const unit = ctx->unit;
 
-    /* Allocate a label for each basic block and for the epilogue. */
+    /* Allocate a label for each basic block that is a branch target
+     * We don't allocate a label for the epilogue unless and until it
+     * ends up being needed. */
     for (int i = 0; i < ctx->num_blocks; i++) {
-        ctx->blocks[i].label = rtl_alloc_label(unit);
+        if (ctx->blocks[i].is_branch_target) {
+            ctx->blocks[i].label = rtl_alloc_label(unit);
+        }
     }
-    ctx->epilogue_label = rtl_alloc_label(unit);
 
     /* Allocate a register for the guest processor state block, and fetch
      * the state block pointer from the function parameter. */
@@ -170,7 +173,9 @@ static bool add_epilogue(GuestPPCContext *ctx)
 {
     RTLUnit * const unit = ctx->unit;
 
-    rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, ctx->epilogue_label);
+    if (ctx->epilogue_label) {
+        rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, ctx->epilogue_label);
+    }
     guest_ppc_flush_cr(ctx, false);
     rtl_add_insn(unit, RTLOP_RETURN, 0, 0, 0, 0);
 

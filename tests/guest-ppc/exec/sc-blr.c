@@ -62,7 +62,6 @@ int main(void)
         }
         FAIL("Failed to execute guest code");
     }
-    EXPECT_STREQ(get_log_messages(), NULL);
 
     EXPECT_EQ(state.gpr[3], 1);
     EXPECT_EQ(sc_r3, 1);

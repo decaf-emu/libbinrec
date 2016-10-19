@@ -77,7 +77,6 @@ int main(void)
         }
         FAIL("Failed to execute guest code");
     }
-    EXPECT_STREQ(get_log_messages(), NULL);
 
     EXPECT_EQ(branch_counter, 3);
 

@@ -1045,12 +1045,14 @@ bool guest_ppc_scan(GuestPPCContext *ctx, uint32_t limit)
                     target = address + disp;
                 }
                 if (target >= start && target <= aligned_limit) {
-                    if (UNLIKELY(!get_block(ctx, target))) {
+                    GuestPPCBlockInfo *target_block = get_block(ctx, target);
+                    if (UNLIKELY(!target_block)) {
                         log_error(ctx->handle, "Out of memory expanding basic"
                                   " block table for branch target 0x%X at"
                                   " 0x%X", target, address);
                         return false;
                     }
+                    target_block->is_branch_target = true;
                 }
             }
 

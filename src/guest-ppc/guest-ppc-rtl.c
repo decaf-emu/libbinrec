@@ -903,7 +903,7 @@ static void translate_branch_label(
         rtl_add_insn(unit, RTLOP_CALL,
                      callback_result, func, ctx->psb_reg, rtl_address);
         rtl_add_insn(unit, RTLOP_GOTO_IF_Z,
-                     0, callback_result, 0, ctx->epilogue_label);
+                     0, callback_result, 0, guest_ppc_get_epilogue_label(ctx));
     }
 
     rtl_add_insn(unit, branch_op, 0, test_reg, 0, target_label);
@@ -976,7 +976,7 @@ static void translate_branch_terminal(
     }
     set_nia(ctx, target);
     post_insn_callback(ctx, address);
-    rtl_add_insn(unit, RTLOP_GOTO, 0, 0, 0, ctx->epilogue_label);
+    rtl_add_insn(unit, RTLOP_GOTO, 0, 0, 0, guest_ppc_get_epilogue_label(ctx));
 
     if (skip_label) {
         rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, skip_label);
@@ -2574,7 +2574,8 @@ static inline void translate_x1F(
         store_live_regs(ctx, true, true);
         set_nia_imm(ctx, address + 4);
         post_insn_callback(ctx, address);
-        rtl_add_insn(unit, RTLOP_GOTO, 0, 0, 0, ctx->epilogue_label);
+        rtl_add_insn(unit, RTLOP_GOTO,
+                     0, 0, 0, guest_ppc_get_epilogue_label(ctx));
         return;
       case XO_DCBZ: {
         int addr32;
@@ -3105,10 +3106,12 @@ bool guest_ppc_translate_block(GuestPPCContext *ctx, int index)
     const uint32_t *memory_base =
         (const uint32_t *)ctx->handle->setup.guest_memory_base;
 
-    rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, block->label);
-    if (UNLIKELY(rtl_get_error_state(unit))) {
-        log_ice(ctx->handle, "Failed to add label at 0x%X", start);
-        return false;
+    if (block->is_branch_target) {
+        rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, block->label);
+        if (UNLIKELY(rtl_get_error_state(unit))) {
+            log_ice(ctx->handle, "Failed to add label at 0x%X", start);
+            return false;
+        }
     }
 
     if (UNLIKELY(block->len == 0)) {
@@ -3117,7 +3120,8 @@ bool guest_ppc_translate_block(GuestPPCContext *ctx, int index)
          * guest_ppc_scan()).  Update NIA and return to the caller to
          * retranslate from the target address. */
         set_nia_imm(ctx, start);
-        rtl_add_insn(unit, RTLOP_GOTO, 0, 0, 0, ctx->epilogue_label);
+        rtl_add_insn(unit, RTLOP_GOTO,
+                     0, 0, 0, guest_ppc_get_epilogue_label(ctx));
         if (UNLIKELY(rtl_get_error_state(unit))) {
             log_ice(ctx->handle, "Failed to translate empty block at 0x%X",
                     start);
@@ -3199,6 +3203,16 @@ void guest_ppc_flush_cr(GuestPPCContext *ctx, bool make_live)
             rtl_add_insn(unit, RTLOP_SET_ALIAS, 0, cr, 0, ctx->alias.cr);
         }
     }
+}
+
+/*-----------------------------------------------------------------------*/
+
+int guest_ppc_get_epilogue_label(GuestPPCContext *ctx)
+{
+    if (!ctx->epilogue_label) {
+        ctx->epilogue_label = rtl_alloc_label(ctx->unit);
+    }
+    return ctx->epilogue_label;
 }
 
 /*************************************************************************/

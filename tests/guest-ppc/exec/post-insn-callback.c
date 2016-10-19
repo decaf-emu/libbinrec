@@ -72,7 +72,6 @@ int main(void)
         }
         FAIL("Failed to execute guest code");
     }
-    EXPECT_STREQ(get_log_messages(), NULL);
 
     EXPECT_EQ(save_counter, 4);
     EXPECT_EQ(saved_state[0].address, 0x1000);

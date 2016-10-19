@@ -155,7 +155,11 @@ typedef struct GuestPPCBlockInfo {
         xer_changed : 1,
         fpscr_changed : 1;
 
-    /* RTL label for this block, or 0 if none has been allocated yet. */
+    /* Is this block a branch target?  (Labels are only allocated for
+     * branch targets.) */
+    bool is_branch_target;
+
+    /* RTL label for this block, or 0 if none has been allocated. */
     int label;
 } GuestPPCBlockInfo;
 
@@ -191,7 +195,7 @@ typedef struct GuestPPCContext {
     int num_blocks;
     int blocks_size;  // Allocated size of array.
 
-    /* RTL label for the unit epilogue. */
+    /* RTL label for the unit epilogue, or 0 if none has been allocated. */
     uint16_t epilogue_label;
     /* RTL register holding the processor state block. */
     uint16_t psb_reg;
@@ -243,6 +247,18 @@ typedef struct GuestPPCContext {
  */
 #define guest_ppc_flush_cr INTERNAL(guest_ppc_flush_cr)
 extern void guest_ppc_flush_cr(GuestPPCContext *ctx, bool make_live);
+
+/**
+ * guest_ppc_get_epilogue_label:  Return the RTL label for the epilogue,
+ * allocating it if necessary.
+ *
+ * [Parameters]
+ *     ctx: Translation context.
+ * [Return value]
+ *     Epilogue label.
+ */
+#define guest_ppc_get_epilogue_label INTERNAL(guest_ppc_get_epilogue_label)
+extern int guest_ppc_get_epilogue_label(GuestPPCContext *ctx);
 
 /**
  * guest_ppc_scan:  Scan guest memory to find the range of addresses to
