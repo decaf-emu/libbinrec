@@ -8,6 +8,7 @@
  */
 
 #include "src/common.h"
+#include "src/endian.h"
 #include "src/host-x86.h"
 #include "src/host-x86/host-x86-internal.h"
 #include "src/rtl-internal.h"
@@ -199,6 +200,69 @@ void host_x86_optimize_address(HostX86Context * const ctx, int insn_index)
 #endif
         unit->regs[addend2].death = insn_index;
     }
+}
+
+/*-----------------------------------------------------------------------*/
+
+void host_x86_optimize_immediate_store(HostX86Context * const ctx,
+                                       int insn_index)
+{
+    ASSERT(ctx);
+    ASSERT(ctx->handle);
+    ASSERT(ctx->unit);
+    ASSERT(insn_index >= 0);
+    ASSERT((uint32_t)insn_index < ctx->unit->num_insns);
+    ASSERT((ctx->unit->insns[insn_index].opcode >= RTLOP_STORE
+         && ctx->unit->insns[insn_index].opcode <= RTLOP_STORE_I16)
+        || (ctx->unit->insns[insn_index].opcode >= RTLOP_STORE_BR
+         && ctx->unit->insns[insn_index].opcode <= RTLOP_STORE_I16_BR));
+    ASSERT(ctx->unit->regs[ctx->unit->insns[insn_index].src2].source
+           == RTLREG_CONSTANT);
+
+
+    RTLUnit * const unit = ctx->unit;
+    RTLInsn * const insn = &unit->insns[insn_index];
+    const int src2 = insn->src2;
+    RTLRegister * const src2_reg = &unit->regs[src2];
+
+    /* Don't optimize out the constant if it's also the store address.
+     * Which should be extremely rare, but who knows... */
+    if (UNLIKELY(src2 == insn->src1)) {
+        return;
+    }
+
+    if (!is_reg_killable(unit, src2, insn_index)) {
+        return;
+    }
+
+    RTLOpcode opcode = insn->opcode;
+    RTLDataType type = src2_reg->type;
+    if (type == RTLTYPE_FLOAT32) {
+        type = RTLTYPE_INT32;
+    } else if (type == RTLTYPE_FLOAT64) {
+        type = RTLTYPE_INT64;
+    }
+    uint64_t value = src2_reg->value.i64;
+    if (opcode == RTLOP_STORE_BR) {
+        opcode = RTLOP_STORE;
+        if (src2_reg->type == RTLTYPE_INT32) {
+            value = bswap32((uint32_t)value);
+        } else {
+            value = bswap64(value);
+        }
+    } else if (opcode == RTLOP_STORE_I16_BR) {
+        opcode = RTLOP_STORE_I16;
+        value = bswap16((uint16_t)value);
+    }
+    if (type != RTLTYPE_INT32 && value+0x80000000u >= UINT64_C(0x100000000)) {
+        return;  // The constant won't fit in a single instruction.
+    }
+
+    kill_reg(unit, src2, false);
+    ASSERT(!src2_reg->live);
+    src2_reg->type = type;
+    src2_reg->value.i64 = value;
+    insn->opcode = opcode;
 }
 
 /*************************************************************************/

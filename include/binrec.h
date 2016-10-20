@@ -668,35 +668,20 @@ typedef struct binrec_setup_t {
 #define BINREC_OPT_H_X86_FORWARD_CONDITIONS  (1<<4)
 
 /**
- * BINREC_OPT_H_X86_MEMORY_OPERANDS:  Make use of register-memory forms of
- * x86 instructions in the following cases:
- *
- * - When the second (non-overwritten) operand to a computational
- *   instruction (ADD, SLT, etc.) is the result of a previous load
- *   instruction in the same basic block, the associated register is not
- *   live past the end of the basic block, and there are no store
- *   instructions between the register's first and last use.
- *
- * - When the destination operand to a computational instruction is only
- *   used as the source for a single subsequent store instruction in the
- *   same basic block and there are no intervening load instructions.
- *
- * If this optimization is disabled, all computational instructions will
- * be performed in registers, and loads and stores will be translated as
- * separate instructions.
- *
- * This optimization is not currently implemented.
- */
-#define BINREC_OPT_H_X86_MEMORY_OPERANDS  (1<<5)
-
-/**
  * BINREC_OPT_H_X86_SETCC_ZX:  Detect when the only the low byte of the
  * result of a comparison instruction is used, and suppress zero-extension
  * of the result to the full operand size (32 or 64 bits).
  *
  * This optimization is not currently implemented.
  */
-#define BINREC_OPT_H_X86_SETCC_ZX  (1<<6)
+#define BINREC_OPT_H_X86_SETCC_ZX  (1<<5)
+
+/**
+ * BINREC_OPT_H_X86_STORE_IMMEDIATE:  When an immediate value is used only
+ * as the data for a store operation, encode the immediate value directly
+ * in the instruction instead of using a register.
+ */
+#define BINREC_OPT_H_X86_STORE_IMMEDIATE  (1<<6)
 
 /*************************************************************************/
 /******** Interface: Library and runtime environment information *********/

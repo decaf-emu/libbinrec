@@ -450,11 +450,13 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
     if (src1) {
         /* Source registers must have already had a host register allocated,
          * unless they're undefined (which is invalid in the first place
-         * and is prevented by operand assertions if enabled).  Note that if
-         * the register index is 0 (likewise invalid), the associated
-         * RTLRegister record has type INVALID and source UNDEFINED, so we
-         * end up treating it just like a nonzero-index undefined register. */
-        ASSERT((src1_reg->source != RTLREG_UNDEFINED)
+         * and is prevented by operand assertions if enabled) or not live
+         * (which can potentially occur if the value is optimized out, such
+         * as for immediate stores).  Note that if the register index is 0
+         * (likewise invalid), the associated RTLRegister record has type
+         * INVALID, source UNDEFINED, and !live, so we end up treating it
+         * just like a nonzero-index nonlive or undefined register. */
+        ASSERT((src1_reg->live && src1_reg->source != RTLREG_UNDEFINED)
                == src1_info->host_allocated);
         if (src1_reg->death == insn_index) {
             unassign_register(ctx, src1, src1_info);
@@ -462,7 +464,7 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
     }
 
     if (src2) {
-        ASSERT((src2_reg->source != RTLREG_UNDEFINED)
+        ASSERT((src2_reg->live && src2_reg->source != RTLREG_UNDEFINED)
                == src2_info->host_allocated);
         if (src2_reg->death == insn_index) {
             unassign_register(ctx, src2, src2_info);
@@ -476,7 +478,7 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
         ASSERT(insn->src3 < unit->next_reg);
         const RTLRegister * const src3_reg = &unit->regs[insn->src3];
         const HostX86RegInfo * const src3_info = &ctx->regs[insn->src3];
-        ASSERT((src3_reg->source != RTLREG_UNDEFINED)
+        ASSERT((src3_reg->live && src3_reg->source != RTLREG_UNDEFINED)
                == src3_info->host_allocated);
         if (src3_reg->death == insn_index) {
             unassign_register(ctx, insn->src3, src3_info);
@@ -1451,19 +1453,24 @@ static void first_pass_for_block(HostX86Context *ctx, int block_index)
             break;
           }  // case RTLOP_{SLL,SRL,SRA,ROL,ROR}
 
+          case RTLOP_STORE:
+          case RTLOP_STORE_I8:
+          case RTLOP_STORE_I16:
+          case RTLOP_STORE_BR:
+          case RTLOP_STORE_I16_BR:
+            if ((ctx->handle->host_opt & BINREC_OPT_H_X86_STORE_IMMEDIATE)
+             && unit->regs[insn->src2].source == RTLREG_CONSTANT) {
+                host_x86_optimize_immediate_store(ctx, insn_index);
+            }
+            /* Fall through to address optimization. */
           case RTLOP_LOAD:
           case RTLOP_LOAD_U8:
           case RTLOP_LOAD_S8:
           case RTLOP_LOAD_U16:
           case RTLOP_LOAD_S16:
-          case RTLOP_STORE:
-          case RTLOP_STORE_I8:
-          case RTLOP_STORE_I16:
           case RTLOP_LOAD_BR:
           case RTLOP_LOAD_U16_BR:
           case RTLOP_LOAD_S16_BR:
-          case RTLOP_STORE_BR:
-          case RTLOP_STORE_I16_BR:
           case RTLOP_ATOMIC_INC:
             insn->host_data_16 = 0;
             insn->host_data_32 = 0;

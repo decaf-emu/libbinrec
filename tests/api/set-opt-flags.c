@@ -28,10 +28,10 @@ int main(void)
     binrec_set_optimization_flags(handle,
                                   BINREC_OPT_BASIC | BINREC_OPT_DECONDITION,
                                   BINREC_OPT_G_PPC_NATIVE_RECIPROCAL,
-                                  BINREC_OPT_H_X86_MEMORY_OPERANDS);
+                                  BINREC_OPT_H_X86_STORE_IMMEDIATE);
     EXPECT_EQ(handle->common_opt, BINREC_OPT_BASIC | BINREC_OPT_DECONDITION);
     EXPECT_EQ(handle->guest_opt, BINREC_OPT_G_PPC_NATIVE_RECIPROCAL);
-    EXPECT_EQ(handle->host_opt, BINREC_OPT_H_X86_MEMORY_OPERANDS);
+    EXPECT_EQ(handle->host_opt, BINREC_OPT_H_X86_STORE_IMMEDIATE);
 
     /* Check that flags overwrite the existing settings rather than adding
      * to them. */

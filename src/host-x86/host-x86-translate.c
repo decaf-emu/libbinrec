@@ -192,6 +192,22 @@ static ALWAYS_INLINE void append_imm8(CodeBuffer *code, uint8_t value)
 /*-----------------------------------------------------------------------*/
 
 /**
+ * append_imm16:  Append a 16-bit immediate value to the current code stream.
+ * The code buffer is assumed to have enough space.
+ */
+static ALWAYS_INLINE void append_imm16(CodeBuffer *code, uint16_t value)
+{
+    uint8_t *ptr = code->buffer + code->len;
+
+    ASSERT(code->len + 2 <= code->buffer_size);
+    code->len += 2;
+    *ptr++ = (uint8_t)(value >> 0);
+    *ptr++ = (uint8_t)(value >> 8);
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
  * append_imm32:  Append a 32-bit immediate value to the current code stream.
  * The code buffer is assumed to have enough space.
  */
@@ -3088,25 +3104,34 @@ static bool translate_block(HostX86Context *ctx, int block_index)
             reload_base_and_index(&code, ctx, insn_index, X86_R15,
                                   &host_base, &host_index);
             const int32_t offset = (int32_t)insn->host_data_32;
-            X86Register host_value = ctx->regs[src2].host_reg;
-            RTLDataType type = unit->regs[src2].type;
-            if (is_spilled(ctx, src2, insn_index)) {
-                /* src3 is our value temporary (see register allocation).
-                 * For plain stores, if we run out of GPRs we'll just use
-                 * XMM15 instead, so there's no collision with the base
-                 * or index register. */
-                host_value = insn->src3;
-                ASSERT(host_value != host_base
-                       && (int)host_value != host_index);
-                if (host_value >= X86_XMM0 && rtl_type_is_int(type)) {
-                    type = (type == RTLTYPE_INT32
-                            ? RTLTYPE_FLOAT32 : RTLTYPE_FLOAT64);
+            const RTLRegister * const src2_reg = &unit->regs[src2];
+            RTLDataType type = src2_reg->type;
+            if (src2_reg->source == RTLREG_CONSTANT && !src2_reg->live) {
+                /* Constant store optimized to memory-immediate operation. */
+                const bool is64 = (type != RTLTYPE_INT32);
+                append_insn_ModRM_mem(&code, is64, X86OP_MOV_Ev_Iz, 0,
+                                      host_base, host_index, offset);
+                append_imm32(&code, (uint32_t)src2_reg->value.i64);
+            } else {
+                X86Register host_value = ctx->regs[src2].host_reg;
+                if (is_spilled(ctx, src2, insn_index)) {
+                    /* src3 is our value temporary (see register allocation).
+                     * For plain stores, if we run out of GPRs we'll just use
+                     * XMM15 instead, so there's no collision with the base
+                     * or index register. */
+                    host_value = insn->src3;
+                    ASSERT(host_value != host_base
+                           && (int)host_value != host_index);
+                    if (host_value >= X86_XMM0 && rtl_type_is_int(type)) {
+                        type = (type == RTLTYPE_INT32
+                                ? RTLTYPE_FLOAT32 : RTLTYPE_FLOAT64);
+                    }
+                    append_load(&code, type, host_value,
+                                X86_SP, -1, ctx->regs[src2].spill_offset);
                 }
-                append_load(&code, type, host_value,
-                            X86_SP, -1, ctx->regs[src2].spill_offset);
+                append_store(&code, type, host_value,
+                             host_base, host_index, offset);
             }
-            append_store(&code, type, host_value,
-                         host_base, host_index, offset);
             break;
           }  // case RTLOP_STORE
 
@@ -3116,15 +3141,26 @@ static bool translate_block(HostX86Context *ctx, int block_index)
             reload_base_and_index(&code, ctx, insn_index, X86_R15,
                                   &host_base, &host_index);
             const int32_t offset = (int32_t)insn->host_data_32;
-            X86Register host_value;
-            const bool saved_ax = reload_store_source_gpr(
-                &code, ctx, insn_index, &host_base, &host_index, &host_value);
-            maybe_append_empty_rex(&code, host_value, host_base, host_index);
-            append_insn_ModRM_mem(&code, false, X86OP_MOV_Eb_Gb,
-                                  host_value, host_base, host_index, offset);
-            if (saved_ax) {
-                append_insn_ModRM_reg(&code, true, X86OP_MOVD_E_V,
-                                      X86_XMM15, X86_AX);
+            const RTLRegister * const src2_reg = &unit->regs[src2];
+            if (src2_reg->source == RTLREG_CONSTANT && !src2_reg->live) {
+                /* Constant store optimized to memory-immediate operation. */
+                append_insn_ModRM_mem(&code, false, X86OP_MOV_Eb_Ib, 0,
+                                      host_base, host_index, offset);
+                append_imm8(&code, (uint8_t)src2_reg->value.i64);
+            } else {
+                X86Register host_value;
+                const bool saved_ax = reload_store_source_gpr(
+                    &code, ctx, insn_index, &host_base, &host_index,
+                    &host_value);
+                maybe_append_empty_rex(
+                    &code, host_value, host_base, host_index);
+                append_insn_ModRM_mem(&code, false, X86OP_MOV_Eb_Gb,
+                                      host_value, host_base, host_index,
+                                      offset);
+                if (saved_ax) {
+                    append_insn_ModRM_reg(&code, true, X86OP_MOVD_E_V,
+                                          X86_XMM15, X86_AX);
+                }
             }
             break;
           }  // case RTLOP_STORE_I8
@@ -3135,15 +3171,26 @@ static bool translate_block(HostX86Context *ctx, int block_index)
             reload_base_and_index(&code, ctx, insn_index, X86_R15,
                                   &host_base, &host_index);
             const int32_t offset = (int32_t)insn->host_data_32;
-            X86Register host_value;
-            const bool saved_ax = reload_store_source_gpr(
-                &code, ctx, insn_index, &host_base, &host_index, &host_value);
-            append_opcode(&code, X86OP_OPERAND_SIZE);
-            append_insn_ModRM_mem(&code, false, X86OP_MOV_Ev_Gv,
-                                  host_value, host_base, host_index, offset);
-            if (saved_ax) {
-                append_insn_ModRM_reg(&code, true, X86OP_MOVD_E_V,
-                                      X86_XMM15, X86_AX);
+            const RTLRegister * const src2_reg = &unit->regs[src2];
+            if (src2_reg->source == RTLREG_CONSTANT && !src2_reg->live) {
+                /* Constant store optimized to memory-immediate operation. */
+                append_opcode(&code, X86OP_OPERAND_SIZE);
+                append_insn_ModRM_mem(&code, false, X86OP_MOV_Ev_Iz, 0,
+                                      host_base, host_index, offset);
+                append_imm16(&code, (uint16_t)src2_reg->value.i64);
+            } else {
+                X86Register host_value;
+                const bool saved_ax = reload_store_source_gpr(
+                    &code, ctx, insn_index, &host_base, &host_index,
+                    &host_value);
+                append_opcode(&code, X86OP_OPERAND_SIZE);
+                append_insn_ModRM_mem(&code, false, X86OP_MOV_Ev_Gv,
+                                      host_value, host_base, host_index,
+                                      offset);
+                if (saved_ax) {
+                    append_insn_ModRM_reg(&code, true, X86OP_MOVD_E_V,
+                                          X86_XMM15, X86_AX);
+                }
             }
             break;
           }  // case RTLOP_STORE_I16

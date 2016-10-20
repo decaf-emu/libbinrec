@@ -160,7 +160,8 @@ static bool process_command_line(int argc, char **argv)
                     "        -Hx86-branch-align   Branch target alignment\n"
                     "        -Hx86-cond-codes     Condition code reuse\n"
                     "        -Hx86-fixed-regs     Smarter register allocation\n"
-                    "    -O[LEVEL]   Select optimizations.\n"
+                    "        -Hx86-store-imm      Use mem-imm form for constant stores\n"
+                    "    -O[LEVEL]   Select optimization level.\n"
                     "        -O0         Disable all optimizations (default).\n"
                     "        -O, -O1     Enable lightweight optimizations.\n"
                     "        -O2         Enable stronger but more expensive optimizations.\n"
@@ -211,6 +212,8 @@ static bool process_command_line(int argc, char **argv)
                     opt_common |= BINREC_OPT_H_X86_CONDITION_CODES;
                 } else if (strcmp(name, "x86-fixed-regs") == 0) {
                     opt_common |= BINREC_OPT_H_X86_FIXED_REGS;
+                } else if (strcmp(name, "x86-store-imm") == 0) {
+                    opt_common |= BINREC_OPT_H_X86_STORE_IMMEDIATE;
                 } else {
                     fprintf(stderr, "Unknown host optimization flag %s\n",
                             name);
@@ -234,7 +237,8 @@ static bool process_command_line(int argc, char **argv)
                             opt_host |= BINREC_OPT_H_X86_ADDRESS_OPERANDS
                                       | BINREC_OPT_H_X86_BRANCH_ALIGNMENT
                                       | BINREC_OPT_H_X86_CONDITION_CODES
-                                      | BINREC_OPT_H_X86_FIXED_REGS;
+                                      | BINREC_OPT_H_X86_FIXED_REGS
+                                      | BINREC_OPT_H_X86_STORE_IMMEDIATE;
                         }
                     }
                     if (*name >= '2') {

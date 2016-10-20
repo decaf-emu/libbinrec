@@ -282,16 +282,28 @@ extern PURE_FUNCTION int host_x86_int_arg_register(
 /**
  * host_x86_optimize_address:  Attempt to optimize the address operand to
  * the given instruction (which must be a load, store, or atomic
- * instruction).  If successful and if dead store elimination
- * (BINREC_OPT_DSE) is enabled, also kill any instructions which set
- * registers that were only used in the address calculation.
+ * instruction).
  *
  * [Parameters]
  *     ctx: Translation context.
- *     index: Instruction index in ctx->unit->insns[].
+ *     insn_index: Instruction index in ctx->unit->insns[].
  */
 #define host_x86_optimize_address INTERNAL(host_x86_optimize_address)
 extern void host_x86_optimize_address(HostX86Context *ctx, int insn_index);
+
+/**
+ * host_x86_optimize_immediate_store:  Attempt to optimize a store of a
+ * constant value to an immediate store instruction.  If successful, the
+ * LOAD_IMM instruction that set the constant will be killed and the
+ * register's live flag will be cleared.
+ *
+ * [Parameters]
+ *     ctx: Translation context.
+ *     insn_index: Instruction index in ctx->unit->insns[].
+ */
+#define host_x86_optimize_immediate_store INTERNAL(host_x86_optimize_immediate_store)
+extern void host_x86_optimize_immediate_store(HostX86Context * const ctx,
+                                              int insn_index);
 
 /*************************************************************************/
 /*************************************************************************/
