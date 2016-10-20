@@ -203,7 +203,7 @@ TEST_OBJECTS := $(TEST_SOURCES:%.c=%.o)
 TEST_BINS := $(TEST_SOURCES:%.c=%)
 BENCHMARK_SOURCES := $(sort $(wildcard benchmarks/*.c benchmarks/blobs/*.c))
 BENCHMARK_OBJECTS := $(BENCHMARK_SOURCES:%.c=%.o) \
-                     tests/execute.o tests/log-capture.o \
+                     tests/execute.o \
                      $(patsubst %.c,%_noopt.o,$(wildcard benchmarks/dhrystone/*.c)) \
                      $(patsubst %.c,%_opt.o,$(wildcard benchmarks/dhrystone/*.c))
 BENCHMARK_BINS := benchmarks/bench
