@@ -47,9 +47,9 @@ static const uint8_t expected_code[] = {
     0x83,0xFA,0x00,                     // cmp $0,%edx
     0x0F,0x9C,0xC2,                     // setl %dl
     0x0F,0xB6,0xD2,                     // movzbl %dl,%edx
-    0x8B,0xC8,                          // mov %rax,%rcx
+    0x8B,0xC8,                          // mov %eax,%ecx
     0xD3,0xE0,                          // shl %cl,%eax
-    0x83,0xF8,0x00,                     // test %eax,%eax
+    0x83,0xF8,0x00,                     // cmp $0,%eax
     0x0F,0x9C,0xC0,                     // setl %al
     0x0F,0xB6,0xC0,                     // movzbl %al,%eax
     0x48,0x83,0xC4,0x08,                // add $8,%rsp
