@@ -15,6 +15,7 @@
 
 
 static char *log_messages = NULL;
+static int log_messages_len = 0;
 
 void log_capture(UNUSED void *userdata, binrec_loglevel_t level,
                  const char *message)
@@ -25,13 +26,13 @@ void log_capture(UNUSED void *userdata, binrec_loglevel_t level,
         [BINREC_LOGLEVEL_ERROR  ] = "error",
     };
 
-    const int current_len = log_messages ? strlen(log_messages) : 0;
     const int message_len =
         snprintf(NULL, 0, "[%s] %s\n", level_prefix[level], message);
-    const int new_size = current_len + message_len + 1;
+    const int new_size = log_messages_len + message_len + 1;
     ASSERT(log_messages = realloc(log_messages, new_size));
-    ASSERT(snprintf(log_messages + current_len, message_len + 1, "[%s] %s\n",
-                    level_prefix[level], message) == message_len);
+    ASSERT(snprintf(log_messages + log_messages_len, message_len + 1,
+                    "[%s] %s\n", level_prefix[level], message) == message_len);
+    log_messages_len += message_len;
 
     const char *verbose = getenv("LOG_VERBOSE");
     if (verbose && *verbose && strcmp(verbose, "0") != 0) {
@@ -48,6 +49,7 @@ void clear_log_messages(void)
 {
     free(log_messages);
     log_messages = NULL;
+    log_messages_len = 0;
 }
 
 bool find_ice(const char *log, const char *text)

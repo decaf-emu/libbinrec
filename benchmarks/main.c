@@ -93,6 +93,8 @@ static unsigned int opt_common;
 static unsigned int opt_guest;
 static unsigned int opt_host;
 static bool dump;
+static bool quiet;
+static bool verbose;
 
 /*************************************************************************/
 /*************************** Utility routines ****************************/
@@ -171,6 +173,8 @@ static bool process_command_line(int argc, char **argv)
                     "        -Odeep-data-flow     Deep data flow analysis (expensive)\n"
                     "        -Odse                Dead store elimination\n"
                     "        -Ofold-constants     Constant folding\n"
+                    "    -q          Suppress all log messages from translation.\n"
+                    "    -v          Output verbose log messages from translation.\n"
             );
             fprintf(stderr, "\nValid architectures:\n    native\n");
             for (int i = 0; i < GUEST_ARCH__NUM; i++) {
@@ -234,8 +238,7 @@ static bool process_command_line(int argc, char **argv)
                                     | BINREC_OPT_FOLD_CONSTANTS;
                         if (native_arch == BINREC_ARCH_X86_64_SYSV
                          || native_arch == BINREC_ARCH_X86_64_WINDOWS) {
-                            opt_host |= BINREC_OPT_H_X86_ADDRESS_OPERANDS
-                                      | BINREC_OPT_H_X86_BRANCH_ALIGNMENT
+                            opt_host |= BINREC_OPT_H_X86_BRANCH_ALIGNMENT
                                       | BINREC_OPT_H_X86_CONDITION_CODES
                                       | BINREC_OPT_H_X86_FIXED_REGS
                                       | BINREC_OPT_H_X86_STORE_IMMEDIATE;
@@ -243,6 +246,10 @@ static bool process_command_line(int argc, char **argv)
                     }
                     if (*name >= '2') {
                         opt_common |= BINREC_OPT_DEEP_DATA_FLOW;
+                        if (native_arch == BINREC_ARCH_X86_64_SYSV
+                         || native_arch == BINREC_ARCH_X86_64_WINDOWS) {
+                            opt_host |= BINREC_OPT_H_X86_ADDRESS_OPERANDS;
+                        }
                     }
                 } else if (strcmp(name, "basic") == 0) {
                     opt_common |= BINREC_OPT_BASIC;
@@ -259,6 +266,12 @@ static bool process_command_line(int argc, char **argv)
                             name);
                     goto usage;
                 }
+
+            } else if (strcmp(argv[argi], "-q") == 0) {
+                quiet = true;
+
+            } else if (strcmp(argv[argi], "-v") == 0) {
+                verbose = true;
 
             } else {
                 fprintf(stderr, "Unknown option %s\n", argv[argi]);
@@ -335,6 +348,25 @@ static bool call_native(void)
     }
     return result;
 }
+
+/*-----------------------------------------------------------------------*/
+
+/**
+ * log_callback:  Log callback for translation.
+ */
+static void log_callback(UNUSED void *userdata, binrec_loglevel_t level,
+                         const char *message)
+{
+    static const char * const level_prefix[] = {
+        [BINREC_LOGLEVEL_INFO   ] = "info",
+        [BINREC_LOGLEVEL_WARNING] = "warning",
+        [BINREC_LOGLEVEL_ERROR  ] = "error",
+    };
+    if (verbose || level >= BINREC_LOGLEVEL_WARNING) {
+        fprintf(stderr, "[%s] %s\n", level_prefix[level], message);
+    }
+}
+
 
 /*-----------------------------------------------------------------------*/
 
@@ -417,6 +449,7 @@ static bool call_guest(void)
     bool success = false;
 
     if (blob->init && !call_guest_code(binrec_arch, state, memory, blob->init,
+                                       quiet ? NULL : log_callback,
                                        configure_binrec,
                                        dump ? dump_translated_code : NULL)) {
         fprintf(stderr, "Guest code init() execution failed\n");
@@ -425,7 +458,7 @@ static bool call_guest(void)
 
     *arg_ptr = count;
     if (!call_guest_code(binrec_arch, state, memory, blob->main,
-                         configure_binrec,
+                         quiet ? NULL : log_callback, configure_binrec,
                          dump ? dump_translated_code : NULL)) {
         fprintf(stderr, "Guest code main() execution failed\n");
         goto done;
@@ -437,6 +470,7 @@ static bool call_guest(void)
     }
 
     if (blob->fini && !call_guest_code(binrec_arch, state, memory, blob->fini,
+                                       quiet ? NULL : log_callback,
                                        configure_binrec,
                                        dump ? dump_translated_code : NULL)) {
         fprintf(stderr, "Guest code fini() execution failed\n");

@@ -63,7 +63,7 @@ int main(void)
     save_counter = 0;
 
     if (!call_guest_code(BINREC_ARCH_PPC_7XX, &state, memory, start_address,
-                         configure_handle, NULL)) {
+                         log_capture, configure_handle, NULL)) {
         const char *log_messages = get_log_messages();
         if (log_messages) {
             fputs(log_messages, stdout);

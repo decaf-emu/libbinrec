@@ -9,7 +9,6 @@
 
 #include "src/common.h"
 #include "tests/execute.h"
-#include "tests/log-capture.h"
 /* Disable malloc() suppression from common.h. */
 #undef malloc
 #undef realloc
@@ -188,6 +187,7 @@ static void clear_cache(void)
 
 bool call_guest_code(
     binrec_arch_t arch, void *state, void *memory, uint32_t address,
+    void (*log)(void *userdata, binrec_loglevel_t level, const char *message),
     void (*configure_handle)(binrec_t *handle),
     void (*translated_code_callback)(uint32_t address, void *code,
                                     long code_size))
@@ -217,7 +217,7 @@ bool call_guest_code(
     setup.state_offset_sc_handler = offsetof(PPCState,sc_handler);
     setup.state_offset_trap_handler = offsetof(PPCState,trap_handler);
     setup.state_offset_branch_callback = offsetof(PPCState,branch_callback);
-    setup.log = log_capture;
+    setup.log = log;
 
     binrec_t *handle;
     handle = binrec_create_handle(&setup);
