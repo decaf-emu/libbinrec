@@ -600,19 +600,21 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
             const int alias = insn->alias;
             ASSERT(ctx->blocks[block_index].alias_load[alias] == dest);
             bool have_preceding_store = false;
+            int prev_store_reg = 0;
 
             /* First priority: register used by SET_ALIAS in previous block
              * (if any, and if it has an edge to this block).  We only need
              * to check exits[0] because conditional branches (the only
              * instructions that can generate multiple exit edges) always
              * put the fall-through edge in exits[0]. */
-            if (block_index > 0
-             && unit->blocks[block_index-1].exits[0] == block_index) {
-                const int store_reg =
-                    ctx->blocks[block_index-1].alias_store[alias];
-                if (store_reg) {
+            const int prev_block = unit->blocks[block_index].prev_block;
+            if (prev_block >= 0
+             && unit->blocks[prev_block].exits[0] == block_index) {
+                prev_store_reg = ctx->blocks[prev_block].alias_store[alias];
+                if (prev_store_reg) {
                     have_preceding_store = true;
-                    const X86Register host_reg = ctx->regs[store_reg].host_reg;
+                    const X86Register host_reg =
+                        ctx->regs[prev_store_reg].host_reg;
                     if (usable_regs & (1u << host_reg)) {
                         dest_info->merge_alias = true;
                         dest_info->host_merge = host_reg;
@@ -714,6 +716,15 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
                     host_allocated = true;
                     dest_info->host_reg = host_merge;
                     assign_register(ctx, dest, host_merge);
+                }
+                /* If this alias is merged from the immediately previous
+                 * block in code order, include its register in the set of
+                 * registers live at the end of that block, so that
+                 * conditional branches properly detect reload conflicts. */
+                if (prev_store_reg) {
+                    ASSERT(ctx->regs[prev_store_reg].host_allocated);
+                    ctx->blocks[prev_block].end_live |=
+                        1u << ctx->regs[prev_store_reg].host_reg;
                 }
             }
         }  // if (insn->opcode == RTLOP_GET_ALIAS)
