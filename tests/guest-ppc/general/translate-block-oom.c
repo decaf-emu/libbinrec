@@ -16,11 +16,16 @@
 
 int main(void)
 {
-    uint32_t illegal_insn = 0;
+    static uint8_t ppc_code[] = {
+        0x38,0x60,0x00,0x01,  // li r3,1
+        0x48,0x00,0x00,0x08,  // b 0xC
+        0x38,0x60,0x00,0x02,  // li r3,2
+        0x60,0x00,0x00,0x00,  // nop
+    };
 
     binrec_setup_t setup;
     memset(&setup, 0, sizeof(setup));
-    setup.guest_memory_base = &illegal_insn;
+    setup.guest_memory_base = ppc_code;
     setup.host_memory_base = UINT64_C(0x100000000);
     setup.state_offset_gpr = 0x100;
     setup.state_offset_fpr = 0x180;
@@ -53,7 +58,7 @@ int main(void)
          * fail). */
         unit->insns_size = count;
         mem_wrap_fail_after(1);
-        if (guest_ppc_translate(handle, 0, 3, unit)) {
+        if (guest_ppc_translate(handle, 0, sizeof(ppc_code)-1, unit)) {
             if (count == 1) {
                 FAIL("Translation did not fail on memory allocation failure");
             }
@@ -67,14 +72,28 @@ int main(void)
     EXPECT_STREQ(rtl_disassemble_unit(unit, false),
                  "    0: LOAD_ARG   r1, 0\n"
                  "    1: LOAD_IMM   r2, 0x100000000\n"
-                 "    2: ILLEGAL\n"
-                 "    3: LOAD_IMM   r3, 4\n"
-                 "    4: SET_ALIAS  a1, r3\n"
-                 "    5: RETURN\n"
+                 "    2: LOAD_IMM   r3, 1\n"
+                 "    3: SET_ALIAS  a2, r3\n"
+                 "    4: GOTO       L1\n"
+                 "    5: LOAD_IMM   r4, 8\n"
+                 "    6: SET_ALIAS  a1, r4\n"
+                 "    7: LOAD_IMM   r5, 2\n"
+                 "    8: SET_ALIAS  a2, r5\n"
+                 "    9: LOAD_IMM   r6, 12\n"
+                 "   10: SET_ALIAS  a1, r6\n"
+                 "   11: LABEL      L1\n"
+                 "   12: LOAD_IMM   r7, 16\n"
+                 "   13: SET_ALIAS  a1, r7\n"
+                 "   14: RETURN\n"
                  "\n"
                  "Alias 1: int32 @ 956(r1)\n"
+                 "Alias 2: int32 @ 268(r1)\n"
                  "\n"
-                 "Block 0: <none> --> [0,5] --> <none>\n"
+                 /* We don't call rtl_finalize_unit(), so this edge is
+                  * missing. */
+                 "Block 0: <none> --> [0,4] --> <none>\n"
+                 "Block 1: <none> --> [5,10] --> 2\n"
+                 "Block 2: 1 --> [11,14] --> <none>\n"
                  );
 
 
