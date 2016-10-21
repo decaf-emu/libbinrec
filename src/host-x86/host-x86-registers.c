@@ -297,7 +297,7 @@ static X86Register allocate_register(
         if (!(avoid_regs & (1u << i))) {
             const int index = ctx->reg_map[i];
             if (index
-             && !unit->regs[index].is_alias_base  // Never spill alias bases.
+             && !unit->regs[index].unspillable
              && unit->regs[index].death >= spill_death) {
                 spill_reg = i;
                 spill_index = index;

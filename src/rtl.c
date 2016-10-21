@@ -1057,6 +1057,22 @@ void rtl_make_unfoldable(RTLUnit *unit, int reg)
 
 /*-----------------------------------------------------------------------*/
 
+void rtl_make_unspillable(RTLUnit *unit, int reg)
+{
+    ASSERT(unit != NULL);
+    ASSERT(!unit->finalized);
+    ASSERT(unit->regs != NULL);
+
+    if (UNLIKELY(reg == 0 || reg >= unit->next_reg)) {
+        log_error(unit->handle, "rtl_make_unspillable: Invalid register %d",
+                  reg);
+        return;
+    }
+    unit->regs[reg].unspillable = true;
+}
+
+/*-----------------------------------------------------------------------*/
+
 void rtl_make_unique_pointer(RTLUnit *unit, int reg)
 {
     ASSERT(unit != NULL);
@@ -1145,7 +1161,7 @@ void rtl_set_alias_storage(RTLUnit *unit, int alias, int base, int16_t offset)
 
     unit->aliases[alias].base = base;
     unit->aliases[alias].offset = offset;
-    unit->regs[base].is_alias_base = true;
+    unit->regs[base].unspillable = true;
 }
 
 /*-----------------------------------------------------------------------*/

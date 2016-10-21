@@ -159,8 +159,8 @@ struct RTLRegister {
      * carried forward to other registers via data flow analysis. */
     uint16_t unique_pointer;
 
-    /* True if this register is used as an alias base. */
-    bool is_alias_base;
+    /* True if this register should never be spilled. */
+    bool unspillable;
 
     /* Liveness information. */
     bool live;                  // True if this register has been referenced

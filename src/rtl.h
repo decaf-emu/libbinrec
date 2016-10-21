@@ -431,6 +431,20 @@ extern int rtl_alloc_register(RTLUnit *unit, RTLDataType type);
 extern void rtl_make_unfoldable(RTLUnit *unit, int reg);
 
 /**
+ * rtl_make_unspillable:  Prevent the given register from being spilled to
+ * memory.
+ *
+ * Calling this function on too many registers may cause host register
+ * allocation to fail.
+ *
+ * [Parameters]
+ *     unit: RTLUnit containing register to mark.
+ *     reg: Register number to mark.
+ */
+#define rtl_make_unspillable INTERNAL(rtl_make_unspillable)
+extern void rtl_make_unspillable(RTLUnit *unit, int reg);
+
+/**
  * rtl_make_unique_pointer:  Mark the given register as being a "unique
  * pointer", which points to a region of memory which will never be accessed
  * except through this register (or another register copied from it).
@@ -473,6 +487,9 @@ extern int rtl_alloc_alias_register(RTLUnit *unit, RTLDataType type);
  *   be stored to that memory location at some point before control leaves
  *   the generated code, though the store may be omitted if a subsequent
  *   SET_ALIAS instruction also modifies the same alias.
+ *
+ * - The base register for the alias will never be spilled to memory (as
+ *   if rtl_make_unspillable() had been called on the register).
  *
  * If a memory location is not bound to an alias register, reading the
  * alias before storing a value in it returns undefined data, and any value
