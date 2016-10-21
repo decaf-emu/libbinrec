@@ -1729,16 +1729,17 @@ static inline void translate_muldiv_reg(
         div_skip_label = rtl_alloc_label(unit);
         rtl_add_insn(unit, RTLOP_GOTO_IF_Z, 0, rB, 0, div_skip_label);
         if (rtlop == RTLOP_DIVS) {
+            int noskip_label = rtl_alloc_label(unit);
             const int rA_is_80000000 = rtl_alloc_register(unit, RTLTYPE_INT32);
             rtl_add_insn(unit, RTLOP_SEQI,
                          rA_is_80000000, rA, 0, UINT64_C(-0x80000000));
+            rtl_add_insn(unit, RTLOP_GOTO_IF_Z,
+                         0, rA_is_80000000, 0, noskip_label);
             const int rB_is_FFFFFFFF = rtl_alloc_register(unit, RTLTYPE_INT32);
             rtl_add_insn(unit, RTLOP_SEQI, rB_is_FFFFFFFF, rB, 0, -1);
-            const int is_invalid = rtl_alloc_register(unit, RTLTYPE_INT32);
-            rtl_add_insn(unit, RTLOP_AND,
-                         is_invalid, rA_is_80000000, rB_is_FFFFFFFF, 0);
             rtl_add_insn(unit, RTLOP_GOTO_IF_NZ,
-                         0, is_invalid, 0, div_skip_label);
+                         0, rB_is_FFFFFFFF, 0, div_skip_label);
+            rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, noskip_label);
         }
     }
 
