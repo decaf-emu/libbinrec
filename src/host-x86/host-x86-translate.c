@@ -1238,9 +1238,13 @@ static bool check_reload_conflicts(const HostX86Context *ctx, int block_index,
     for (int i = 1; i < num_aliases; i++) {
         const int merge_reg = next_load[i];
         if (merge_reg && ctx->regs[merge_reg].merge_alias) {
-            const X86Register host_src = ctx->regs[current_store[i]].host_reg;
+            const int merge_src = current_store[i];
+            const X86Register host_src = ctx->regs[merge_src].host_reg;
             const X86Register host_dest = ctx->regs[merge_reg].host_merge;
-            if (host_dest != host_src && (end_live & (1 << host_dest))) {
+            const bool move_required =
+                (!merge_src || is_spilled(ctx, merge_src, branch_insn)
+                 || host_src != host_dest);
+            if (move_required && (end_live & (1 << host_dest))) {
                 return true;
             }
         }
