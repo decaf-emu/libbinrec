@@ -216,6 +216,8 @@ static bool process_command_line(int argc, char **argv)
                     opt_common |= BINREC_OPT_H_X86_CONDITION_CODES;
                 } else if (strcmp(name, "x86-fixed-regs") == 0) {
                     opt_common |= BINREC_OPT_H_X86_FIXED_REGS;
+                } else if (strcmp(name, "x86-merge-regs") == 0) {
+                    opt_common |= BINREC_OPT_H_X86_MERGE_REGS;
                 } else if (strcmp(name, "x86-store-imm") == 0) {
                     opt_common |= BINREC_OPT_H_X86_STORE_IMMEDIATE;
                 } else {
@@ -241,6 +243,7 @@ static bool process_command_line(int argc, char **argv)
                             opt_host |= BINREC_OPT_H_X86_BRANCH_ALIGNMENT
                                       | BINREC_OPT_H_X86_CONDITION_CODES
                                       | BINREC_OPT_H_X86_FIXED_REGS
+                                      | BINREC_OPT_H_X86_MERGE_REGS
                                       | BINREC_OPT_H_X86_STORE_IMMEDIATE;
                         }
                     }

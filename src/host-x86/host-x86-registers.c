@@ -552,12 +552,13 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
         bool host_allocated = dest_info->host_allocated;
         dest_info->host_allocated = true;  // We'll find one eventually.
 
-        uint32_t avoid_regs = dest_info->avoid_regs;
+        uint32_t avoid_regs = dest_info->avoid_regs | ctx->early_merge_regs;
 
         /* For GET_ALIAS handling -- this has to be set before we allocate
          * a preassigned register, or we'll undesirably avoid the register
          * when choosing a merge target. */
-        uint32_t usable_regs = ctx->regs_free & ~ctx->block_regs_touched;
+        uint32_t usable_regs = ctx->regs_free & ~(ctx->block_regs_touched
+                                                  | ctx->early_merge_regs);
 
         if (host_allocated) {
             const X86Register host_reg = dest_info->host_reg;
@@ -602,25 +603,37 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
             const int alias = insn->alias;
             ASSERT(ctx->blocks[block_index].alias_load[alias] == dest);
             bool have_preceding_store = false;
-            int prev_store_reg = 0;
+
+            const int prev_block = unit->blocks[block_index].prev_block;
+            int prev_store_reg;
+            if (prev_block >= 0
+             && unit->blocks[prev_block].exits[0] == block_index) {
+                prev_store_reg = ctx->blocks[prev_block].alias_store[alias];
+            } else {
+                prev_store_reg = 0;
+            }
+
+            /* If we've already reserved a register with MERGE_REGS, take
+             * it out of the reserved set so we can properly allocate it
+             * below. */
+            if (dest_info->merge_alias) {
+                const X86Register host_merge = dest_info->host_merge;
+                ASSERT(ctx->early_merge_regs & (1u << host_merge));
+                ctx->early_merge_regs ^= 1u << host_merge;
+                avoid_regs ^= 1u << host_merge;
+            }
 
             /* First priority: register used by SET_ALIAS in previous block
              * (if any, and if it has an edge to this block).  We only need
              * to check exits[0] because conditional branches (the only
              * instructions that can generate multiple exit edges) always
              * put the fall-through edge in exits[0]. */
-            const int prev_block = unit->blocks[block_index].prev_block;
-            if (prev_block >= 0
-             && unit->blocks[prev_block].exits[0] == block_index) {
-                prev_store_reg = ctx->blocks[prev_block].alias_store[alias];
-                if (prev_store_reg) {
-                    have_preceding_store = true;
-                    const X86Register host_reg =
-                        ctx->regs[prev_store_reg].host_reg;
-                    if (usable_regs & (1u << host_reg)) {
-                        dest_info->merge_alias = true;
-                        dest_info->host_merge = host_reg;
-                    }
+            if (!dest_info->merge_alias && prev_store_reg) {
+                have_preceding_store = true;
+                const X86Register host_reg = ctx->regs[prev_store_reg].host_reg;
+                if (usable_regs & (1u << host_reg)) {
+                    dest_info->merge_alias = true;
+                    dest_info->host_merge = host_reg;
                 }
             }
 
@@ -632,7 +645,7 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
                 {
                     RTLBlock *block = &unit->blocks[entry_index];
                     for (int i = 0; (i < lenof(block->entries)
-                                     && block->entries[i] >= 0);  i++) {
+                                     && block->entries[i] >= 0); i++) {
                         if (block->entries[i] == block_index - 1) {
                             continue;  // Already checked this block above.
                         }
@@ -654,7 +667,7 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
                             if (usable_regs & (1u << host_reg)) {
                                 dest_info->merge_alias = true;
                                 dest_info->host_merge = host_reg;
-                                goto found_merge_pri2;  // i.e. break 2 loops
+                                goto found_merge_pri2;  // i.e., break 2 loops
                             }
                         }
                     }
@@ -666,7 +679,7 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
              * (from optimization) and that register is free back to the
              * beginning of the block, use it.  We delay this check until
              * now since we need to know whether to allocate a register in
-             * the first place (i.e. have_preceding_store). */
+             * the first place (i.e., have_preceding_store). */
             if (have_preceding_store && host_allocated
              && usable_regs & (1u << dest_info->host_reg)) {
                 /* The register is available!  Claim it for our own. */
@@ -1167,6 +1180,45 @@ static bool allocate_regs_for_block(HostX86Context *ctx, int block_index)
     /* Reserved registers are excluded from the free set but don't count
      * as touched. */
     ctx->block_regs_touched = ~(ctx->regs_free | (RESERVED_REGS));
+
+    /* If smart merging is enabled, first give each GET_ALIAS a chance at
+     * the host register allocated to its merge source, if any. */
+    ctx->early_merge_regs = 0;
+    if (ctx->handle->host_opt & BINREC_OPT_H_X86_MERGE_REGS) {
+        uint32_t usable_regs = ctx->regs_free;
+        for (int insn_index = block->first_insn;
+             insn_index <= block->last_insn; insn_index++)
+        {
+            const RTLInsn * const insn = &unit->insns[insn_index];
+            if (insn->opcode == RTLOP_GET_ALIAS) {
+                HostX86RegInfo * const dest_info = &ctx->regs[insn->dest];
+                const int alias = insn->alias;
+                for (int entry_index = block_index; entry_index >= 0;
+                     entry_index = unit->blocks[entry_index].entry_overflow)
+                {
+                    RTLBlock *entry_block = &unit->blocks[entry_index];
+                    for (int i = 0; (i < lenof(entry_block->entries)
+                                     && entry_block->entries[i] >= 0); i++) {
+                        const HostX86BlockInfo *predecessor =
+                            &ctx->blocks[entry_block->entries[i]];
+                        const int store_reg = predecessor->alias_store[alias];
+                        if (store_reg && ctx->regs[store_reg].host_allocated) {
+                            const X86Register host_reg =
+                                ctx->regs[store_reg].host_reg;
+                            if (usable_regs & (1u << host_reg)) {
+                                dest_info->merge_alias = true;
+                                dest_info->host_merge = host_reg;
+                                usable_regs ^= 1u << host_reg;
+                                ctx->early_merge_regs |= 1u << host_reg;
+                                goto found_merge;  // i.e., break 2 loops
+                            }
+                        }
+                    }
+                }
+              found_merge:;
+            }  // if GET_ALIAS
+        }   // for each instruction
+    }  // if MERGE_REGS
 
     for (int insn_index = block->first_insn; insn_index <= block->last_insn;
          insn_index++)

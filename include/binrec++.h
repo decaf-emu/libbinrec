@@ -72,6 +72,7 @@ namespace Optimize {
         const unsigned int CONDITION_CODES = BINREC_OPT_H_X86_CONDITION_CODES;
         const unsigned int FIXED_REGS = BINREC_OPT_H_X86_FIXED_REGS;
         const unsigned int FORWARD_CONDITIONS = BINREC_OPT_H_X86_FORWARD_CONDITIONS;
+        const unsigned int MERGE_REGS = BINREC_OPT_H_X86_MERGE_REGS;
         const unsigned int SETCC_ZX = BINREC_OPT_H_X86_SETCC_ZX;
         const unsigned int STORE_IMMEDIATE = BINREC_OPT_H_X86_STORE_IMMEDIATE;
     }

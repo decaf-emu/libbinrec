@@ -201,6 +201,9 @@ typedef struct HostX86Context {
     uint32_t regs_touched;
     /* Bitmap of registers which have been used in the current block. */
     uint32_t block_regs_touched;
+    /* Bitmap of registers reserved for alias merging (used with the
+     * MERGE_REGS optimization). */
+    uint32_t early_merge_regs;
 
     /* Register whose state is currently reflected in the Z flag, or 0 if
      * none/unknown. */
