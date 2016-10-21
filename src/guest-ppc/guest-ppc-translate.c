@@ -116,7 +116,8 @@ static bool init_unit(GuestPPCContext *ctx)
     }
 
     for (int i = 0; i < 32; i++) {
-        if ((crb_used | crb_changed) & (1 << i)) {
+        /* Bits which aren't changed are re-extracted from CR as needed. */
+        if (crb_changed & (1 << i)) {
             ctx->alias.crb[i] = rtl_alloc_alias_register(unit, RTLTYPE_INT32);
         }
     }

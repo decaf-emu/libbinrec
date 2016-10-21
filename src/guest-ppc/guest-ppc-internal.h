@@ -216,16 +216,18 @@ typedef struct GuestPPCContext {
     /* RTL registers for each CPU register live in the current block. */
     GuestPPCRegSet live;
 
-    /* Dirty state of live registers. */
-    uint32_t gpr_dirty;
-    uint32_t fpr_dirty;
-    uint32_t crb_dirty;
-    uint8_t
-        cr_dirty : 1,
-        lr_dirty : 1,
-        ctr_dirty : 1,
-        xer_dirty : 1,
-        fpscr_dirty : 1;
+    /* Most recent SET_ALIAS instruction for each register (if killable),
+     * or -1 for none. */
+    struct {
+        int gpr[32];
+        int fpr[32];
+        int crb[32];
+        int cr;
+        int lr;
+        int ctr;
+        int xer;
+        int fpscr;
+    } last_set;
 
     /* True if the next instruction should be skipped.  Used when
      * optimizing a pair of instructions as a unit, such as sc followed

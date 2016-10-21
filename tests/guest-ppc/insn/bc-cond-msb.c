@@ -22,7 +22,7 @@ static const char expected[] =
     "[info] Scanning terminated at requested limit 0xF\n"
     "    0: LOAD_ARG   r1, 0\n"
     "    1: LOAD_IMM   r2, 0x100000000\n"
-    "    2: GET_ALIAS  r3, a3\n"
+    "    2: GET_ALIAS  r3, a2\n"
     /* This should not trigger an operand assertion on constant range. */
     "    3: ANDI       r4, r3, -2147483648\n"
     "    4: GOTO_IF_NZ r4, L2\n"
@@ -38,8 +38,7 @@ static const char expected[] =
     "   14: RETURN\n"
     "\n"
     "Alias 1: int32 @ 956(r1)\n"
-    "Alias 2: int32, no bound storage\n"
-    "Alias 3: int32 @ 928(r1)\n"
+    "Alias 2: int32 @ 928(r1)\n"
     "\n"
     "Block 0: <none> --> [0,4] --> 1,4\n"
     "Block 1: 0 --> [5,6] --> 2\n"

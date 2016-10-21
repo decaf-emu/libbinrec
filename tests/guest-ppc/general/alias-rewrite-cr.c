@@ -8,37 +8,37 @@
  */
 
 #include "tests/guest-ppc/insn/common.h"
+#include "src/rtl-internal.h"
 
 static const uint8_t input[] = {
-    0x7C,0x64,0x28,0x28,  // lwarx r3,r4,r5
+    0x7C,0x6F,0xF1,0x20,  // mtcr r3
+    0x7C,0x8F,0xF1,0x20,  // mtcr r4
 };
 
 static const bool expected_success = true;
 
 static const char expected[] =
-    "[info] Scanning terminated at requested limit 0x3\n"
+    "[info] Scanning terminated at requested limit 0x7\n"
+    #ifdef RTL_DEBUG_OPTIMIZE
+        "[info] Killing instruction 3\n"
+        "[info] r3 no longer used, setting death = birth\n"
+    #endif
     "    0: LOAD_ARG   r1, 0\n"
     "    1: LOAD_IMM   r2, 0x100000000\n"
-    "    2: GET_ALIAS  r3, a3\n"
-    "    3: GET_ALIAS  r4, a4\n"
-    "    4: ADD        r5, r3, r4\n"
-    "    5: ZCAST      r6, r5\n"
-    "    6: ADD        r7, r2, r6\n"
-    "    7: LOAD_BR    r8, 0(r7)\n"
-    "    8: SET_ALIAS  a2, r8\n"
-    "    9: LOAD_IMM   r9, 1\n"
-    "   10: STORE_I8   948(r1), r9\n"
-    "   11: STORE      952(r1), r8\n"
-    "   12: LOAD_IMM   r10, 4\n"
-    "   13: SET_ALIAS  a1, r10\n"
-    "   14: RETURN\n"
+    "    2: GET_ALIAS  r3, a2\n"
+    "    3: NOP\n"
+    "    4: GET_ALIAS  r4, a3\n"
+    "    5: SET_ALIAS  a4, r4\n"
+    "    6: LOAD_IMM   r5, 8\n"
+    "    7: SET_ALIAS  a1, r5\n"
+    "    8: RETURN\n"
     "\n"
     "Alias 1: int32 @ 956(r1)\n"
     "Alias 2: int32 @ 268(r1)\n"
     "Alias 3: int32 @ 272(r1)\n"
-    "Alias 4: int32 @ 276(r1)\n"
+    "Alias 4: int32 @ 928(r1)\n"
     "\n"
-    "Block 0: <none> --> [0,14] --> <none>\n"
+    "Block 0: <none> --> [0,8] --> <none>\n"
     ;
 
 #include "tests/rtl-disasm-test.i"
