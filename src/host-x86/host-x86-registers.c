@@ -1278,8 +1278,6 @@ static void first_pass_for_block(HostX86Context *ctx, int block_index)
     block_info->alias_store = (uint16_t *)((uintptr_t)ctx->alias_buffer
                                            + block_index * (4 * num_aliases)
                                            + (2 * num_aliases));
-    memset(ctx->last_set_alias, -1,
-           sizeof(*ctx->last_set_alias) * unit->next_alias);
 
     /* If this block has exactly one entering edge and that edge comes from
      * a block we've already seen, carry alias-store data over from that
@@ -1315,8 +1313,6 @@ static void first_pass_for_block(HostX86Context *ctx, int block_index)
                 if (unit->regs[insn->src1].death < insn_index) {
                     unit->regs[insn->src1].death = insn_index;
                 }
-                /* The previous SET_ALIAS can no longer be killed. */
-                ctx->last_set_alias[insn->alias] = -1;
             } else {
                 block_info->alias_load[insn->alias] = insn->dest;
                 /* We don't convert forwarded stores to MOVE in order to
@@ -1327,20 +1323,7 @@ static void first_pass_for_block(HostX86Context *ctx, int block_index)
             break;
 
           case RTLOP_SET_ALIAS:
-            if (ctx->last_set_alias[insn->alias] >= 0) {
-                /* Kill the last SET_ALIAS for this alias, _unless_ it has
-                 * bound storage and we've seen a non-tail call in this
-                 * block; in that case, we have to keep the SET_ALIAS in
-                 * place so its value gets stored to the associated storage. */
-                if (!block_info->has_nontail_call
-                 || !unit->aliases[insn->alias].base) {
-                    rtl_opt_kill_insn(
-                        unit, ctx->last_set_alias[insn->alias],
-                        (ctx->handle->common_opt & BINREC_OPT_DSE) != 0);
-                }
-            }
             block_info->alias_store[insn->alias] = insn->src1;
-            ctx->last_set_alias[insn->alias] = insn_index;
             break;
 
           case RTLOP_MULHU:

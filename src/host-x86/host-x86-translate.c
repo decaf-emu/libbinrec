@@ -3869,7 +3869,6 @@ static void destroy_context(HostX86Context *ctx)
     binrec_free(ctx->handle, ctx->regs);
     binrec_free(ctx->handle, ctx->label_offsets);
     binrec_free(ctx->handle, ctx->alias_buffer);
-    binrec_free(ctx->handle, ctx->last_set_alias);
 }
 
 /*-----------------------------------------------------------------------*/
@@ -3899,10 +3898,8 @@ static bool init_context(HostX86Context *ctx, binrec_t *handle, RTLUnit *unit)
         handle, sizeof(*ctx->label_offsets) * unit->next_label);
     ctx->alias_buffer = binrec_malloc(
         handle, ((4 * unit->next_alias) * unit->num_blocks));
-    ctx->last_set_alias = binrec_malloc(
-        handle, sizeof(*ctx->last_set_alias) * unit->next_alias);
     if (!ctx->blocks || !ctx->regs || !ctx->label_offsets
-     || !ctx->alias_buffer || !ctx->last_set_alias) {
+     || !ctx->alias_buffer) {
         log_error(handle, "No memory for output translation context");
         destroy_context(ctx);
         return false;

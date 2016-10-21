@@ -188,9 +188,6 @@ typedef struct HostX86Context {
     long *label_offsets;
     /* Buffer for alias_* arrays for each block. */
     void *alias_buffer;
-    /* Last SET_ALIAS instruction for each alias in the current block (if
-     * killable), or -1.  Used during the first register allocation pass. */
-    int32_t *last_set_alias;
 
     /* Current mapping from x86 to RTL registers. */
     uint16_t reg_map[32];
