@@ -117,9 +117,9 @@ typedef enum RTLDataType_ {
     RTLTYPE_INT32 = 1,  // 32-bit integer
     RTLTYPE_INT64,      // 64-bit integer
     RTLTYPE_ADDRESS,    // Host-pointer-sized integer
-    RTLTYPE_FLOAT32,      // 32-bit floating point
-    RTLTYPE_FLOAT64,     // 64-bit floating point
-    RTLTYPE_V2_FLOAT64,  // Vector of 2 x RTLTYPE_FLOAT64
+    RTLTYPE_FLOAT32,    // 32-bit floating point
+    RTLTYPE_FLOAT64,    // 64-bit floating point
+    RTLTYPE_V2_FLOAT64, // Vector of 2 x RTLTYPE_FLOAT64
 } RTLDataType;
 
 /**
