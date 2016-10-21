@@ -25,6 +25,8 @@ static int add_rtl(RTLUnit *unit)
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg1, 0, 0, 1));
     EXPECT(alias = rtl_alloc_alias_register(unit, RTLTYPE_INT32));
     rtl_set_alias_storage(unit, alias, reg1, 0x1234);
+    /* reg1's live range should be extended by the SET_ALIAS below, so
+     * reg2 should not reuse reg1's register. */
     EXPECT(reg2 = rtl_alloc_register(unit, RTLTYPE_INT32));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg2, 0, 0, 2));
     EXPECT(rtl_add_insn(unit, RTLOP_SET_ALIAS, 0, reg2, 0, alias));
