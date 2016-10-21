@@ -243,7 +243,6 @@ static bool process_command_line(int argc, char **argv)
                             opt_host |= BINREC_OPT_H_X86_BRANCH_ALIGNMENT
                                       | BINREC_OPT_H_X86_CONDITION_CODES
                                       | BINREC_OPT_H_X86_FIXED_REGS
-                                      | BINREC_OPT_H_X86_MERGE_REGS
                                       | BINREC_OPT_H_X86_STORE_IMMEDIATE;
                         }
                     }
@@ -251,7 +250,8 @@ static bool process_command_line(int argc, char **argv)
                         opt_common |= BINREC_OPT_DEEP_DATA_FLOW;
                         if (native_arch == BINREC_ARCH_X86_64_SYSV
                          || native_arch == BINREC_ARCH_X86_64_WINDOWS) {
-                            opt_host |= BINREC_OPT_H_X86_ADDRESS_OPERANDS;
+                            opt_host |= BINREC_OPT_H_X86_ADDRESS_OPERANDS
+                                      | BINREC_OPT_H_X86_MERGE_REGS;
                         }
                     }
                 } else if (strcmp(name, "basic") == 0) {
