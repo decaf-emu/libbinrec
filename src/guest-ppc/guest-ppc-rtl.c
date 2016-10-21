@@ -55,7 +55,7 @@ static inline PURE_FUNCTION uint32_t get_insn_at(
     const uint32_t address)
 {
     ASSERT((address & 3) == 0);
-    if (address >= block->start && address < block->start + block->len) {
+    if (address - block->start < block->len) {
         const uint32_t *memory_base =
             (const uint32_t *)ctx->handle->setup.guest_memory_base;
         return bswap_be32(memory_base[address/4]);
@@ -1432,11 +1432,13 @@ static inline void translate_load_store_string(
         const int mem_address = rtl_alloc_register(unit, RTLTYPE_ADDRESS);
         rtl_add_insn(unit, RTLOP_ADD, mem_address, host_address, i, 0);
 
-        int real_offset = gpr_offset;
+        int real_offset;
         if (endian_flip) {
             real_offset = rtl_alloc_register(unit, RTLTYPE_ADDRESS);
             rtl_add_insn(unit, RTLOP_XORI,
                          real_offset, gpr_offset, 0, endian_flip);
+        } else {
+            real_offset = gpr_offset;
         }
         int gpr_address = rtl_alloc_register(unit, RTLTYPE_ADDRESS);
         rtl_add_insn(unit, RTLOP_ADD, gpr_address, psb_reg, real_offset, 0);

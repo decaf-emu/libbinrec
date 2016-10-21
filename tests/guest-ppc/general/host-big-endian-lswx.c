@@ -1,0 +1,133 @@
+/*
+ * libbinrec: a recompiling translator for machine code
+ * Copyright (c) 2016 Andrew Church <achurch@achurch.org>
+ *
+ * This software may be copied and redistributed under certain conditions;
+ * see the file "COPYING" in the source code distribution for details.
+ * NO WARRANTY is provided with this software.
+ */
+
+#include "include/binrec.h"
+#include <stdbool.h>
+
+static const binrec_setup_t setup = {
+    .guest = BINREC_ARCH_PPC_7XX,
+    .host = BINREC_ARCH_PPC_7XX,  // To force host_little_endian to false.
+    .host_memory_base = UINT64_C(0x100000000),
+    .state_offset_gpr = 0x100,
+    .state_offset_fpr = 0x180,
+    .state_offset_gqr = 0x380,
+    .state_offset_cr = 0x3A0,
+    .state_offset_lr = 0x3A4,
+    .state_offset_ctr = 0x3A8,
+    .state_offset_xer = 0x3AC,
+    .state_offset_fpscr = 0x3B0,
+    .state_offset_reserve_flag = 0x3B4,
+    .state_offset_reserve_state = 0x3B8,
+    .state_offset_nia = 0x3BC,
+    /* 0x3C0: unused */
+    .state_offset_timebase_handler = 0x3C8,
+    .state_offset_sc_handler = 0x3D0,
+    .state_offset_trap_handler = 0x3D8,
+    .state_offset_branch_callback = 0x3E0,
+};
+
+static const uint8_t input[] = {
+    0x7C,0x61,0x14,0x2A,  // lswx r3,r1,r2
+};
+
+static const bool expected_success = true;
+
+static const char expected[] =
+    "[info] Scanning terminated at requested limit 0x3\n"
+    "    0: LOAD_ARG   r1, 0\n"
+    "    1: LOAD_IMM   r2, 0x100000000\n"
+    "    2: GET_ALIAS  r3, a3\n"
+    "    3: ZCAST      r4, r3\n"
+    "    4: ADD        r5, r2, r4\n"
+    "    5: GET_ALIAS  r6, a4\n"
+    "    6: ZCAST      r7, r6\n"
+    "    7: ADD        r8, r5, r7\n"
+    "    8: GET_ALIAS  r9, a34\n"
+    "    9: ANDI       r10, r9, 127\n"
+    "   10: ANDI       r11, r10, 3\n"
+    "   11: GOTO_IF_Z  r11, L1\n"
+    "   12: ADDI       r12, r10, 12\n"
+    "   13: ANDI       r13, r12, 124\n"
+    "   14: ZCAST      r14, r13\n"
+    "   15: ADD        r15, r1, r14\n"
+    "   16: LOAD_IMM   r16, 0\n"
+    "   17: STORE      256(r15), r16\n"
+    "   18: LABEL      L1\n"
+    "   19: ZCAST      r17, r10\n"
+    "   20: LOAD_IMM   r18, 0x0\n"
+    "   21: SET_ALIAS  a35, r18\n"
+    "   22: LOAD_IMM   r19, 0xC\n"
+    "   23: SET_ALIAS  a36, r19\n"
+    "   24: LABEL      L2\n"
+    "   25: GET_ALIAS  r20, a35\n"
+    "   26: SLTU       r21, r20, r17\n"
+    "   27: GOTO_IF_Z  r21, L3\n"
+    "   28: GET_ALIAS  r22, a36\n"
+    "   29: ADD        r23, r8, r20\n"
+    "   30: ADD        r24, r1, r22\n"
+    "   31: LOAD_U8    r25, 0(r23)\n"
+    "   32: STORE_I8   256(r24), r25\n"
+    "   33: ADDI       r26, r20, 1\n"
+    "   34: SET_ALIAS  a35, r26\n"
+    "   35: ADDI       r27, r22, 1\n"
+    "   36: ANDI       r28, r27, 127\n"
+    "   37: SET_ALIAS  a36, r28\n"
+    "   38: GOTO       L2\n"
+    "   39: LABEL      L3\n"
+    "   40: LOAD_IMM   r29, 4\n"
+    "   41: SET_ALIAS  a1, r29\n"
+    "   42: RETURN\n"
+    "\n"
+    "Alias 1: int32 @ 956(r1)\n"
+    "Alias 2: int32 @ 256(r1)\n"
+    "Alias 3: int32 @ 260(r1)\n"
+    "Alias 4: int32 @ 264(r1)\n"
+    "Alias 5: int32 @ 268(r1)\n"
+    "Alias 6: int32 @ 272(r1)\n"
+    "Alias 7: int32 @ 276(r1)\n"
+    "Alias 8: int32 @ 280(r1)\n"
+    "Alias 9: int32 @ 284(r1)\n"
+    "Alias 10: int32 @ 288(r1)\n"
+    "Alias 11: int32 @ 292(r1)\n"
+    "Alias 12: int32 @ 296(r1)\n"
+    "Alias 13: int32 @ 300(r1)\n"
+    "Alias 14: int32 @ 304(r1)\n"
+    "Alias 15: int32 @ 308(r1)\n"
+    "Alias 16: int32 @ 312(r1)\n"
+    "Alias 17: int32 @ 316(r1)\n"
+    "Alias 18: int32 @ 320(r1)\n"
+    "Alias 19: int32 @ 324(r1)\n"
+    "Alias 20: int32 @ 328(r1)\n"
+    "Alias 21: int32 @ 332(r1)\n"
+    "Alias 22: int32 @ 336(r1)\n"
+    "Alias 23: int32 @ 340(r1)\n"
+    "Alias 24: int32 @ 344(r1)\n"
+    "Alias 25: int32 @ 348(r1)\n"
+    "Alias 26: int32 @ 352(r1)\n"
+    "Alias 27: int32 @ 356(r1)\n"
+    "Alias 28: int32 @ 360(r1)\n"
+    "Alias 29: int32 @ 364(r1)\n"
+    "Alias 30: int32 @ 368(r1)\n"
+    "Alias 31: int32 @ 372(r1)\n"
+    "Alias 32: int32 @ 376(r1)\n"
+    "Alias 33: int32 @ 380(r1)\n"
+    "Alias 34: int32 @ 940(r1)\n"
+    "Alias 35: address, no bound storage\n"
+    "Alias 36: address, no bound storage\n"
+    "\n"
+    "Block 0: <none> --> [0,11] --> 1,2\n"
+    "Block 1: 0 --> [12,17] --> 2\n"
+    "Block 2: 1,0 --> [18,23] --> 3\n"
+    "Block 3: 2,4 --> [24,27] --> 4,5\n"
+    "Block 4: 3 --> [28,38] --> 3\n"
+    "Block 5: 3 --> [39,42] --> <none>\n"
+    ;
+
+
+#include "tests/rtl-disasm-test.i"
