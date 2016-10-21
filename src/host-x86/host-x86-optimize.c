@@ -48,13 +48,20 @@ static PURE_FUNCTION bool is_reg_killable(
  * kill_reg:  Eliminate the given register and the instruction that sets it.
  *
  * [Parameters]
- *     unit: RTL unit.
+ *     ctx: Translation context.
  *     reg_index: Register to eliminate.
  *     dse: True to recursively eliminate dead registers.
  */
-static void kill_reg(RTLUnit * const unit, const int reg_index, bool dse)
+static void kill_reg(HostX86Context * const ctx, const int reg_index, bool dse)
 {
+    RTLUnit * const unit = ctx->unit;
     RTLRegister * const reg = &unit->regs[reg_index];
+
+    /* Make sure this register doesn't have a host register allocated
+     * via FIXED_REGS, since deleting it could disrupt associated state
+     * information. */
+    ASSERT(!ctx->regs[reg_index].host_allocated);
+
     reg->death = reg->birth;
     rtl_opt_kill_insn(unit, reg->birth, dse);
 }
@@ -68,7 +75,7 @@ static void kill_reg(RTLUnit * const unit, const int reg_index, bool dse)
  * ZCAST that sets it.  Helper function for host_x86_optimize_address().
  *
  * [Parameters]
- *     unit: RTL unit.
+ *     ctx: Translation context.
  *     reg_index: Register to check.
  *     insn_index: Instruction containing register reference.
  * [Return value]
@@ -76,8 +83,9 @@ static void kill_reg(RTLUnit * const unit, const int reg_index, bool dse)
  *     it was not eliminated).
  */
 static int maybe_eliminate_zcast(
-    RTLUnit * const unit, const int reg_index, const int insn_index)
+    HostX86Context * const ctx, const int reg_index, const int insn_index)
 {
+    RTLUnit * const unit = ctx->unit;
     RTLRegister * const reg = &unit->regs[reg_index];
 
     if ((reg->source == RTLREG_RESULT || reg->source == RTLREG_RESULT_NOFOLD)
@@ -86,7 +94,7 @@ static int maybe_eliminate_zcast(
         if (is_reg_killable(unit, reg_index, insn_index)) {
             /* Don't kill recursively because we want to keep the source
              * operand. */
-            kill_reg(unit, reg_index, false);
+            kill_reg(ctx, reg_index, false);
             return zcast_src;
         }
     }
@@ -161,16 +169,16 @@ void host_x86_optimize_address(HostX86Context * const ctx, int insn_index)
 
     /* Eliminate the addition instruction and its output. */
     const int add_insn_index = src1_reg->birth;
-    kill_reg(unit, src1, false);
+    kill_reg(ctx, src1, false);
 
     /* If either operand is the output of a ZCAST instruction (and is not
      * used elsewhere), replace it with the ZCAST input and eliminate the
      * ZCAST.  This is safe even for RTLTYPE_INT32 registers because the
      * x86 architecture specifies that all 32-bit operations clear the
      * high 32 bits of the output register in 64-bit mode. */
-    addend1 = maybe_eliminate_zcast(unit, addend1, add_insn_index);
+    addend1 = maybe_eliminate_zcast(ctx, addend1, add_insn_index);
     if (addend2) {
-        addend2 = maybe_eliminate_zcast(unit, addend2, add_insn_index);
+        addend2 = maybe_eliminate_zcast(ctx, addend2, add_insn_index);
     }
 
     /* Update the memory access instruction with the new operands. */
@@ -258,7 +266,7 @@ void host_x86_optimize_immediate_store(HostX86Context * const ctx,
         return;  // The constant won't fit in a single instruction.
     }
 
-    kill_reg(unit, src2, false);
+    kill_reg(ctx, src2, false);
     ASSERT(!src2_reg->live);
     src2_reg->type = type;
     src2_reg->value.i64 = value;
