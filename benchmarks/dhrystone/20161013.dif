@@ -1,6 +1,6 @@
 diff -r 6fbc109affc2 benchmarks/dhrystone/dhry.h
 --- a/benchmarks/dhrystone/dhry.h	Thu Oct 13 02:04:35 2016 +0900
-+++ b/benchmarks/dhrystone/dhry.h	Fri Oct 14 00:26:33 2016 +0900
++++ b/benchmarks/dhrystone/dhry.h	Fri Oct 21 20:40:29 2016 +0900
 @@ -4,11 +4,12 @@
   *                   "DHRYSTONE" Benchmark Program
   *                   -----------------------------
@@ -15,7 +15,7 @@ diff -r 6fbc109affc2 benchmarks/dhrystone/dhry.h
   *
   *  Author:     Reinhold P. Weicker
   *                      Siemens AG, AUT E 51
-@@ -127,6 +128,81 @@
+@@ -127,6 +128,84 @@
   *              non-executed "else" part was added to the "if" statement in
   *              Func_3, and a non-executed "else" part removed from Proc_3.
   *
@@ -59,6 +59,9 @@ diff -r 6fbc109affc2 benchmarks/dhrystone/dhry.h
 + *              time, its value is obtained by calling the POSIX sysconf()
 + *              function for the CLK_TCK parameter.
 + *
++ *              The comment for Proc_2() now correctly indicates the
++ *              expected output value (5).
++ *
 + *              The version number output by the program (if BENCHMARK_ONLY
 + *              is not defined) has been changed to "2.1-AC" to reflect the
 + *              above changes.
@@ -97,7 +100,7 @@ diff -r 6fbc109affc2 benchmarks/dhrystone/dhry.h
   ***************************************************************************
   *
   * Defines:     The following "Defines" are possible:
-@@ -167,6 +243,23 @@
+@@ -167,6 +246,23 @@
   *                      time in 1/HZ seconds, with HZ = 60 for most systems.
   *                      CHECK YOUR SYSTEM DESCRIPTION BEFORE YOU JUST APPLY
   *                      A VALUE.
@@ -121,7 +124,7 @@ diff -r 6fbc109affc2 benchmarks/dhrystone/dhry.h
   *
   ***************************************************************************
   *
-@@ -347,6 +440,8 @@
+@@ -347,6 +443,8 @@
  
  /* Compiler and system dependent definitions: */
  
@@ -130,7 +133,7 @@ diff -r 6fbc109affc2 benchmarks/dhrystone/dhry.h
  #ifndef TIME
  #define TIMES
  #endif
-@@ -362,6 +457,8 @@
+@@ -362,6 +460,8 @@
  #define Mic_secs_Per_Second     1000000.0
                  /* Berkeley UNIX C returns process times in seconds/HZ */
  
@@ -139,7 +142,7 @@ diff -r 6fbc109affc2 benchmarks/dhrystone/dhry.h
  #ifdef  NOSTRUCTASSIGN
  #define structassign(d, s)      memcpy(&(d), &(s), sizeof(d))
  #else
-@@ -383,8 +480,13 @@
+@@ -383,8 +483,13 @@
  
  /* General definitions: */
  
@@ -154,7 +157,7 @@ diff -r 6fbc109affc2 benchmarks/dhrystone/dhry.h
  
  #define Null 0 
                  /* Value of a Null pointer */
-@@ -420,4 +522,42 @@
+@@ -420,4 +525,42 @@
            } variant;
        } Rec_Type, *Rec_Pointer;
  
@@ -199,7 +202,7 @@ diff -r 6fbc109affc2 benchmarks/dhrystone/dhry.h
 +#endif
 diff -r 6fbc109affc2 benchmarks/dhrystone/dhry_1.c
 --- a/benchmarks/dhrystone/dhry_1.c	Thu Oct 13 02:04:35 2016 +0900
-+++ b/benchmarks/dhrystone/dhry_1.c	Fri Oct 14 00:26:33 2016 +0900
++++ b/benchmarks/dhrystone/dhry_1.c	Fri Oct 21 20:40:29 2016 +0900
 @@ -4,11 +4,12 @@
   *                   "DHRYSTONE" Benchmark Program
   *                   -----------------------------
@@ -395,9 +398,18 @@ diff -r 6fbc109affc2 benchmarks/dhrystone/dhry_1.c
    
  }
  
+@@ -314,7 +376,7 @@
+ Proc_2 (Int_Par_Ref)
+ /******************/
+     /* executed once */
+-    /* *Int_Par_Ref == 1, becomes 4 */
++    /* *Int_Par_Ref == 1, becomes 5 */
+ 
+ One_Fifty   *Int_Par_Ref;
+ {
 diff -r 6fbc109affc2 benchmarks/dhrystone/dhry_2.c
 --- a/benchmarks/dhrystone/dhry_2.c	Thu Oct 13 02:04:35 2016 +0900
-+++ b/benchmarks/dhrystone/dhry_2.c	Fri Oct 14 00:26:33 2016 +0900
++++ b/benchmarks/dhrystone/dhry_2.c	Fri Oct 21 20:40:29 2016 +0900
 @@ -4,11 +4,12 @@
   *                   "DHRYSTONE" Benchmark Program
   *                   -----------------------------

@@ -168,6 +168,9 @@
  *              time, its value is obtained by calling the POSIX sysconf()
  *              function for the CLK_TCK parameter.
  *
+ *              The comment for Proc_2() now correctly indicates the
+ *              expected output value (5).
+ *
  *              The version number output by the program (if BENCHMARK_ONLY
  *              is not defined) has been changed to "2.1-AC" to reflect the
  *              above changes.

@@ -376,7 +376,7 @@ REG Rec_Pointer Ptr_Val_Par;
 Proc_2 (Int_Par_Ref)
 /******************/
     /* executed once */
-    /* *Int_Par_Ref == 1, becomes 4 */
+    /* *Int_Par_Ref == 1, becomes 5 */
 
 One_Fifty   *Int_Par_Ref;
 {
