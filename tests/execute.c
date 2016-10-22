@@ -90,19 +90,18 @@ static void free_callable(void *ptr)
 /*-----------------------------------------------------------------------*/
 
 /**
- * call:  Call the translated guest code for the given address, translating
- * it first if it has not yet been seen.
+ * translate:  Translate guest code at the given address into host code
+ * and store it in the translated code cache.
  *
  * [Parameters]
  *     handle: Translation handle.
  *     address: Guest address from which to execute.
- *     arg: Argument to pass to the translated code.
  *     translated_code_callback: Function to call after translating code,
  *         or NULL for none.
  * [Return value]
- *     True on success, false on translation error.
+ *     True on success, false on error.
  */
-static bool call(binrec_t *handle, uint32_t address, void *arg,
+static bool translate(binrec_t *handle, uint32_t address,
     void (*translated_code_callback)(uint32_t, void *, long))
 {
     if (address < func_table_base) {
@@ -159,7 +158,6 @@ static bool call(binrec_t *handle, uint32_t address, void *arg,
         func_table[address - func_table_base] = func;
     }
 
-    (*func_table[address - func_table_base])(arg);
     return true;
 }
 
@@ -231,15 +229,27 @@ bool call_guest_code(
         (*configure_handle)(handle);
     }
 
+    /* Pull cache info into registers to reduce the number of loads needed. */
+    GuestCode *table = func_table;
+    uint32_t base = func_table_base;
+    uint32_t limit = func_table_limit - func_table_base;
+
     const uint32_t RETURN_ADDRESS = -4;  // Used to detect return-to-caller.
     state_ppc->lr = RETURN_ADDRESS;
     state_ppc->nia = address;
     while (state_ppc->nia != RETURN_ADDRESS) {
-        if (!call(handle, state_ppc->nia, state_ppc, translated_code_callback)) {
-            clear_cache();
-            binrec_destroy_handle(handle);
-            return false;
+        const uint32_t nia = state_ppc->nia;
+        if (UNLIKELY(nia - base >= limit) || UNLIKELY(!table[nia - base])) {
+            if (!translate(handle, nia, translated_code_callback)) {
+                clear_cache();
+                binrec_destroy_handle(handle);
+                return false;
+            }
+            table = func_table;
+            base = func_table_base;
+            limit = func_table_limit - func_table_base;
         }
+        (*table[nia - base])(state_ppc);
     }
 
     clear_cache();
