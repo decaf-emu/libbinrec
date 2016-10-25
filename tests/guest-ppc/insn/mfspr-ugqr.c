@@ -13,6 +13,8 @@ static const uint8_t input[] = {
     0x7C,0x61,0xE2,0xA6,  // mfspr r3,897
 };
 
+static const unsigned int guest_opt = 0;
+
 static const bool expected_success = true;
 
 static const char expected[] =

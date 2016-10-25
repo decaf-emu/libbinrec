@@ -64,6 +64,7 @@ namespace Optimize {
     namespace GuestPPC {
         const unsigned int CONSTANT_GQRS_UNSAFE = BINREC_OPT_G_PPC_CONSTANT_GQRS_UNSAFE;
         const unsigned int NATIVE_RECIPROCAL = BINREC_OPT_G_PPC_NATIVE_RECIPROCAL;
+        const unsigned int TRIM_CR_STORES = BINREC_OPT_G_PPC_TRIM_CR_STORES;
     }
 
     namespace HostX86 {

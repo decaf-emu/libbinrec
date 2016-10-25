@@ -134,6 +134,12 @@ typedef struct GuestPPCBlockInfo {
     uint32_t start;
     uint32_t len;
 
+    /* Indices of successor blocks, used by the TRIM_CR_STORES optimization.
+     * A conditional branch is treated as terminal if either the branch
+     * target or the fall-through address lie outside the unit. */
+    int next_block;  // -1 if block is terminal or ends in an uncond'l branch.
+    int branch_block;  // -1 if block is terminal.
+
     /* Bitmasks of registers which are used (i.e., their values on block
      * entry are read) and changed by the block. */
     uint32_t gpr_used;
@@ -154,6 +160,17 @@ typedef struct GuestPPCBlockInfo {
         ctr_changed : 1,
         xer_changed : 1,
         fpscr_changed : 1;
+
+    /* Bitmask of CR bits which are set at least once on every code path
+     * from the beginning of this block to an exit from the unit.  Used
+     * with the TRIM_CR_STORES optimization. */
+    uint32_t crb_changed_recursive;
+
+    /* Does this block contain a trap instruction (tw/twi)? */
+    bool has_trap;
+
+    /* Does this block end in a conditional branch? */
+    bool is_conditional_branch;
 
     /* Is this block a branch target?  (Labels are only allocated for
      * branch targets.) */
@@ -195,6 +212,9 @@ typedef struct GuestPPCContext {
     int num_blocks;
     int blocks_size;  // Allocated size of array.
 
+    /* Index of current block being translated. */
+    int current_block;
+
     /* RTL label for the unit epilogue, or 0 if none has been allocated. */
     uint16_t epilogue_label;
     /* RTL register holding the processor state block. */
@@ -212,6 +232,9 @@ typedef struct GuestPPCContext {
     /* Set of CR bits which have been loaded into bit aliases, in the same
      * bit order as crb_loaded. */
     uint32_t crb_loaded;
+    /* Set of CR bits which have live registers.  Bits are in natural order
+     * (the LSB corresponds to CR bit 0), as with GuestPPCBlockInfo bitmaps. */
+    uint32_t crb_dirty;
 
     /* RTL registers for each CPU register live in the current block. */
     GuestPPCRegSet live;

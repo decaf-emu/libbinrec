@@ -614,6 +614,18 @@ typedef struct binrec_setup_t {
  */
 #define BINREC_OPT_G_PPC_NATIVE_RECIPROCAL  (1<<1)
 
+/**
+ * BINREC_OPT_G_PPC_TRIM_CR_STORES:  Analyze the data flow through each
+ * CR bit and eliminate stores which are not visible outside the
+ * translated code.
+ *
+ * If this optimization is enabled, pre- and post-instruction callbacks,
+ * branch callbacks, and timebase handlers may see incorrect values of CR
+ * in the processor state block.  System call and trap handlers are not
+ * affected.
+ */
+#define BINREC_OPT_G_PPC_TRIM_CR_STORES  (1<<2)
+
 /*------------ Host-architecture-specific optimization flags ------------*/
 
 /**

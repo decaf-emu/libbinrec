@@ -13,6 +13,8 @@ static const uint8_t input[] = {
     0xBF,0xC4,0x7F,0xFC,  // stmw r30,32764(r4)
 };
 
+static const unsigned int guest_opt = 0;
+
 static const bool expected_success = true;
 
 static const char expected[] =

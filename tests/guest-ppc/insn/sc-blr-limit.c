@@ -20,6 +20,8 @@ static const struct {
 };
 #define input input_struct.input
 
+static const unsigned int guest_opt = 0;
+
 static const bool expected_success = true;
 
 static const char expected[] =

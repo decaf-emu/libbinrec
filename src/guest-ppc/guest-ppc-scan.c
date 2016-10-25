@@ -30,13 +30,14 @@
 
 /**
  * get_block:  Return the basic block entry for the given block start
- * address, creating a new entry if one does not yet exist.  Returns
- * NULL if a new entry must be created but memory allocation fails.
+ * address, creating a new entry if create_new is true and one does not
+ * yet exist.  Returns -1 if a new entry must be created but memory
+ * allocation fails, or if create_new is false and the block is not found.
  *
- * The returned pointer is only valid until the next successful get_block()
+ * The returned index is only valid until the next successful get_block()
  * call.
  */
-static GuestPPCBlockInfo *get_block(GuestPPCContext *ctx, uint32_t address)
+static int get_block(GuestPPCContext *ctx, uint32_t address, bool create_new)
 {
     ASSERT(ctx);
 
@@ -44,7 +45,7 @@ static GuestPPCBlockInfo *get_block(GuestPPCContext *ctx, uint32_t address)
     while (low <= high) {
         const int mid = (low + high) / 2;
         if (address == ctx->blocks[mid].start) {
-            return &ctx->blocks[mid];
+            return mid;
         } else if (address < ctx->blocks[mid].start) {
             high = mid - 1;
         } else {
@@ -52,23 +53,30 @@ static GuestPPCBlockInfo *get_block(GuestPPCContext *ctx, uint32_t address)
         }
     }
 
+    if (!create_new) {
+        return -1;
+    }
+
     if (ctx->num_blocks >= ctx->blocks_size) {
         const int new_size = ctx->blocks_size + BLOCKS_EXPAND_SIZE;
         GuestPPCBlockInfo *new_blocks = binrec_realloc(
             ctx->handle, ctx->blocks, sizeof(*ctx->blocks) * new_size);
         if (UNLIKELY(!new_blocks)) {
-            return false;
+            return -1;
         }
         ctx->blocks = new_blocks;
         ctx->blocks_size = new_size;
     }
 
-    GuestPPCBlockInfo *block = &ctx->blocks[low];
-    memmove(block+1, block, sizeof(*ctx->blocks) * (ctx->num_blocks - low));
+    const int index = low;
+    GuestPPCBlockInfo *block = &ctx->blocks[index];
+    memmove(block+1, block, sizeof(*ctx->blocks) * (ctx->num_blocks - index));
     ctx->num_blocks++;
     memset(block, 0, sizeof(*block));
     block->start = address;
-    return block;
+    block->branch_block = -1;
+    block->next_block = -1;
+    return index;
 }
 
 /*-----------------------------------------------------------------------*/
@@ -960,6 +968,101 @@ static void update_used_changed(GuestPPCContext *ctx, GuestPPCBlockInfo *block,
     }  // switch (insn_OPCD(insn))
 }
 
+/*-----------------------------------------------------------------------*/
+
+/**
+ * scan_cr_bits:  Set the given block's crb_changed_recursive field to the
+ * set of CR bits which are written at least once on every control flow
+ * path out of the unit.
+ *
+ * [Parameters]
+ *     ctx: Translation context.
+ *     visited: Array of visited flags (1 byte per block).
+ *     block_index: Index of block to scan.
+ */
+static void scan_cr_bits(GuestPPCContext *ctx, uint8_t *visited,
+                         int block_index)
+{
+    ASSERT(ctx);
+    ASSERT(visited);
+    ASSERT(block_index >= 0);
+    ASSERT(block_index < ctx->num_blocks);
+    ASSERT(!visited[block_index]);
+
+    GuestPPCBlockInfo * const block = &ctx->blocks[block_index];
+
+    /* Mark the current block as currently being scanned, so we can detect
+     * cycles. */
+    visited[block_index] = 1;
+
+    /* Look up the control flow edges out of this block, and recursively
+     * scan them if they haven't been seen yet.  If either edge is to a
+     * block we're recursing from, implying that we've found a cycle in
+     * the flow graph, we simply drop it.  A full analysis would determine
+     * the set of bits written by the cycle as a whole and propagate that
+     * to all edges entering the cycle, but for our purposes it should be
+     * good enough (and is faster) to just stop recursing when we find a
+     * cycle; for typical cases in which we fall into the top of a loop,
+     * we'll still pick up the full set of changed bits. */
+    bool have_second_exit = false;
+    int exit0 = block->branch_block;
+    if (exit0 >= 0 && !visited[exit0]) {
+        scan_cr_bits(ctx, visited, exit0);
+    }
+    int exit1;
+    if (block->is_conditional_branch) {
+        exit1 = block->next_block;
+        if (exit1 >= 0 && !visited[exit1]) {
+            scan_cr_bits(ctx, visited, exit1);
+        }
+        if (exit1 >= 0 && visited[exit1] == 1) {
+            /* The fall-through edge is a cycle.  In this case we can just
+             * treat the branch as an unconditional branch to the target. */
+            exit1 = -1;
+        } else if (exit0 >= 0 && visited[exit0] == 1) {
+            /* The branch target edge is a cycle.  Ignore it and use the
+             * fall-through edge for CR bit checking. */
+            exit0 = block->next_block;
+        } else {
+            /* Neither edge is a cycle, so we need to look at both edges.
+             * If either edge is terminal, we won't forward any CR bits
+             * through this block (even if the other edge is non-terminal). */
+            have_second_exit = true;
+        }
+    }
+
+    /* Determine which CR bits are changed on all outgoing paths (modulo
+     * any cycle-entering edges we dropped). */
+    uint32_t successor_changed;
+    if (exit0 >= 0) {
+        successor_changed = ctx->blocks[exit0].crb_changed_recursive;
+    } else {
+        successor_changed = 0;
+    }
+    if (have_second_exit) {
+        if (exit1 >= 0) {
+            successor_changed &= ctx->blocks[exit1].crb_changed_recursive;
+        } else {
+            successor_changed = 0;
+        }
+    }
+
+    /* If the block contains a trap, we have to ensure flags are properly
+     * stored before calling the trap handler, so we can't pass any bits
+     * through from successor blocks. */
+    if (block->has_trap) {
+        successor_changed = 0;
+    }
+
+    /* Record the final set of changed CR bits. */
+    block->crb_changed_recursive =
+        (block->crb_changed | successor_changed) & ~block->crb_used;
+
+    /* Mark the current block as completely scanned so that parent blocks
+     * can pick up its full bit set. */
+    visited[block_index] = 2;
+}
+
 /*************************************************************************/
 /************************* Scanning entry point **************************/
 /*************************************************************************/
@@ -980,11 +1083,14 @@ bool guest_ppc_scan(GuestPPCContext *ctx, uint32_t limit)
 
     GuestPPCBlockInfo *block = NULL;
 
+    /* First scan instructions starting from the given address to
+     * identify basic blocks in the code stream. */
     uint32_t insn_count;
     for (insn_count = 0; insn_count < max_insns; insn_count++) {
         const uint32_t address = start + insn_count*4;
         const uint32_t insn = bswap_be32(memory_base[address/4]);
         const bool is_invalid = !is_valid_insn(insn);
+        const PPCOpcode opcd = insn_OPCD(insn);
 
         /* Start a new block if the previous one was terminated (or if
          * this is the first instruction scanned). */
@@ -1000,39 +1106,50 @@ bool guest_ppc_scan(GuestPPCContext *ctx, uint32_t limit)
              * if the current address is not a branch target, since the
              * previous instruction may have (for example) branched to loop
              * termination code which will in turn branch back here. */
-            block = get_block(ctx, address);
-            if (UNLIKELY(!block)) {
+            const int block_index = get_block(ctx, address, true);
+            if (UNLIKELY(block_index < 0)) {
                 log_error(ctx->handle, "Out of memory expanding basic block"
                           " table at 0x%X", address);
                 return false;
             }
+            block = &ctx->blocks[block_index];
         }
 
-        /* Update register usage state for this instruction's operands. */
-        if (!is_invalid) {
-            update_used_changed(ctx, block, insn);
+        /* Check for trap instructions (used by the TRIM_CR_STORES
+         * optimization). */
+        if (opcd==OPCD_TWI || (opcd==OPCD_x1F && insn_XO_10(insn)==XO_TW)) {
+            block->has_trap = true;
         }
 
-        /* Terminate the block if this is a branch or invalid instruction,
-         * or at icbi.  Also terminate the entire unit if this looks like
-         * the end of a function.  But make sure not to stop at an sc
-         * before a blr so we can optimize the sc+blr case properly. */
-        const PPCOpcode opcd = insn_OPCD(insn);
+        /* Terminate the block if this is a branch, trap, or invalid
+         * instruction, or at icbi.  (We terminate at trap instructions
+         * to help out data flow analysis, since we need to be able to
+         * store all live register values to the state block if a trap is
+         * taken.)  Also terminate the entire unit if this looks like the
+         * end of a function.  But make sure not to stop at an sc before
+         * a blr so we can optimize the sc+blr case properly. */
         const bool is_direct_branch = ((opcd & ~0x02) == OPCD_BC);
         const bool is_indirect_branch =
             (opcd == OPCD_x13 && (insn_XO_10(insn) == XO_BCLR
                                   || insn_XO_10(insn) == XO_BCCTR));
+        const int is_unconditional_branch =
+            (opcd == OPCD_B
+             || ((opcd == OPCD_BC || is_indirect_branch)
+                 && (insn_BO(insn) & 0x14) == 0x14));
         const bool is_icbi = (opcd == OPCD_x1F && insn_XO_10(insn) == XO_ICBI);
         const bool is_sc =
             (opcd == OPCD_SC
              && (insn_count == max_insns - 1
                  || bswap_be32(memory_base[(address+4)/4]) != 0x4E800020));
-        if (is_direct_branch || is_indirect_branch || is_invalid || is_icbi
-         || is_sc) {
+        if (is_direct_branch || is_indirect_branch || block->has_trap
+         || is_invalid || is_icbi || is_sc) {
             block->len = (address + 4) - block->start;
+            block->is_conditional_branch =
+                ((is_direct_branch || is_indirect_branch)
+                 && !is_unconditional_branch);
             block = NULL;
 
-            /* If this is a non-subroutine (LK=0) direct (not BCLR/BCCTR)
+            /* If this is a non-subroutine (LK=0) direct (not bclr/bcctr)
              * branch and the target address is within our scanning range,
              * add it to the basic block list. */
             if (is_direct_branch && !insn_LK(insn)) {
@@ -1045,20 +1162,20 @@ bool guest_ppc_scan(GuestPPCContext *ctx, uint32_t limit)
                     target = address + disp;
                 }
                 if (target >= start && target <= aligned_limit) {
-                    GuestPPCBlockInfo *target_block = get_block(ctx, target);
-                    if (UNLIKELY(!target_block)) {
+                    const int target_index = get_block(ctx, target, true);
+                    if (UNLIKELY(target_index < 0)) {
                         log_error(ctx->handle, "Out of memory expanding basic"
                                   " block table for branch target 0x%X at"
                                   " 0x%X", target, address);
                         return false;
                     }
-                    target_block->is_branch_target = true;
+                    ctx->blocks[target_index].is_branch_target = true;
                 }
             }
 
             /*
              * Functions typically end with an unconditional branch of some
-             * sort, most often BLR but possibly a branch to the entry
+             * sort, most often blr but possibly a branch to the entry
              * point of some other function (a tail call).  However, a
              * function might have several copies of its epilogue as a
              * result of optimization, so we only treat an unconditional
@@ -1073,8 +1190,6 @@ bool guest_ppc_scan(GuestPPCContext *ctx, uint32_t limit)
              * icbi and sc instructions always cause a return from
              * translated code, so they can potentially end the unit as well.
              */
-            const int is_unconditional_branch =
-                (opcd == OPCD_B || (insn_BO(insn) & 0x14) == 0x14);
             if (is_invalid || is_icbi || is_sc || is_unconditional_branch) {
                 ASSERT(ctx->num_blocks > 0);
                 if (ctx->blocks[ctx->num_blocks-1].start <= address) {
@@ -1114,6 +1229,68 @@ bool guest_ppc_scan(GuestPPCContext *ctx, uint32_t limit)
                 block->len = prev->len - (block->start - prev->start);
                 prev->len = block->start - prev->start;
             }
+        }
+    }
+
+    /* Scan each block to find registers used and changed in the block. */
+    for (int i = 0; i < ctx->num_blocks; i++) {
+        block = &ctx->blocks[i];
+        const uint32_t *block_base = &memory_base[block->start/4];
+        for (uint32_t j = 0; j < block->len; j += 4) {
+            const uint32_t insn = bswap_be32(block_base[j/4]);
+            if (is_valid_insn(insn)) {
+                update_used_changed(ctx, block, insn);
+            }
+        }
+    }
+
+    /* If optimizing CR bits, traverse all blocks in control flow order to
+     * find which CR bits don't need to be stored. */
+    if (ctx->handle->guest_opt & BINREC_OPT_G_PPC_TRIM_CR_STORES) {
+        /* Fill in exit edges for each block to generate the control flow
+         * graph. */
+        for (int i = 0; i < ctx->num_blocks; i++) {
+            block = &ctx->blocks[i];
+            ASSERT(block->len > 0);
+            const uint32_t address = block->start + block->len - 4;
+            const uint32_t insn = bswap_be32(memory_base[address/4]);
+            if (insn_OPCD(insn) == OPCD_BC) {
+                block->next_block =
+                    get_block(ctx, block->start + block->len, false);
+                const int32_t disp = insn_BD(insn);
+                uint32_t target;
+                if (insn_AA(insn)) {
+                    target = (uint32_t)disp;
+                } else {
+                    target = address + disp;
+                }
+                block->branch_block = get_block(ctx, target, false);
+            } else if (insn_OPCD(insn) == OPCD_B) {
+                const int32_t disp = insn_LI(insn);
+                uint32_t target;
+                if (insn_AA(insn)) {
+                    target = (uint32_t)disp;
+                } else {
+                    target = address + disp;
+                }
+                block->branch_block = get_block(ctx, target, false);
+            } else if (block->has_trap) {
+                /* Treat this as an unconditional branch to the next
+                 * instruction, to simplify scan_cr_bits() logic. */
+                block->branch_block =
+                    get_block(ctx, block->start + block->len, false);
+            }
+        }
+
+        uint8_t *visited = binrec_malloc(ctx->handle, ctx->num_blocks);
+        if (UNLIKELY(!visited)){ 
+            log_warning(ctx->handle, "No memory for block visited flags"
+                        " (%d bytes), skipping TRIM_CR_STORES optimization",
+                        ctx->num_blocks);
+        } else {
+            memset(visited, 0, ctx->num_blocks);
+            scan_cr_bits(ctx, visited, 0);
+            binrec_free(ctx->handle, visited);
         }
     }
 

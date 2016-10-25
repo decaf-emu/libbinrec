@@ -298,6 +298,7 @@ static inline void set_crb(GuestPPCContext * const ctx, int index, int reg)
     ctx->last_set.crb[index] = unit->num_insns;
     rtl_add_insn(unit, RTLOP_SET_ALIAS, 0, reg, 0, ctx->alias.crb[index]);
     ctx->live.crb[index] = reg;
+    ctx->crb_dirty |= 1u << index;
 }
 
 static inline void set_lr(GuestPPCContext * const ctx, int reg)
@@ -427,6 +428,7 @@ static void flush_live_regs(GuestPPCContext *ctx, bool clear)
     memset(&ctx->last_set, -1, sizeof(ctx->last_set));
     if (clear) {
         memset(&ctx->live, 0, sizeof(ctx->live));
+        ctx->crb_dirty = 0;
     }
 }
 
@@ -448,11 +450,11 @@ static int merge_cr(GuestPPCContext *ctx, bool make_live)
 {
     RTLUnit * const unit = ctx->unit;
 
-    uint32_t crb_dirty = ctx->crb_loaded;
-    ASSERT(crb_dirty != 0);  // We won't be called if there's nothing to merge.
+    uint32_t crb_loaded = ctx->crb_loaded;
+    ASSERT(crb_loaded != 0);  // We won't be called if there's nothing to merge.
 
     int cr;
-    if (crb_dirty == ~UINT32_C(0)) {
+    if (crb_loaded == ~UINT32_C(0)) {
         cr = 0;
     } else {
         int old_cr;
@@ -465,12 +467,12 @@ static int merge_cr(GuestPPCContext *ctx, bool make_live)
             rtl_add_insn(unit, RTLOP_GET_ALIAS, old_cr, 0, 0, ctx->alias.cr);
         }
         cr = rtl_alloc_register(unit, RTLTYPE_INT32);
-        rtl_add_insn(unit, RTLOP_ANDI, cr, old_cr, 0, (int32_t)~crb_dirty);
+        rtl_add_insn(unit, RTLOP_ANDI, cr, old_cr, 0, (int32_t)~crb_loaded);
     }
 
-    while (crb_dirty) {
-        const int bit = clz32(crb_dirty);
-        crb_dirty ^= 0x80000000u >> bit;
+    while (crb_loaded) {
+        const int bit = clz32(crb_loaded);
+        crb_loaded ^= 0x80000000u >> bit;
         const int crbN = get_crb(ctx, bit);
         int shifted_crbN;
         if (bit == 31) {
@@ -810,9 +812,10 @@ static void translate_branch_label(
     const binrec_t * const handle = ctx->handle;
     RTLUnit * const unit = ctx->unit;
 
+    const bool is_conditional = ((BO & 0x14) != 0x14);
+
     int skip_label;
-    if ((BO & 0x14) == 0
-     || ((BO & 0x14) != 0x14 && handle->use_branch_callback)) {
+    if ((BO & 0x14) == 0 || (is_conditional && handle->use_branch_callback)) {
         /* Need an extra label in case a non-final test fails. */
         skip_label = rtl_alloc_label(unit);
     } else {
@@ -821,6 +824,64 @@ static void translate_branch_label(
 
     RTLOpcode branch_op = RTLOP_GOTO;
     int test_reg = 0;
+
+    uint32_t crb_store_branch = 0;
+    uint32_t crb_store_next = 0;
+    uint16_t crb_reg[32];
+    if (ctx->handle->guest_opt & BINREC_OPT_G_PPC_TRIM_CR_STORES) {
+        memset(crb_reg, 0, sizeof(crb_reg));
+        const int branch_block = ctx->blocks[ctx->current_block].branch_block;
+        const int next_block = ctx->blocks[ctx->current_block].next_block;
+        ASSERT(branch_block >= 0);  // Must be valid if we have a label target.
+
+        /* First eliminate any stores which are dead on both taken and
+         * not-taken paths.  For an unconditional branch, this will kill
+         * all dead stores and the second half of the logic will be skipped. */
+        const uint32_t crb_dirty = ctx->crb_dirty;
+        const uint32_t crb_dead_branch =
+            ctx->blocks[branch_block].crb_changed_recursive & crb_dirty;
+        const uint32_t crb_dead_next =
+            (!is_conditional ? crb_dead_branch :
+             next_block < 0 ? 0 :
+                 ctx->blocks[next_block].crb_changed_recursive & crb_dirty);
+        uint32_t crb_to_kill = crb_dead_branch & crb_dead_next;
+        crb_store_branch = crb_dead_next & ~crb_to_kill;
+        crb_store_next = crb_dead_branch & ~crb_to_kill;
+//extern int printf(const char*,...);printf("l=%08X d=%08X db=%08X[%08X] dn=%08X[%08X] tk=%08X d=%08X sb=%08X sn=%08X\n",ctx->crb_loaded,ctx->crb_dirty,crb_dead_branch,ctx->blocks[branch_block].crb_changed_recursive,crb_dead_next,(next_block < 0 ? 0 : ctx->blocks[next_block].crb_changed_recursive),crb_to_kill,crb_dirty,crb_store_branch,crb_store_next);//FIXME temp
+        ASSERT((crb_store_branch & crb_store_next) == 0);
+        while (crb_to_kill) {
+            const int bit = ctz32(crb_to_kill);
+            crb_to_kill ^= 1u << bit;
+            ASSERT(ctx->last_set.crb[bit] >= 0);
+            rtl_opt_kill_insn(unit, ctx->last_set.crb[bit], false);
+            ctx->last_set.crb[bit] = -1;
+        }
+
+        /* If crb_dead_branch or crb_dead_next is nonzero at this point,
+         * we want to store those bits only on the code path where they
+         * are not dead, so we kill the original SET_ALIAS instructions
+         * but save the associated RTL registers so we can add new
+         * SET_ALIAS instructions at the branch or fall-through point. */
+        uint32_t crb_to_save = crb_store_branch | crb_store_next;
+        while (crb_to_save) {
+            const int bit = ctz32(crb_to_save);
+            crb_to_save ^= 1u << bit;
+            ASSERT(ctx->last_set.crb[bit] >= 0);
+            ASSERT(unit->insns[ctx->last_set.crb[bit]].opcode
+                   == RTLOP_SET_ALIAS);
+            crb_reg[bit] = unit->insns[ctx->last_set.crb[bit]].src1;
+            rtl_opt_kill_insn(unit, ctx->last_set.crb[bit], false);
+            ctx->last_set.crb[bit] = -1;
+        }
+
+        /* If there are bits to store on the branch-taken path for a
+         * conditional branch, we need a label for skipping past the
+         * branch even for a single condition (much like when the branch
+         * callback is enabled). */
+        if (crb_store_branch && !skip_label) {
+            skip_label = rtl_alloc_label(unit);
+        }
+    }
 
     if (!(BO & 0x04)) {
         const int ctr = get_ctr(ctx);
@@ -846,13 +907,20 @@ static void translate_branch_label(
 
     if (!(BO & 0x10)) {
         const int test = test_crb(ctx, BI);
-        if (handle->use_branch_callback) {
+        if (handle->use_branch_callback || crb_store_branch) {
             rtl_add_insn(unit, BO & 0x08 ? RTLOP_GOTO_IF_Z : RTLOP_GOTO_IF_NZ,
                          0, test, 0, skip_label);
         } else {
             branch_op = BO & 0x08 ? RTLOP_GOTO_IF_NZ : RTLOP_GOTO_IF_Z;
             test_reg = test;
         }
+    }
+
+    while (crb_store_branch) {
+        const int bit = ctz32(crb_store_branch);
+        crb_store_branch ^= 1u << bit;
+        rtl_add_insn(unit, RTLOP_SET_ALIAS,
+                     0, crb_reg[bit], 0, ctx->alias.crb[bit]);
     }
 
     if (handle->use_branch_callback || handle->post_insn_callback) {
@@ -876,6 +944,13 @@ static void translate_branch_label(
 
     if (skip_label) {
         rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, skip_label);
+    }
+
+    while (crb_store_next) {
+        const int bit = ctz32(crb_store_next);
+        crb_store_next ^= 1u << bit;
+        rtl_add_insn(unit, RTLOP_SET_ALIAS,
+                     0, crb_reg[bit], 0, ctx->alias.crb[bit]);
     }
 }
 
@@ -2370,6 +2445,7 @@ static inline void translate_x1F(
             memset(ctx->last_set.crb, -1, sizeof(ctx->last_set.crb));
             memset(ctx->live.crb, 0, sizeof(ctx->live.crb));
             ctx->crb_loaded = 0;
+            ctx->crb_dirty = 0;
         } else {
             const int rS = get_gpr(ctx, insn_rS(insn));
             for (int i = 0; i < 8; i++) {
@@ -2470,6 +2546,7 @@ static inline void translate_x1F(
         ctx->last_set.crb[2] = -1;
         ctx->live.crb[2] = 0;
         ctx->crb_loaded |= 0x80000000u >> 2;
+        ctx->crb_dirty |= 1u << 2;
         rtl_add_insn(unit, RTLOP_GOTO_IF_Z, 0, flag, 0, skip_label);
         rtl_add_insn(unit, RTLOP_STORE_I8, 0, psb_reg, zero,
                      handle->setup.state_offset_reserve_flag);
@@ -3060,6 +3137,8 @@ bool guest_ppc_translate_block(GuestPPCContext *ctx, int index)
     ASSERT(ctx->unit);
     ASSERT(index >= 0 && index < ctx->num_blocks);
 
+    ctx->current_block = index;
+
     RTLUnit * const unit = ctx->unit;
     GuestPPCBlockInfo *block = &ctx->blocks[index];
     const uint32_t start = block->start;
@@ -3091,6 +3170,7 @@ bool guest_ppc_translate_block(GuestPPCContext *ctx, int index)
     }
 
     memset(&ctx->live, 0, sizeof(ctx->live));
+    ctx->crb_dirty = 0;
     memset(&ctx->last_set, -1, sizeof(ctx->last_set));
 
     ctx->skip_next_insn = false;
@@ -3153,6 +3233,7 @@ void guest_ppc_flush_cr(GuestPPCContext *ctx, bool make_live)
             memset(ctx->last_set.crb, -1, sizeof(ctx->last_set.crb));
             memset(ctx->live.crb, 0, sizeof(ctx->live.crb));
             ctx->crb_loaded = 0;
+            ctx->crb_dirty = 0;
         } else {
             rtl_add_insn(unit, RTLOP_SET_ALIAS, 0, cr, 0, ctx->alias.cr);
         }

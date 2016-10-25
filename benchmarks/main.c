@@ -147,6 +147,7 @@ static bool process_command_line(int argc, char **argv)
     const char *arg_arch = NULL;
     const char *arg_benchmark = NULL;
     const char *arg_count = NULL;
+    int opt_level = 0;
 
     for (int argi = 1; argi < argc; argi++) {
 
@@ -157,6 +158,8 @@ static bool process_command_line(int argc, char **argv)
                     " ITERATION-COUNT\n", argv[0]);
             fprintf(stderr, "\nOptions:\n"
                     "    -d          Dump the translated code to disk.\n"
+                    "    -G<NAME>    Enable specific guest optimizations.\n"
+                    "        -Gppc-cr-stores      Eliminate dead stores to CR bits\n"
                     "    -H<NAME>    Enable specific host optimizations.\n"
                     "        -Hx86-address-op     Address operand optimization\n"
                     "        -Hx86-branch-align   Branch target alignment\n"
@@ -203,6 +206,19 @@ static bool process_command_line(int argc, char **argv)
             if (strcmp(argv[argi], "-d") == 0) {
                 dump = true;
 
+            } else if (argv[argi][1] == 'G') {
+                const char *name = &argv[argi][2];
+                if (!*name) {
+                    fprintf(stderr, "Missing guest optimization flag\n");
+                    goto usage;
+                } else if (strcmp(name, "ppc-cr-stores") == 0) {
+                    opt_guest |= BINREC_OPT_G_PPC_TRIM_CR_STORES;
+                } else {
+                    fprintf(stderr, "Unknown guest optimization flag %s\n",
+                            name);
+                    goto usage;
+                }
+
             } else if (argv[argi][1] == 'H') {
                 const char *name = &argv[argi][2];
                 if (!*name) {
@@ -229,31 +245,7 @@ static bool process_command_line(int argc, char **argv)
             } else if (argv[argi][1] == 'O') {
                 const char *name = &argv[argi][2];
                 if (!*name || (*name >= '0' && *name <= '9' && !name[1])) {
-                    const binrec_arch_t native_arch = binrec_native_arch();
-                    opt_common = 0;
-                    opt_guest = 0;
-                    opt_host = 0;
-                    if (*name >= '1') {
-                        opt_common |= BINREC_OPT_BASIC
-                                    | BINREC_OPT_DECONDITION
-                                    | BINREC_OPT_DSE
-                                    | BINREC_OPT_FOLD_CONSTANTS;
-                        if (native_arch == BINREC_ARCH_X86_64_SYSV
-                         || native_arch == BINREC_ARCH_X86_64_WINDOWS) {
-                            opt_host |= BINREC_OPT_H_X86_BRANCH_ALIGNMENT
-                                      | BINREC_OPT_H_X86_CONDITION_CODES
-                                      | BINREC_OPT_H_X86_FIXED_REGS
-                                      | BINREC_OPT_H_X86_STORE_IMMEDIATE;
-                        }
-                    }
-                    if (*name >= '2') {
-                        opt_common |= BINREC_OPT_DEEP_DATA_FLOW;
-                        if (native_arch == BINREC_ARCH_X86_64_SYSV
-                         || native_arch == BINREC_ARCH_X86_64_WINDOWS) {
-                            opt_host |= BINREC_OPT_H_X86_ADDRESS_OPERANDS
-                                      | BINREC_OPT_H_X86_MERGE_REGS;
-                        }
-                    }
+                    opt_level = *name ? *name - '0' : 1;
                 } else if (strcmp(name, "basic") == 0) {
                     opt_common |= BINREC_OPT_BASIC;
                 } else if (strcmp(name, "decondition") == 0) {
@@ -323,6 +315,34 @@ static bool process_command_line(int argc, char **argv)
     if (*eos || count <= 0) {
         fprintf(stderr, "Invalid iteration count: %s\n", arg_count);
         goto usage;
+    }
+
+    if (opt_level > 0) {
+        const binrec_arch_t native_arch = binrec_native_arch();
+        if (opt_level >= 1) {
+            opt_common |= BINREC_OPT_BASIC
+                        | BINREC_OPT_DECONDITION
+                        | BINREC_OPT_DSE
+                        | BINREC_OPT_FOLD_CONSTANTS;
+            if (arch == GUEST_ARCH_PPC_7XX) {
+                opt_guest |= BINREC_OPT_G_PPC_TRIM_CR_STORES;
+            }
+            if (native_arch == BINREC_ARCH_X86_64_SYSV
+             || native_arch == BINREC_ARCH_X86_64_WINDOWS) {
+                opt_host |= BINREC_OPT_H_X86_BRANCH_ALIGNMENT
+                          | BINREC_OPT_H_X86_CONDITION_CODES
+                          | BINREC_OPT_H_X86_FIXED_REGS
+                          | BINREC_OPT_H_X86_STORE_IMMEDIATE;
+            }
+        }
+        if (opt_level >= 2) {
+            opt_common |= BINREC_OPT_DEEP_DATA_FLOW;
+            if (native_arch == BINREC_ARCH_X86_64_SYSV
+             || native_arch == BINREC_ARCH_X86_64_WINDOWS) {
+                opt_host |= BINREC_OPT_H_X86_ADDRESS_OPERANDS
+                          | BINREC_OPT_H_X86_MERGE_REGS;
+            }
+        }
     }
 
     return true;

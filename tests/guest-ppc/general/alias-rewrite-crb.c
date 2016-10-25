@@ -8,12 +8,13 @@
  */
 
 #include "tests/guest-ppc/insn/common.h"
-#include "src/rtl-internal.h"
 
 static const uint8_t input[] = {
     0x4F,0xDE,0xF2,0x42,  // crset 30
     0x4F,0xDE,0xF1,0x82,  // crclr 30
 };
+
+static const unsigned int guest_opt = 0;
 
 static const bool expected_success = true;
 

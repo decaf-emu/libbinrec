@@ -13,6 +13,9 @@
 #include "include/binrec.h"
 #include <stdbool.h>
 
+/* For RTL_DEBUG_OPTIMIZE definition. */
+#include "src/rtl-internal.h"
+
 static const binrec_setup_t setup = {
     .guest = BINREC_ARCH_PPC_7XX,
     .host = BINREC_ARCH_X86_64_SYSV,
