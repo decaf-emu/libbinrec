@@ -166,7 +166,6 @@ struct RTLRegister {
     bool live;                  // True if this register has been referenced
                                 //    (never cleared once set, except if the
                                 //    register is killed during optimization)
-    uint16_t live_link;         // Next register in live list (sorted by birth)
     int32_t birth;              // First RTL insn index when register is live
                                 //    (= insn where it's assigned, because SSA)
     int32_t death;              // Last RTL insn index when register is live
@@ -634,34 +633,6 @@ static inline PURE_FUNCTION bool rtl_register_is_int(const RTLRegister *reg)
 static inline PURE_FUNCTION bool rtl_register_is_scalar(const RTLRegister *reg)
 {
     return rtl_type_is_scalar(reg->type);
-}
-
-/**
- * rtl_mark_live:  Mark the given register live, also updating the birth
- * and death fields as appropriate.
- *
- * [Parameters]
- *     unit: RTLUnit into which instruction is being inserted.
- *     insn_index: Index of instruction in unit->insns[].
- *     reg: Pointer to RTLRegister structure for register.
- *     index: Register index.
- */
-static ALWAYS_INLINE void rtl_mark_live(
-    RTLUnit * const unit, const int insn_index, RTLRegister * const reg,
-    const int index)
-{
-    if (!reg->live) {
-        reg->live = 1;
-        reg->birth = insn_index;
-        if (!unit->last_live_reg) {
-            unit->first_live_reg = index;
-        } else {
-            unit->regs[unit->last_live_reg].live_link = index;
-        }
-        unit->last_live_reg = index;
-        reg->live_link = 0;
-    }
-    reg->death = insn_index;
 }
 
 /*------------------- Miscellaneous utility functions -------------------*/

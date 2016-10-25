@@ -177,8 +177,7 @@ void rtl_update_live_ranges(RTLUnit * const unit)
             const int min_death = unit->blocks[latest_entry_block].last_insn;
             block->min_death = min_death;
             for (int reg = unit->first_live_reg;
-                 reg != 0 && unit->regs[reg].birth < birth_limit;
-                 reg = unit->regs[reg].live_link)
+                 reg != 0 && unit->regs[reg].birth < birth_limit; reg++)
             {
                 if (unit->regs[reg].death >= birth_limit
                  && unit->regs[reg].death < min_death) {

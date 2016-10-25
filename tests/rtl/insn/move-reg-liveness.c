@@ -32,19 +32,16 @@ int main(void)
     EXPECT(unit->regs[reg1].live);
     EXPECT_EQ(unit->regs[reg1].birth, 0);
     EXPECT_EQ(unit->regs[reg1].death, 0);
-    EXPECT_EQ(unit->regs[reg1].live_link, 0);
     EXPECT_EQ(unit->first_live_reg, reg1);
 
     EXPECT(rtl_add_insn(unit, RTLOP_MOVE, reg2, reg1, 0, 0));
     EXPECT(unit->regs[reg1].live);
     EXPECT_EQ(unit->regs[reg1].birth, 0);
     EXPECT_EQ(unit->regs[reg1].death, 1);
-    EXPECT_EQ(unit->regs[reg1].live_link, reg2);
     EXPECT_EQ(unit->first_live_reg, reg1);
     EXPECT(unit->regs[reg2].live);
     EXPECT_EQ(unit->regs[reg2].birth, 1);
     EXPECT_EQ(unit->regs[reg2].death, 1);
-    EXPECT_EQ(unit->regs[reg2].live_link, 0);
     EXPECT_EQ(unit->first_live_reg, reg1);
 
     rtl_destroy_unit(unit);

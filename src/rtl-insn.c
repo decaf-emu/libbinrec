@@ -42,6 +42,33 @@
     }                                           \
 } while (0)
 
+/*-----------------------------------------------------------------------*/
+
+/**
+ * rtl_mark_live:  Mark the given register live, also updating the birth
+ * and death fields as appropriate.
+ *
+ * [Parameters]
+ *     unit: RTLUnit into which instruction is being inserted.
+ *     insn_index: Index of instruction in unit->insns[].
+ *     reg: Pointer to RTLRegister structure for register.
+ *     index: Register index.
+ */
+static ALWAYS_INLINE void rtl_mark_live(
+    RTLUnit * const unit, const int insn_index, RTLRegister * const reg,
+    const int index)
+{
+    if (!reg->live) {
+        reg->live = true;
+        reg->birth = insn_index;
+        if (!unit->first_live_reg) {
+            unit->first_live_reg = index;
+        }
+        unit->last_live_reg = index;
+    }
+    reg->death = insn_index;
+}
+
 /*************************************************************************/
 /*************************** Encoding routines ***************************/
 /*************************************************************************/
@@ -1305,6 +1332,46 @@ bool (* const makefunc_table[])(RTLUnit *, RTLInsn *, int, int, int,
     [RTLOP_RETURN    ] = make_return,
     [RTLOP_ILLEGAL   ] = make_illegal,
 };
+
+/*************************************************************************/
+/*********************** Other interface routines ************************/
+/*************************************************************************/
+
+bool rtl_add_insn_copy(RTLUnit *unit, const RTLInsn *insn)
+{
+    ASSERT(unit != NULL);
+    ASSERT(!unit->finalized);
+    ASSERT(unit->insns != NULL);
+    ASSERT(unit->blocks != NULL);
+    ASSERT(unit->regs != NULL);
+    ASSERT(unit->label_blockmap != NULL);
+    ASSERT(insn);
+
+    if (!rtl_add_insn(unit, RTLOP_NOP, 0, 0, 0, 0)) {
+        return false;
+    }
+
+    const int insn_index = unit->num_insns - 1;
+    unit->insns[insn_index] = *insn;
+    if (insn->dest) {
+        RTLRegister * const destreg = &unit->regs[insn->dest];
+        rtl_mark_live(unit, insn_index, destreg, insn->dest);
+    }
+    if (insn->src1) {
+        RTLRegister * const src1reg = &unit->regs[insn->src1];
+        rtl_mark_live(unit, insn_index, src1reg, insn->src1);
+    }
+    if (insn->src2) {
+        RTLRegister * const src2reg = &unit->regs[insn->src2];
+        rtl_mark_live(unit, insn_index, src2reg, insn->src2);
+    }
+    if (rtl_opcode_has_src3(insn->opcode) && insn->src3) {
+        RTLRegister * const src3reg = &unit->regs[insn->src3];
+        rtl_mark_live(unit, insn_index, src3reg, insn->src3);
+    }
+
+    return true;
+}
 
 /*************************************************************************/
 /*************************************************************************/
