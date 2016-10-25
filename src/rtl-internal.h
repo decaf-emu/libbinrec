@@ -98,7 +98,7 @@
  * instructions are translated into sequences of RTLInsns, which are then
  * optimized and retranslated into host instructions.
  */
-typedef struct RTLInsn_ {
+typedef struct RTLInsn {
     uint16_t opcode;          // Operation code (RTLOpcode)
     uint16_t dest;            // Destination register
     uint16_t src1, src2;      // Source registers
