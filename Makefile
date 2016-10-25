@@ -280,12 +280,14 @@ ifeq ($(CC_TYPE),clang)
     BASE_FLAGS += -Wno-unused-function
     BASE_CFLAGS = $(BASE_FLAGS) -std=c99 \
         -Wmissing-declarations -Wstrict-prototypes
-    GCOV = llvm-cov
+    # Some older versions of Clang don't want a "gcov" argument here or
+    # a filename argument ('$1') at the end of the command.
+    GCOV = llvm-cov gcov >/dev/null
     GCOV_OPTS = -b -c
     GCOV_FILE_OPTS = \
         -gcno="`echo \"$1\" | sed -e 's|\.[^./]*$$|_cov.gcno|'`" \
         -gcda="`echo \"$1\" | sed -e 's|\.[^./]*$$|_cov.gcda|'`" \
-        -o "`echo "$1" | sed -e 's|[/.]|-|g'`.out"
+        -o "`echo "$1" | sed -e 's|[/.]|-|g'`.out" '$1'
 else ifeq ($(CC_TYPE),gcc)
     BASE_FLAGS = -O2 -pipe -g -I. \
         -Wall -Wextra $(call if-true,WARNINGS_AS_ERRORS,-Werror) \
