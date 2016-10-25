@@ -59,6 +59,7 @@ int main(void)
     binrec_t *handle;
     EXPECT(handle = binrec_create_handle(&final_setup));
 
+    binrec_set_optimization_flags(handle, 0, guest_opt, 0);
     binrec_set_code_range(handle, start, start + sizeof(input) - 1);
 
     RTLUnit *unit;
