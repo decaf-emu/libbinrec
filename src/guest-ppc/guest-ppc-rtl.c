@@ -847,7 +847,6 @@ static void translate_branch_label(
         uint32_t crb_to_kill = crb_dead_branch & crb_dead_next;
         crb_store_branch = crb_dead_next & ~crb_to_kill;
         crb_store_next = crb_dead_branch & ~crb_to_kill;
-//extern int printf(const char*,...);printf("l=%08X d=%08X db=%08X[%08X] dn=%08X[%08X] tk=%08X d=%08X sb=%08X sn=%08X\n",ctx->crb_loaded,ctx->crb_dirty,crb_dead_branch,ctx->blocks[branch_block].crb_changed_recursive,crb_dead_next,(next_block < 0 ? 0 : ctx->blocks[next_block].crb_changed_recursive),crb_to_kill,crb_dirty,crb_store_branch,crb_store_next);//FIXME temp
         ASSERT((crb_store_branch & crb_store_next) == 0);
         while (crb_to_kill) {
             const int bit = ctz32(crb_to_kill);
