@@ -13,6 +13,8 @@
 #include "src/common.h"
 #include "src/rtl.h"
 
+struct RTLInsn;
+
 /*************************************************************************/
 /*********************** Architectural constants *************************/
 /*************************************************************************/
@@ -262,6 +264,52 @@ typedef struct GuestPPCContext {
 /********************** Internal interface routines **********************/
 /*************************************************************************/
 
+/*-------- Optimization routines (guest-ppc-optimize.c) --------*/
+
+/**
+ * guest_ppc_trim_cr_stores:  Look for stores to CR bits which are dead on
+ * at least one path out of a branch instruction, and kill them or move
+ * them onto the appropriate code path.
+ *
+ * [Parameters]
+ *     ctx: Translation context.
+ *     BO: BO field of the branch instruction (0x14 for an unconditional
+ *         branch).
+ *     BI: BI field of the branch instruction (ignored for unconditional
+ *         branches).
+ *     crb_store_branch_ret: Pointer to variable to receive the bitmask of
+ *         CR bits (LSB = CR bit 0) to be stored on the branch-taken code
+ *         path only.
+ *     crb_store_next_ret: Pointer to variable to receive the bitmask of
+ *         CR bits (LSB = CR bit 0) to be stored on the branch-not-taken
+ *         code path only.
+ *     crb_reg_ret: Pointer to 32-element array to receive the RTL register
+ *         containing the value for each set bit in crb_store_*_ret.
+ *     crb_insn_ret: Pointer to 32-element array to receive the RTL
+ *         instruction which sets the value for each set bit in
+ *         crb_store_*_ret.  An opcode value of zero indicates that no
+ *         setting instruction should be added on the relevant code path.
+ */
+#define guest_ppc_trim_cr_stores INTERNAL(guest_ppc_trim_cr_stores)
+extern void guest_ppc_trim_cr_stores(
+    GuestPPCContext *ctx, int BO, int BI, uint32_t *crb_store_branch_ret,
+    uint32_t *crb_store_next_ret, uint16_t *crb_reg_ret,
+    struct RTLInsn *crb_insn_ret);
+
+/*-------- PowerPC to RTL translation (guest-ppc-rtl.c) --------*/
+
+/**
+ * guest_ppc_translate_block:  Generate RTL for the selected basic block.
+ *
+ * [Parameters]
+ *     context: Translation context.
+ *     index: Block index (into context->blocks[]).
+ * [Return value]
+ *     True on success, false on error.
+ */
+#define guest_ppc_translate_block INTERNAL(guest_ppc_translate_block)
+extern bool guest_ppc_translate_block(GuestPPCContext *ctx, int index);
+
 /**
  * guest_ppc_flush_cr:  Flush all CR bit aliases to the full CR register.
  *
@@ -273,17 +321,7 @@ typedef struct GuestPPCContext {
 #define guest_ppc_flush_cr INTERNAL(guest_ppc_flush_cr)
 extern void guest_ppc_flush_cr(GuestPPCContext *ctx, bool make_live);
 
-/**
- * guest_ppc_get_epilogue_label:  Return the RTL label for the epilogue,
- * allocating it if necessary.
- *
- * [Parameters]
- *     ctx: Translation context.
- * [Return value]
- *     Epilogue label.
- */
-#define guest_ppc_get_epilogue_label INTERNAL(guest_ppc_get_epilogue_label)
-extern int guest_ppc_get_epilogue_label(GuestPPCContext *ctx);
+/*-------- Input code scanning (guest-ppc-scan.c) --------*/
 
 /**
  * guest_ppc_scan:  Scan guest memory to find the range of addresses to
@@ -298,17 +336,19 @@ extern int guest_ppc_get_epilogue_label(GuestPPCContext *ctx);
 #define guest_ppc_scan INTERNAL(guest_ppc_scan)
 extern bool guest_ppc_scan(GuestPPCContext *ctx, uint32_t limit);
 
+/*-------- Miscellaneous utility routines (guest-ppc-translate.c) --------*/
+
 /**
- * guest_ppc_translate_block:  Generate RTL for the selected basic block.
+ * guest_ppc_get_epilogue_label:  Return the RTL label for the epilogue,
+ * allocating it if necessary.
  *
  * [Parameters]
- *     context: Translation context.
- *     index: Block index (into context->blocks[]).
+ *     ctx: Translation context.
  * [Return value]
- *     True on success, false on error.
+ *     Epilogue label.
  */
-#define guest_ppc_translate_block INTERNAL(guest_ppc_translate_block)
-extern bool guest_ppc_translate_block(GuestPPCContext *ctx, int index);
+#define guest_ppc_get_epilogue_label INTERNAL(guest_ppc_get_epilogue_label)
+extern int guest_ppc_get_epilogue_label(GuestPPCContext *ctx);
 
 /*************************************************************************/
 /*************************************************************************/

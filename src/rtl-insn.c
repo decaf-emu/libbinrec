@@ -42,35 +42,6 @@
     }                                           \
 } while (0)
 
-/*-----------------------------------------------------------------------*/
-
-/**
- * mark_live:  Mark the given register live, also updating the birth and
- * death fields as appropriate.
- *
- * [Parameters]
- *     unit: RTLUnit into which instruction is being inserted.
- *     insn_index: Index of instruction in unit->insns[].
- *     reg: Pointer to RTLRegister structure for register.
- *     index: Register index.
- */
-static ALWAYS_INLINE void mark_live(RTLUnit * const unit, const int insn_index,
-                                    RTLRegister * const reg, const int index)
-{
-    if (!reg->live) {
-        reg->live = 1;
-        reg->birth = insn_index;
-        if (!unit->last_live_reg) {
-            unit->first_live_reg = index;
-        } else {
-            unit->regs[unit->last_live_reg].live_link = index;
-        }
-        unit->last_live_reg = index;
-        reg->live_link = 0;
-    }
-    reg->death = insn_index;
-}
-
 /*************************************************************************/
 /*************************** Encoding routines ***************************/
 /*************************************************************************/
@@ -109,15 +80,15 @@ static bool make_nop(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
         RTLRegister * const destreg = &unit->regs[dest];
         unit->regs[dest].source = RTLREG_RESULT_NOFOLD;
         unit->regs[dest].result.opcode = RTLOP_NOP;
-        mark_live(unit, insn_index, destreg, dest);
+        rtl_mark_live(unit, insn_index, destreg, dest);
     }
     if (src1) {
         RTLRegister * const src1reg = &unit->regs[src1];
-        mark_live(unit, insn_index, src1reg, src1);
+        rtl_mark_live(unit, insn_index, src1reg, src1);
     }
     if (src2) {
         RTLRegister * const src2reg = &unit->regs[src2];
-        mark_live(unit, insn_index, src2reg, src2);
+        rtl_mark_live(unit, insn_index, src2reg, src2);
     }
 
     return true;
@@ -150,9 +121,9 @@ static bool make_set_alias(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
     RTLRegister * const src1reg = &unit->regs[src1];
     RTLAlias * const alias = &unit->aliases[other];
     const int insn_index = unit->num_insns;
-    mark_live(unit, insn_index, src1reg, src1);
+    rtl_mark_live(unit, insn_index, src1reg, src1);
     if (alias->base) {
-        mark_live(unit, insn_index, &unit->regs[alias->base], alias->base);
+        rtl_mark_live(unit, insn_index, &unit->regs[alias->base], alias->base);
     }
 
     return true;
@@ -187,9 +158,9 @@ static bool make_get_alias(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
     const int insn_index = unit->num_insns;
     destreg->source = RTLREG_ALIAS;
     destreg->alias.src = (uint16_t)other;
-    mark_live(unit, insn_index, destreg, dest);
+    rtl_mark_live(unit, insn_index, destreg, dest);
     if (alias->base) {
-        mark_live(unit, insn_index, &unit->regs[alias->base], alias->base);
+        rtl_mark_live(unit, insn_index, &unit->regs[alias->base], alias->base);
     }
 
     return true;
@@ -227,8 +198,8 @@ static bool make_move(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
     destreg->result.opcode = insn->opcode;
     destreg->result.is_imm = 0;
     destreg->result.src1 = src1;
-    mark_live(unit, insn_index, destreg, dest);
-    mark_live(unit, insn_index, src1reg, src1);
+    rtl_mark_live(unit, insn_index, destreg, dest);
+    rtl_mark_live(unit, insn_index, src1reg, src1);
 
     return true;
 }
@@ -279,10 +250,10 @@ static bool make_select(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
     destreg->result.src1 = src1;
     destreg->result.src2 = src2;
     destreg->result.src3 = (uint16_t)other;
-    mark_live(unit, insn_index, destreg, dest);
-    mark_live(unit, insn_index, src1reg, src1);
-    mark_live(unit, insn_index, src2reg, src2);
-    mark_live(unit, insn_index, src3reg, other);
+    rtl_mark_live(unit, insn_index, destreg, dest);
+    rtl_mark_live(unit, insn_index, src1reg, src1);
+    rtl_mark_live(unit, insn_index, src2reg, src2);
+    rtl_mark_live(unit, insn_index, src3reg, other);
 
     return true;
 }
@@ -320,8 +291,8 @@ static bool make_intcast(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
     destreg->result.opcode = insn->opcode;
     destreg->result.is_imm = 0;
     destreg->result.src1 = src1;
-    mark_live(unit, insn_index, destreg, dest);
-    mark_live(unit, insn_index, src1reg, src1);
+    rtl_mark_live(unit, insn_index, destreg, dest);
+    rtl_mark_live(unit, insn_index, src1reg, src1);
 
     return true;
 }
@@ -358,8 +329,8 @@ static bool make_alu_1op(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
     destreg->result.opcode = insn->opcode;
     destreg->result.is_imm = 0;
     destreg->result.src1 = src1;
-    mark_live(unit, insn_index, destreg, dest);
-    mark_live(unit, insn_index, src1reg, src1);
+    rtl_mark_live(unit, insn_index, destreg, dest);
+    rtl_mark_live(unit, insn_index, src1reg, src1);
 
     return true;
 }
@@ -403,9 +374,9 @@ static bool make_alu_2op(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
     destreg->result.is_imm = 0;
     destreg->result.src1 = src1;
     destreg->result.src2 = src2;
-    mark_live(unit, insn_index, destreg, dest);
-    mark_live(unit, insn_index, src1reg, src1);
-    mark_live(unit, insn_index, src2reg, src2);
+    rtl_mark_live(unit, insn_index, destreg, dest);
+    rtl_mark_live(unit, insn_index, src1reg, src1);
+    rtl_mark_live(unit, insn_index, src2reg, src2);
 
     return true;
 }
@@ -450,9 +421,9 @@ static bool make_shift(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
     destreg->result.is_imm = 0;
     destreg->result.src1 = src1;
     destreg->result.src2 = src2;
-    mark_live(unit, insn_index, destreg, dest);
-    mark_live(unit, insn_index, src1reg, src1);
-    mark_live(unit, insn_index, src2reg, src2);
+    rtl_mark_live(unit, insn_index, destreg, dest);
+    rtl_mark_live(unit, insn_index, src1reg, src1);
+    rtl_mark_live(unit, insn_index, src2reg, src2);
 
     return true;
 }
@@ -493,8 +464,8 @@ static bool make_alu_imm(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
     destreg->result.is_imm = 1;
     destreg->result.src1 = src1;
     destreg->result.src_imm = (int32_t)other;
-    mark_live(unit, insn_index, destreg, dest);
-    mark_live(unit, insn_index, src1reg, src1);
+    rtl_mark_live(unit, insn_index, destreg, dest);
+    rtl_mark_live(unit, insn_index, src1reg, src1);
 
     return true;
 }
@@ -532,8 +503,8 @@ static bool make_clz(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
     destreg->result.opcode = insn->opcode;
     destreg->result.is_imm = 0;
     destreg->result.src1 = src1;
-    mark_live(unit, insn_index, destreg, dest);
-    mark_live(unit, insn_index, src1reg, src1);
+    rtl_mark_live(unit, insn_index, destreg, dest);
+    rtl_mark_live(unit, insn_index, src1reg, src1);
 
     return true;
 }
@@ -577,9 +548,9 @@ static bool make_cmp(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
     destreg->result.is_imm = 0;
     destreg->result.src1 = src1;
     destreg->result.src2 = src2;
-    mark_live(unit, insn_index, destreg, dest);
-    mark_live(unit, insn_index, src1reg, src1);
-    mark_live(unit, insn_index, src2reg, src2);
+    rtl_mark_live(unit, insn_index, destreg, dest);
+    rtl_mark_live(unit, insn_index, src1reg, src1);
+    rtl_mark_live(unit, insn_index, src2reg, src2);
 
     return true;
 }
@@ -620,8 +591,8 @@ static bool make_cmp_imm(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
     destreg->result.is_imm = 1;
     destreg->result.src1 = src1;
     destreg->result.src_imm = (int32_t)other;
-    mark_live(unit, insn_index, destreg, dest);
-    mark_live(unit, insn_index, src1reg, src1);
+    rtl_mark_live(unit, insn_index, destreg, dest);
+    rtl_mark_live(unit, insn_index, src1reg, src1);
 
     return true;
 }
@@ -675,10 +646,10 @@ static bool make_bitfield(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
     destreg->result.src2 = src2;
     destreg->result.start = start;
     destreg->result.count = count;
-    mark_live(unit, insn_index, destreg, dest);
-    mark_live(unit, insn_index, src1reg, src1);
+    rtl_mark_live(unit, insn_index, destreg, dest);
+    rtl_mark_live(unit, insn_index, src1reg, src1);
     if (src2) {
-        mark_live(unit, insn_index, src2reg, src2);
+        rtl_mark_live(unit, insn_index, src2reg, src2);
     }
 
     return true;
@@ -719,7 +690,7 @@ static bool make_load_imm(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
     } else {
         destreg->value.i64 = other;
     }
-    mark_live(unit, insn_index, destreg, dest);
+    rtl_mark_live(unit, insn_index, destreg, dest);
 
     return true;
 }
@@ -750,7 +721,7 @@ static bool make_load_arg(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
     const int insn_index = unit->num_insns;
     destreg->source = RTLREG_FUNC_ARG;
     destreg->arg_index = (uint8_t)other;
-    mark_live(unit, insn_index, destreg, dest);
+    rtl_mark_live(unit, insn_index, destreg, dest);
 
     return true;
 }
@@ -789,8 +760,8 @@ static bool make_load(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
     destreg->memory.base = src1;
     destreg->memory.offset = (int16_t)other;
     destreg->memory.byterev = (insn->opcode == RTLOP_LOAD_BR);
-    mark_live(unit, insn_index, destreg, dest);
-    mark_live(unit, insn_index, src1reg, src1);
+    rtl_mark_live(unit, insn_index, destreg, dest);
+    rtl_mark_live(unit, insn_index, src1reg, src1);
 
     return true;
 }
@@ -849,8 +820,8 @@ static bool make_load_narrow(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
     destreg->memory.byterev = (insn->opcode >= RTLOP_LOAD_U16_BR);
     destreg->memory.size = insn_info[lookup_index].size;
     destreg->memory.is_signed = insn_info[lookup_index].is_signed;
-    mark_live(unit, insn_index, destreg, dest);
-    mark_live(unit, insn_index, src1reg, src1);
+    rtl_mark_live(unit, insn_index, destreg, dest);
+    rtl_mark_live(unit, insn_index, src1reg, src1);
 
     return true;
 }
@@ -885,8 +856,8 @@ static bool make_store(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
     RTLRegister * const src1reg = &unit->regs[src1];
     RTLRegister * const src2reg = &unit->regs[src2];
     const int insn_index = unit->num_insns;
-    mark_live(unit, insn_index, src1reg, src1);
-    mark_live(unit, insn_index, src2reg, src2);
+    rtl_mark_live(unit, insn_index, src1reg, src1);
+    rtl_mark_live(unit, insn_index, src2reg, src2);
 
     return true;
 }
@@ -922,8 +893,8 @@ static bool make_store_narrow(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
     RTLRegister * const src1reg = &unit->regs[src1];
     RTLRegister * const src2reg = &unit->regs[src2];
     const int insn_index = unit->num_insns;
-    mark_live(unit, insn_index, src1reg, src1);
-    mark_live(unit, insn_index, src2reg, src2);
+    rtl_mark_live(unit, insn_index, src1reg, src1);
+    rtl_mark_live(unit, insn_index, src2reg, src2);
 
     return true;
 }
@@ -962,8 +933,8 @@ static bool make_atomic_inc(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
     destreg->result.opcode = insn->opcode;
     destreg->result.is_imm = 0;
     destreg->result.src1 = src1;
-    mark_live(unit, insn_index, destreg, dest);
-    mark_live(unit, insn_index, src1reg, src1);
+    rtl_mark_live(unit, insn_index, destreg, dest);
+    rtl_mark_live(unit, insn_index, src1reg, src1);
 
     return true;
 }
@@ -1015,10 +986,10 @@ static bool make_cmpxchg(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
     destreg->result.src1 = src1;
     destreg->result.src2 = src2;
     destreg->result.src3 = (uint16_t)other;
-    mark_live(unit, insn_index, destreg, dest);
-    mark_live(unit, insn_index, src1reg, src1);
-    mark_live(unit, insn_index, src2reg, src2);
-    mark_live(unit, insn_index, src3reg, other);
+    rtl_mark_live(unit, insn_index, destreg, dest);
+    rtl_mark_live(unit, insn_index, src1reg, src1);
+    rtl_mark_live(unit, insn_index, src2reg, src2);
+    rtl_mark_live(unit, insn_index, src3reg, other);
 
     return true;
 }
@@ -1124,7 +1095,7 @@ static bool make_goto_cond(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
 
     RTLRegister * const src1reg = &unit->regs[src1];
     const int insn_index = unit->num_insns;
-    mark_live(unit, insn_index, src1reg, src1);
+    rtl_mark_live(unit, insn_index, src1reg, src1);
 
     /* Terminate the current basic block after this instruction, and
      * start a new basic block with an edge connecting from this one. */
@@ -1192,13 +1163,13 @@ static bool make_call(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
         destreg->result.src1 = src1;
         destreg->result.src2 = src2;
         destreg->result.src3 = (uint16_t)other;
-        mark_live(unit, insn_index, destreg, dest);
+        rtl_mark_live(unit, insn_index, destreg, dest);
     }
-    mark_live(unit, insn_index, &unit->regs[src1], src1);
+    rtl_mark_live(unit, insn_index, &unit->regs[src1], src1);
     if (src2) {
-        mark_live(unit, insn_index, &unit->regs[src2], src2);
+        rtl_mark_live(unit, insn_index, &unit->regs[src2], src2);
         if (other) {
-            mark_live(unit, insn_index, &unit->regs[other], other);
+            rtl_mark_live(unit, insn_index, &unit->regs[other], other);
         }
     }
 
@@ -1230,7 +1201,7 @@ static bool make_return(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
     if (src1) {
         RTLRegister * const src1reg = &unit->regs[src1];
         const int insn_index = unit->num_insns;
-        mark_live(unit, insn_index, src1reg, src1);
+        rtl_mark_live(unit, insn_index, src1reg, src1);
     }
 
     /* Terminate the current basic block, like GOTO. */

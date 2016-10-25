@@ -11,7 +11,7 @@
 
 static const uint8_t input[] = {
     0x4F,0xDE,0xF2,0x42,  // crset 30
-    0x4F,0xFF,0xF9,0x82,  // crclr 31
+    0x4F,0xFE,0xF3,0x82,  // crmove 31,30
     0x48,0x00,0x00,0x04,  // b 0xC
     0x4F,0xDE,0xF1,0x82,  // crclr 30
 };
@@ -24,15 +24,14 @@ static const char expected[] =
     "[info] Scanning terminated at requested limit 0xF\n"
     #ifdef RTL_DEBUG_OPTIMIZE
         "[info] Killing instruction 3\n"
-        "[info] r3 no longer used, setting death = birth\n"
-        "[info] Killing instruction 2\n"
     #endif
     "    0: LOAD_ARG   r1, 0\n"
     "    1: LOAD_IMM   r2, 0x100000000\n"
-    /* This store will be eliminated by the optimization. */
-    "    2: NOP\n"
+    /* This store will be eliminated by the optimization, but the LOAD_IMM
+     * should be preserved since it's used in setting bit 31. */
+    "    2: LOAD_IMM   r3, 1\n"
     "    3: NOP\n"
-    "    4: LOAD_IMM   r4, 0\n"
+    "    4: OR         r4, r3, r3\n"
     /* This store should not be affected since bit 31 is not written by
      * any other instruction. */
     "    5: SET_ALIAS  a3, r4\n"

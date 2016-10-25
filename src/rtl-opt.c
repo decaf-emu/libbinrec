@@ -98,32 +98,6 @@ static inline uint64_t reg_value_i64(const RTLRegister * const reg)
 /*-----------------------------------------------------------------------*/
 
 /**
- * opcode_has_src3:  Return whether the given opcode takes a third source
- * register in the RTLInsn.src3 field.
- */
-static inline CONST_FUNCTION bool opcode_has_src3(RTLOpcode opcode)
-{
-    return opcode == RTLOP_SELECT
-        || opcode == RTLOP_CMPXCHG
-        || opcode == RTLOP_CALL
-        || opcode == RTLOP_CALL_TRANSPARENT;
-}
-
-/*-----------------------------------------------------------------------*/
-
-/**
- * opcode_has_alias:  Return whether the given opcode takes an alias index
- * in the RTLInsn.alias field.
- */
-static inline CONST_FUNCTION bool opcode_has_alias(RTLOpcode opcode)
-{
-    return opcode == RTLOP_GET_ALIAS
-        || opcode == RTLOP_SET_ALIAS;
-}
-
-/*-----------------------------------------------------------------------*/
-
-/**
  * prev_reg_use:  Return the latest use of the given register prior to the
  * given instruction.  Equivalent to (and used to implement)
  * rtl_opt_prev_reg_use(), but implemented as a static function to allow
@@ -144,8 +118,8 @@ static inline PURE_FUNCTION int prev_reg_use(
     for (int prev_use = insn_index - 1; prev_use > reg->birth; prev_use--) {
         const RTLInsn * const insn = &unit->insns[prev_use];
         if (insn->src1 == reg_index || insn->src2 == reg_index
-         || (opcode_has_src3(insn->opcode) && insn->src3 == reg_index)
-         || (opcode_has_alias(insn->opcode)
+         || (rtl_opcode_has_src3(insn->opcode) && insn->src3 == reg_index)
+         || (rtl_opcode_has_alias(insn->opcode)
              && unit->aliases[insn->alias].base == reg_index))
         {
             return prev_use;
@@ -1325,7 +1299,7 @@ void rtl_opt_kill_insn(RTLUnit *unit, int insn_index, bool dse)
                       ? unit->aliases[insn->alias].base : insn->src1);
     const int src2 = (insn->opcode == RTLOP_SET_ALIAS
                       ? unit->aliases[insn->alias].base : insn->src2);
-    const int src3 = opcode_has_src3(insn->opcode) ? insn->src3 : 0;
+    const int src3 = rtl_opcode_has_src3(insn->opcode) ? insn->src3 : 0;
 
 #ifdef RTL_DEBUG_OPTIMIZE
     log_info(unit->handle, "Killing instruction %d", insn_index);

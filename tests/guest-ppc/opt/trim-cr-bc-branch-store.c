@@ -29,6 +29,8 @@ static const char expected[] =
     #endif
     "    0: LOAD_ARG   r1, 0\n"
     "    1: LOAD_IMM   r2, 0x100000000\n"
+    /* This instruction should not be killed since it's used as the
+     * branch condition. */
     "    2: LOAD_IMM   r3, 1\n"
     "    3: NOP\n"
     "    4: LOAD_IMM   r4, 0\n"

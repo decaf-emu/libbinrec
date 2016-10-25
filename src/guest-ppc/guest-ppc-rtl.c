@@ -828,55 +828,14 @@ static void translate_branch_label(
     uint32_t crb_store_branch = 0;
     uint32_t crb_store_next = 0;
     uint16_t crb_reg[32];
+    RTLInsn crb_insn[32];  // Copy of the instruction that sets each value.
     if (ctx->handle->guest_opt & BINREC_OPT_G_PPC_TRIM_CR_STORES) {
-        memset(crb_reg, 0, sizeof(crb_reg));
-        const int branch_block = ctx->blocks[ctx->current_block].branch_block;
-        const int next_block = ctx->blocks[ctx->current_block].next_block;
-        ASSERT(branch_block >= 0);  // Must be valid if we have a label target.
-
-        /* First eliminate any stores which are dead on both taken and
-         * not-taken paths.  For an unconditional branch, this will kill
-         * all dead stores and the second half of the logic will be skipped. */
-        const uint32_t crb_dirty = ctx->crb_dirty;
-        const uint32_t crb_dead_branch =
-            ctx->blocks[branch_block].crb_changed_recursive & crb_dirty;
-        const uint32_t crb_dead_next =
-            (!is_conditional ? crb_dead_branch :
-             next_block < 0 ? 0 :
-                 ctx->blocks[next_block].crb_changed_recursive & crb_dirty);
-        uint32_t crb_to_kill = crb_dead_branch & crb_dead_next;
-        crb_store_branch = crb_dead_next & ~crb_to_kill;
-        crb_store_next = crb_dead_branch & ~crb_to_kill;
-        ASSERT((crb_store_branch & crb_store_next) == 0);
-        while (crb_to_kill) {
-            const int bit = ctz32(crb_to_kill);
-            crb_to_kill ^= 1u << bit;
-            ASSERT(ctx->last_set.crb[bit] >= 0);
-            rtl_opt_kill_insn(unit, ctx->last_set.crb[bit], false);
-            ctx->last_set.crb[bit] = -1;
-        }
-
-        /* If crb_dead_branch or crb_dead_next is nonzero at this point,
-         * we want to store those bits only on the code path where they
-         * are not dead, so we kill the original SET_ALIAS instructions
-         * but save the associated RTL registers so we can add new
-         * SET_ALIAS instructions at the branch or fall-through point. */
-        uint32_t crb_to_save = crb_store_branch | crb_store_next;
-        while (crb_to_save) {
-            const int bit = ctz32(crb_to_save);
-            crb_to_save ^= 1u << bit;
-            ASSERT(ctx->last_set.crb[bit] >= 0);
-            ASSERT(unit->insns[ctx->last_set.crb[bit]].opcode
-                   == RTLOP_SET_ALIAS);
-            crb_reg[bit] = unit->insns[ctx->last_set.crb[bit]].src1;
-            rtl_opt_kill_insn(unit, ctx->last_set.crb[bit], false);
-            ctx->last_set.crb[bit] = -1;
-        }
-
+        guest_ppc_trim_cr_stores(ctx, BO, BI, &crb_store_branch,
+                                 &crb_store_next, crb_reg, crb_insn);
         /* If there are bits to store on the branch-taken path for a
-         * conditional branch, we need a label for skipping past the
-         * branch even for a single condition (much like when the branch
-         * callback is enabled). */
+         * conditional branch, we need a label for skipping past the branch
+         * even for a single condition (much like when the branch callback
+         * is enabled). */
         if (crb_store_branch && !skip_label) {
             skip_label = rtl_alloc_label(unit);
         }
@@ -918,6 +877,9 @@ static void translate_branch_label(
     while (crb_store_branch) {
         const int bit = ctz32(crb_store_branch);
         crb_store_branch ^= 1u << bit;
+        if (crb_insn[bit].opcode) {
+            rtl_add_insn_copy(unit, &crb_insn[bit]);
+        }
         rtl_add_insn(unit, RTLOP_SET_ALIAS,
                      0, crb_reg[bit], 0, ctx->alias.crb[bit]);
     }
@@ -948,6 +910,9 @@ static void translate_branch_label(
     while (crb_store_next) {
         const int bit = ctz32(crb_store_next);
         crb_store_next ^= 1u << bit;
+        if (crb_insn[bit].opcode) {
+            rtl_add_insn_copy(unit, &crb_insn[bit]);
+        }
         rtl_add_insn(unit, RTLOP_SET_ALIAS,
                      0, crb_reg[bit], 0, ctx->alias.crb[bit]);
     }
@@ -3126,7 +3091,7 @@ static inline void translate_insn(
 }
 
 /*************************************************************************/
-/************************** Exported functions ***************************/
+/********************** Internal interface routines **********************/
 /*************************************************************************/
 
 bool guest_ppc_translate_block(GuestPPCContext *ctx, int index)

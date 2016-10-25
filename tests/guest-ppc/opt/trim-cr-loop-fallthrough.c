@@ -31,6 +31,7 @@ static const char expected[] =
         "[info] r5 no longer used, setting death = birth\n"
         "[info] Killing instruction 11\n"
         "[info] r6 no longer used, setting death = birth\n"
+        "[info] Killing instruction 10\n"
     #endif
     "    0: LOAD_ARG   r1, 0\n"
     "    1: LOAD_IMM   r2, 0x100000000\n"
@@ -44,7 +45,7 @@ static const char expected[] =
     "    7: LABEL      L1\n"
     "    8: LOAD_IMM   r5, 1\n"
     "    9: NOP\n"
-    "   10: LOAD_IMM   r6, 0\n"
+    "   10: NOP\n"
     "   11: NOP\n"
     "   12: GOTO_IF_NZ r5, L1\n"
     "   13: LOAD_IMM   r7, 20\n"

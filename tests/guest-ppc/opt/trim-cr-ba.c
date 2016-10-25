@@ -25,11 +25,12 @@ static const char expected[] =
     #ifdef RTL_DEBUG_OPTIMIZE
         "[info] Killing instruction 3\n"
         "[info] r3 no longer used, setting death = birth\n"
+        "[info] Killing instruction 2\n"
     #endif
     "    0: LOAD_ARG   r1, 0\n"
     "    1: LOAD_IMM   r2, 0x100000000\n"
-    "    2: LOAD_IMM   r3, 1\n"
     /* This store will be eliminated by the optimization. */
+    "    2: NOP\n"
     "    3: NOP\n"
     "    4: LOAD_IMM   r4, 0\n"
     /* This store should not be affected since bit 31 is not written by

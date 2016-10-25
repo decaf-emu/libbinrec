@@ -992,6 +992,44 @@ bool rtl_add_insn(RTLUnit *unit, RTLOpcode opcode,
 
 /*-----------------------------------------------------------------------*/
 
+bool rtl_add_insn_copy(RTLUnit *unit, const RTLInsn *insn)
+{
+    ASSERT(unit != NULL);
+    ASSERT(!unit->finalized);
+    ASSERT(unit->insns != NULL);
+    ASSERT(unit->blocks != NULL);
+    ASSERT(unit->regs != NULL);
+    ASSERT(unit->label_blockmap != NULL);
+    ASSERT(insn);
+
+    if (!rtl_add_insn(unit, RTLOP_NOP, 0, 0, 0, 0)) {
+        return false;
+    }
+
+    const int insn_index = unit->num_insns - 1;
+    unit->insns[insn_index] = *insn;
+    if (insn->dest) {
+        RTLRegister * const destreg = &unit->regs[insn->dest];
+        rtl_mark_live(unit, insn_index, destreg, insn->dest);
+    }
+    if (insn->src1) {
+        RTLRegister * const src1reg = &unit->regs[insn->src1];
+        rtl_mark_live(unit, insn_index, src1reg, insn->src1);
+    }
+    if (insn->src2) {
+        RTLRegister * const src2reg = &unit->regs[insn->src2];
+        rtl_mark_live(unit, insn_index, src2reg, insn->src2);
+    }
+    if (rtl_opcode_has_src3(insn->opcode) && insn->src3) {
+        RTLRegister * const src3reg = &unit->regs[insn->src3];
+        rtl_mark_live(unit, insn_index, src3reg, insn->src3);
+    }
+
+    return true;
+}
+
+/*-----------------------------------------------------------------------*/
+
 int rtl_alloc_register(RTLUnit *unit, RTLDataType type)
 {
     ASSERT(unit != NULL);

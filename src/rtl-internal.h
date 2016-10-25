@@ -406,6 +406,42 @@ static inline bool rtl_insn_make(RTLUnit *unit, RTLInsn *insn,
                                            dest, src1, src2, other);
 }
 
+/**
+ * rtl_add_insn_copy:  Add a copy of the given RTLInsn to the unit.
+ * No operand checks are performed on the added instruction, and if a
+ * destination operand is present, its register information is not
+ * modified; however, register live ranges are updated appropriately.
+ *
+ * [Parameters]
+ *     unit: RTLUnit to append to.
+ *     insn: Instruction to append.
+ * [Return value]
+ *     True on success, false if out of memory.
+ */
+extern bool rtl_add_insn_copy(RTLUnit *unit, const RTLInsn *insn);
+
+/**
+ * rtl_opcode_has_src3:  Return whether the given opcode takes a third
+ * source register in the RTLInsn.src3 field.
+ */
+static inline CONST_FUNCTION bool rtl_opcode_has_src3(RTLOpcode opcode)
+{
+    return opcode == RTLOP_SELECT
+        || opcode == RTLOP_CMPXCHG
+        || opcode == RTLOP_CALL
+        || opcode == RTLOP_CALL_TRANSPARENT;
+}
+
+/**
+ * rtl_opcode_has_alias:  Return whether the given opcode takes an alias
+ * index in the RTLInsn.alias field.
+ */
+static inline CONST_FUNCTION bool rtl_opcode_has_alias(RTLOpcode opcode)
+{
+    return opcode == RTLOP_GET_ALIAS
+        || opcode == RTLOP_SET_ALIAS;
+}
+
 /*-------------------------- Memory management --------------------------*/
 
 /*
@@ -564,7 +600,7 @@ extern void rtl_opt_fold_constants(RTLUnit *unit);
 #define rtl_opt_thread_branches INTERNAL(rtl_opt_thread_branches)
 extern void rtl_opt_thread_branches(RTLUnit *unit);
 
-/*------------------------ Register information -------------------------*/
+/*------------------------- Register management -------------------------*/
 
 /**
  * rtl_type_is_int:  Return whether the given data type is an integral type.
@@ -598,6 +634,34 @@ static inline PURE_FUNCTION bool rtl_register_is_int(const RTLRegister *reg)
 static inline PURE_FUNCTION bool rtl_register_is_scalar(const RTLRegister *reg)
 {
     return rtl_type_is_scalar(reg->type);
+}
+
+/**
+ * rtl_mark_live:  Mark the given register live, also updating the birth
+ * and death fields as appropriate.
+ *
+ * [Parameters]
+ *     unit: RTLUnit into which instruction is being inserted.
+ *     insn_index: Index of instruction in unit->insns[].
+ *     reg: Pointer to RTLRegister structure for register.
+ *     index: Register index.
+ */
+static ALWAYS_INLINE void rtl_mark_live(
+    RTLUnit * const unit, const int insn_index, RTLRegister * const reg,
+    const int index)
+{
+    if (!reg->live) {
+        reg->live = 1;
+        reg->birth = insn_index;
+        if (!unit->last_live_reg) {
+            unit->first_live_reg = index;
+        } else {
+            unit->regs[unit->last_live_reg].live_link = index;
+        }
+        unit->last_live_reg = index;
+        reg->live_link = 0;
+    }
+    reg->death = insn_index;
 }
 
 /*------------------- Miscellaneous utility functions -------------------*/
