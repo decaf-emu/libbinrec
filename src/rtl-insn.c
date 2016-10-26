@@ -74,6 +74,17 @@ static ALWAYS_INLINE void rtl_mark_live(
 /*************************************************************************/
 
 /**
+ * make_0op:  Encode an instruction which takes no operands.
+ */
+static bool make_0op(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
+                     int src2, uint64_t other)
+{
+    return true;  // Nothing to encode.
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
  * make_nop:  Encode a NOP instruction.
  */
 static bool make_nop(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
@@ -343,6 +354,7 @@ static bool make_alu_1op(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
     OPERAND_ASSERT(src1 != 0);
     OPERAND_ASSERT(unit->regs[dest].source == RTLREG_UNDEFINED);
     OPERAND_ASSERT(unit->regs[src1].source != RTLREG_UNDEFINED);
+    OPERAND_ASSERT(rtl_register_is_int(&unit->regs[dest]));
     OPERAND_ASSERT(unit->regs[src1].type == unit->regs[dest].type);
 #endif
 
@@ -384,6 +396,7 @@ static bool make_alu_2op(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
     OPERAND_ASSERT(unit->regs[dest].source == RTLREG_UNDEFINED);
     OPERAND_ASSERT(unit->regs[src1].source != RTLREG_UNDEFINED);
     OPERAND_ASSERT(unit->regs[src2].source != RTLREG_UNDEFINED);
+    OPERAND_ASSERT(rtl_register_is_int(&unit->regs[dest]));
     OPERAND_ASSERT(unit->regs[src1].type == unit->regs[dest].type);
     OPERAND_ASSERT(unit->regs[src2].type == unit->regs[dest].type);
 #endif
@@ -678,6 +691,456 @@ static bool make_bitfield(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
     if (src2) {
         rtl_mark_live(unit, insn_index, src2reg, src2);
     }
+
+    return true;
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
+ * make_bitcast:  Encode a BITCAST instruction.
+ */
+static bool make_bitcast(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
+                         int src2, uint64_t other)
+{
+    ASSERT(unit != NULL);
+    ASSERT(unit->regs != NULL);
+    ASSERT(insn != NULL);
+    ASSERT(dest >= 0 && dest < unit->next_reg);
+    ASSERT(src1 >= 0 && src1 < unit->next_reg);
+
+#ifdef ENABLE_OPERAND_SANITY_CHECKS
+    OPERAND_ASSERT(dest != 0);
+    OPERAND_ASSERT(src1 != 0);
+    OPERAND_ASSERT(unit->regs[dest].source == RTLREG_UNDEFINED);
+    OPERAND_ASSERT(unit->regs[src1].source != RTLREG_UNDEFINED);
+    OPERAND_ASSERT((unit->regs[dest].type == RTLTYPE_INT32
+                    && unit->regs[src1].type == RTLTYPE_FLOAT32)
+                || (unit->regs[dest].type == RTLTYPE_INT64
+                    && unit->regs[src1].type == RTLTYPE_FLOAT64)
+                || (unit->regs[dest].type == RTLTYPE_FLOAT32
+                    && unit->regs[src1].type == RTLTYPE_INT32)
+                || (unit->regs[dest].type == RTLTYPE_FLOAT64
+                    && unit->regs[src1].type == RTLTYPE_INT64));
+#endif
+
+    insn->dest = dest;
+    insn->src1 = src1;
+
+    RTLRegister * const destreg = &unit->regs[dest];
+    RTLRegister * const src1reg = &unit->regs[src1];
+    const int insn_index = unit->num_insns;
+    destreg->source = RTLREG_RESULT;
+    destreg->result.opcode = insn->opcode;
+    destreg->result.is_imm = 0;
+    destreg->result.src1 = src1;
+    rtl_mark_live(unit, insn_index, destreg, dest);
+    rtl_mark_live(unit, insn_index, src1reg, src1);
+
+    return true;
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
+ * make_fcast:  Encode an FCAST instruction.
+ */
+static bool make_fcast(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
+                       int src2, uint64_t other)
+{
+    ASSERT(unit != NULL);
+    ASSERT(unit->regs != NULL);
+    ASSERT(insn != NULL);
+    ASSERT(dest >= 0 && dest < unit->next_reg);
+    ASSERT(src1 >= 0 && src1 < unit->next_reg);
+
+#ifdef ENABLE_OPERAND_SANITY_CHECKS
+    OPERAND_ASSERT(dest != 0);
+    OPERAND_ASSERT(src1 != 0);
+    OPERAND_ASSERT(unit->regs[dest].source == RTLREG_UNDEFINED);
+    OPERAND_ASSERT(unit->regs[src1].source != RTLREG_UNDEFINED);
+    OPERAND_ASSERT(rtl_register_is_float(&unit->regs[dest]));
+    OPERAND_ASSERT(rtl_register_is_float(&unit->regs[src1]));
+#endif
+
+    insn->dest = dest;
+    insn->src1 = src1;
+
+    RTLRegister * const destreg = &unit->regs[dest];
+    RTLRegister * const src1reg = &unit->regs[src1];
+    const int insn_index = unit->num_insns;
+    destreg->source = RTLREG_RESULT;
+    destreg->result.opcode = insn->opcode;
+    destreg->result.is_imm = 0;
+    destreg->result.src1 = src1;
+    rtl_mark_live(unit, insn_index, destreg, dest);
+    rtl_mark_live(unit, insn_index, src1reg, src1);
+
+    return true;
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
+ * make_ficast:  Encode an integer-to-float cast instruction (FZCAST or
+ * FSCAST).
+ */
+static bool make_ficast(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
+                        int src2, uint64_t other)
+{
+    ASSERT(unit != NULL);
+    ASSERT(unit->regs != NULL);
+    ASSERT(insn != NULL);
+    ASSERT(dest >= 0 && dest < unit->next_reg);
+    ASSERT(src1 >= 0 && src1 < unit->next_reg);
+
+#ifdef ENABLE_OPERAND_SANITY_CHECKS
+    OPERAND_ASSERT(dest != 0);
+    OPERAND_ASSERT(src1 != 0);
+    OPERAND_ASSERT(unit->regs[dest].source == RTLREG_UNDEFINED);
+    OPERAND_ASSERT(unit->regs[src1].source != RTLREG_UNDEFINED);
+    OPERAND_ASSERT(rtl_register_is_float(&unit->regs[dest]));
+    OPERAND_ASSERT(rtl_register_is_int(&unit->regs[src1]));
+#endif
+
+    insn->dest = dest;
+    insn->src1 = src1;
+
+    RTLRegister * const destreg = &unit->regs[dest];
+    RTLRegister * const src1reg = &unit->regs[src1];
+    const int insn_index = unit->num_insns;
+    destreg->source = RTLREG_RESULT;
+    destreg->result.opcode = insn->opcode;
+    destreg->result.is_imm = 0;
+    destreg->result.src1 = src1;
+    rtl_mark_live(unit, insn_index, destreg, dest);
+    rtl_mark_live(unit, insn_index, src1reg, src1);
+
+    return true;
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
+ * make_froundi:  Encode a float-to-integer rounding instruction (FROUNDI
+ * or FTRUNCI).
+ */
+static bool make_froundi(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
+                         int src2, uint64_t other)
+{
+    ASSERT(unit != NULL);
+    ASSERT(unit->regs != NULL);
+    ASSERT(insn != NULL);
+    ASSERT(dest >= 0 && dest < unit->next_reg);
+    ASSERT(src1 >= 0 && src1 < unit->next_reg);
+
+#ifdef ENABLE_OPERAND_SANITY_CHECKS
+    OPERAND_ASSERT(dest != 0);
+    OPERAND_ASSERT(src1 != 0);
+    OPERAND_ASSERT(unit->regs[dest].source == RTLREG_UNDEFINED);
+    OPERAND_ASSERT(unit->regs[src1].source != RTLREG_UNDEFINED);
+    OPERAND_ASSERT(rtl_register_is_int(&unit->regs[dest]));
+    OPERAND_ASSERT(rtl_register_is_float(&unit->regs[src1]));
+#endif
+
+    insn->dest = dest;
+    insn->src1 = src1;
+
+    RTLRegister * const destreg = &unit->regs[dest];
+    RTLRegister * const src1reg = &unit->regs[src1];
+    const int insn_index = unit->num_insns;
+    destreg->source = RTLREG_RESULT;
+    destreg->result.opcode = insn->opcode;
+    destreg->result.is_imm = 0;
+    destreg->result.src1 = src1;
+    rtl_mark_live(unit, insn_index, destreg, dest);
+    rtl_mark_live(unit, insn_index, src1reg, src1);
+
+    return true;
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
+ * make_fpu_1op:  Encode a 1-operand floating-point instruction.
+ */
+static bool make_fpu_1op(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
+                         int src2, uint64_t other)
+{
+    ASSERT(unit != NULL);
+    ASSERT(unit->regs != NULL);
+    ASSERT(insn != NULL);
+    ASSERT(dest >= 0 && dest < unit->next_reg);
+    ASSERT(src1 >= 0 && src1 < unit->next_reg);
+
+#ifdef ENABLE_OPERAND_SANITY_CHECKS
+    OPERAND_ASSERT(dest != 0);
+    OPERAND_ASSERT(src1 != 0);
+    OPERAND_ASSERT(unit->regs[dest].source == RTLREG_UNDEFINED);
+    OPERAND_ASSERT(unit->regs[src1].source != RTLREG_UNDEFINED);
+    OPERAND_ASSERT(rtl_register_is_float(&unit->regs[dest]));
+    OPERAND_ASSERT(unit->regs[src1].type == unit->regs[dest].type);
+#endif
+
+    insn->dest = dest;
+    insn->src1 = src1;
+
+    RTLRegister * const destreg = &unit->regs[dest];
+    RTLRegister * const src1reg = &unit->regs[src1];
+    const int insn_index = unit->num_insns;
+    destreg->source = RTLREG_RESULT;
+    destreg->result.opcode = insn->opcode;
+    destreg->result.is_imm = 0;
+    destreg->result.src1 = src1;
+    rtl_mark_live(unit, insn_index, destreg, dest);
+    rtl_mark_live(unit, insn_index, src1reg, src1);
+
+    return true;
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
+ * make_fpu_2op:  Encode a 2-operand floating-point instruction.
+ */
+static bool make_fpu_2op(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
+                         int src2, uint64_t other)
+{
+    ASSERT(unit != NULL);
+    ASSERT(unit->regs != NULL);
+    ASSERT(insn != NULL);
+    ASSERT(dest >= 0 && dest < unit->next_reg);
+    ASSERT(src1 >= 0 && src1 < unit->next_reg);
+    ASSERT(src2 >= 0 && src2 < unit->next_reg);
+
+#ifdef ENABLE_OPERAND_SANITY_CHECKS
+    OPERAND_ASSERT(dest != 0);
+    OPERAND_ASSERT(src1 != 0);
+    OPERAND_ASSERT(src2 != 0);
+    OPERAND_ASSERT(unit->regs[dest].source == RTLREG_UNDEFINED);
+    OPERAND_ASSERT(unit->regs[src1].source != RTLREG_UNDEFINED);
+    OPERAND_ASSERT(unit->regs[src2].source != RTLREG_UNDEFINED);
+    OPERAND_ASSERT(rtl_register_is_float(&unit->regs[dest]));
+    OPERAND_ASSERT(unit->regs[src1].type == unit->regs[dest].type);
+    OPERAND_ASSERT(unit->regs[src2].type == unit->regs[dest].type);
+#endif
+
+    insn->dest = dest;
+    insn->src1 = src1;
+    insn->src2 = src2;
+
+    RTLRegister * const destreg = &unit->regs[dest];
+    RTLRegister * const src1reg = &unit->regs[src1];
+    RTLRegister * const src2reg = &unit->regs[src2];
+    const int insn_index = unit->num_insns;
+    destreg->source = RTLREG_RESULT;
+    destreg->result.opcode = insn->opcode;
+    destreg->result.is_imm = 0;
+    destreg->result.src1 = src1;
+    destreg->result.src2 = src2;
+    rtl_mark_live(unit, insn_index, destreg, dest);
+    rtl_mark_live(unit, insn_index, src1reg, src1);
+    rtl_mark_live(unit, insn_index, src2reg, src2);
+
+    return true;
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
+ * make_fpu_3op:  Encode a 3-operand floating-point instruction.
+ */
+static bool make_fpu_3op(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
+                         int src2, uint64_t other)
+{
+    ASSERT(unit != NULL);
+    ASSERT(unit->regs != NULL);
+    ASSERT(insn != NULL);
+    ASSERT(dest >= 0 && dest < unit->next_reg);
+    ASSERT(src1 >= 0 && src1 < unit->next_reg);
+    ASSERT(src2 >= 0 && src2 < unit->next_reg);
+    ASSERT(other < unit->next_reg);
+
+#ifdef ENABLE_OPERAND_SANITY_CHECKS
+    OPERAND_ASSERT(dest != 0);
+    OPERAND_ASSERT(src1 != 0);
+    OPERAND_ASSERT(src2 != 0);
+    OPERAND_ASSERT(other != 0);
+    OPERAND_ASSERT(unit->regs[dest].source == RTLREG_UNDEFINED);
+    OPERAND_ASSERT(unit->regs[src1].source != RTLREG_UNDEFINED);
+    OPERAND_ASSERT(unit->regs[src2].source != RTLREG_UNDEFINED);
+    OPERAND_ASSERT(unit->regs[other].source != RTLREG_UNDEFINED);
+    OPERAND_ASSERT(rtl_register_is_float(&unit->regs[dest]));
+    OPERAND_ASSERT(unit->regs[src1].type == unit->regs[dest].type);
+    OPERAND_ASSERT(unit->regs[src2].type == unit->regs[dest].type);
+    OPERAND_ASSERT(unit->regs[other].type == unit->regs[dest].type);
+#endif
+
+    insn->dest = dest;
+    insn->src1 = src1;
+    insn->src2 = src2;
+    insn->src3 = other;
+
+    RTLRegister * const destreg = &unit->regs[dest];
+    RTLRegister * const src1reg = &unit->regs[src1];
+    RTLRegister * const src2reg = &unit->regs[src2];
+    RTLRegister * const src3reg = &unit->regs[other];
+    const int insn_index = unit->num_insns;
+    destreg->source = RTLREG_RESULT;
+    destreg->result.opcode = insn->opcode;
+    destreg->result.is_imm = 0;
+    destreg->result.src1 = src1;
+    destreg->result.src2 = src2;
+    destreg->result.src3 = other;
+    rtl_mark_live(unit, insn_index, destreg, dest);
+    rtl_mark_live(unit, insn_index, src1reg, src1);
+    rtl_mark_live(unit, insn_index, src2reg, src2);
+    rtl_mark_live(unit, insn_index, src3reg, other);
+
+    return true;
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
+ * make_fcmp:  Encode an FCMP instruction.
+ */
+static bool make_fcmp(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
+                      int src2, uint64_t other)
+{
+    ASSERT(unit != NULL);
+    ASSERT(unit->regs != NULL);
+    ASSERT(insn != NULL);
+    ASSERT(dest >= 0 && dest < unit->next_reg);
+    ASSERT(src1 >= 0 && src1 < unit->next_reg);
+    ASSERT(src2 >= 0 && src2 < unit->next_reg);
+
+#ifdef ENABLE_OPERAND_SANITY_CHECKS
+    OPERAND_ASSERT(dest != 0);
+    OPERAND_ASSERT(src1 != 0);
+    OPERAND_ASSERT(src2 != 0);
+    OPERAND_ASSERT(unit->regs[dest].source == RTLREG_UNDEFINED);
+    OPERAND_ASSERT(unit->regs[src1].source != RTLREG_UNDEFINED);
+    OPERAND_ASSERT(unit->regs[src2].source != RTLREG_UNDEFINED);
+    OPERAND_ASSERT(rtl_register_is_int(&unit->regs[dest]));
+    OPERAND_ASSERT(rtl_register_is_float(&unit->regs[src1]));
+    OPERAND_ASSERT(unit->regs[src2].type == unit->regs[src1].type);
+    OPERAND_ASSERT(other <= 31);
+    OPERAND_ASSERT((other & 7) <= RTLFCMP_EQ);
+#endif
+
+    insn->dest = dest;
+    insn->src1 = src1;
+    insn->src2 = src2;
+    insn->fcmp = other;
+
+    RTLRegister * const destreg = &unit->regs[dest];
+    RTLRegister * const src1reg = &unit->regs[src1];
+    RTLRegister * const src2reg = &unit->regs[src2];
+    const int insn_index = unit->num_insns;
+    destreg->source = RTLREG_RESULT;
+    destreg->result.opcode = insn->opcode;
+    destreg->result.is_imm = 0;
+    destreg->result.src1 = src1;
+    destreg->result.src2 = src2;
+    destreg->result.fcmp = other;
+    rtl_mark_live(unit, insn_index, destreg, dest);
+    rtl_mark_live(unit, insn_index, src1reg, src1);
+    rtl_mark_live(unit, insn_index, src2reg, src2);
+
+    return true;
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
+ * make_fgetstate:  Encode an FGETSTATE instruction.
+ */
+static bool make_fgetstate(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
+                           int src2, uint64_t other)
+{
+    ASSERT(unit != NULL);
+    ASSERT(unit->regs != NULL);
+    ASSERT(insn != NULL);
+    ASSERT(dest >= 0 && dest < unit->next_reg);
+
+#ifdef ENABLE_OPERAND_SANITY_CHECKS
+    OPERAND_ASSERT(dest != 0);
+    OPERAND_ASSERT(unit->regs[dest].source == RTLREG_UNDEFINED);
+    OPERAND_ASSERT(unit->regs[dest].type == RTLTYPE_FPSTATE);
+#endif
+
+    insn->dest = dest;
+
+    RTLRegister * const destreg = &unit->regs[dest];
+    const int insn_index = unit->num_insns;
+    destreg->source = RTLREG_RESULT_NOFOLD;
+    destreg->result.opcode = insn->opcode;
+    destreg->result.is_imm = 0;
+    rtl_mark_live(unit, insn_index, destreg, dest);
+
+    return true;
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
+ * make_ftestexc:  Encode an FTESTEXC instruction.
+ */
+static bool make_ftestexc(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
+                          int src2, uint64_t other)
+{
+    ASSERT(unit != NULL);
+    ASSERT(unit->regs != NULL);
+    ASSERT(insn != NULL);
+    ASSERT(dest >= 0 && dest < unit->next_reg);
+    ASSERT(src1 >= 0 && src1 < unit->next_reg);
+
+#ifdef ENABLE_OPERAND_SANITY_CHECKS
+    OPERAND_ASSERT(dest != 0);
+    OPERAND_ASSERT(src1 != 0);
+    OPERAND_ASSERT(unit->regs[dest].source == RTLREG_UNDEFINED);
+    OPERAND_ASSERT(unit->regs[src1].source != RTLREG_UNDEFINED);
+    OPERAND_ASSERT(rtl_register_is_int(&unit->regs[dest]));
+    OPERAND_ASSERT(unit->regs[src1].type == RTLTYPE_FPSTATE);
+    OPERAND_ASSERT(other <= RTLFEXC_ZERO_DIVIDE);
+#endif
+
+    insn->dest = dest;
+    insn->src1 = src1;
+    insn->src_imm = other;
+
+    RTLRegister * const destreg = &unit->regs[dest];
+    RTLRegister * const src1reg = &unit->regs[src1];
+    const int insn_index = unit->num_insns;
+    destreg->source = RTLREG_RESULT_NOFOLD;
+    destreg->result.opcode = insn->opcode;
+    destreg->result.is_imm = 1;
+    destreg->result.src1 = src1;
+    destreg->result.src_imm = other;
+    rtl_mark_live(unit, insn_index, destreg, dest);
+    rtl_mark_live(unit, insn_index, src1reg, src1);
+
+    return true;
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
+ * make_fsetround:  Encode an FSETROUND instruction.
+ */
+static bool make_fsetround(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
+                           int src2, uint64_t other)
+{
+    ASSERT(unit != NULL);
+    ASSERT(unit->regs != NULL);
+    ASSERT(insn != NULL);
+
+#ifdef ENABLE_OPERAND_SANITY_CHECKS
+    OPERAND_ASSERT(other <= RTLFROUND_CEIL);
+#endif
+
+    insn->src_imm = other;
 
     return true;
 }
@@ -1238,17 +1701,6 @@ static bool make_return(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
     return true;
 }
 
-/*-----------------------------------------------------------------------*/
-
-/**
- * make_illegal:  Encode an ILLEGAL instruction.
- */
-static bool make_illegal(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
-                         int src2, uint64_t other)
-{
-    return true;  // Nothing to encode.
-}
-
 /*************************************************************************/
 /************************ Encoding function table ************************/
 /*************************************************************************/
@@ -1306,6 +1758,27 @@ bool (* const makefunc_table[])(RTLUnit *, RTLInsn *, int, int, int,
     [RTLOP_SLTSI     ] = make_cmp_imm,
     [RTLOP_SGTUI     ] = make_cmp_imm,
     [RTLOP_SGTSI     ] = make_cmp_imm,
+    [RTLOP_BITCAST   ] = make_bitcast,
+    [RTLOP_FCAST     ] = make_fcast,
+    [RTLOP_FZCAST    ] = make_ficast,
+    [RTLOP_FSCAST    ] = make_ficast,
+    [RTLOP_FROUNDI   ] = make_froundi,
+    [RTLOP_FTRUNCI   ] = make_froundi,
+    [RTLOP_FADD      ] = make_fpu_2op,
+    [RTLOP_FSUB      ] = make_fpu_2op,
+    [RTLOP_FMUL      ] = make_fpu_2op,
+    [RTLOP_FDIV      ] = make_fpu_2op,
+    [RTLOP_FRCP      ] = make_fpu_1op,
+    [RTLOP_FRSQ      ] = make_fpu_1op,
+    [RTLOP_FCMP      ] = make_fcmp,
+    [RTLOP_FMADD     ] = make_fpu_3op,
+    [RTLOP_FMSUB     ] = make_fpu_3op,
+    [RTLOP_FNMADD    ] = make_fpu_3op,
+    [RTLOP_FNMSUB    ] = make_fpu_3op,
+    [RTLOP_FGETSTATE ] = make_fgetstate,
+    [RTLOP_FTESTEXC  ] = make_ftestexc,
+    [RTLOP_FCLEAREXC ] = make_0op,
+    [RTLOP_FSETROUND ] = make_fsetround,
     [RTLOP_LOAD_IMM  ] = make_load_imm,
     [RTLOP_LOAD_ARG  ] = make_load_arg,
     [RTLOP_LOAD      ] = make_load,
@@ -1330,7 +1803,7 @@ bool (* const makefunc_table[])(RTLUnit *, RTLInsn *, int, int, int,
     [RTLOP_CALL      ] = make_call,
     [RTLOP_CALL_TRANSPARENT] = make_call,
     [RTLOP_RETURN    ] = make_return,
-    [RTLOP_ILLEGAL   ] = make_illegal,
+    [RTLOP_ILLEGAL   ] = make_0op,
 };
 
 /*************************************************************************/

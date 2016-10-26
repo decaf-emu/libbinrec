@@ -26,21 +26,22 @@ int main(void)
     RTLUnit *unit;
     EXPECT(unit = rtl_create_unit(handle));
 
-    int reg1, reg2;
-    EXPECT(reg1 = rtl_alloc_register(unit, RTLTYPE_FPSTATE));
-    EXPECT(reg2 = rtl_alloc_register(unit, RTLTYPE_V2_FLOAT64));
+    int reg1, reg2, reg3, reg4;
+    EXPECT(reg1 = rtl_alloc_register(unit, RTLTYPE_FLOAT32));
+    EXPECT(reg2 = rtl_alloc_register(unit, RTLTYPE_FLOAT32));
+    EXPECT(reg3 = rtl_alloc_register(unit, RTLTYPE_FLOAT32));
+    EXPECT(reg4 = rtl_alloc_register(unit, RTLTYPE_FLOAT32));
 
-    EXPECT_FALSE(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg1, 0, 0, 10));
+    EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg1, 0, 0, 0x3F800000));
+    EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg2, 0, 0, 0x40000000));
+    EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg3, 0, 0, 0x40400000));
+    EXPECT(rtl_add_insn(unit, RTLOP_FMADD, reg4, reg1, reg2, reg3));
+    EXPECT_EQ(unit->num_insns, 4);
+    EXPECT_FALSE(unit->error);
+    EXPECT_FALSE(rtl_add_insn(unit, RTLOP_FMADD, reg4, reg1, reg2, reg3));
     EXPECT_ICE("Operand constraint violated:"
-               " rtl_register_is_scalar(&unit->regs[dest])");
-    EXPECT_EQ(unit->num_insns, 0);
-    EXPECT(unit->error);
-    unit->error = false;
-
-    EXPECT_FALSE(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg2, 0, 0, 20));
-    EXPECT_ICE("Operand constraint violated:"
-               " rtl_register_is_scalar(&unit->regs[dest])");
-    EXPECT_EQ(unit->num_insns, 0);
+               " unit->regs[dest].source == RTLREG_UNDEFINED");
+    EXPECT_EQ(unit->num_insns, 4);
     EXPECT(unit->error);
     unit->error = false;
 

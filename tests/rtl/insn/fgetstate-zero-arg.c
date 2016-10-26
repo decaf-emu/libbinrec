@@ -26,20 +26,8 @@ int main(void)
     RTLUnit *unit;
     EXPECT(unit = rtl_create_unit(handle));
 
-    int reg1, reg2;
-    EXPECT(reg1 = rtl_alloc_register(unit, RTLTYPE_FPSTATE));
-    EXPECT(reg2 = rtl_alloc_register(unit, RTLTYPE_V2_FLOAT64));
-
-    EXPECT_FALSE(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg1, 0, 0, 10));
-    EXPECT_ICE("Operand constraint violated:"
-               " rtl_register_is_scalar(&unit->regs[dest])");
-    EXPECT_EQ(unit->num_insns, 0);
-    EXPECT(unit->error);
-    unit->error = false;
-
-    EXPECT_FALSE(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg2, 0, 0, 20));
-    EXPECT_ICE("Operand constraint violated:"
-               " rtl_register_is_scalar(&unit->regs[dest])");
+    EXPECT_FALSE(rtl_add_insn(unit, RTLOP_FGETSTATE, 0, 0, 0, 0));
+    EXPECT_ICE("Operand constraint violated: dest != 0");
     EXPECT_EQ(unit->num_insns, 0);
     EXPECT(unit->error);
     unit->error = false;

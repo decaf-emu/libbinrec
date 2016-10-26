@@ -133,6 +133,59 @@ static NOINLINE bool rtl_add_insn_with_new_block(
 /*-----------------------------------------------------------------------*/
 
 /**
+ * fcmp_name:  Return the name of the given floating-point comparison
+ * (RTLFCMP_*).
+ */
+static inline CONST_FUNCTION const char *fcmp_name(RTLFloatCompare fcmp)
+{
+    switch (fcmp) {
+        case RTLFCMP_LT: return "LT";
+        case RTLFCMP_LE: return "LE";
+        case RTLFCMP_GT: return "GT";
+        case RTLFCMP_GE: return "GE";
+        case RTLFCMP_EQ: return "EQ";
+    }
+    return "???";
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
+ * fexc_name:  Return the name of the given floating-point exception
+ * (RTLFEXC_*).
+ */
+static inline CONST_FUNCTION const char *fexc_name(RTLFloatException fexc)
+{
+    switch (fexc) {
+        case RTLFEXC_INEXACT:     return "INEXACT";
+        case RTLFEXC_INVALID:     return "INVALID";
+        case RTLFEXC_OVERFLOW:    return "OVERFLOW";
+        case RTLFEXC_UNDERFLOW:   return "UNDERFLOW";
+        case RTLFEXC_ZERO_DIVIDE: return "ZERO_DIVIDE";
+    }
+    return "???";
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
+ * fround_name:  Return the name of the given floating-point rounding mode
+ * (RTLFROUND_*).
+ */
+static inline CONST_FUNCTION const char *fround_name(RTLFloatRoundingMode mode)
+{
+    switch (mode) {
+        case RTLFROUND_NEAREST: return "NEAREST";
+        case RTLFROUND_TRUNC:   return "TRUNC";
+        case RTLFROUND_FLOOR:   return "FLOOR";
+        case RTLFROUND_CEIL:    return "CEIL";
+    }
+    return "???";
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
  * rtl_describe_register:  Generate a string describing the contents of the
  * given RTL register.
  *
@@ -200,58 +253,69 @@ static void rtl_describe_register(const RTLRegister *reg,
       case RTLREG_RESULT:
       case RTLREG_RESULT_NOFOLD: {
         static const char * const operators[] = {
-            [RTLOP_SCAST ] = "scast",
-            [RTLOP_ZCAST ] = "zcast",
-            [RTLOP_SEXT8 ] = "sext8",
-            [RTLOP_SEXT16] = "sext16",
-            [RTLOP_ADD   ] = "+",
-            [RTLOP_ADDI  ] = "+",
-            [RTLOP_SUB   ] = "-",
-            [RTLOP_NEG   ] = "-",
-            [RTLOP_MUL   ] = "*",
-            [RTLOP_MULI  ] = "*",
-            [RTLOP_DIVU  ] = "/",
-            [RTLOP_DIVS  ] = "/",
-            [RTLOP_MODU  ] = "%",
-            [RTLOP_MODS  ] = "%",
-            [RTLOP_AND   ] = "&",
-            [RTLOP_ANDI  ] = "&",
-            [RTLOP_OR    ] = "|",
-            [RTLOP_ORI   ] = "|",
-            [RTLOP_XOR   ] = "^",
-            [RTLOP_XORI  ] = "^",
-            [RTLOP_NOT   ] = "~",
-            [RTLOP_SLL   ] = "<<",
-            [RTLOP_SLLI  ] = "<<",
-            [RTLOP_SRL   ] = ">>",
-            [RTLOP_SRLI  ] = ">>",
-            [RTLOP_SRA   ] = ">>",
-            [RTLOP_SRAI  ] = ">>",
-            [RTLOP_ROL   ] = "rol",
-            [RTLOP_ROR   ] = "ror",
-            [RTLOP_RORI  ] = "ror",
-            [RTLOP_CLZ   ] = "clz",
-            [RTLOP_BSWAP ] = "bswap",
-            [RTLOP_SEQ   ] = "==",
-            [RTLOP_SEQI  ] = "==",
-            [RTLOP_SLTU  ] = "<",
-            [RTLOP_SLTUI ] = "<",
-            [RTLOP_SLTS  ] = "<",
-            [RTLOP_SLTSI ] = "<",
-            [RTLOP_SGTU  ] = ">",
-            [RTLOP_SGTUI ] = ">",
-            [RTLOP_SGTS  ] = ">",
-            [RTLOP_SGTSI ] = ">",
+            [RTLOP_SCAST  ] = "scast",
+            [RTLOP_ZCAST  ] = "zcast",
+            [RTLOP_SEXT8  ] = "sext8",
+            [RTLOP_SEXT16 ] = "sext16",
+            [RTLOP_ADD    ] = "+",
+            [RTLOP_ADDI   ] = "+",
+            [RTLOP_FADD   ] = "+",
+            [RTLOP_SUB    ] = "-",
+            [RTLOP_FSUB   ] = "-",
+            [RTLOP_NEG    ] = "-",
+            [RTLOP_MUL    ] = "*",
+            [RTLOP_MULI   ] = "*",
+            [RTLOP_FMUL   ] = "*",
+            [RTLOP_DIVU   ] = "/",
+            [RTLOP_DIVS   ] = "/",
+            [RTLOP_FDIV   ] = "/",
+            [RTLOP_MODU   ] = "%",
+            [RTLOP_MODS   ] = "%",
+            [RTLOP_AND    ] = "&",
+            [RTLOP_ANDI   ] = "&",
+            [RTLOP_OR     ] = "|",
+            [RTLOP_ORI    ] = "|",
+            [RTLOP_XOR    ] = "^",
+            [RTLOP_XORI   ] = "^",
+            [RTLOP_NOT    ] = "~",
+            [RTLOP_SLL    ] = "<<",
+            [RTLOP_SLLI   ] = "<<",
+            [RTLOP_SRL    ] = ">>",
+            [RTLOP_SRLI   ] = ">>",
+            [RTLOP_SRA    ] = ">>",
+            [RTLOP_SRAI   ] = ">>",
+            [RTLOP_ROL    ] = "rol",
+            [RTLOP_ROR    ] = "ror",
+            [RTLOP_RORI   ] = "ror",
+            [RTLOP_CLZ    ] = "clz",
+            [RTLOP_BSWAP  ] = "bswap",
+            [RTLOP_SEQ    ] = "==",
+            [RTLOP_SEQI   ] = "==",
+            [RTLOP_SLTU   ] = "<",
+            [RTLOP_SLTUI  ] = "<",
+            [RTLOP_SLTS   ] = "<",
+            [RTLOP_SLTSI  ] = "<",
+            [RTLOP_SGTU   ] = ">",
+            [RTLOP_SGTUI  ] = ">",
+            [RTLOP_SGTS   ] = ">",
+            [RTLOP_SGTSI  ] = ">",
+            [RTLOP_BITCAST] = "bitcast",
+            [RTLOP_FCAST  ] = "fcast",
+            [RTLOP_FZCAST ] = "fzcast",
+            [RTLOP_FSCAST ] = "fscast",
+            [RTLOP_FROUNDI] = "froundi",
+            [RTLOP_FTRUNCI] = "ftrunci",
+            [RTLOP_FRSQ   ] = "1 / sqrt",
         };
         static const bool is_signed[RTLOP__LAST + 1] = {
-            [RTLOP_DIVS  ] = true,
-            [RTLOP_MODS  ] = true,
-            [RTLOP_SRA   ] = true,
-            [RTLOP_SRAI  ] = true,
-            [RTLOP_SLTS  ] = true,
-            [RTLOP_SLTSI ] = true,
-            [RTLOP_SGTS  ] = true,
-            [RTLOP_SGTSI ] = true,
+            [RTLOP_DIVS ] = true,
+            [RTLOP_MODS ] = true,
+            [RTLOP_SRA  ] = true,
+            [RTLOP_SRAI ] = true,
+            [RTLOP_SLTS ] = true,
+            [RTLOP_SLTSI] = true,
+            [RTLOP_SGTS ] = true,
+            [RTLOP_SGTSI] = true,
         };
 
         switch ((RTLOpcode)reg->result.opcode) {
@@ -273,6 +337,13 @@ static void rtl_describe_register(const RTLRegister *reg,
           case RTLOP_SEXT16:
           case RTLOP_CLZ:
           case RTLOP_BSWAP:
+          case RTLOP_BITCAST:
+          case RTLOP_FCAST:
+          case RTLOP_FZCAST:
+          case RTLOP_FSCAST:
+          case RTLOP_FROUNDI:
+          case RTLOP_FTRUNCI:
+          case RTLOP_FRSQ:
             snprintf(buf, bufsize, "%s(r%d)",
                      operators[reg->result.opcode], reg->result.src1);
             break;
@@ -296,6 +367,10 @@ static void rtl_describe_register(const RTLRegister *reg,
           case RTLOP_SLTS:
           case RTLOP_SGTU:
           case RTLOP_SGTS:
+          case RTLOP_FADD:
+          case RTLOP_FSUB:
+          case RTLOP_FMUL:
+          case RTLOP_FDIV:
             snprintf(buf, bufsize, "%sr%d %s r%d",
                      is_signed[reg->result.opcode] ? "(signed) " : "",
                      reg->result.src1, operators[reg->result.opcode],
@@ -334,6 +409,35 @@ static void rtl_describe_register(const RTLRegister *reg,
             snprintf(buf, bufsize, "bfins(r%d, r%d, %d, %d)",
                      reg->result.src1, reg->result.src2,
                      reg->result.start, reg->result.count);
+            break;
+          case RTLOP_FRCP:
+            snprintf(buf, bufsize, "1 / r%d", reg->result.src1);
+            break;
+          case RTLOP_FCMP:
+            snprintf(buf, bufsize, "fcmp(r%d, r%d, %s%s%s)",
+                     reg->result.src1, reg->result.src2,
+                     reg->result.fcmp & 16 ? "O" : "",
+                     reg->result.fcmp & 8 ? "N" : "",
+                     fcmp_name(reg->result.fcmp & 7));
+            break;
+          case RTLOP_FMADD:
+          case RTLOP_FMSUB:
+          case RTLOP_FNMADD:
+          case RTLOP_FNMSUB:
+            snprintf(buf, bufsize, "%sfma(r%d, r%d, %sr%d)",
+                     (reg->result.opcode == RTLOP_FNMADD
+                      || reg->result.opcode == RTLOP_FNMSUB ? "-" : ""),
+                     reg->result.src1, reg->result.src2,
+                     (reg->result.opcode == RTLOP_FMSUB
+                      || reg->result.opcode == RTLOP_FNMSUB ? "-" : ""),
+                     reg->result.src3);
+            break;
+          case RTLOP_FGETSTATE:
+            snprintf(buf, bufsize, "fgetstate()");
+            break;
+          case RTLOP_FTESTEXC:
+            snprintf(buf, bufsize, "ftestexc(r%d, %s)",
+                     reg->result.src1, fexc_name(reg->result.src_imm));
             break;
           case RTLOP_ATOMIC_INC:
             snprintf(buf, bufsize, "atomic_inc((r%d).%s)",
@@ -433,6 +537,27 @@ static void rtl_decode_insn(const RTLUnit *unit, uint32_t index,
         [RTLOP_SLTSI     ] = "SLTSI",
         [RTLOP_SGTUI     ] = "SGTUI",
         [RTLOP_SGTSI     ] = "SGTSI",
+        [RTLOP_BITCAST   ] = "BITCAST",
+        [RTLOP_FCAST     ] = "FCAST",
+        [RTLOP_FZCAST    ] = "FZCAST",
+        [RTLOP_FSCAST    ] = "FSCAST",
+        [RTLOP_FROUNDI   ] = "FROUNDI",
+        [RTLOP_FTRUNCI   ] = "FTRUNCI",
+        [RTLOP_FADD      ] = "FADD",
+        [RTLOP_FSUB      ] = "FSUB",
+        [RTLOP_FMUL      ] = "FMUL",
+        [RTLOP_FDIV      ] = "FDIV",
+        [RTLOP_FRCP      ] = "FRCP",
+        [RTLOP_FRSQ      ] = "FRSQ",
+        [RTLOP_FCMP      ] = "FCMP",
+        [RTLOP_FMADD     ] = "FMADD",
+        [RTLOP_FMSUB     ] = "FMSUB",
+        [RTLOP_FNMADD    ] = "FNMADD",
+        [RTLOP_FNMSUB    ] = "FNMSUB",
+        [RTLOP_FGETSTATE ] = "FGETSTATE",
+        [RTLOP_FTESTEXC  ] = "FTESTEXC",
+        [RTLOP_FCLEAREXC ] = "FCLEAREXC",
+        [RTLOP_FSETROUND ] = "FSETROUND",
         [RTLOP_LOAD_IMM  ] = "LOAD_IMM",
         [RTLOP_LOAD_ARG  ] = "LOAD_ARG",
         [RTLOP_LOAD      ] = "LOAD",
@@ -481,6 +606,11 @@ static void rtl_decode_insn(const RTLUnit *unit, uint32_t index,
 
     switch ((RTLOpcode)insn->opcode) {
 
+      case RTLOP_FCLEAREXC:
+      case RTLOP_ILLEGAL:
+        s += snprintf_assert(s, top - s, "%s\n", name);
+        return;
+
       case RTLOP_NOP:
         if (insn->dest || insn->src1 || insn->src2 || insn->src_imm) {
             s += snprintf_assert(s, top - s, "%-10s ", name);
@@ -527,11 +657,23 @@ static void rtl_decode_insn(const RTLUnit *unit, uint32_t index,
       case RTLOP_NOT:
       case RTLOP_CLZ:
       case RTLOP_BSWAP:
+      case RTLOP_BITCAST:
+      case RTLOP_FCAST:
+      case RTLOP_FZCAST:
+      case RTLOP_FSCAST:
+      case RTLOP_FROUNDI:
+      case RTLOP_FTRUNCI:
+      case RTLOP_FRCP:
+      case RTLOP_FRSQ:
         s += snprintf_assert(s, top - s, "%-10s r%d, r%d\n", name, dest, src1);
         APPEND_REG_DESC(src1);
         return;
 
       case RTLOP_SELECT:
+      case RTLOP_FMADD:
+      case RTLOP_FMSUB:
+      case RTLOP_FNMADD:
+      case RTLOP_FNMSUB:
         s += snprintf_assert(s, top - s, "%-10s r%d, r%d, r%d, r%d\n",
                              name, dest, src1, src2, insn->src3);
         APPEND_REG_DESC(src1);
@@ -561,6 +703,10 @@ static void rtl_decode_insn(const RTLUnit *unit, uint32_t index,
       case RTLOP_SLTS:
       case RTLOP_SGTU:
       case RTLOP_SGTS:
+      case RTLOP_FADD:
+      case RTLOP_FSUB:
+      case RTLOP_FMUL:
+      case RTLOP_FDIV:
         s += snprintf_assert(s, top - s, "%-10s r%d, r%d, r%d\n",
                              name, dest, src1, src2);
         APPEND_REG_DESC(src1);
@@ -599,6 +745,31 @@ static void rtl_decode_insn(const RTLUnit *unit, uint32_t index,
         s += snprintf_assert(s, top - s, "%-10s r%d, r%d, %"PRId64"\n",
                              name, dest, src1, insn->src_imm);
         APPEND_REG_DESC(src1);
+        return;
+
+      case RTLOP_FCMP:
+        s += snprintf_assert(s, top - s, "%-10s r%d, r%d, r%d, %s%s%s\n",
+                             name, dest, src1, src2,
+                             insn->fcmp & 16 ? "O" : "",
+                             insn->fcmp & 8 ? "N" : "",
+                             fcmp_name(insn->fcmp & 7));
+        APPEND_REG_DESC(src1);
+        APPEND_REG_DESC(src2);
+        return;
+
+      case RTLOP_FGETSTATE:
+        s += snprintf_assert(s, top - s, "%-10s r%d\n", name, dest);
+        return;
+
+      case RTLOP_FTESTEXC:
+        s += snprintf_assert(s, top - s, "%-10s r%d, r%d, %s\n",
+                             name, dest, src1, fexc_name(insn->src_imm));
+        APPEND_REG_DESC(src1);
+        return;
+
+      case RTLOP_FSETROUND:
+        s += snprintf_assert(s, top - s, "%-10s %s\n", name,
+                             fround_name(insn->src_imm));
         return;
 
       case RTLOP_LOAD_IMM:
@@ -708,10 +879,6 @@ static void rtl_decode_insn(const RTLUnit *unit, uint32_t index,
         } else {
             s += snprintf_assert(s, top - s, "%s\n", name);
         }
-        return;
-
-      case RTLOP_ILLEGAL:
-        s += snprintf_assert(s, top - s, "%s\n", name);
         return;
 
     }  // switch (insn->opcode)
@@ -1258,7 +1425,8 @@ bool rtl_optimize_unit(RTLUnit *unit, unsigned int flags)
 
     /* Perform optimizations in the proper order. */
     if (flags & BINREC_OPT_FOLD_CONSTANTS) {
-        rtl_opt_fold_constants(unit);
+        const bool fold_fp = (flags & BINREC_OPT_FOLD_FP_CONSTANTS) != 0;
+        rtl_opt_fold_constants(unit, fold_fp);
     }
     if (flags & BINREC_OPT_DECONDITION) {
         rtl_opt_decondition(unit);

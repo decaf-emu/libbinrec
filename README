@@ -133,6 +133,9 @@ system and use unmapped-access host exceptions to detect and handle such
 accesses.  libbinrec also does not attempt to count instruction cycles
 or otherwise reproduce precise timing behavior of the guest processor.
 
+See the documentation in include/binrec.h for limitations and other
+details of behavior with respect to individual architectures.
+
 
 Reporting bugs
 --------------

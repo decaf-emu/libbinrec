@@ -102,17 +102,21 @@
 /*************************************************************************/
 
 /**
- * RTLDataType:  The data type of a register used in an RTL unit.  For
- * instructions which take multiple operands, all operands must be of the
- * same type, except where noted.
+ * RTLDataType:  Enumeration of data types for registers used in an RTL
+ * unit.  For instructions which take multiple operands, all operands must
+ * be of the same type, except where noted.
  *
  * RTLTYPE_ADDRESS is a special integer variant which is the same size as
  * a memory address (i.e., a pointer) on the host architecture.  The
  * ADDRESS type is treated as distinct from other integer types; to perform
  * calculations with an address, the second operand must be cast to address
  * type with an RTLOP_ZCAST or RTLOP_SCAST instruction.
+ *
+ * RTLTYPE_FPSTATE is a special type reserved for holding the result of an
+ * FGETSTATE instruction.  This type can only be used with the FGETSTATE
+ * and FTESTEXC instructions, and cannot be converted to any other type.
  */
-typedef enum RTLDataType_ {
+typedef enum RTLDataType {
     /* Zero is invalid. */
     RTLTYPE_INT32 = 1,  // 32-bit integer
     RTLTYPE_INT64,      // 64-bit integer
@@ -120,6 +124,7 @@ typedef enum RTLDataType_ {
     RTLTYPE_FLOAT32,    // 32-bit floating point
     RTLTYPE_FLOAT64,    // 64-bit floating point
     RTLTYPE_V2_FLOAT64, // Vector of 2 x RTLTYPE_FLOAT64
+    RTLTYPE_FPSTATE,    // Floating point state word
 } RTLDataType;
 
 /**
@@ -249,6 +254,44 @@ typedef enum RTLOpcode {
     RTLOP_SGTSI,        // dest = (signed)src1 > IMMEDIATE(other) ? 1 : 0
                         //    [dest may be any integer type]
 
+    /* Floating-point operations */
+    RTLOP_BITCAST,      // bits(dest) = bits(src1)
+                        //    [dest and src1 must be of the same size and
+                        //     opposite modes: FLOAT32/INT32, INT64/FLOAT64,
+                        //     etc.]
+    RTLOP_FCAST,        // dest = (typeof(dest))src1
+    RTLOP_FZCAST,       // dest = (typeof(dest))((unsigned)src1)
+                        //    [src1 is of integer type]
+    RTLOP_FSCAST,       // dest = (typeof(dest))((signed)src1)
+                        //    [src1 is of integer type]
+    RTLOP_FROUNDI,      // dest = (typeof(dest))round(src1)
+                        //    [uses current rounding mode]
+    RTLOP_FTRUNCI,      // dest = (typeof(dest))trunc(src1)
+    RTLOP_FADD,         // dest = src1 + src2
+    RTLOP_FSUB,         // dest = src1 - src2
+    RTLOP_FMUL,         // dest = src1 * src2
+    RTLOP_FDIV,         // dest = src1 / src2
+    RTLOP_FRCP,         // dest = 1 / src1
+    RTLOP_FRSQ,         // dest = 1 / sqrt(src1)
+    RTLOP_FCMP,         // dest = fcmp(src1, src2, IMMEDIATE(other))
+                        //    [dest must be of integer type; other is an
+                        //     immediate comparison type (RTLFCMP_*)]
+    RTLOP_FMADD,        // dest = fma(src1, src2, src3)
+    RTLOP_FMSUB,        // dest = fma(src1, src2, -src3)
+    RTLOP_FNMADD,       // dest = -fma(src1, src2, src3)
+    RTLOP_FNMSUB,       // dest = -fma(src1, src2, -src3)
+
+    /* Floating-point state manipulation.  The state operand (dest for
+     * FGETSTATE, src1 for FTESTEXC) must be of type FPSTATE. */
+    RTLOP_FGETSTATE,    // dest = fpstate()
+    RTLOP_FTESTEXC,     // dest = fpstate_has_exception(src1, IMMEDIATE(other))
+                        //    [other is one of RTLFEXC_*; dest must be of
+                        //     integer type and receives 1 or 0]
+    RTLOP_FCLEAREXC,    // clear_fp_exceptions()
+                        //    [no operands; clears all pending exceptions]
+    RTLOP_FSETROUND,    // set_rounding_mode(IMMEDIATE(other))
+                        //    [other is one of RTLFROUND_*]
+
     /* Non-memory load operations.  If LOAD_ARG instructions are used,
      * they must be the first instructions in the unit, or the argument
      * values may be overwritten. */
@@ -320,6 +363,47 @@ typedef enum RTLOpcode {
 
 #define RTLOP__FIRST  RTLOP_NOP
 #define RTLOP__LAST   RTLOP_ILLEGAL
+
+/**
+ * RTLFloatCompare:  Enumeration of comparison types for use with the FCMP
+ * instruction.  The comparison operand is one of the values from this
+ * enumeration possibly OR'd with the RTLFCMP_INVERT and RTLFCMP_ORDERED
+ * flags.
+ */
+typedef enum RTLFloatCompare {
+    RTLFCMP_LT = 0,
+    RTLFCMP_LE = 1,
+    RTLFCMP_GT = 2,
+    RTLFCMP_GE = 3,
+    RTLFCMP_EQ = 4,
+} RTLFloatCompare;
+enum {
+    RTLFCMP_INVERT = 8,  // Invert the sense of the comparison.
+    RTLFCMP_ORDERED = 16,  // Raise an invalid operation exception on QNaNs.
+};
+
+/**
+ * RTLFloatException:  Enumeration of floating-point exceptions for use
+ * with the FTESTEXC instruction.
+ */
+typedef enum RTLFloatException {
+    RTLFEXC_INEXACT = 0,
+    RTLFEXC_INVALID,
+    RTLFEXC_OVERFLOW,
+    RTLFEXC_UNDERFLOW,
+    RTLFEXC_ZERO_DIVIDE,
+} RTLFloatException;
+
+/**
+ * RTLFloatRoundingMode:  Enumeration of floating-point rouding modes for
+ * use with the FSETROUND instruction.
+ */
+typedef enum RTLFloatRoundingMode {
+    RTLFROUND_NEAREST = 0,
+    RTLFROUND_TRUNC,
+    RTLFROUND_FLOOR,
+    RTLFROUND_CEIL,
+} RTLFloatRoundingMode;
 
 /*************************************************************************/
 /************************** RTL data structures **************************/

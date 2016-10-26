@@ -574,6 +574,26 @@ static inline uint64_t fold_constant(RTLUnit * const unit,
             return ((int64_t)src1->value.i64 > (int64_t)reg->result.src_imm);
         }
 
+      case RTLOP_BITCAST:
+      case RTLOP_FCAST:
+      case RTLOP_FSCAST:
+      case RTLOP_FZCAST:
+      case RTLOP_FROUNDI:
+      case RTLOP_FTRUNCI:
+      case RTLOP_FADD:
+      case RTLOP_FSUB:
+      case RTLOP_FMUL:
+      case RTLOP_FDIV:
+      case RTLOP_FRCP:
+      case RTLOP_FRSQ:
+      case RTLOP_FCMP:
+      case RTLOP_FMADD:
+      case RTLOP_FMSUB:
+      case RTLOP_FNMADD:
+      case RTLOP_FNMSUB:
+        // FIXME: not yet implemented
+        return 0;
+
       /* The remainder will never appear with RTLREG_RESULT, but list them
        * individually rather than using a default case so the compiler will
        * warn us if we add a new opcode but don't include it here. */
@@ -581,8 +601,10 @@ static inline uint64_t fold_constant(RTLUnit * const unit,
       case RTLOP_SET_ALIAS:
       case RTLOP_GET_ALIAS:
       case RTLOP_SELECT:  // Reduced to MOVE if foldable.
-      case RTLOP_ATOMIC_INC:
-      case RTLOP_CMPXCHG:
+      case RTLOP_FGETSTATE:
+      case RTLOP_FTESTEXC:
+      case RTLOP_FCLEAREXC:
+      case RTLOP_FSETROUND:
       case RTLOP_LOAD_IMM:
       case RTLOP_LOAD_ARG:
       case RTLOP_LOAD:
@@ -598,6 +620,8 @@ static inline uint64_t fold_constant(RTLUnit * const unit,
       case RTLOP_STORE_I16:
       case RTLOP_STORE_BR:
       case RTLOP_STORE_I16_BR:
+      case RTLOP_ATOMIC_INC:
+      case RTLOP_CMPXCHG:
       case RTLOP_LABEL:
       case RTLOP_GOTO:
       case RTLOP_GOTO_IF_Z:
@@ -801,8 +825,27 @@ static inline bool convert_to_regimm(RTLUnit * const unit,
       case RTLOP_SLTSI:
       case RTLOP_SGTUI:
       case RTLOP_SGTSI:
-      case RTLOP_ATOMIC_INC:
-      case RTLOP_CMPXCHG:
+      case RTLOP_BITCAST:
+      case RTLOP_FCAST:
+      case RTLOP_FSCAST:
+      case RTLOP_FZCAST:
+      case RTLOP_FROUNDI:
+      case RTLOP_FTRUNCI:
+      case RTLOP_FADD:
+      case RTLOP_FSUB:
+      case RTLOP_FMUL:
+      case RTLOP_FDIV:
+      case RTLOP_FRCP:
+      case RTLOP_FRSQ:
+      case RTLOP_FCMP:
+      case RTLOP_FMADD:
+      case RTLOP_FMSUB:
+      case RTLOP_FNMADD:
+      case RTLOP_FNMSUB:
+      case RTLOP_FGETSTATE:
+      case RTLOP_FTESTEXC:
+      case RTLOP_FCLEAREXC:
+      case RTLOP_FSETROUND:
       case RTLOP_LOAD_IMM:
       case RTLOP_LOAD_ARG:
       case RTLOP_LOAD:
@@ -818,6 +861,8 @@ static inline bool convert_to_regimm(RTLUnit * const unit,
       case RTLOP_STORE_I16:
       case RTLOP_STORE_BR:
       case RTLOP_STORE_I16_BR:
+      case RTLOP_ATOMIC_INC:
+      case RTLOP_CMPXCHG:
       case RTLOP_LABEL:
       case RTLOP_GOTO:
       case RTLOP_GOTO_IF_Z:
@@ -848,11 +893,12 @@ static inline bool convert_to_regimm(RTLUnit * const unit,
  * [Parameters]
  *     unit: RTLUnit to operate on.
  *     reg: Register on which to perform constant folding.
+ *     fold_fp: True to fold floating-point operations.
  * [Return value]
  *     True if constant folding was performed, false if not.
  */
 static inline void fold_one_register(RTLUnit * const unit,
-                                     RTLRegister * const reg)
+                                     RTLRegister * const reg, bool fold_fp)
 {
     ASSERT(unit);
     ASSERT(reg);
@@ -909,28 +955,31 @@ static inline void fold_one_register(RTLUnit * const unit,
     const bool src2_is_constant = (unit->regs[src2].source == RTLREG_CONSTANT);
     bool folded = false;
     if (src1_is_constant && (!src2 || src2_is_constant)) {
-        reg->source = RTLREG_CONSTANT;
-        reg->value.i64 = fold_constant(unit, reg);
-        if (reg->type == RTLTYPE_INT32) {
-            reg->value.i64 = (uint32_t)reg->value.i64;
-        }
-        birth_insn->opcode = RTLOP_LOAD_IMM;
-        birth_insn->src1 = 0;
-        birth_insn->src2 = 0;
-        birth_insn->src_imm = reg->value.i64;
+        if (fold_fp || !(reg->result.opcode >= RTLOP_FCAST
+                         && reg->result.opcode <= RTLOP_FNMSUB)) {
+            reg->source = RTLREG_CONSTANT;
+            reg->value.i64 = fold_constant(unit, reg);
+            if (reg->type == RTLTYPE_INT32) {
+                reg->value.i64 = (uint32_t)reg->value.i64;
+            }
+            birth_insn->opcode = RTLOP_LOAD_IMM;
+            birth_insn->src1 = 0;
+            birth_insn->src2 = 0;
+            birth_insn->src_imm = reg->value.i64;
 #ifdef RTL_DEBUG_OPTIMIZE
-        char value_str[20];
-        if (rtl_register_is_int(reg)) {
-            format_int(value_str, sizeof(value_str),
-                       reg->type, reg->value.i64);
-        } else {
-            snprintf_assert(value_str, sizeof(value_str),
-                            "0x%"PRIX64, reg->value.i64);
-        }
-        log_info(unit->handle, "Folded r%d to constant value %s at %d",
-                 (int)(reg - unit->regs), value_str, reg->birth);
+            char value_str[20];
+            if (rtl_register_is_int(reg)) {
+                format_int(value_str, sizeof(value_str),
+                           reg->type, reg->value.i64);
+            } else {
+                snprintf_assert(value_str, sizeof(value_str),
+                                "0x%"PRIX64, reg->value.i64);
+            }
+            log_info(unit->handle, "Folded r%d to constant value %s at %d",
+                     (int)(reg - unit->regs), value_str, reg->birth);
 #endif
-        folded = true;
+            folded = true;
+        }
     } else if (src1_is_constant || (src2 && src2_is_constant)) {
         if (convert_to_regimm(unit, reg)) {
             ASSERT(reg->result.is_imm);
@@ -1616,7 +1665,7 @@ void rtl_opt_drop_dead_stores(RTLUnit *unit)
 
 /*-----------------------------------------------------------------------*/
 
-void rtl_opt_fold_constants(RTLUnit *unit)
+void rtl_opt_fold_constants(RTLUnit *unit, bool fold_fp)
 {
     ASSERT(unit);
     ASSERT(unit->insns);
@@ -1627,7 +1676,7 @@ void rtl_opt_fold_constants(RTLUnit *unit)
         if (insn->dest) {
             RTLRegister * const reg = &unit->regs[insn->dest];
             if (reg->source == RTLREG_RESULT) {
-                fold_one_register(unit, reg);
+                fold_one_register(unit, reg, fold_fp);
             } else if (reg->source == RTLREG_MEMORY) {
                 const void *readonly_ptr = get_readonly_ptr(unit, reg);
                 if (readonly_ptr) {

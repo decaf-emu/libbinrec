@@ -25,35 +25,44 @@ int main(void)
     EXPECT(unit = rtl_create_unit(handle));
 
     int reg1, reg2, reg3, reg4, reg5, reg6, reg7, reg8, reg9, reg10, reg11;
-    int label;
+    int reg12, reg13, reg14, reg15, label;
     EXPECT(reg1 = rtl_alloc_register(unit, RTLTYPE_INT32));
     EXPECT(reg2 = rtl_alloc_register(unit, RTLTYPE_INT32));
     EXPECT(reg3 = rtl_alloc_register(unit, RTLTYPE_INT32));
     EXPECT(reg4 = rtl_alloc_register(unit, RTLTYPE_INT32));
     EXPECT(reg5 = rtl_alloc_register(unit, RTLTYPE_INT32));
     EXPECT(reg6 = rtl_alloc_register(unit, RTLTYPE_INT32));
-    EXPECT(reg7 = rtl_alloc_register(unit, RTLTYPE_INT32));
-    EXPECT(reg8 = rtl_alloc_register(unit, RTLTYPE_ADDRESS));
-    EXPECT(reg9 = rtl_alloc_register(unit, RTLTYPE_INT32));
+    EXPECT(reg7 = rtl_alloc_register(unit, RTLTYPE_FLOAT32));
+    EXPECT(reg8 = rtl_alloc_register(unit, RTLTYPE_INT32));
+    EXPECT(reg9 = rtl_alloc_register(unit, RTLTYPE_FPSTATE));
     EXPECT(reg10 = rtl_alloc_register(unit, RTLTYPE_INT32));
     EXPECT(reg11 = rtl_alloc_register(unit, RTLTYPE_INT32));
+    EXPECT(reg12 = rtl_alloc_register(unit, RTLTYPE_ADDRESS));
+    EXPECT(reg13 = rtl_alloc_register(unit, RTLTYPE_INT32));
+    EXPECT(reg14 = rtl_alloc_register(unit, RTLTYPE_INT32));
+    EXPECT(reg15 = rtl_alloc_register(unit, RTLTYPE_INT32));
     EXPECT(label = rtl_alloc_label(unit));
 
     EXPECT(rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, label));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg1, 0, 0, 10));
-    EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg8, 0, 0, 20));
+    EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg12, 0, 0, 20));
     EXPECT(rtl_add_insn(unit, RTLOP_MOVE, reg2, reg1, 0, 0));
     EXPECT(rtl_add_insn(unit, RTLOP_ADD, reg3, reg1, reg2, 0));
     EXPECT(rtl_add_insn(unit, RTLOP_SELECT, reg4, reg1, reg2, reg3));
     EXPECT(rtl_add_insn(unit, RTLOP_BFEXT, reg5, reg4, 0, 2 | 4<<8));
     EXPECT(rtl_add_insn(unit, RTLOP_BFINS, reg6, reg4, reg5, 6 | 8<<8));
-    EXPECT(rtl_add_insn(unit, RTLOP_LOAD, reg7, reg8, 0, 0));
-    EXPECT(rtl_add_insn(unit, RTLOP_STORE, 0, reg8, reg6, 0));
-    EXPECT(rtl_add_insn(unit, RTLOP_ATOMIC_INC, reg9, reg8, 0, 0));
-    EXPECT(rtl_add_insn(unit, RTLOP_CMPXCHG, reg10, reg8, reg6, reg7));
-    EXPECT(rtl_add_insn(unit, RTLOP_CALL, reg11, reg8, reg6, reg7));
-    EXPECT(rtl_add_insn(unit, RTLOP_GOTO_IF_NZ, 0, reg11, 0, label));
-    EXPECT(rtl_add_insn(unit, RTLOP_RETURN, 0, reg11, 0, 0));
+    EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg7, 0, 0, 0x40400000));
+    EXPECT(rtl_add_insn(unit, RTLOP_FCMP, reg8, reg7, reg7, RTLFCMP_EQ));
+    EXPECT(rtl_add_insn(unit, RTLOP_FGETSTATE, reg9, 0, 0, 0));
+    EXPECT(rtl_add_insn(unit, RTLOP_FTESTEXC,
+                        reg10, reg9, 0, RTLFEXC_INVALID));
+    EXPECT(rtl_add_insn(unit, RTLOP_LOAD, reg11, reg12, 0, 0));
+    EXPECT(rtl_add_insn(unit, RTLOP_STORE, 0, reg12, reg6, 0));
+    EXPECT(rtl_add_insn(unit, RTLOP_ATOMIC_INC, reg13, reg12, 0, 0));
+    EXPECT(rtl_add_insn(unit, RTLOP_CMPXCHG, reg14, reg12, reg6, reg11));
+    EXPECT(rtl_add_insn(unit, RTLOP_CALL, reg15, reg12, reg6, reg11));
+    EXPECT(rtl_add_insn(unit, RTLOP_GOTO_IF_NZ, 0, reg15, 0, label));
+    EXPECT(rtl_add_insn(unit, RTLOP_RETURN, 0, reg15, 0, 0));
 
     EXPECT(rtl_finalize_unit(unit));
 
@@ -62,22 +71,26 @@ int main(void)
     EXPECT_STREQ(disassembly,
                  "    0: LABEL      L1\n"
                  "    1: LOAD_IMM   r1, 10\n"
-                 "    2: LOAD_IMM   r8, 0x14\n"
+                 "    2: LOAD_IMM   r12, 0x14\n"
                  "    3: MOVE       r2, r1\n"
                  "    4: ADD        r3, r1, r2\n"
                  "    5: SELECT     r4, r1, r2, r3\n"
                  "    6: BFEXT      r5, r4, 2, 4\n"
                  "    7: BFINS      r6, r4, r5, 6, 8\n"
-                 "    8: LOAD       r7, 0(r8)\n"
-                 "    9: STORE      0(r8), r6\n"
-                 "   10: ATOMIC_INC r9, (r8)\n"
-                 "   11: CMPXCHG    r10, (r8), r6, r7\n"
-                 "   12: CALL       r11, @r8, r6, r7\n"
-                 "   13: GOTO_IF_NZ r11, L1\n"
-                 "   14: RETURN     r11\n"
+                 "    8: LOAD_IMM   r7, 3.0f\n"
+                 "    9: FCMP       r8, r7, r7, EQ\n"
+                 "   10: FGETSTATE  r9\n"
+                 "   11: FTESTEXC   r10, r9, INVALID\n"
+                 "   12: LOAD       r11, 0(r12)\n"
+                 "   13: STORE      0(r12), r6\n"
+                 "   14: ATOMIC_INC r13, (r12)\n"
+                 "   15: CMPXCHG    r14, (r12), r6, r11\n"
+                 "   16: CALL       r15, @r12, r6, r11\n"
+                 "   17: GOTO_IF_NZ r15, L1\n"
+                 "   18: RETURN     r15\n"
                  "\n"
-                 "Block 0: 0 --> [0,13] --> 1,0\n"
-                 "Block 1: 0 --> [14,14] --> <none>\n");
+                 "Block 0: 0 --> [0,17] --> 1,0\n"
+                 "Block 1: 0 --> [18,18] --> <none>\n");
 
     rtl_destroy_unit(unit);
     binrec_destroy_handle(handle);
