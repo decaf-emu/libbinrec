@@ -575,28 +575,203 @@ static inline uint64_t fold_constant(RTLUnit * const unit,
         }
 
       case RTLOP_BITCAST:
-      case RTLOP_FCAST:
-      case RTLOP_FSCAST:
-      case RTLOP_FZCAST:
-      case RTLOP_FROUNDI:
-      case RTLOP_FTRUNCI:
-      case RTLOP_FADD:
-      case RTLOP_FSUB:
-      case RTLOP_FMUL:
-      case RTLOP_FDIV:
-      case RTLOP_FRCP:
-      case RTLOP_FRSQ:
-      case RTLOP_FCMP:
-      case RTLOP_FMADD:
-      case RTLOP_FMSUB:
-      case RTLOP_FNMADD:
-      case RTLOP_FNMSUB:
-        // FIXME: not yet implemented
-        return 0;
+        if (src1->type == RTLTYPE_FLOAT32) {
+            return float_to_bits(src1->value.f32);
+        } else {
+            return src1->value.i64;
+        }
 
-      /* The remainder will never appear with RTLREG_RESULT, but list them
-       * individually rather than using a default case so the compiler will
-       * warn us if we add a new opcode but don't include it here. */
+      case RTLOP_FCAST:
+        if (src1->type == RTLTYPE_FLOAT32) {
+            if (reg->type == RTLTYPE_FLOAT32) {
+                return float_to_bits(src1->value.f32);
+            } else {
+                return double_to_bits((double)src1->value.f32);
+            }
+        } else {
+            if (reg->type == RTLTYPE_FLOAT32) {
+                return float_to_bits((float)src1->value.f64);
+            } else {
+                return src1->value.i64;
+            }
+        }
+
+      case RTLOP_FSCAST:
+        if (src1->type == RTLTYPE_INT32) {
+            const int32_t value = (int32_t)src1->value.i64;
+            if (reg->type == RTLTYPE_FLOAT32) {
+                return float_to_bits((float)value);
+            } else {
+                return double_to_bits((double)value);
+            }
+        } else {
+            const int64_t value = (int64_t)src1->value.i64;
+            if (reg->type == RTLTYPE_FLOAT32) {
+                return float_to_bits((float)value);
+            } else {
+                return double_to_bits((double)value);
+            }
+        }
+
+      case RTLOP_FZCAST:
+        if (src1->type == RTLTYPE_INT32) {
+            const uint32_t value = (uint32_t)src1->value.i64;
+            if (reg->type == RTLTYPE_FLOAT32) {
+                return float_to_bits((float)value);
+            } else {
+                return double_to_bits((double)value);
+            }
+        } else {
+            if (reg->type == RTLTYPE_FLOAT32) {
+                return float_to_bits((float)src1->value.i64);
+            } else {
+                return double_to_bits((double)src1->value.i64);
+            }
+        }
+
+      case RTLOP_FROUNDI:
+        if (src1->type == RTLTYPE_FLOAT32) {
+            if (reg->type == RTLTYPE_INT32) {
+                return (int32_t)nearbyintf(src1->value.f32);
+            } else {
+                return (int64_t)nearbyintf(src1->value.f32);
+            }
+        } else {
+            if (reg->type == RTLTYPE_INT32) {
+                return (int32_t)nearbyint(src1->value.f64);
+            } else {
+                return (int64_t)nearbyint(src1->value.f64);
+            }
+        }
+
+      case RTLOP_FTRUNCI:
+        if (src1->type == RTLTYPE_FLOAT32) {
+            if (reg->type == RTLTYPE_INT32) {
+                return (int32_t)src1->value.f32;
+            } else {
+                return (int64_t)src1->value.f32;
+            }
+        } else {
+            if (reg->type == RTLTYPE_INT32) {
+                return (int32_t)src1->value.f64;
+            } else {
+                return (int64_t)src1->value.f64;
+            }
+        }
+
+      case RTLOP_FADD:
+        if (reg->type == RTLTYPE_FLOAT32) {
+            return float_to_bits(src1->value.f32 + src2->value.f32);
+        } else {
+            return double_to_bits(src1->value.f64 + src2->value.f64);
+        }
+
+      case RTLOP_FSUB:
+        if (reg->type == RTLTYPE_FLOAT32) {
+            return float_to_bits(src1->value.f32 - src2->value.f32);
+        } else {
+            return double_to_bits(src1->value.f64 - src2->value.f64);
+        }
+
+      case RTLOP_FMUL:
+        if (reg->type == RTLTYPE_FLOAT32) {
+            return float_to_bits(src1->value.f32 * src2->value.f32);
+        } else {
+            return double_to_bits(src1->value.f64 * src2->value.f64);
+        }
+
+      case RTLOP_FDIV:
+        if (reg->type == RTLTYPE_FLOAT32) {
+            return float_to_bits(src1->value.f32 / src2->value.f32);
+        } else {
+            return double_to_bits(src1->value.f64 / src2->value.f64);
+        }
+
+      case RTLOP_FRCP:
+        if (reg->type == RTLTYPE_FLOAT32) {
+            return float_to_bits(1.0f / src1->value.f32);
+        } else {
+            return double_to_bits(1.0 / src1->value.f64);
+        }
+
+      case RTLOP_FRSQ:
+        if (reg->type == RTLTYPE_FLOAT32) {
+            return float_to_bits(1.0f / sqrtf(src1->value.f32));
+        } else {
+            return double_to_bits(1.0 / sqrt(src1->value.f64));
+        }
+
+      case RTLOP_FCMP: {
+        double val1, val2;
+        if (src1->type == RTLTYPE_FLOAT32) {
+            val1 = (double)src1->value.f32;
+            val2 = (double)src2->value.f32;
+        } else {
+            val1 = src1->value.f64;
+            val2 = src2->value.f64;
+        }
+        bool result = false;
+        switch ((RTLFloatCompare)(reg->result.fcmp & 7)) {
+            case RTLFCMP_LT: result = val1 <  val2; break;
+            case RTLFCMP_LE: result = val1 <= val2; break;
+            case RTLFCMP_GT: result = val1 >  val2; break;
+            case RTLFCMP_GE: result = val1 >= val2; break;
+            case RTLFCMP_EQ: result = val1 == val2; break;
+        }
+        if (reg->result.fcmp & RTLFCMP_INVERT) {
+            result = !result;
+        }
+        return result;
+      }  // case RTLOP_FCMP
+
+      case RTLOP_FMADD:
+        if (reg->type == RTLTYPE_FLOAT32) {
+            return float_to_bits(
+                fmaf(src1->value.f32, src2->value.f32,
+                     unit->regs[reg->result.src3].value.f32));
+        } else {
+            return double_to_bits(
+                fma(src1->value.f64, src2->value.f64,
+                    unit->regs[reg->result.src3].value.f64));
+        }
+
+      case RTLOP_FMSUB:
+        if (reg->type == RTLTYPE_FLOAT32) {
+            return float_to_bits(
+                fmaf(src1->value.f32, src2->value.f32,
+                     -unit->regs[reg->result.src3].value.f32));
+        } else {
+            return double_to_bits(
+                fma(src1->value.f64, src2->value.f64,
+                    -unit->regs[reg->result.src3].value.f64));
+        }
+
+      case RTLOP_FNMADD:
+        if (reg->type == RTLTYPE_FLOAT32) {
+            return float_to_bits(
+                -fmaf(src1->value.f32, src2->value.f32,
+                      unit->regs[reg->result.src3].value.f32));
+        } else {
+            return double_to_bits(
+                -fma(src1->value.f64, src2->value.f64,
+                     unit->regs[reg->result.src3].value.f64));
+        }
+
+      case RTLOP_FNMSUB:
+        if (reg->type == RTLTYPE_FLOAT32) {
+            return float_to_bits(
+                -fmaf(src1->value.f32, src2->value.f32,
+                      -unit->regs[reg->result.src3].value.f32));
+        } else {
+            return double_to_bits(
+                -fma(src1->value.f64, src2->value.f64,
+                     -unit->regs[reg->result.src3].value.f64));
+        }
+
+      /* The remainder will never appear with RTLREG_RESULT, but we list
+       * them individually rather than using a default case so the compiler
+       * will warn us if we add a new opcode but don't include it in this
+       * switch statement. */
       case RTLOP_NOP:
       case RTLOP_SET_ALIAS:
       case RTLOP_GET_ALIAS:
@@ -951,12 +1126,18 @@ static inline void fold_one_register(RTLUnit * const unit,
      * to its equivalent register-immediate instruction if one exists. */
     const int src1 = reg->result.src1;
     const int src2 = reg->result.is_imm ? 0 : reg->result.src2;
+    const int src3 = (rtl_opcode_has_src3(reg->result.opcode)
+                      ? reg->result.src3 : 0);
     const bool src1_is_constant = (unit->regs[src1].source == RTLREG_CONSTANT);
     const bool src2_is_constant = (unit->regs[src2].source == RTLREG_CONSTANT);
+    const bool src3_is_constant = (unit->regs[src3].source == RTLREG_CONSTANT);
     bool folded = false;
-    if (src1_is_constant && (!src2 || src2_is_constant)) {
-        if (fold_fp || !(reg->result.opcode >= RTLOP_FCAST
-                         && reg->result.opcode <= RTLOP_FNMSUB)) {
+    if (src1_is_constant
+     && (!src2 || src2_is_constant)
+     && (!src3 || src3_is_constant)) {
+        if (fold_fp || !(reg->result.opcode >= RTLOP_FCAST)) {
+            /* All foldable non-FP instructions come before FP instructions. */
+            ASSERT(reg->result.opcode <= RTLOP_FNMSUB);
             reg->source = RTLREG_CONSTANT;
             reg->value.i64 = fold_constant(unit, reg);
             if (reg->type == RTLTYPE_INT32) {
@@ -980,7 +1161,7 @@ static inline void fold_one_register(RTLUnit * const unit,
 #endif
             folded = true;
         }
-    } else if (src1_is_constant || (src2 && src2_is_constant)) {
+    } else if (!src3 && (src1_is_constant || (src2 && src2_is_constant))) {
         if (convert_to_regimm(unit, reg)) {
             ASSERT(reg->result.is_imm);
             birth_insn->opcode = reg->result.opcode;
@@ -1005,6 +1186,10 @@ static inline void fold_one_register(RTLUnit * const unit,
         }
         if (src2 && src2_is_constant && unit->regs[src2].death == reg->birth) {
             rollback_reg_death(unit, src2);
+        }
+        if (src3 && unit->regs[src3].death == reg->birth) {
+            ASSERT(src3_is_constant);
+            rollback_reg_death(unit, src3);
         }
     }
 }

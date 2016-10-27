@@ -264,9 +264,9 @@ typedef enum RTLOpcode {
                         //    [src1 is of integer type]
     RTLOP_FSCAST,       // dest = (typeof(dest))((signed)src1)
                         //    [src1 is of integer type]
-    RTLOP_FROUNDI,      // dest = (typeof(dest))round(src1)
+    RTLOP_FROUNDI,      // dest = (signed typeof(dest))round(src1)
                         //    [uses current rounding mode]
-    RTLOP_FTRUNCI,      // dest = (typeof(dest))trunc(src1)
+    RTLOP_FTRUNCI,      // dest = (signed typeof(dest))trunc(src1)
     RTLOP_FADD,         // dest = src1 + src2
     RTLOP_FSUB,         // dest = src1 - src2
     RTLOP_FMUL,         // dest = src1 * src2
@@ -379,7 +379,23 @@ typedef enum RTLFloatCompare {
 } RTLFloatCompare;
 enum {
     RTLFCMP_INVERT = 8,  // Invert the sense of the comparison.
+    RTLFCMP_NLT = RTLFCMP_INVERT | RTLFCMP_LT,
+    RTLFCMP_NLE = RTLFCMP_INVERT | RTLFCMP_LE,
+    RTLFCMP_NGT = RTLFCMP_INVERT | RTLFCMP_GT,
+    RTLFCMP_NGE = RTLFCMP_INVERT | RTLFCMP_GE,
+    RTLFCMP_NEQ = RTLFCMP_INVERT | RTLFCMP_EQ,
+
     RTLFCMP_ORDERED = 16,  // Raise an invalid operation exception on QNaNs.
+    RTLFCMP_OLT = RTLFCMP_ORDERED | RTLFCMP_LT,
+    RTLFCMP_OLE = RTLFCMP_ORDERED | RTLFCMP_LE,
+    RTLFCMP_OGT = RTLFCMP_ORDERED | RTLFCMP_GT,
+    RTLFCMP_OGE = RTLFCMP_ORDERED | RTLFCMP_GE,
+    RTLFCMP_OEQ = RTLFCMP_ORDERED | RTLFCMP_EQ,
+    RTLFCMP_ONLT = RTLFCMP_ORDERED | RTLFCMP_INVERT | RTLFCMP_LT,
+    RTLFCMP_ONLE = RTLFCMP_ORDERED | RTLFCMP_INVERT | RTLFCMP_LE,
+    RTLFCMP_ONGT = RTLFCMP_ORDERED | RTLFCMP_INVERT | RTLFCMP_GT,
+    RTLFCMP_ONGE = RTLFCMP_ORDERED | RTLFCMP_INVERT | RTLFCMP_GE,
+    RTLFCMP_ONEQ = RTLFCMP_ORDERED | RTLFCMP_INVERT | RTLFCMP_EQ,
 };
 
 /**
