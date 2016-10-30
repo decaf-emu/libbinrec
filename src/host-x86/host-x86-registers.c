@@ -220,6 +220,7 @@ static int allocate_frame_slot(HostX86Context *ctx, RTLDataType type)
         [RTLTYPE_FLOAT32   ] = 4,
         [RTLTYPE_FLOAT64   ] = 8,
         [RTLTYPE_V2_FLOAT64] = 16,
+        [RTLTYPE_FPSTATE   ] = 4,
     };
     ASSERT(type > 0 && type < lenof(type_sizes));
     ASSERT(type_sizes[type]);
@@ -260,7 +261,8 @@ static X86Register allocate_register(
     ASSERT(reg_index > 0);
     ASSERT(reg_index < ctx->unit->next_reg);
 
-    const bool is_gpr = rtl_register_is_int(reg);
+    const bool is_gpr = (rtl_register_is_int(reg)
+                         || reg->type == RTLTYPE_FPSTATE);
     const bool live_across_call = (ctx->nontail_call_list >= 0
                                    && reg->death > ctx->nontail_call_list);
 
@@ -828,6 +830,15 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
                 }
                 break;
 
+              case RTLOP_BITCAST:
+              case RTLOP_FSCAST:
+              case RTLOP_FZCAST:
+              case RTLOP_FROUNDI:
+              case RTLOP_FTRUNCI:
+                /* These instructions operate between registers of
+                 * different types, so we can never reuse src1. */
+                break;
+
               case RTLOP_ATOMIC_INC:
                 /* Avoid reusing src1 (if it's not spilled) since we need
                  * to write the second XADD operand (constant 1) to dest
@@ -1047,6 +1058,12 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
                          || src2_reg->death > insn_index);
             temp_avoid |= 1u << src1_info->host_reg
                         | 1u << src2_info->host_reg;
+            break;
+
+          case RTLOP_FZCAST:
+            /* Temporary needed if converting a 64-bit or spilled 32-bit
+             * value. */
+            need_temp = (int_type_is_64(src1_reg->type) || src1_info->spilled);
             break;
 
           case RTLOP_LOAD_IMM:
@@ -1487,6 +1504,22 @@ static void first_pass_for_block(HostX86Context *ctx, int block_index)
             ctx->regs[insn->dest].avoid_regs |= 1u << X86_CX;
             break;
           }  // case RTLOP_{SLL,SRL,SRA,ROL,ROR}
+
+          case RTLOP_FZCAST:
+            if (!int_type_is_64(unit->regs[insn->src1].type)) {
+                break;  // MXCSR not needed for converting from uint32. */
+            }
+            /* Fall through to MXCSR frame slot allocation. */
+          case RTLOP_FGETSTATE:
+          case RTLOP_FCLEAREXC:
+          case RTLOP_FSETROUND:
+            /* These instructions touch MXCSR, which requires a memory
+             * location rather than a register to access, so ensure that
+             * we have a frame slot allocated. */
+            if (ctx->stack_mxcsr < 0) {
+                ctx->stack_mxcsr = allocate_frame_slot(ctx, RTLTYPE_INT32);
+            }
+            break;
 
           case RTLOP_STORE:
           case RTLOP_STORE_I8:

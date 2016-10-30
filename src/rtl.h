@@ -265,8 +265,10 @@ typedef enum RTLOpcode {
     RTLOP_FSCAST,       // dest = (typeof(dest))((signed)src1)
                         //    [src1 is of integer type]
     RTLOP_FROUNDI,      // dest = (signed typeof(dest))round(src1)
-                        //    [uses current rounding mode]
+                        //    [uses current rounding mode; result on exception
+                        //     is host-defined]
     RTLOP_FTRUNCI,      // dest = (signed typeof(dest))trunc(src1)
+                        //    [result on exception is host-defined]
     RTLOP_FADD,         // dest = src1 + src2
     RTLOP_FSUB,         // dest = src1 - src2
     RTLOP_FMUL,         // dest = src1 * src2

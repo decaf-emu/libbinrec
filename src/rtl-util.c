@@ -105,6 +105,7 @@ const char *rtl_type_name(RTLDataType type)
         [RTLTYPE_FLOAT32   ] = "float32",
         [RTLTYPE_FLOAT64   ] = "float64",
         [RTLTYPE_V2_FLOAT64] = "float64[2]",
+        [RTLTYPE_FPSTATE   ] = "fpstate"
     };
     ASSERT(type > 0 && type < lenof(names));
     ASSERT(names[type]);
@@ -122,6 +123,7 @@ const char *rtl_type_suffix(RTLDataType type)
         [RTLTYPE_FLOAT32   ] = "f32",
         [RTLTYPE_FLOAT64   ] = "f64",
         [RTLTYPE_V2_FLOAT64] = "f64x2",
+        [RTLTYPE_FPSTATE   ] = "fpstate"
     };
     ASSERT(type > 0 && type < lenof(suffixes));
     ASSERT(suffixes[type]);

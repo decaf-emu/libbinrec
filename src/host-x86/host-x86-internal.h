@@ -243,11 +243,24 @@ typedef struct HostX86Context {
     /* Stack offset of temporary storage for call-clobbered registers,
      * indexed by X86Register number (-1 if no offset assigned). */
     int stack_callsave[32];
+    /* Stack offset of temporary storage for STMXCSR/LDMXCSR (-1 if none). */
+    int stack_mxcsr;
 } HostX86Context;
 
 /*************************************************************************/
 /********************** Internal interface routines **********************/
 /*************************************************************************/
+
+/**
+ * int_type_is_64:  Helper function to return whether an integer RTL type
+ * (including FPSTATE) is 64 bits wide.
+ */
+static ALWAYS_INLINE CONST_FUNCTION bool int_type_is_64(RTLDataType type)
+{
+    return type == RTLTYPE_INT64 || type == RTLTYPE_ADDRESS;
+}
+
+/*-----------------------------------------------------------------------*/
 
 /**
  * host_x86_allocate_registers:  Allocate a host register for each RTL

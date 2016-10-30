@@ -49,17 +49,6 @@ typedef struct CodeBuffer {
 /*************************************************************************/
 
 /**
- * int_type_is_64:  Helper function to return whether an integer RTL type
- * (including FPSTATE) is 64 bits wide.
- */
-static ALWAYS_INLINE CONST_FUNCTION bool int_type_is_64(RTLDataType type)
-{
-    return type == RTLTYPE_INT64 || type == RTLTYPE_ADDRESS;
-}
-
-/*-----------------------------------------------------------------------*/
-
-/**
  * is_spilled:  Helper function to return whether a register is currently
  * spilled.
  *
@@ -1861,6 +1850,156 @@ static bool translate_call(HostX86Context *ctx, int block_index,
 /*-----------------------------------------------------------------------*/
 
 /**
+ * translate_fzcast:  Translate an FZCAST instruction.
+ *
+ * [Parameters]
+ *     ctx: Translation context.
+ *     insn_index: Index of instruction in ctx->unit->insns[].
+ * [Return value]
+ *     True on success, false if out of memory.
+ */
+static bool translate_fzcast(HostX86Context *ctx, int insn_index)
+{
+    ASSERT(ctx);
+    ASSERT(ctx->handle);
+    ASSERT(ctx->unit);
+    ASSERT(insn_index >= 0);
+    ASSERT((uint32_t)insn_index < ctx->unit->num_insns);
+
+    CodeBuffer code = {.buffer = ctx->handle->code_buffer,
+                       .buffer_size = ctx->handle->code_buffer_size,
+                       .len = ctx->handle->code_len};
+    const long initial_len = code.len;
+
+    const RTLUnit * const unit = ctx->unit;
+    const RTLInsn * const insn = &unit->insns[insn_index];
+    const int dest = insn->dest;
+    const int src1 = insn->src1;
+    const X86Register host_dest = ctx->regs[dest].host_reg;
+    X86Register host_src1;
+    if (is_spilled(ctx, src1, insn_index)) {
+        ASSERT(ctx->regs[dest].temp_allocated);
+        host_src1 = ctx->regs[dest].host_temp;
+        append_load_gpr(&code, unit->regs[src1].type, host_src1,
+                        X86_SP, ctx->regs[src1].spill_offset);
+    } else {
+        host_src1 = ctx->regs[src1].host_reg;
+    }
+    const X86Opcode opcode = (unit->regs[dest].type == RTLTYPE_FLOAT64
+                              ? X86OP_CVTSI2SD : X86OP_CVTSI2SS);
+
+    if (!int_type_is_64(unit->regs[src1].type)) {
+        /* The INT32 case is easy: 32-bit values in GPRs will always have
+         * the high 32 bits clear, so we can just use the value as is,
+         * treating it as a 64-bit signed integer. */
+        append_insn_ModRM_reg(&code, true, opcode, host_dest, host_src1);
+        ctx->handle->code_len = code.len;
+        return true;
+    }
+
+    /* The x86 instruction set doesn't include an unsigned conversion
+     * instruction, but we can take advantage of the fact that both
+     * FLOAT32 and FLOAT64 have less than 64 bits of precision and
+     * shift the value right if its MSB is set. */
+
+    ASSERT(ctx->regs[dest].temp_allocated);
+
+    const int max_len = 73;
+    if (UNLIKELY(ctx->handle->code_len + max_len
+                 > ctx->handle->code_buffer_size)) {
+        if (UNLIKELY(!binrec_ensure_code_space(ctx->handle, max_len))) {
+            log_error(ctx->handle, "No memory for CALL instruction");
+            return false;
+        }
+        code.buffer = ctx->handle->code_buffer;
+        code.buffer_size = ctx->handle->code_buffer_size;
+    }
+
+    /* Check whether the MSB is set. */
+    append_insn_ModRM_reg(&code, true, X86OP_TEST_Ev_Gv,
+                          host_src1, host_src1);
+    const long js_pos = code.len;
+    append_jump_raw(&code, X86OP_JS_Jb, X86OP_JS_Jz, 0);
+    const long js_end = code.len;
+    ASSERT(js_end == js_pos + 2);
+
+    /* MSB not set: simple conversion. */
+    append_insn_ModRM_reg(&code, true, opcode, host_dest, host_src1);
+    const long msb_set_jmp_pos = code.len;
+    append_jump_raw(&code, X86OP_JMP_Jb, X86OP_JMP_Jz, 0);
+    const long msb_set_jmp_end = code.len;
+    ASSERT(msb_set_jmp_end == msb_set_jmp_pos + 2);
+    ASSERT(code.len - js_end <= 127);
+    code.buffer[js_end-1] = (uint8_t)(code.len - js_end);
+
+    /* MSB set: divide by 2 (with appropriate rounding) before conversion
+     * and multiply by 2 afterward. */
+    const X86Register host_temp = ctx->regs[dest].host_temp;
+    if (host_src1 != host_temp) {
+        append_move_gpr(&code, RTLTYPE_INT64, host_temp, host_src1);
+    }
+    append_insn_ModRM_mem(
+        &code, false, X86OP_MISC_0FAE, X86OP_MISC0FAE_STMXCSR,
+        X86_SP, -1, ctx->stack_mxcsr);
+    append_insn_ModRM_reg(&code, true, X86OP_SHIFT_Ev_1, X86OP_SHIFT_SHR,
+                          host_temp);
+    /* RC={1,3}: round down */
+    append_insn_ModRM_mem(&code, false, X86OP_BTx_Ev_Ib, X86OP_BITTEST_BT,
+                          X86_SP, -1, ctx->stack_mxcsr);
+    append_imm8(&code, 13);
+    const long jnc0_pos = code.len;
+    append_jump_raw(&code, X86OP_JNC_Jb, X86OP_JNC_Jz, 0);
+    const long jnc0_end = code.len;
+    ASSERT(jnc0_end == jnc0_pos + 2);
+    /* RC=2: round up */
+    append_insn_ModRM_mem(&code, false, X86OP_BTx_Ev_Ib, X86OP_BITTEST_BT,
+                          X86_SP, -1, ctx->stack_mxcsr);
+    append_imm8(&code, 14);
+    const long jnc1_pos = code.len;
+    append_jump_raw(&code, X86OP_JNC_Jb, X86OP_JNC_Jz, 0);
+    const long jnc1_end = code.len;
+    ASSERT(jnc1_end == jnc1_pos + 2);
+    /* RC=0: round to even */
+    maybe_append_empty_rex(&code, host_temp, host_temp, -1);
+    append_insn_ModRM_reg(&code, false, X86OP_UNARY_Eb, X86OP_UNARY_TEST,
+                          host_temp);
+    append_imm8(&code, 1);
+    const long jz_pos = code.len;
+    append_jump_raw(&code, X86OP_JZ_Jb, X86OP_JZ_Jz, 0);
+    const long jz_end = code.len;
+    ASSERT(jz_end == jz_pos + 2);
+    /* Increment halved value if rounding up. */
+    ASSERT(code.len - jnc1_end <= 127);
+    code.buffer[jnc1_end-1] = (uint8_t)(code.len - jnc1_end);
+    append_insn_ModRM_reg(&code, true, X86OP_IMM_Ev_Ib, X86OP_IMM_ADD,
+                          host_temp);
+    append_imm8(&code, 1);
+    /* Convert rounded value and double. */
+    ASSERT(code.len - jz_end <= 127);
+    code.buffer[jz_end-1] = (uint8_t)(code.len - jz_end);
+    ASSERT(code.len - jnc0_end <= 127);
+    code.buffer[jnc0_end-1] = (uint8_t)(code.len - jnc0_end);
+    append_insn_ModRM_reg(&code, true, opcode, host_dest, host_temp);
+    const X86Opcode add_opcode = (unit->regs[dest].type == RTLTYPE_FLOAT64
+                                  ? X86OP_ADDSD : X86OP_ADDSS);
+    append_insn_ModRM_reg(&code, false, add_opcode, host_dest, host_dest);
+
+    ASSERT(code.len - msb_set_jmp_end <= 127);
+    code.buffer[msb_set_jmp_end-1] = (uint8_t)(code.len - msb_set_jmp_end);
+
+    ctx->last_test_reg = 0;
+    ctx->last_cmp_reg = 0;
+    ctx->last_cmp_target = 0;
+    ctx->last_cmp_imm = 0;
+
+    ASSERT(code.len - initial_len <= max_len);
+    ctx->handle->code_len = code.len;
+    return true;
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
  * translate_block:  Translate the given RTL basic block.
  *
  * [Parameters]
@@ -2991,12 +3130,119 @@ static bool translate_block(HostX86Context *ctx, int block_index)
             break;
           }  // case RTLOP_{SEQI,SLTUI,SLTSI,SLEUI,SLESI}
 
-          case RTLOP_BITCAST:
-          case RTLOP_FCAST:
+          case RTLOP_BITCAST: {
+            const X86Register host_dest = ctx->regs[dest].host_reg;
+            switch (unit->regs[src1].type) {
+              case RTLTYPE_INT32:
+                if (is_spilled(ctx, src1, insn_index)) {
+                    append_load(&code, RTLTYPE_FLOAT32, host_dest,
+                                X86_SP, -1, ctx->regs[src1].spill_offset);
+                } else {
+                    append_insn_ModRM_ctx(&code, false, X86OP_MOVD_V_E,
+                                          host_dest, ctx, insn_index, src1);
+                }
+                break;
+              case RTLTYPE_INT64:
+                if (is_spilled(ctx, src1, insn_index)) {
+                    append_load(&code, RTLTYPE_FLOAT64, host_dest,
+                                X86_SP, -1, ctx->regs[src1].spill_offset);
+                } else {
+                    append_insn_ModRM_ctx(&code, true, X86OP_MOVD_V_E,
+                                          host_dest, ctx, insn_index, src1);
+                }
+                break;
+              case RTLTYPE_FLOAT32:
+                if (is_spilled(ctx, src1, insn_index)) {
+                    append_load_gpr(&code, RTLTYPE_INT32, host_dest,
+                                    X86_SP, ctx->regs[src1].spill_offset);
+                } else {
+                    append_insn_ModRM_reg(&code, false, X86OP_MOVD_E_V,
+                                          ctx->regs[src1].host_reg, host_dest);
+                }
+                break;
+              case RTLTYPE_FLOAT64:
+                if (is_spilled(ctx, src1, insn_index)) {
+                    append_load_gpr(&code, RTLTYPE_INT64, host_dest,
+                                    X86_SP, ctx->regs[src1].spill_offset);
+                } else {
+                    append_insn_ModRM_reg(&code, true, X86OP_MOVD_E_V,
+                                          ctx->regs[src1].host_reg, host_dest);
+                }
+                break;
+              default:
+                log_error(handle, "Invalid data type %s in BITCAST at %d",
+                          rtl_type_name(unit->regs[src1].type), insn_index);
+            }
+            break;
+          }  // case RTLOP_BITCAST
+
+          case RTLOP_FCAST: {
+            const RTLDataType type_dest = unit->regs[dest].type;
+            const RTLDataType type_src1 = unit->regs[src1].type;
+            const X86Register host_dest = ctx->regs[dest].host_reg;
+            if (type_dest == type_src1) {
+                const X86Register host_src1 = ctx->regs[src1].host_reg;
+                if (is_spilled(ctx, src1, insn_index)) {
+                    append_load(&code, type_src1, host_dest,
+                                X86_SP, -1, ctx->regs[src1].spill_offset);
+                } else if (host_dest != host_src1) {
+                    append_insn_ModRM_reg(&code, false, X86OP_MOVAPS_V_W,
+                                          host_dest, host_src1);
+                }
+            } else if (type_dest == RTLTYPE_FLOAT64) {
+                ASSERT(type_src1 == RTLTYPE_FLOAT32);
+                append_insn_ModRM_ctx(&code, false, X86OP_CVTSS2SD, host_dest,
+                                      ctx, insn_index, src1);
+            } else {
+                ASSERT(type_dest == RTLTYPE_FLOAT32);
+                ASSERT(type_src1 == RTLTYPE_FLOAT64);
+                append_insn_ModRM_ctx(&code, false, X86OP_CVTSD2SS, host_dest,
+                                      ctx, insn_index, src1);
+            }
+            break;
+          }  // case RTLOP_FCAST
+
           case RTLOP_FZCAST:
-          case RTLOP_FSCAST:
-          case RTLOP_FROUNDI:
-          case RTLOP_FTRUNCI:
+            handle->code_len = code.len;
+            translate_fzcast(ctx, insn_index);
+            code.buffer = handle->code_buffer;
+            code.buffer_size = handle->code_buffer_size;
+            code.len = handle->code_len;
+            initial_len = code.len;  // Suppress output length check.
+            ctx->last_test_reg = 0;
+            ctx->last_cmp_reg = 0;
+            break;
+
+          case RTLOP_FSCAST: {
+            const X86Register host_dest = ctx->regs[dest].host_reg;
+            const bool is64 = int_type_is_64(unit->regs[src1].type);
+            const X86Opcode opcode = (unit->regs[dest].type == RTLTYPE_FLOAT64
+                                      ? X86OP_CVTSI2SD : X86OP_CVTSI2SS);
+            append_insn_ModRM_ctx(&code, is64, opcode, host_dest,
+                                  ctx, insn_index, src1);
+            break;
+          }  // case RTLOP_FSCAST
+
+          case RTLOP_FROUNDI: {
+            const X86Register host_dest = ctx->regs[dest].host_reg;
+            const bool is64 = int_type_is_64(unit->regs[dest].type);
+            const X86Opcode opcode = (unit->regs[src1].type == RTLTYPE_FLOAT64
+                                      ? X86OP_CVTSD2SI : X86OP_CVTSS2SI);
+            append_insn_ModRM_ctx(&code, is64, opcode, host_dest,
+                                  ctx, insn_index, src1);
+            break;
+          }  // case RTLOP_FROUNDI
+
+          case RTLOP_FTRUNCI: {
+            const X86Register host_dest = ctx->regs[dest].host_reg;
+            const bool is64 = int_type_is_64(unit->regs[dest].type);
+            const X86Opcode opcode = (unit->regs[src1].type == RTLTYPE_FLOAT64
+                                      ? X86OP_CVTTSD2SI : X86OP_CVTTSS2SI);
+            append_insn_ModRM_ctx(&code, is64, opcode, host_dest,
+                                  ctx, insn_index, src1);
+            break;
+          }  // case RTLOP_FTRUNCI
+
           case RTLOP_FADD:
           case RTLOP_FSUB:
           case RTLOP_FMUL:
@@ -3008,11 +3254,84 @@ static bool translate_block(HostX86Context *ctx, int block_index)
           case RTLOP_FMSUB:
           case RTLOP_FNMADD:
           case RTLOP_FNMSUB:
-          case RTLOP_FGETSTATE:
-          case RTLOP_FTESTEXC:
-          case RTLOP_FCLEAREXC:
-          case RTLOP_FSETROUND:
             break;  // FIXME: not yet implemented
+
+          case RTLOP_FGETSTATE:
+            append_insn_ModRM_mem(
+                &code, false, X86OP_MISC_0FAE, X86OP_MISC0FAE_STMXCSR,
+                X86_SP, -1, ctx->stack_mxcsr);
+            append_insn_ModRM_mem(
+                &code, false, X86OP_MOV_Gv_Ev, ctx->regs[dest].host_reg,
+                X86_SP, -1, ctx->stack_mxcsr);
+            break;
+
+          case RTLOP_FTESTEXC: {
+            const X86Register host_dest = ctx->regs[dest].host_reg;
+            const X86Register host_src1 = ctx->regs[src1].host_reg;
+            int bit = 0;
+            switch ((RTLFloatException)insn->src_imm) {
+                case RTLFEXC_INEXACT:     bit = 1<<5; break;
+                case RTLFEXC_INVALID:     bit = 1<<0; break;
+                case RTLFEXC_OVERFLOW:    bit = 1<<3; break;
+                case RTLFEXC_UNDERFLOW:   bit = 1<<4; break;
+                case RTLFEXC_ZERO_DIVIDE: bit = 1<<2; break;
+            }
+            if (UNLIKELY(!bit)) {
+                log_error(handle, "Invalid FP exception %d in FTESTEXC at %d",
+                          (int)insn->src_imm, insn_index);
+                break;
+            }
+
+            maybe_append_empty_rex(&code, host_src1, host_src1, -1);
+            append_insn_ModRM_reg(&code, false, X86OP_UNARY_Eb,
+                                  X86OP_UNARY_TEST, host_src1);
+            append_imm8(&code, bit);
+            ctx->last_test_reg = 0;
+            ctx->last_cmp_reg = 0;
+            ctx->last_cmp_target = 0;
+            ctx->last_cmp_imm = 0;
+
+            maybe_append_empty_rex(&code, host_dest, host_dest, -1);
+            append_insn_ModRM_reg(&code, false, X86OP_SETC, 0, host_dest);
+            maybe_append_empty_rex(&code, host_dest, host_dest, -1);
+            append_insn_ModRM_reg(&code, false, X86OP_MOVZX_Gv_Eb,
+                                  host_dest, host_dest);
+            break;
+          }  // case RTLOP_FTESTEXC
+
+          case RTLOP_FCLEAREXC:
+            append_insn_ModRM_mem(
+                &code, false, X86OP_MISC_0FAE, X86OP_MISC0FAE_STMXCSR,
+                X86_SP, -1, ctx->stack_mxcsr);
+            append_insn_ModRM_mem(
+                &code, false, X86OP_IMM_Ev_Ib, X86OP_IMM_AND,
+                X86_SP, -1, ctx->stack_mxcsr);
+            append_imm8(&code, 0xC0);
+            append_insn_ModRM_mem(
+                &code, false, X86OP_MISC_0FAE, X86OP_MISC0FAE_LDMXCSR,
+                X86_SP, -1, ctx->stack_mxcsr);
+            break;
+
+          case RTLOP_FSETROUND:
+            append_insn_ModRM_mem(
+                &code, false, X86OP_MISC_0FAE, X86OP_MISC0FAE_STMXCSR,
+                X86_SP, -1, ctx->stack_mxcsr);
+            append_insn_ModRM_mem(
+                &code, false, X86OP_IMM_Ev_Iz, X86OP_IMM_AND,
+                X86_SP, -1, ctx->stack_mxcsr);
+            append_imm32(&code, 0x9FFF);
+            if (insn->src_imm != RTLFROUND_NEAREST) {
+                append_insn_ModRM_mem(
+                    &code, false, X86OP_IMM_Ev_Iz, X86OP_IMM_OR,
+                    X86_SP, -1, ctx->stack_mxcsr);
+                append_imm32(
+                    &code,
+                    ((const uint8_t[]){0,3,1,2})[insn->src_imm & 3] << 13);
+            }
+            append_insn_ModRM_mem(
+                &code, false, X86OP_MISC_0FAE, X86OP_MISC0FAE_LDMXCSR,
+                X86_SP, -1, ctx->stack_mxcsr);
+            break;
 
           case RTLOP_LOAD_IMM: {
             const uint64_t imm = insn->src_imm;
@@ -3953,6 +4272,7 @@ static bool init_context(HostX86Context *ctx, binrec_t *handle, RTLUnit *unit)
            sizeof(*ctx->label_offsets) * unit->next_label);
     memset(ctx->alias_buffer, 0, ((4 * unit->next_alias) * unit->num_blocks));
     memset(ctx->stack_callsave, -1, sizeof(ctx->stack_callsave));
+    ctx->stack_mxcsr = -1;
 
     return true;
 }
