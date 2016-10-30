@@ -305,7 +305,7 @@ static void rtl_describe_register(const RTLRegister *reg,
             [RTLOP_FSCAST ] = "fscast",
             [RTLOP_FROUNDI] = "froundi",
             [RTLOP_FTRUNCI] = "ftrunci",
-            [RTLOP_FRSQ   ] = "1 / sqrt",
+            [RTLOP_FSQRT  ] = "sqrt",
         };
         static const bool is_signed[RTLOP__LAST + 1] = {
             [RTLOP_DIVS ] = true,
@@ -343,7 +343,7 @@ static void rtl_describe_register(const RTLRegister *reg,
           case RTLOP_FSCAST:
           case RTLOP_FROUNDI:
           case RTLOP_FTRUNCI:
-          case RTLOP_FRSQ:
+          case RTLOP_FSQRT:
             snprintf(buf, bufsize, "%s(r%d)",
                      operators[reg->result.opcode], reg->result.src1);
             break;
@@ -409,9 +409,6 @@ static void rtl_describe_register(const RTLRegister *reg,
             snprintf(buf, bufsize, "bfins(r%d, r%d, %d, %d)",
                      reg->result.src1, reg->result.src2,
                      reg->result.start, reg->result.count);
-            break;
-          case RTLOP_FRCP:
-            snprintf(buf, bufsize, "1 / r%d", reg->result.src1);
             break;
           case RTLOP_FCMP:
             snprintf(buf, bufsize, "fcmp(r%d, r%d, %s%s%s)",
@@ -547,8 +544,7 @@ static void rtl_decode_insn(const RTLUnit *unit, uint32_t index,
         [RTLOP_FSUB      ] = "FSUB",
         [RTLOP_FMUL      ] = "FMUL",
         [RTLOP_FDIV      ] = "FDIV",
-        [RTLOP_FRCP      ] = "FRCP",
-        [RTLOP_FRSQ      ] = "FRSQ",
+        [RTLOP_FSQRT     ] = "FSQRT",
         [RTLOP_FCMP      ] = "FCMP",
         [RTLOP_FMADD     ] = "FMADD",
         [RTLOP_FMSUB     ] = "FMSUB",
@@ -663,8 +659,7 @@ static void rtl_decode_insn(const RTLUnit *unit, uint32_t index,
       case RTLOP_FSCAST:
       case RTLOP_FROUNDI:
       case RTLOP_FTRUNCI:
-      case RTLOP_FRCP:
-      case RTLOP_FRSQ:
+      case RTLOP_FSQRT:
         s += snprintf_assert(s, top - s, "%-10s r%d, r%d\n", name, dest, src1);
         APPEND_REG_DESC(src1);
         return;

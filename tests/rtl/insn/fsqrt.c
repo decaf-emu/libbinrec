@@ -30,9 +30,9 @@ int main(void)
     EXPECT(reg3 = rtl_alloc_register(unit, RTLTYPE_FLOAT32));
 
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg1, 0, 0, 0x3F800000));
-    EXPECT(rtl_add_insn(unit, RTLOP_FRCP, reg2, reg1, 0, 0));
+    EXPECT(rtl_add_insn(unit, RTLOP_FSQRT, reg2, reg1, 0, 0));
     EXPECT_EQ(unit->num_insns, 2);
-    EXPECT_EQ(unit->insns[1].opcode, RTLOP_FRCP);
+    EXPECT_EQ(unit->insns[1].opcode, RTLOP_FSQRT);
     EXPECT_EQ(unit->insns[1].dest, reg2);
     EXPECT_EQ(unit->insns[1].src1, reg1);
     EXPECT_EQ(unit->regs[reg1].birth, 0);
@@ -49,10 +49,10 @@ int main(void)
 
     const char *disassembly =
         "    0: LOAD_IMM   r1, 1.0f\n"
-        "    1: FRCP       r2, r1\n"
+        "    1: FSQRT      r2, r1\n"
         "           r1: 1.0f\n"
         "    2: MOVE       r3, r2\n"
-        "           r2: 1 / r1\n"
+        "           r2: sqrt(r1)\n"
         "\n"
         "Block 0: <none> --> [0,2] --> <none>\n"
         ;

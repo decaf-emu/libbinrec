@@ -19,7 +19,7 @@ static int add_rtl(RTLUnit *unit)
     EXPECT(reg1 = rtl_alloc_register(unit, RTLTYPE_FLOAT32));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg1, 0, 0, 0x3F800000));
     EXPECT(reg2 = rtl_alloc_register(unit, RTLTYPE_FLOAT32));
-    EXPECT(rtl_add_insn(unit, RTLOP_FRCP, reg2, reg1, 0, 0));
+    EXPECT(rtl_add_insn(unit, RTLOP_FSQRT, reg2, reg1, 0, 0));
 
     return EXIT_SUCCESS;
 }
@@ -27,7 +27,7 @@ static int add_rtl(RTLUnit *unit)
 static const char expected[] =
     /* This should not be folded without FOLD_FP_CONSTANTS. */
     "    0: LOAD_IMM   r1, 1.0f\n"
-    "    1: FRCP       r2, r1\n"
+    "    1: FSQRT      r2, r1\n"
     "\n"
     "Block 0: <none> --> [0,1] --> <none>\n"
     ;

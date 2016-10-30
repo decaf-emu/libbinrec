@@ -273,8 +273,7 @@ typedef enum RTLOpcode {
     RTLOP_FSUB,         // dest = src1 - src2
     RTLOP_FMUL,         // dest = src1 * src2
     RTLOP_FDIV,         // dest = src1 / src2
-    RTLOP_FRCP,         // dest = 1 / src1
-    RTLOP_FRSQ,         // dest = 1 / sqrt(src1)
+    RTLOP_FSQRT,        // dest = sqrt(src1)
     RTLOP_FCMP,         // dest = fcmp(src1, src2, IMMEDIATE(other))
                         //    [dest must be of integer type; other is an
                         //     immediate comparison type (RTLFCMP_*)]

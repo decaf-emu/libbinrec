@@ -26,14 +26,26 @@ int main(void)
     RTLUnit *unit;
     EXPECT(unit = rtl_create_unit(handle));
 
-    int reg1, reg2;
-    EXPECT(reg1 = rtl_alloc_register(unit, RTLTYPE_FLOAT32));
-    EXPECT(reg2 = rtl_alloc_register(unit, RTLTYPE_FLOAT32));
+    int reg1, reg2, reg3;
+    EXPECT(reg1 = rtl_alloc_register(unit, RTLTYPE_FLOAT64));
+    EXPECT(reg2 = rtl_alloc_register(unit, RTLTYPE_INT32));
+    EXPECT(reg3 = rtl_alloc_register(unit, RTLTYPE_FLOAT32));
 
-    EXPECT_FALSE(rtl_add_insn(unit, RTLOP_FRCP, reg2, reg1, 0, 0));
+    EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg1, 0, 0, 0x3F800000));
+    EXPECT_EQ(unit->num_insns, 1);
+    EXPECT_FALSE(unit->error);
+
+    EXPECT_FALSE(rtl_add_insn(unit, RTLOP_FSQRT, reg2, reg1, 0, 0));
     EXPECT_ICE("Operand constraint violated:"
-               " unit->regs[src1].source != RTLREG_UNDEFINED");
-    EXPECT_EQ(unit->num_insns, 0);
+               " rtl_register_is_float(&unit->regs[dest])");
+    EXPECT_EQ(unit->num_insns, 1);
+    EXPECT(unit->error);
+    unit->error = false;
+
+    EXPECT_FALSE(rtl_add_insn(unit, RTLOP_FSQRT, reg3, reg1, 0, 0));
+    EXPECT_ICE("Operand constraint violated:"
+               " unit->regs[src1].type == unit->regs[dest].type");
+    EXPECT_EQ(unit->num_insns, 1);
     EXPECT(unit->error);
     unit->error = false;
 

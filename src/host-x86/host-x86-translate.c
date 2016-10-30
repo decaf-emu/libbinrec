@@ -3269,8 +3269,15 @@ static bool translate_block(HostX86Context *ctx, int block_index)
             break;
           }  // case RTLOP_FADD, RTLOP_FSUB, RTLOP_FMUL, RTLOP_FDIV
 
-          case RTLOP_FRCP:
-          case RTLOP_FRSQ:
+          case RTLOP_FSQRT: {
+            const X86Register host_dest = ctx->regs[dest].host_reg;
+            const bool is64 = (unit->regs[dest].type == RTLTYPE_FLOAT64);
+            const X86UnaryOpcode opcode = is64 ? X86OP_SQRTSD : X86OP_SQRTSS;
+            append_insn_ModRM_ctx(&code, false, opcode, host_dest,
+                                  ctx, insn_index, src1);
+            break;
+          }  // case RTLOP_FSQRT
+
           case RTLOP_FCMP:
           case RTLOP_FMADD:
           case RTLOP_FMSUB:

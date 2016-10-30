@@ -687,18 +687,11 @@ static inline uint64_t fold_constant(RTLUnit * const unit,
             return double_to_bits(src1->value.f64 / src2->value.f64);
         }
 
-      case RTLOP_FRCP:
+      case RTLOP_FSQRT:
         if (reg->type == RTLTYPE_FLOAT32) {
-            return float_to_bits(1.0f / src1->value.f32);
+            return float_to_bits(sqrtf(src1->value.f32));
         } else {
-            return double_to_bits(1.0 / src1->value.f64);
-        }
-
-      case RTLOP_FRSQ:
-        if (reg->type == RTLTYPE_FLOAT32) {
-            return float_to_bits(1.0f / sqrtf(src1->value.f32));
-        } else {
-            return double_to_bits(1.0 / sqrt(src1->value.f64));
+            return double_to_bits(sqrt(src1->value.f64));
         }
 
       case RTLOP_FCMP: {
@@ -1010,8 +1003,7 @@ static inline bool convert_to_regimm(RTLUnit * const unit,
       case RTLOP_FSUB:
       case RTLOP_FMUL:
       case RTLOP_FDIV:
-      case RTLOP_FRCP:
-      case RTLOP_FRSQ:
+      case RTLOP_FSQRT:
       case RTLOP_FCMP:
       case RTLOP_FMADD:
       case RTLOP_FMSUB:
