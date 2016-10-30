@@ -1908,7 +1908,7 @@ static bool translate_fzcast(HostX86Context *ctx, int insn_index)
     if (UNLIKELY(ctx->handle->code_len + max_len
                  > ctx->handle->code_buffer_size)) {
         if (UNLIKELY(!binrec_ensure_code_space(ctx->handle, max_len))) {
-            log_error(ctx->handle, "No memory for CALL instruction");
+            log_error(ctx->handle, "No memory for FZCAST instruction");
             return false;
         }
         code.buffer = ctx->handle->code_buffer;
@@ -3204,7 +3204,9 @@ static bool translate_block(HostX86Context *ctx, int block_index)
 
           case RTLOP_FZCAST:
             handle->code_len = code.len;
-            translate_fzcast(ctx, insn_index);
+            if (!translate_fzcast(ctx, insn_index)) {
+                return false;
+            }
             code.buffer = handle->code_buffer;
             code.buffer_size = handle->code_buffer_size;
             code.len = handle->code_len;
