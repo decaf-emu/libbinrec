@@ -951,6 +951,9 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
                             | 1<<(RTLOP_SRA-24) | 1<<(RTLOP_ROL-24)
                             | 1<<(RTLOP_ROR-24),
                         1<<(RTLOP_BFINS-32),
+                        0,
+                        0,
+                        1<<(RTLOP_FSUB-56) | 1<<(RTLOP_FDIV-56),
                     };
                     ASSERT(insn->opcode >= RTLOP__FIRST
                            && insn->opcode <= RTLOP__LAST);

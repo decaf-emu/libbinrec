@@ -3246,7 +3246,27 @@ static bool translate_block(HostX86Context *ctx, int block_index)
           case RTLOP_FADD:
           case RTLOP_FSUB:
           case RTLOP_FMUL:
-          case RTLOP_FDIV:
+          case RTLOP_FDIV: {
+            const X86Register host_dest = ctx->regs[dest].host_reg;
+            const X86Register host_src2 = ctx->regs[src2].host_reg;
+            const bool is64 = (unit->regs[dest].type == RTLTYPE_FLOAT64);
+            const X86Opcode opcode = (
+                insn->opcode==RTLOP_FADD ? (is64 ? X86OP_ADDSD : X86OP_ADDSS) :
+                insn->opcode==RTLOP_FSUB ? (is64 ? X86OP_SUBSD : X86OP_SUBSS) :
+                insn->opcode==RTLOP_FMUL ? (is64 ? X86OP_MULSD : X86OP_MULSS) :
+                          /* RTLOP_FDIV */ (is64 ? X86OP_DIVSD : X86OP_DIVSS));
+            if (host_dest == host_src2 && !is_spilled(ctx, src2, insn_index)) {
+                append_insn_ModRM_ctx(&code, false, opcode, host_dest,
+                                      ctx, insn_index, src1);
+            } else {
+                append_move_or_load(&code, ctx, unit, insn_index,
+                                    host_dest, src1);
+                append_insn_ModRM_ctx(&code, false, opcode, host_dest,
+                                      ctx, insn_index, src2);
+            }
+            break;
+          }  // case RTLOP_FADD, RTLOP_FSUB, RTLOP_FMUL, RTLOP_FDIV
+
           case RTLOP_FRCP:
           case RTLOP_FRSQ:
           case RTLOP_FCMP:
