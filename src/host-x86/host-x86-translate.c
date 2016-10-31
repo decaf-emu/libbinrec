@@ -3278,7 +3278,75 @@ static bool translate_block(HostX86Context *ctx, int block_index)
             break;
           }  // case RTLOP_FSQRT
 
-          case RTLOP_FCMP:
+          case RTLOP_FCMP: {
+            const X86Register host_dest = ctx->regs[dest].host_reg;
+            /* For less-than comparisons, it's faster to swap the operands
+             * and the sense of the comparison so we don't need to check
+             * the parity flag. */
+            RTLFloatCompare cmpsel = insn->fcmp & 7;
+            int cmp1, cmp2;
+            if (cmpsel == RTLFCMP_LT || cmpsel == RTLFCMP_LE) {
+                cmpsel += RTLFCMP_GT - RTLFCMP_LT;
+                cmp1 = src2;
+                cmp2 = src1;
+            } else {
+                cmp1 = src1;
+                cmp2 = src2;
+            }
+
+            if (!(ctx->last_cmp_reg == cmp1 && ctx->last_cmp_target == cmp2)) {
+                X86Register host_cmp1;
+                if (!is_spilled(ctx, cmp1, insn_index)) {
+                    host_cmp1 = ctx->regs[cmp1].host_reg;
+                } else {
+                    ASSERT(ctx->regs[dest].temp_allocated);
+                    host_cmp1 = ctx->regs[dest].host_temp;
+                    append_load(&code, unit->regs[cmp1].type, host_cmp1,
+                                X86_SP, -1, ctx->regs[cmp1].spill_offset);
+                }
+                const bool is64 = (unit->regs[cmp1].type == RTLTYPE_FLOAT64);
+                const bool ordered = (insn->fcmp & RTLFCMP_ORDERED) != 0;
+                const X86Opcode cmp_opcode = is64
+                    ? (ordered ? X86OP_COMISD : X86OP_UCOMISD)
+                    : (ordered ? X86OP_COMISS : X86OP_UCOMISS);
+                append_insn_ModRM_ctx(&code, false, cmp_opcode, host_cmp1,
+                                      ctx, insn_index, cmp2);
+                if (handle->host_opt & BINREC_OPT_H_X86_CONDITION_CODES) {
+                    ctx->last_test_reg = 0;
+                    ctx->last_cmp_reg = cmp1;
+                    ctx->last_cmp_target = cmp2;
+                }
+            }
+
+            const bool invert = (insn->fcmp & RTLFCMP_INVERT) != 0;
+            if (cmpsel == RTLFCMP_EQ) {
+                const int jump_disp = (host_dest >= X86_SP ? 4 : 3);
+                if (invert) {
+                    append_insn_R(&code, false, X86OP_MOV_rAX_Iv, host_dest);
+                    append_imm32(&code, 1);
+                } else {
+                    append_insn_ModRM_reg(&code, false, X86OP_XOR_Gv_Ev,
+                                          host_dest, host_dest);
+                }
+                append_jump_raw(&code, X86OP_JP_Jb, X86OP_JP_Jz, jump_disp);
+                const long jump_from = code.len;
+                maybe_append_empty_rex(&code, host_dest, host_dest, -1);
+                const X86Opcode set_opcode = invert ? X86OP_SETNZ : X86OP_SETZ;
+                append_insn_ModRM_reg(&code, false, set_opcode, 0, host_dest);
+                const long jump_to = code.len;
+                ASSERT(jump_to - jump_from == jump_disp);
+            } else {
+                append_insn_ModRM_reg(&code, false, X86OP_XOR_Gv_Ev,
+                                      host_dest, host_dest);
+                const X86Opcode set_opcode =
+                    (cmpsel==RTLFCMP_GT ? (invert ? X86OP_SETBE : X86OP_SETA)
+                                        : (invert ? X86OP_SETB : X86OP_SETAE));
+                maybe_append_empty_rex(&code, host_dest, host_dest, -1);
+                append_insn_ModRM_reg(&code, false, set_opcode, 0, host_dest);
+            }
+            break;
+          }  // case RTLOP_FCMP
+
           case RTLOP_FMADD:
           case RTLOP_FMSUB:
           case RTLOP_FNMADD:

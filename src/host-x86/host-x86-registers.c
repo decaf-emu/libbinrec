@@ -835,6 +835,7 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
               case RTLOP_FZCAST:
               case RTLOP_FROUNDI:
               case RTLOP_FTRUNCI:
+              case RTLOP_FCMP:
                 /* These instructions operate between registers of
                  * different types, so we can never reuse src1. */
                 break;
@@ -991,6 +992,7 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
 
         /* Find a temporary register for instructions which need it. */
         bool need_temp;
+        bool temp_is_fpr = false;
         uint32_t temp_avoid = avoid_regs;
         switch (insn->opcode) {
           case RTLOP_MULHU:
@@ -1030,7 +1032,7 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
           case RTLOP_ROL:
           case RTLOP_ROR:
             /* Temporary needed if rCX is live and src2 is spilled. */
-            need_temp = (ctx->reg_map[X86_CX] != 0 && ctx->regs[src2].spilled);
+            need_temp = (ctx->reg_map[X86_CX] != 0 && src2_info->spilled);
             break;
 
           case RTLOP_CLZ:
@@ -1067,6 +1069,12 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
             /* Temporary needed if converting a 64-bit or spilled 32-bit
              * value. */
             need_temp = (int_type_is_64(src1_reg->type) || src1_info->spilled);
+            break;
+
+          case RTLOP_FCMP:
+            /* Temporary needed if the first operand is spilled. */
+            need_temp = src1_info->spilled;
+            temp_is_fpr = true;
             break;
 
           case RTLOP_LOAD_IMM:
@@ -1130,9 +1138,17 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
             break;
         }
         if (need_temp) {
-            int temp_reg = get_gpr(ctx, temp_avoid);
-            if (temp_reg < 0) {
-                temp_reg = X86_R15;
+            int temp_reg;
+            if (temp_is_fpr) {
+                temp_reg = get_xmm(ctx, temp_avoid);
+                if (temp_reg < 0) {
+                    temp_reg = X86_XMM15;
+                }
+            } else {
+                temp_reg = get_gpr(ctx, temp_avoid);
+                if (temp_reg < 0) {
+                    temp_reg = X86_R15;
+                }
             }
             dest_info->host_temp = (uint8_t)temp_reg;
             dest_info->temp_allocated = true;
