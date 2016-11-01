@@ -3437,9 +3437,15 @@ static bool translate_block(HostX86Context *ctx, int block_index)
                 break;
             }
 
-            maybe_append_empty_rex(&code, host_src1, -1, -1);
-            append_insn_ModRM_reg(&code, false, X86OP_UNARY_Eb,
-                                  X86OP_UNARY_TEST, host_src1);
+            if (is_spilled(ctx, insn_index, src1)) {
+                append_insn_ModRM_mem(&code, false, X86OP_UNARY_Eb,
+                                      X86OP_UNARY_TEST, X86_SP, -1,
+                                      ctx->regs[src1].spill_offset);
+            } else {
+                maybe_append_empty_rex(&code, host_src1, -1, -1);
+                append_insn_ModRM_reg(&code, false, X86OP_UNARY_Eb,
+                                      X86OP_UNARY_TEST, host_src1);
+            }
             append_imm8(&code, bit);
             ctx->last_test_reg = 0;
             ctx->last_cmp_reg = 0;
@@ -3447,7 +3453,7 @@ static bool translate_block(HostX86Context *ctx, int block_index)
             ctx->last_cmp_imm = 0;
 
             maybe_append_empty_rex(&code, host_dest, -1, -1);
-            append_insn_ModRM_reg(&code, false, X86OP_SETC, 0, host_dest);
+            append_insn_ModRM_reg(&code, false, X86OP_SETNZ, 0, host_dest);
             maybe_append_empty_rex(&code, host_dest, -1, -1);
             append_insn_ModRM_reg(&code, false, X86OP_MOVZX_Gv_Eb,
                                   host_dest, host_dest);

@@ -35,8 +35,8 @@ static const uint8_t expected_code[] = {
     0x0F,0xAE,0x1C,0x24,                // stmxcsr (%rsp)
     0x8B,0x0C,0x24,                     // mov (%rsp),%ecx
     0xF6,0xC1,0x20,                     // test $0x20,%cl
-    /* int64 looks the same as int32 because all we do is setc+movzbl. */
-    0x0F,0x92,0xC2,                     // setc %dl
+    /* int64 looks the same as int32 because all we do is setnz+movzbl. */
+    0x0F,0x95,0xC2,                     // setnz %dl
     0x0F,0xB6,0xD2,                     // movzbl %dl,%edx
     0x48,0x83,0xC4,0x08,                // add $8,%rsp
     0xC3,                               // ret
