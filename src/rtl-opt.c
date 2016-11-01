@@ -659,6 +659,27 @@ static inline uint64_t fold_constant(RTLUnit * const unit,
             }
         }
 
+      case RTLOP_FNEG:
+        if (reg->type == RTLTYPE_FLOAT32) {
+            return float_to_bits(src1->value.f32) ^ (1u << 31);
+        } else {
+            return double_to_bits(src1->value.f64) ^ (UINT64_C(1) << 63);
+        }
+
+      case RTLOP_FABS:
+        if (reg->type == RTLTYPE_FLOAT32) {
+            return float_to_bits(src1->value.f32) & ~(1u << 31);
+        } else {
+            return double_to_bits(src1->value.f64) & ~(UINT64_C(1) << 63);
+        }
+
+      case RTLOP_FNABS:
+        if (reg->type == RTLTYPE_FLOAT32) {
+            return float_to_bits(src1->value.f32) | (1u << 31);
+        } else {
+            return double_to_bits(src1->value.f64) | (UINT64_C(1) << 63);
+        }
+
       case RTLOP_FADD:
         if (reg->type == RTLTYPE_FLOAT32) {
             return float_to_bits(src1->value.f32 + src2->value.f32);
@@ -999,6 +1020,9 @@ static inline bool convert_to_regimm(RTLUnit * const unit,
       case RTLOP_FZCAST:
       case RTLOP_FROUNDI:
       case RTLOP_FTRUNCI:
+      case RTLOP_FNEG:
+      case RTLOP_FABS:
+      case RTLOP_FNABS:
       case RTLOP_FADD:
       case RTLOP_FSUB:
       case RTLOP_FMUL:
@@ -1048,6 +1072,19 @@ static inline bool convert_to_regimm(RTLUnit * const unit,
     reg->result.src1 = constant_is_src2 ? src1 : src2;
     reg->result.src_imm = imm;
     return true;
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
+ * fold_is_precise:  Return whether constant folding for the given opcode
+ * is a precise operation.  Imprecise operations are not folded unless the
+ * fold_fp flag passed to fold_one_register() is true.
+ */
+static inline CONST_FUNCTION bool fold_is_precise(RTLOpcode opcode)
+{
+    return opcode < RTLOP_FCAST
+        || (opcode >= RTLOP_FNEG && opcode <= RTLOP_FNABS);
 }
 
 /*-----------------------------------------------------------------------*/
@@ -1127,9 +1164,7 @@ static inline void fold_one_register(RTLUnit * const unit,
     if (src1_is_constant
      && (!src2 || src2_is_constant)
      && (!src3 || src3_is_constant)) {
-        if (fold_fp || !(reg->result.opcode >= RTLOP_FCAST)) {
-            /* All foldable non-FP instructions come before FP instructions. */
-            ASSERT(reg->result.opcode <= RTLOP_FNMSUB);
+        if (fold_fp || fold_is_precise(reg->result.opcode)) {
             reg->source = RTLREG_CONSTANT;
             reg->value.i64 = fold_constant(unit, reg);
             if (reg->type == RTLTYPE_INT32) {

@@ -3245,6 +3245,47 @@ static bool translate_block(HostX86Context *ctx, int block_index)
             break;
           }  // case RTLOP_FTRUNCI
 
+          case RTLOP_FNEG:
+          case RTLOP_FABS:
+          case RTLOP_FNABS: {
+            const X86Register host_dest = ctx->regs[dest].host_reg;
+            ASSERT(host_dest != ctx->regs[src1].host_reg
+                   || is_spilled(ctx, src1, insn_index));
+            ASSERT(ctx->regs[dest].temp_allocated);
+            const X86Register host_temp = ctx->regs[dest].host_temp;
+            const bool is64 = (unit->regs[dest].type == RTLTYPE_FLOAT64);
+            if (is64) {
+                const uint64_t sign_bit = UINT64_C(1) << 63;
+                const uint64_t imm =
+                    (insn->opcode == RTLOP_FABS ? ~sign_bit : sign_bit);
+                append_insn_R(&code, true, X86OP_MOV_rAX_Iv, host_temp);
+                append_imm32(&code, (uint32_t)imm);
+                append_imm32(&code, (uint32_t)(imm >> 32));
+            } else {
+                const uint32_t sign_bit = 1u << 31;
+                const uint32_t imm =
+                    (insn->opcode == RTLOP_FABS ? ~sign_bit : sign_bit);
+                append_insn_R(&code, false, X86OP_MOV_rAX_Iv, host_temp);
+                append_imm32(&code, imm);
+            }
+            append_insn_ModRM_reg(&code, is64, X86OP_MOVD_V_E,
+                                  host_dest, host_temp);
+            const X86UnaryOpcode opcode = (
+                insn->opcode == RTLOP_FNEG ? X86OP_XORPS :
+                insn->opcode == RTLOP_FABS ? X86OP_ANDPS :
+                            /* RTLOP_FNABS */ X86OP_ORPS);
+            X86Register host_src1;
+            if (is_spilled(ctx, src1, insn_index)) {
+                host_src1 = X86_XMM15;
+                append_load(&code, unit->regs[src1].type, host_src1,
+                            X86_SP, -1, ctx->regs[src1].spill_offset);
+            } else {
+                host_src1 = ctx->regs[src1].host_reg;
+            }
+            append_insn_ModRM_reg(&code, false, opcode, host_dest, host_src1);
+            break;
+          }  // case RTLOP_FNEG, RTLOP_FABS, RTLOP_FNABS
+
           case RTLOP_FADD:
           case RTLOP_FSUB:
           case RTLOP_FMUL:

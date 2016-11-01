@@ -837,7 +837,20 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
               case RTLOP_FTRUNCI:
               case RTLOP_FCMP:
                 /* These instructions operate between registers of
-                 * different types, so we can never reuse src1. */
+                 * different types, so we can never reuse src1.  The
+                 * standard algorithm will never select src1, but we need
+                 * this case to avoid explicitly choosing it as an
+                 * optimization. */
+                break;
+
+              case RTLOP_FNEG:
+              case RTLOP_FABS:
+              case RTLOP_FNABS:
+                /* We need dest to be free for loading the constant to
+                 * manipulate the sign bit, so we can't reuse src1. */
+                if (!src1_info->spilled) {
+                    avoid_regs |= 1u << src1_info->host_reg;
+                }
                 break;
 
               case RTLOP_ATOMIC_INC:
@@ -954,7 +967,8 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
                         1<<(RTLOP_BFINS-32),
                         0,
                         0,
-                        1<<(RTLOP_FSUB-56) | 1<<(RTLOP_FDIV-56),
+                        1<<(RTLOP_FSUB-56),
+                        1<<(RTLOP_FDIV-64),
                     };
                     ASSERT(insn->opcode >= RTLOP__FIRST
                            && insn->opcode <= RTLOP__LAST);
@@ -1071,6 +1085,13 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
             need_temp = (int_type_is_64(src1_reg->type) || src1_info->spilled);
             break;
 
+          case RTLOP_FNEG:
+          case RTLOP_FABS:
+          case RTLOP_FNABS:
+            /* Temporary GPR needed to load immediate value. */
+            need_temp = true;
+            break;
+
           case RTLOP_FCMP:
             /* Temporary needed if the first operand is spilled. */
             need_temp = src1_info->spilled;
@@ -1153,6 +1174,15 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
             dest_info->host_temp = (uint8_t)temp_reg;
             dest_info->temp_allocated = true;
             ctx->block_regs_touched |= 1u << temp_reg;
+        }
+
+        /* Mark additional touched registers for specific instructions. */
+        if (insn->opcode == RTLOP_FNEG || insn->opcode == RTLOP_FABS
+         || insn->opcode == RTLOP_FNABS) {
+            /* XMM15 is used to reload spilled source values. */
+            if (src1_info->spilled) {
+                ctx->block_regs_touched |= 1u << X86_XMM15;
+            }
         }
         if (insn->opcode == RTLOP_CMPXCHG) {
             if (dest_info->temp_allocated && dest_info->host_temp == X86_R15) {

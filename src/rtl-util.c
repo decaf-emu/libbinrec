@@ -61,7 +61,8 @@ int format_int(char *buf, int bufsize, RTLDataType type, uint64_t value)
 int format_float(char *buf, int bufsize, float value)
 {
     if (isnan(value)) {
-        return snprintf_assert(buf, bufsize, "nan(0x%X)",
+        return snprintf_assert(buf, bufsize, "%snan(0x%X)",
+                               float_to_bits(value)>>31 ? "-" : "",
                                float_to_bits(value) & 0x007FFFFF);
     } else if (isinf(value)) {
         return snprintf_assert(buf, bufsize, value < 0.0f ? "-inf" : "inf");
@@ -81,7 +82,8 @@ int format_double(char *buf, int bufsize, double value)
 {
     if (isnan(value)) {
         return snprintf_assert(
-            buf, bufsize, "nan(0x%"PRIX64")",
+            buf, bufsize, "%snan(0x%"PRIX64")",
+            double_to_bits(value)>>63 ? "-" : "",
             double_to_bits(value) & UINT64_C(0x000FFFFFFFFFFFFF));
     } else if (isinf(value)) {
         return snprintf_assert(buf, bufsize, value < 0.0 ? "-inf" : "inf");

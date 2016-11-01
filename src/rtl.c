@@ -305,6 +305,9 @@ static void rtl_describe_register(const RTLRegister *reg,
             [RTLOP_FSCAST ] = "fscast",
             [RTLOP_FROUNDI] = "froundi",
             [RTLOP_FTRUNCI] = "ftrunci",
+            [RTLOP_FNEG   ] = "-",
+            [RTLOP_FABS   ] = "abs",
+            [RTLOP_FNABS  ] = "-abs",
             [RTLOP_FSQRT  ] = "sqrt",
         };
         static const bool is_signed[RTLOP__LAST + 1] = {
@@ -343,6 +346,9 @@ static void rtl_describe_register(const RTLRegister *reg,
           case RTLOP_FSCAST:
           case RTLOP_FROUNDI:
           case RTLOP_FTRUNCI:
+          case RTLOP_FNEG:
+          case RTLOP_FABS:
+          case RTLOP_FNABS:
           case RTLOP_FSQRT:
             snprintf(buf, bufsize, "%s(r%d)",
                      operators[reg->result.opcode], reg->result.src1);
@@ -540,6 +546,9 @@ static void rtl_decode_insn(const RTLUnit *unit, uint32_t index,
         [RTLOP_FSCAST    ] = "FSCAST",
         [RTLOP_FROUNDI   ] = "FROUNDI",
         [RTLOP_FTRUNCI   ] = "FTRUNCI",
+        [RTLOP_FNEG      ] = "FNEG",
+        [RTLOP_FABS      ] = "FABS",
+        [RTLOP_FNABS     ] = "FNABS",
         [RTLOP_FADD      ] = "FADD",
         [RTLOP_FSUB      ] = "FSUB",
         [RTLOP_FMUL      ] = "FMUL",
@@ -659,6 +668,9 @@ static void rtl_decode_insn(const RTLUnit *unit, uint32_t index,
       case RTLOP_FSCAST:
       case RTLOP_FROUNDI:
       case RTLOP_FTRUNCI:
+      case RTLOP_FNEG:
+      case RTLOP_FABS:
+      case RTLOP_FNABS:
       case RTLOP_FSQRT:
         s += snprintf_assert(s, top - s, "%-10s r%d, r%d\n", name, dest, src1);
         APPEND_REG_DESC(src1);

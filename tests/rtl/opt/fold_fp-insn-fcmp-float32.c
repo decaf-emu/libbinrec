@@ -169,7 +169,7 @@ static const char expected[] =
     "    1: LOAD_IMM   r2, 3.0f\n"
     "    2: LOAD_IMM   r3, 0.0f\n"
     "    3: LOAD_IMM   r4, -0.0f\n"
-    "    4: LOAD_IMM   r5, nan(0x7FFFFF)\n"
+    "    4: LOAD_IMM   r5, -nan(0x7FFFFF)\n"
     "    5: LOAD_IMM   r6, 1\n"
     "    6: LOAD_IMM   r7, 1\n"
     "    7: LOAD_IMM   r8, 0\n"

@@ -269,6 +269,12 @@ typedef enum RTLOpcode {
                         //     is host-defined]
     RTLOP_FTRUNCI,      // dest = (signed typeof(dest))trunc(src1)
                         //    [result on exception is host-defined]
+    RTLOP_FNEG,         // dest = -src1
+                        //    [flips sign bit, does not raise exceptions]
+    RTLOP_FABS,         // dest = abs(src1)
+                        //    [clears sign bit, does not raise exceptions]
+    RTLOP_FNABS,        // dest = -abs(src1)
+                        //    [sets sign bit, does not raise exceptions]
     RTLOP_FADD,         // dest = src1 + src2
     RTLOP_FSUB,         // dest = src1 - src2
     RTLOP_FMUL,         // dest = src1 * src2
