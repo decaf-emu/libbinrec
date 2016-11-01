@@ -37,11 +37,11 @@ static const uint8_t expected_code[] = {
     0x66,0x0F,0x6E,0xC0,                // movd %eax,%xmm0
     0xB8,0x00,0x00,0x00,0x40,           // mov $0x40000000,%eax
     0x66,0x0F,0x6E,0xC8,                // movd %eax,%xmm1
+    0x33,0xC0,                          // xor %eax,%eax
     0x0F,0x2E,0xC1,                     // ucomiss %xmm1,%xmm0
-    0x33,0xC0,                          // xor %eax,%eax
     0x0F,0x97,0xC0,                     // seta %al
-    0x0F,0x2E,0xC0,                     // ucomiss %xmm0,%xmm0
     0x33,0xC0,                          // xor %eax,%eax
+    0x0F,0x2E,0xC0,                     // ucomiss %xmm0,%xmm0
     0x0F,0x93,0xC0,                     // setae %al
     0x48,0x83,0xC4,0x08,                // add $8,%rsp
     0xC3,                               // ret

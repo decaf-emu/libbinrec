@@ -3334,9 +3334,14 @@ static bool translate_block(HostX86Context *ctx, int block_index)
                 cmp1 = src1;
                 cmp2 = src2;
             }
+            const bool do_compare =
+                !(ctx->last_cmp_reg == cmp1 && ctx->last_cmp_target == cmp2);
+            const bool invert = (insn->fcmp & RTLFCMP_INVERT) != 0;
 
-            if (!(ctx->last_cmp_reg == cmp1 && ctx->last_cmp_target == cmp2)) {
-                X86Register host_cmp1;
+            /* Reload src1 (if necessary) before any XOR to increase code
+             * parallelism. */
+            X86Register host_cmp1;
+            if (do_compare) {
                 if (!is_spilled(ctx, insn_index, cmp1)) {
                     host_cmp1 = ctx->regs[cmp1].host_reg;
                 } else {
@@ -3345,6 +3350,23 @@ static bool translate_block(HostX86Context *ctx, int block_index)
                     append_load(&code, unit->regs[cmp1].type, host_cmp1,
                                 X86_SP, -1, ctx->regs[cmp1].spill_offset);
                 }
+            }
+
+            /* For EQ, we need to set dest to a default value since the
+             * test requires two steps (P=0 and Z=1).  XOR reg,reg is
+             * faster than MOV reg,imm for this, but if using XOR we have
+             * to do it before the test so as not to clobber the test
+             * result.  As long as we're at it, we also use XOR here for
+             * non-EQ tests if the compare won't be omitted, since
+             * XOR+SETcc is faster than SETcc+MOVZX. */
+            bool dest_initted = false;
+            if (do_compare && !(cmpsel == RTLFCMP_EQ && invert)) {
+                append_insn_ModRM_reg(&code, false, X86OP_XOR_Gv_Ev,
+                                      host_dest, host_dest);
+                dest_initted = true;
+            }
+
+            if (do_compare) {
                 const bool is64 = (unit->regs[cmp1].type == RTLTYPE_FLOAT64);
                 const bool ordered = (insn->fcmp & RTLFCMP_ORDERED) != 0;
                 const X86Opcode cmp_opcode = is64
@@ -3359,16 +3381,12 @@ static bool translate_block(HostX86Context *ctx, int block_index)
                 }
             }
 
-            const bool invert = (insn->fcmp & RTLFCMP_INVERT) != 0;
             if (cmpsel == RTLFCMP_EQ) {
-                const int jump_disp = (host_dest >= X86_SP ? 4 : 3);
-                if (invert) {
+                if (!dest_initted) {
                     append_insn_R(&code, false, X86OP_MOV_rAX_Iv, host_dest);
-                    append_imm32(&code, 1);
-                } else {
-                    append_insn_ModRM_reg(&code, false, X86OP_XOR_Gv_Ev,
-                                          host_dest, host_dest);
+                    append_imm32(&code, invert ? 1 : 0);
                 }
+                const int jump_disp = (host_dest >= X86_SP ? 4 : 3);
                 append_jump_raw(&code, X86OP_JP_Jb, X86OP_JP_Jz, jump_disp);
                 const long jump_from = code.len;
                 maybe_append_empty_rex(&code, host_dest, host_dest, -1);
@@ -3377,13 +3395,16 @@ static bool translate_block(HostX86Context *ctx, int block_index)
                 const long jump_to = code.len;
                 ASSERT(jump_to - jump_from == jump_disp);
             } else {
-                append_insn_ModRM_reg(&code, false, X86OP_XOR_Gv_Ev,
-                                      host_dest, host_dest);
                 const X86Opcode set_opcode =
                     (cmpsel==RTLFCMP_GT ? (invert ? X86OP_SETBE : X86OP_SETA)
                                         : (invert ? X86OP_SETB : X86OP_SETAE));
                 maybe_append_empty_rex(&code, host_dest, host_dest, -1);
                 append_insn_ModRM_reg(&code, false, set_opcode, 0, host_dest);
+                if (!dest_initted) {
+                    maybe_append_empty_rex(&code, host_dest, host_dest, -1);
+                    append_insn_ModRM_reg(&code, false, X86OP_MOVZX_Gv_Eb,
+                                          host_dest, host_dest);
+                }
             }
             break;
           }  // case RTLOP_FCMP
