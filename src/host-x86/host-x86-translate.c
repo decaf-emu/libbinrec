@@ -703,18 +703,13 @@ static ALWAYS_INLINE void append_move_or_load_gpr(
 /**
  * append_test_reg:  Append an instruction to test the value of the given
  * integer RTL register for zeroness.  If the CONDITION_CODES optimization
- * is enabled, skip the test if EFLAGS is already set appropriately, and
- * update EFLAGS state fields appropriately otherwise.
+ * is enabled, also update EFLAGS state fields appropriately.
  */
 static ALWAYS_INLINE void append_test_reg(
     HostX86Context *ctx, const RTLUnit *unit, int insn_index,
     CodeBuffer *code, int reg)
 {
     ASSERT(rtl_register_is_int(&unit->regs[reg]));
-
-    if (ctx->last_test_reg == reg) {
-        return;
-    }
 
     if (is_spilled(ctx, insn_index, reg)) {
         const bool is64 = int_type_is_64(unit->regs[reg].type);
@@ -2158,7 +2153,9 @@ static bool translate_block(HostX86Context *ctx, int block_index)
             const bool is64 = (int_type_is_64(unit->regs[src1].type));
 
             /* Set the x86 condition flags based on the condition register. */
-            append_test_reg(ctx, unit, insn_index, &code, insn->src3);
+            if (ctx->last_test_reg != insn->src3) {
+                append_test_reg(ctx, unit, insn_index, &code, insn->src3);
+            }
 
             /* Put one of the source values in the destination register, if
              * necessary.  Note that MOV does not alter flags. */
@@ -2704,12 +2701,32 @@ static bool translate_block(HostX86Context *ctx, int block_index)
                 insn->opcode == RTLOP_SGTU ? X86OP_SETA :
                 insn->opcode == RTLOP_SGTS ? X86OP_SETG :
                              /* RTLOP_SEQ */ X86OP_SETZ);
+
             if (is_spilled(ctx, insn_index, src1)) {
                 append_load_gpr(&code, unit->regs[src1].type, host_dest,
                                 X86_SP, ctx->regs[src1].spill_offset);
                 host_src1 = host_dest;
             }
+
+            /* On current-generation Intel processors, XOR reg,reg followed
+             * by SETcc has less latency than SETcc followed by MOVZX,
+             * because the processor recognizes XOR as a zero idiom and
+             * doesn't impose a partial register stall on subsequent use of
+             * EAX/RAX.  However, XOR modifies the EFLAGS register, so we
+             * can only make use of it if we're not omitting the compare,
+             * and in that case we have to do the XOR first.  Naturally,
+             * this implies we also can't use XOR if the destination
+             * register overlaps either of the source registers. */
+            bool cleared_dest = false;
+
             if (!(ctx->last_cmp_reg == src1 && ctx->last_cmp_target == src2)) {
+                if (host_dest != host_src1
+                 && (is_spilled(ctx, insn_index, src2)
+                  || host_dest != ctx->regs[src2].host_reg)) {
+                    append_insn_ModRM_reg(&code, false, X86OP_XOR_Gv_Ev,
+                                          host_dest, host_dest);
+                    cleared_dest = true;
+                }
                 append_insn_ModRM_ctx(&code, is64, X86OP_CMP_Gv_Ev, host_src1,
                                       ctx, insn_index, src2);
                 if (handle->host_opt & BINREC_OPT_H_X86_CONDITION_CODES) {
@@ -2718,13 +2735,16 @@ static bool translate_block(HostX86Context *ctx, int block_index)
                     ctx->last_cmp_target = src2;
                 }
             }
+
             /* Registers SP-DI require a REX prefix (even if empty) to
              * access the low byte as a byte register. */
             maybe_append_empty_rex(&code, host_dest, -1, -1);
             append_insn_ModRM_reg(&code, false, set_opcode, 0, host_dest);
-            maybe_append_empty_rex(&code, host_dest, -1, -1);
-            append_insn_ModRM_reg(&code, false, X86OP_MOVZX_Gv_Eb,
-                                  host_dest, host_dest);
+            if (!cleared_dest) {
+                maybe_append_empty_rex(&code, host_dest, -1, -1);
+                append_insn_ModRM_reg(&code, false, X86OP_MOVZX_Gv_Eb,
+                                      host_dest, host_dest);
+            }
             break;
           }  // case RTLOP_{SEQ,SLTU,SLTS,SGTU,SGTS}
 
@@ -3092,12 +3112,30 @@ static bool translate_block(HostX86Context *ctx, int block_index)
                 insn->opcode == RTLOP_SGTSI ? X86OP_SETG :
                              /* RTLOP_SEQI */ X86OP_SETZ);
 
+            /* See comments in the SEQ/SLTU/SLTS/SGTU/SGTS case for why we
+             * conditionally use XOR to clear dest. */
+            bool cleared_dest = false;
+
             if (insn->opcode == RTLOP_SEQI && imm == 0) {
-                append_test_reg(ctx, unit, insn_index, &code, src1);
+                if (ctx->last_test_reg != src1) {
+                    if (is_spilled(ctx, insn_index, src1)
+                     || host_dest != ctx->regs[src1].host_reg) {
+                        append_insn_ModRM_reg(&code, false, X86OP_XOR_Gv_Ev,
+                                              host_dest, host_dest);
+                        cleared_dest = true;
+                    }
+                    append_test_reg(ctx, unit, insn_index, &code, src1);
+                }
             } else {
                 if (ctx->last_cmp_reg != src1
                  || ctx->last_cmp_target != 0
                  || ctx->last_cmp_imm != (int32_t)imm) {
+                    if (is_spilled(ctx, insn_index, src1)
+                     || host_dest != ctx->regs[src1].host_reg) {
+                        append_insn_ModRM_reg(&code, false, X86OP_XOR_Gv_Ev,
+                                              host_dest, host_dest);
+                        cleared_dest = true;
+                    }
                     if (imm + 128 < 256) {
                         append_insn_ModRM_ctx(
                             &code, is64, X86OP_IMM_Ev_Ib, X86OP_IMM_CMP,
@@ -3120,9 +3158,11 @@ static bool translate_block(HostX86Context *ctx, int block_index)
 
             maybe_append_empty_rex(&code, host_dest, -1, -1);
             append_insn_ModRM_reg(&code, false, set_opcode, 0, host_dest);
-            maybe_append_empty_rex(&code, host_dest, -1, -1);
-            append_insn_ModRM_reg(&code, false, X86OP_MOVZX_Gv_Eb,
-                                  host_dest, host_dest);
+            if (!cleared_dest) {
+                maybe_append_empty_rex(&code, host_dest, -1, -1);
+                append_insn_ModRM_reg(&code, false, X86OP_MOVZX_Gv_Eb,
+                                      host_dest, host_dest);
+            }
             break;
           }  // case RTLOP_{SEQI,SLTUI,SLTSI,SLEUI,SLESI}
 
@@ -3437,6 +3477,14 @@ static bool translate_block(HostX86Context *ctx, int block_index)
                 break;
             }
 
+            bool cleared_dest = false;
+            if (is_spilled(ctx, insn_index, src1)
+             || host_dest != ctx->regs[src1].host_reg) {
+                append_insn_ModRM_reg(&code, false, X86OP_XOR_Gv_Ev,
+                                      host_dest, host_dest);
+                cleared_dest = true;
+            }
+
             if (is_spilled(ctx, insn_index, src1)) {
                 append_insn_ModRM_mem(&code, false, X86OP_UNARY_Eb,
                                       X86OP_UNARY_TEST, X86_SP, -1,
@@ -3454,9 +3502,11 @@ static bool translate_block(HostX86Context *ctx, int block_index)
 
             maybe_append_empty_rex(&code, host_dest, -1, -1);
             append_insn_ModRM_reg(&code, false, X86OP_SETNZ, 0, host_dest);
-            maybe_append_empty_rex(&code, host_dest, -1, -1);
-            append_insn_ModRM_reg(&code, false, X86OP_MOVZX_Gv_Eb,
-                                  host_dest, host_dest);
+            if (!cleared_dest) {
+                maybe_append_empty_rex(&code, host_dest, -1, -1);
+                append_insn_ModRM_reg(&code, false, X86OP_MOVZX_Gv_Eb,
+                                      host_dest, host_dest);
+            }
             break;
           }  // case RTLOP_FTESTEXC
 
@@ -4176,7 +4226,9 @@ static bool translate_block(HostX86Context *ctx, int block_index)
             const int target_block = unit->label_blockmap[insn->label];
             ASSERT(target_block >= 0);
 
-            append_test_reg(ctx, unit, insn_index, &code, src1);
+            if (ctx->last_test_reg != src1) {
+                append_test_reg(ctx, unit, insn_index, &code, src1);
+            }
 
             /* If we have any aliases or spills to reload that would
              * conflict with live registers, we have to invert the sense of

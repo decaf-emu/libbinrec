@@ -25,6 +25,7 @@ static int add_rtl(RTLUnit *unit)
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg1, 0, 0, 1));
     EXPECT(reg2 = rtl_alloc_register(unit, RTLTYPE_INT32));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg2, 0, 0, 2));
+    alloc_dummy_registers(unit, 11, RTLTYPE_INT32);
     EXPECT(reg3 = rtl_alloc_register(unit, RTLTYPE_INT32));
     EXPECT(rtl_add_insn(unit, RTLOP_SEQ, reg3, reg1, reg2, 0));
     EXPECT(rtl_add_insn(unit, RTLOP_NOP, 0, reg2, 0, 0));
@@ -33,13 +34,21 @@ static int add_rtl(RTLUnit *unit)
 }
 
 static const uint8_t expected_code[] = {
-    0x48,0x83,0xEC,0x08,                // sub $8,%rsp
+    0x53,                               // push %rbx
+    0x55,                               // push %rbp
+    0x41,0x54,                          // push %r12
+    0x41,0x55,                          // push %r13
+    0x41,0x56,                          // push %r14
     0xB9,0x01,0x00,0x00,0x00,           // mov $1,%ecx
     0xBA,0x02,0x00,0x00,0x00,           // mov $2,%edx
     0x3B,0xCA,                          // cmp %edx,%ecx
     0x0F,0x94,0xC1,                     // setz %cl
     0x0F,0xB6,0xC9,                     // movzbl %cl,%ecx
-    0x48,0x83,0xC4,0x08,                // add $8,%rsp
+    0x41,0x5E,                          // pop %r14
+    0x41,0x5D,                          // pop %r13
+    0x41,0x5C,                          // pop %r12
+    0x5D,                               // pop %rbp
+    0x5B,                               // pop %rbx
     0xC3,                               // ret
 };
 

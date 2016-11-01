@@ -765,20 +765,11 @@ typedef struct binrec_setup_t {
 #define BINREC_OPT_H_X86_MERGE_REGS  (1<<5)
 
 /**
- * BINREC_OPT_H_X86_SETCC_ZX:  Detect when the only the low byte of the
- * result of a comparison instruction is used, and suppress zero-extension
- * of the result to the full operand size (32 or 64 bits).
- *
- * This optimization is not currently implemented.
- */
-#define BINREC_OPT_H_X86_SETCC_ZX  (1<<6)
-
-/**
  * BINREC_OPT_H_X86_STORE_IMMEDIATE:  When an immediate value is used only
  * as the data for a store operation, encode the immediate value directly
  * in the instruction instead of using a register.
  */
-#define BINREC_OPT_H_X86_STORE_IMMEDIATE  (1<<7)
+#define BINREC_OPT_H_X86_STORE_IMMEDIATE  (1<<6)
 
 /*************************************************************************/
 /******** Interface: Library and runtime environment information *********/

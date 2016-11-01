@@ -249,12 +249,14 @@ static int allocate_frame_slot(HostX86Context *ctx, RTLDataType type)
  *     reg_index: RTL register number.
  *     reg: RTLRegister structure for the register.
  *     avoid_regs: Bitmask of registers to not use even if free.
+ *     soft_avoid: Bitmask of registers to use only if no other register
+ *         is free.
  * [Return value]
  *     Allocated register index.
  */
 static X86Register allocate_register(
     HostX86Context *ctx, int insn_index, int reg_index,
-    const RTLRegister *reg, uint32_t avoid_regs)
+    const RTLRegister *reg, uint32_t avoid_regs, uint32_t soft_avoid)
 {
     ASSERT(ctx);
     ASSERT(ctx->unit);
@@ -271,7 +273,7 @@ static X86Register allocate_register(
         /* Try to allocate a callee-saved register so we don't have to
          * save and restore this value across the call. */
         const uint32_t avoid_caller_saved =
-            avoid_regs | ~ctx->callee_saved_regs;
+            avoid_regs | soft_avoid | ~ctx->callee_saved_regs;
         if (is_gpr) {
             host_reg = get_gpr(ctx, avoid_caller_saved);
         } else {
@@ -280,10 +282,15 @@ static X86Register allocate_register(
     }
     if (host_reg < 0) {
         if (is_gpr) {
-            host_reg = get_gpr(ctx, avoid_regs);
+            host_reg = get_gpr(ctx, avoid_regs | soft_avoid);
         } else {
-            host_reg = get_xmm(ctx, avoid_regs);
+            host_reg = get_xmm(ctx, avoid_regs | soft_avoid);
         }
+    }
+    if (host_reg < 0 && soft_avoid != 0) {
+        /* There are currently no cases in which we soft-avoid XMM regs. */
+        ASSERT(is_gpr);
+        host_reg = get_gpr(ctx, avoid_regs);
     }
     if (host_reg >= 0) {
         assign_register(ctx, reg_index, host_reg);
@@ -555,6 +562,7 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
         dest_info->host_allocated = true;  // We'll find one eventually.
 
         uint32_t avoid_regs = dest_info->avoid_regs | ctx->early_merge_regs;
+        uint32_t soft_avoid = 0;  // Bitmap of last-choice registers.
 
         /* For GET_ALIAS handling -- this has to be set before we allocate
          * a preassigned register, or we'll undesirably avoid the register
@@ -830,6 +838,35 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
                 }
                 break;
 
+              case RTLOP_SEQ:
+              case RTLOP_SLTU:
+              case RTLOP_SLTS:
+              case RTLOP_SGTU:
+              case RTLOP_SGTS:
+                /* Try to avoid reusing src1 or src2 so the comparison
+                 * result can be implemented as XOR+SETcc rather than the
+                 * slower SETcc+MOVZX.  But SETcc+MOVZX is still faster
+                 * than spilling a register, so use soft_avoid rather than
+                 * avoid_regs. */
+                if (!src1_info->spilled) {
+                    soft_avoid |= 1u << src1_info->host_reg;
+                }
+                if (!src2_info->spilled) {
+                    soft_avoid |= 1u << src2_info->host_reg;
+                }
+                break;
+
+              case RTLOP_SEQI:
+              case RTLOP_SLTUI:
+              case RTLOP_SLTSI:
+              case RTLOP_SGTUI:
+              case RTLOP_SGTSI:
+                /* As for the register-register versions. */
+                if (!src1_info->spilled) {
+                    soft_avoid |= 1u << src1_info->host_reg;
+                }
+                break;
+
               case RTLOP_BITCAST:
               case RTLOP_FSCAST:
               case RTLOP_FZCAST:
@@ -850,6 +887,13 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
                  * manipulate the sign bit, so we can't reuse src1. */
                 if (!src1_info->spilled) {
                     avoid_regs |= 1u << src1_info->host_reg;
+                }
+                break;
+
+              case RTLOP_FTESTEXC:
+                /* As for SEQ, etc. */
+                if (!src1_info->spilled) {
+                    soft_avoid |= 1u << src1_info->host_reg;
                 }
                 break;
 
@@ -1000,8 +1044,8 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
              || insn->opcode == RTLOP_ROR) {
                 avoid_regs |= 1u << X86_CX;
             }
-            dest_info->host_reg =
-                allocate_register(ctx, insn_index, dest, dest_reg, avoid_regs);
+            dest_info->host_reg = allocate_register(
+                ctx, insn_index, dest, dest_reg, avoid_regs, soft_avoid);
         }
 
         /* Find a temporary register for instructions which need it. */

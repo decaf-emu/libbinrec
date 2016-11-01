@@ -38,8 +38,8 @@ static const uint8_t expected_code[] = {
     0x48,0x83,0xC1,0x02,                // add $2,%rcx
     0x8B,0x00,                          // mov (%rax),%eax
     0x0F,0xC8,                          // bswap %eax
-    0x0F,0x9C,0xC1,                     // setl %cl
-    0x0F,0xB6,0xC9,                     // movzbl %cl,%ecx
+    0x0F,0x9C,0xC0,                     // setl %al
+    0x0F,0xB6,0xC0,                     // movzbl %al,%eax
     0x48,0x83,0xC4,0x08,                // add $8,%rsp
     0xC3,                               // ret
 };

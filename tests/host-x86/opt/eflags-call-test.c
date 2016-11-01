@@ -41,13 +41,13 @@ static const uint8_t expected_code[] = {
     0x48,0x8B,0xD8,                     // mov %rax,%rbx
     0x48,0x83,0xC3,0x02,                // add $2,%rbx
     0xFF,0xD0,                          // call *%rax
+    0x33,0xC9,                          // xor %ecx,%ecx
     0x48,0x85,0xDB,                     // test %rbx,%rbx
-    0x0F,0x94,0xC3,                     // setz %bl
-    0x0F,0xB6,0xDB,                     // movzbl %bl,%ebx
+    0x0F,0x94,0xC1,                     // setz %cl
     0xFF,0xD0,                          // call *%rax
+    0x33,0xC9,                          // xor %ecx,%ecx
     0x85,0xC0,                          // test %eax,%eax
-    0x0F,0x94,0xC0,                     // setz %al
-    0x0F,0xB6,0xC0,                     // movzbl %al,%eax
+    0x0F,0x94,0xC1,                     // setz %cl
     0x5B,                               // pop %rbx
     0xC3,                               // ret
 };
