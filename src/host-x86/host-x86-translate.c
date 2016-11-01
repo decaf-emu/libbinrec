@@ -2693,7 +2693,6 @@ static bool translate_block(HostX86Context *ctx, int block_index)
           case RTLOP_SGTU:
           case RTLOP_SGTS: {
             const X86Register host_dest = ctx->regs[dest].host_reg;
-            X86Register host_src1 = ctx->regs[src1].host_reg;
             const bool is64 = (int_type_is_64(unit->regs[src1].type));
             const X86Opcode set_opcode = (
                 insn->opcode == RTLOP_SLTU ? X86OP_SETB :
@@ -2701,12 +2700,6 @@ static bool translate_block(HostX86Context *ctx, int block_index)
                 insn->opcode == RTLOP_SGTU ? X86OP_SETA :
                 insn->opcode == RTLOP_SGTS ? X86OP_SETG :
                              /* RTLOP_SEQ */ X86OP_SETZ);
-
-            if (is_spilled(ctx, insn_index, src1)) {
-                append_load_gpr(&code, unit->regs[src1].type, host_dest,
-                                X86_SP, ctx->regs[src1].spill_offset);
-                host_src1 = host_dest;
-            }
 
             /* On current-generation Intel processors, XOR reg,reg followed
              * by SETcc has less latency than SETcc followed by MOVZX,
@@ -2720,6 +2713,12 @@ static bool translate_block(HostX86Context *ctx, int block_index)
             bool cleared_dest = false;
 
             if (!(ctx->last_cmp_reg == src1 && ctx->last_cmp_target == src2)) {
+                X86Register host_src1 = ctx->regs[src1].host_reg;
+                if (is_spilled(ctx, insn_index, src1)) {
+                    append_load_gpr(&code, unit->regs[src1].type, host_dest,
+                                    X86_SP, ctx->regs[src1].spill_offset);
+                    host_src1 = host_dest;
+                }
                 if (host_dest != host_src1
                  && (is_spilled(ctx, insn_index, src2)
                   || host_dest != ctx->regs[src2].host_reg)) {
