@@ -54,13 +54,13 @@ typedef struct CodeBuffer {
  *
  * [Parameters]
  *     ctx: Translation context.
- *     reg: RTL register number.
  *     insn_index: Index of current instruction in ctx->unit->insns[].
+ *     reg: RTL register number.
  * [Return value]
  *     True if the register is spilled at insn_index, false if not.
  */
-static inline PURE_FUNCTION bool is_spilled(const HostX86Context *ctx, int reg,
-                                            int insn_index)
+static inline PURE_FUNCTION bool is_spilled(const HostX86Context *ctx,
+                                            int insn_index, int reg)
 {
     const HostX86RegInfo *reg_info = &ctx->regs[reg];
     return reg_info->spilled && reg_info->spill_insn <= insn_index;
@@ -426,7 +426,7 @@ static ALWAYS_INLINE void append_insn_ModRM_ctx(
     CodeBuffer *code, bool is64, X86Opcode opcode, int reg1,
     HostX86Context *ctx, int insn_index, int rtl_reg2)
 {
-    if (is_spilled(ctx, rtl_reg2, insn_index)) {
+    if (is_spilled(ctx, insn_index, rtl_reg2)) {
         append_insn_ModRM_mem(code, is64, opcode, reg1,
                               X86_SP, -1, ctx->regs[rtl_reg2].spill_offset);
     } else {
@@ -666,7 +666,7 @@ static ALWAYS_INLINE void append_move_or_load(
     CodeBuffer *code, const HostX86Context *ctx, const RTLUnit *unit,
     int insn_index, int host_dest, int src)
 {
-    if (is_spilled(ctx, src, insn_index)) {
+    if (is_spilled(ctx, insn_index, src)) {
         append_load(code, unit->regs[src].type, host_dest,
                     X86_SP, -1, ctx->regs[src].spill_offset);
     } else if (ctx->regs[src].host_reg != host_dest) {
@@ -689,7 +689,7 @@ static ALWAYS_INLINE void append_move_or_load_gpr(
     CodeBuffer *code, const HostX86Context *ctx, const RTLUnit *unit,
     int insn_index, int host_dest, int src)
 {
-    if (is_spilled(ctx, src, insn_index)) {
+    if (is_spilled(ctx, insn_index, src)) {
         append_load_gpr(code, unit->regs[src].type, host_dest,
                         X86_SP, ctx->regs[src].spill_offset);
     } else if (ctx->regs[src].host_reg != host_dest) {
@@ -716,7 +716,7 @@ static ALWAYS_INLINE void append_test_reg(
         return;
     }
 
-    if (is_spilled(ctx, reg, insn_index)) {
+    if (is_spilled(ctx, insn_index, reg)) {
         const bool is64 = int_type_is_64(unit->regs[reg].type);
         append_insn_ModRM_mem(code, is64, X86OP_IMM_Ev_Ib, X86OP_IMM_CMP,
                               X86_SP, -1, ctx->regs[reg].spill_offset);
@@ -856,8 +856,8 @@ static ALWAYS_INLINE void reload_base_and_index(
      * the index register (such as in a load operation when the destination
      * is the same as the index register), we don't clobber the index when
      * we reload the base. */
-    if (index && is_spilled(ctx, base, insn_index)
-              && !is_spilled(ctx, index, insn_index)) {
+    if (index && is_spilled(ctx, insn_index, base)
+              && !is_spilled(ctx, insn_index, index)) {
         const int temp = base;
         base = index;
         index = temp;
@@ -867,7 +867,7 @@ static ALWAYS_INLINE void reload_base_and_index(
      * the index first (for the 64+32 add case below). */
     const long base_reload_pos = code->len;
 
-    if (!is_spilled(ctx, base, insn_index)) {
+    if (!is_spilled(ctx, insn_index, base)) {
         *base_ret = ctx->regs[base].host_reg;
     } else {
         /* This could be INT32/INT64 if address operand optimization
@@ -879,14 +879,14 @@ static ALWAYS_INLINE void reload_base_and_index(
     }
 
     if (index) {
-        if (!is_spilled(ctx, index, insn_index)) {
+        if (!is_spilled(ctx, insn_index, index)) {
             *index_ret = ctx->regs[index].host_reg;
         } else {
             ASSERT(rtl_register_is_int(&unit->regs[index]));
             if (*base_ret == fallback) {
                 /* We should always have a separate temporary if we have to
                  * reload a spilled index. */
-                ASSERT(is_spilled(ctx, base, insn_index));
+                ASSERT(is_spilled(ctx, insn_index, base));
                 if (int_type_is_64(unit->regs[index].type)) {
                     append_insn_ModRM_mem(
                         code, true, X86OP_ADD_Gv_Ev, fallback,
@@ -969,7 +969,7 @@ static ALWAYS_INLINE bool reload_store_source_gpr(
     const RTLUnit * const unit = ctx->unit;
     const RTLInsn * const insn = &unit->insns[insn_index];
 
-    if (!is_spilled(ctx, insn->src2, insn_index)) {
+    if (!is_spilled(ctx, insn_index, insn->src2)) {
         *host_value_ret = ctx->regs[insn->src2].host_reg;
         return false;
     }
@@ -1068,11 +1068,11 @@ static bool reload_regs_for_block(
             if (reg_index) {
                 const RTLRegister *reg = &unit->regs[reg_index];
                 if (reg->death >= target_insn
-                 && is_spilled(ctx, reg_index, target_insn)) {
+                 && is_spilled(ctx, target_insn, reg_index)) {
                     /* The register can't be spilled if it's in the live
                      * map (since it would have been overwritten by the
                      * register that spilled it). */
-                    ASSERT(!is_spilled(ctx, reg_index, last_insn));
+                    ASSERT(!is_spilled(ctx, last_insn, reg_index));
                     const HostX86RegInfo *reg_info = &ctx->regs[reg_index];
                     append_store(code, reg->type, reg_info->host_reg,
                                  X86_SP, -1, reg_info->spill_offset);
@@ -1110,7 +1110,7 @@ static bool reload_regs_for_block(
             value_map[host_dest] = host_dest;
             const int store_reg = current_store[i];
             if (store_reg) {
-                if (is_spilled(ctx, store_reg, last_insn)) {
+                if (is_spilled(ctx, last_insn, store_reg)) {
                     reload_targets |= 1u << host_dest;
                     reload_map[host_dest] = (uint16_t)store_reg;
                 } else {
@@ -1146,7 +1146,7 @@ static bool reload_regs_for_block(
                  * the last backward branch that targets a block where
                  * it's live. */
                 ASSERT(reg->death >= last_insn);
-                if (is_spilled(ctx, reg_index, last_insn)) {
+                if (is_spilled(ctx, last_insn, reg_index)) {
                     reload_targets |= 1u << i;
                     reload_map[i] = reg_index;
                 }
@@ -1245,7 +1245,7 @@ static bool check_reload_conflicts(const HostX86Context *ctx, int block_index,
             const X86Register host_src = ctx->regs[merge_src].host_reg;
             const X86Register host_dest = ctx->regs[merge_reg].host_merge;
             const bool move_required =
-                (!merge_src || is_spilled(ctx, merge_src, branch_insn)
+                (!merge_src || is_spilled(ctx, branch_insn, merge_src)
                  || host_src != host_dest);
             if (move_required && (end_live & (1 << host_dest))) {
                 return true;
@@ -1628,11 +1628,11 @@ static bool translate_call(HostX86Context *ctx, int block_index,
     const int src1 = insn->src1;
     const int src2 = insn->src2;
     const int src3 = insn->src3;
-    int src1_loc = (is_spilled(ctx, src1, insn_index)
+    int src1_loc = (is_spilled(ctx, insn_index, src1)
                     ? -1 : ctx->regs[src1].host_reg);
-    int src2_loc = (!src2 || is_spilled(ctx, src2, insn_index)
+    int src2_loc = (!src2 || is_spilled(ctx, insn_index, src2)
                     ? -1 : ctx->regs[src2].host_reg);
-    int src3_loc = (!src3 || is_spilled(ctx, src3, insn_index)
+    int src3_loc = (!src3 || is_spilled(ctx, insn_index, src3)
                     ? -1 : ctx->regs[src3].host_reg);
     const bool is_tail = (insn->host_data_16 != 0);
 
@@ -1877,7 +1877,7 @@ static bool translate_fzcast(HostX86Context *ctx, int insn_index)
     const int src1 = insn->src1;
     const X86Register host_dest = ctx->regs[dest].host_reg;
     X86Register host_src1;
-    if (is_spilled(ctx, src1, insn_index)) {
+    if (is_spilled(ctx, insn_index, src1)) {
         ASSERT(ctx->regs[dest].temp_allocated);
         host_src1 = ctx->regs[dest].host_temp;
         append_load_gpr(&code, unit->regs[src1].type, host_src1,
@@ -2115,7 +2115,7 @@ static bool translate_block(HostX86Context *ctx, int block_index)
                 }
             }
             if (need_store) {
-                if (is_spilled(ctx, src1, insn_index)) {
+                if (is_spilled(ctx, insn_index, src1)) {
                     const RTLRegister *src1_reg = &unit->regs[src1];
                     const X86Register temp_reg =
                         (rtl_register_is_int(src1_reg) ? X86_R15 : X86_XMM15);
@@ -2163,10 +2163,10 @@ static bool translate_block(HostX86Context *ctx, int block_index)
             /* Put one of the source values in the destination register, if
              * necessary.  Note that MOV does not alter flags. */
             bool dest_is_src1;
-            if (host_dest == host_src1 && !is_spilled(ctx, src1, insn_index)) {
+            if (host_dest == host_src1 && !is_spilled(ctx, insn_index, src1)) {
                 dest_is_src1 = true;
             } else if (host_dest == host_src2
-                       && !is_spilled(ctx, src2, insn_index)) {
+                       && !is_spilled(ctx, insn_index, src2)) {
                 dest_is_src1 = false;
             } else {
                 dest_is_src1 = true;
@@ -2191,7 +2191,7 @@ static bool translate_block(HostX86Context *ctx, int block_index)
             const RTLDataType type_src1 = unit->regs[src1].type;
             const X86Register host_dest = ctx->regs[dest].host_reg;
             X86Register host_src1 = ctx->regs[src1].host_reg;
-            if (is_spilled(ctx, src1, insn_index)) {
+            if (is_spilled(ctx, insn_index, src1)) {
                 append_load_gpr(&code, type_src1, host_dest,
                                 X86_SP, ctx->regs[src1].spill_offset);
                 host_src1 = host_dest;
@@ -2246,7 +2246,7 @@ static bool translate_block(HostX86Context *ctx, int block_index)
             const X86Register host_dest = ctx->regs[dest].host_reg;
             const X86Register host_src1 = ctx->regs[src1].host_reg;
             const bool is64 = (int_type_is_64(unit->regs[src1].type));
-            if (is_spilled(ctx, src1, insn_index)) {
+            if (is_spilled(ctx, insn_index, src1)) {
                 append_load_gpr(&code, unit->regs[src1].type, host_dest,
                                 X86_SP, ctx->regs[src1].spill_offset);
             } else if (host_dest != host_src1) {
@@ -2274,7 +2274,7 @@ static bool translate_block(HostX86Context *ctx, int block_index)
                 insn->opcode == RTLOP_AND ? X86OP_AND_Gv_Ev :
                 insn->opcode == RTLOP_OR ? X86OP_OR_Gv_Ev :
                              /* RTLOP_XOR */ X86OP_XOR_Gv_Ev);
-            if (host_dest == host_src2 && !is_spilled(ctx, src2, insn_index)) {
+            if (host_dest == host_src2 && !is_spilled(ctx, insn_index, src2)) {
                 append_insn_ModRM_ctx(&code, is64, opcode, host_dest,
                                       ctx, insn_index, src1);
             } else {
@@ -2305,7 +2305,7 @@ static bool translate_block(HostX86Context *ctx, int block_index)
             const X86Register host_src2 = ctx->regs[src2].host_reg;
             const bool is64 = (int_type_is_64(unit->regs[src1].type));
             const X86Opcode opcode = X86OP_IMUL_Gv_Ev;
-            if (host_dest == host_src2 && !is_spilled(ctx, src2, insn_index)) {
+            if (host_dest == host_src2 && !is_spilled(ctx, insn_index, src2)) {
                 append_insn_ModRM_ctx(&code, is64, opcode, host_dest,
                                       ctx, insn_index, src1);
             } else {
@@ -2358,7 +2358,7 @@ static bool translate_block(HostX86Context *ctx, int block_index)
 
             int multiplier;
             X86Register host_mult;
-            if (host_src2 == X86_AX && !is_spilled(ctx, src2, insn_index)) {
+            if (host_src2 == X86_AX && !is_spilled(ctx, insn_index, src2)) {
                 multiplier = src1;
                 host_mult = host_src1;
             } else {
@@ -2374,7 +2374,7 @@ static bool translate_block(HostX86Context *ctx, int block_index)
                 }
                 /* Can't use append_move_or_load_gpr() here because of the
                  * possible rDX swap. */
-                if (is_spilled(ctx, src1, insn_index)) {
+                if (is_spilled(ctx, insn_index, src1)) {
                     append_load_gpr(&code, unit->regs[src1].type, X86_AX,
                                     X86_SP, ctx->regs[src1].spill_offset);
                 } else if (host_src1 != X86_AX) {
@@ -2388,7 +2388,7 @@ static bool translate_block(HostX86Context *ctx, int block_index)
             const X86UnaryOpcode opcode = (
                 insn->opcode == RTLOP_MULHU ? X86OP_UNARY_MUL_rAX:
                              /* RTLOP_MULHS */ X86OP_UNARY_IMUL_rAX);
-            if (swapped_dx && !is_spilled(ctx, multiplier, insn_index)) {
+            if (swapped_dx && !is_spilled(ctx, insn_index, multiplier)) {
                 if (host_mult == X86_DX) {
                     host_mult = host_dest;
                 } else if (host_mult == host_dest) {
@@ -2465,7 +2465,7 @@ static bool translate_block(HostX86Context *ctx, int block_index)
             }
             ASSERT(divisor != X86_AX);
 
-            if (is_spilled(ctx, src1, insn_index)) {
+            if (is_spilled(ctx, insn_index, src1)) {
                 append_load_gpr(&code, unit->regs[src1].type, X86_AX,
                                 X86_SP, ctx->regs[src1].spill_offset);
             } else if (dividend != X86_AX) {
@@ -2482,7 +2482,7 @@ static bool translate_block(HostX86Context *ctx, int block_index)
                 append_insn(&code, is64, X86OP_CWD);
                 opcode = X86OP_UNARY_IDIV_rAX;
             }
-            if (is_spilled(ctx, src2, insn_index)) {
+            if (is_spilled(ctx, insn_index, src2)) {
                 append_insn_ModRM_ctx(&code, is64, X86OP_UNARY_Ev, opcode,
                                       ctx, insn_index, src2);
             } else {
@@ -2549,7 +2549,7 @@ static bool translate_block(HostX86Context *ctx, int block_index)
                 append_insn(&code, is64, X86OP_CWD);
                 opcode = X86OP_UNARY_IDIV_rAX;
             }
-            if (is_spilled(ctx, src2, insn_index)) {
+            if (is_spilled(ctx, insn_index, src2)) {
                 append_insn_ModRM_ctx(&code, is64, X86OP_UNARY_Ev, opcode,
                                       ctx, insn_index, src2);
             } else {
@@ -2578,7 +2578,7 @@ static bool translate_block(HostX86Context *ctx, int block_index)
           case RTLOP_ROR: {
             const X86Register host_dest = ctx->regs[dest].host_reg;
             const X86Register host_src2 = ctx->regs[src2].host_reg;
-            const bool src2_spilled = is_spilled(ctx, src2, insn_index);
+            const bool src2_spilled = is_spilled(ctx, insn_index, src2);
             ASSERT(host_dest != X86_CX);
             const bool is64 = (int_type_is_64(unit->regs[src1].type));
             const X86ShiftOpcode opcode = (
@@ -2679,7 +2679,7 @@ static bool translate_block(HostX86Context *ctx, int block_index)
             const X86Register host_dest = ctx->regs[dest].host_reg;
             const X86Register host_src1 = ctx->regs[src1].host_reg;
             const bool is64 = (int_type_is_64(unit->regs[src1].type));
-            if (is_spilled(ctx, src1, insn_index)) {
+            if (is_spilled(ctx, insn_index, src1)) {
                 append_load_gpr(&code, unit->regs[src1].type, host_dest,
                                 X86_SP, ctx->regs[src1].spill_offset);
             } else if (host_dest != host_src1) {
@@ -2704,7 +2704,7 @@ static bool translate_block(HostX86Context *ctx, int block_index)
                 insn->opcode == RTLOP_SGTU ? X86OP_SETA :
                 insn->opcode == RTLOP_SGTS ? X86OP_SETG :
                              /* RTLOP_SEQ */ X86OP_SETZ);
-            if (is_spilled(ctx, src1, insn_index)) {
+            if (is_spilled(ctx, insn_index, src1)) {
                 append_load_gpr(&code, unit->regs[src1].type, host_dest,
                                 X86_SP, ctx->regs[src1].spill_offset);
                 host_src1 = host_dest;
@@ -2755,7 +2755,7 @@ static bool translate_block(HostX86Context *ctx, int block_index)
                                       X86OP_SHIFT_SHR, host_dest);
                 append_imm8(&code, insn->bitfield.start);
                 host_shifted = host_dest;
-            } else if (is_spilled(ctx, src1, insn_index)) {
+            } else if (is_spilled(ctx, insn_index, src1)) {
                 append_load_gpr(&code, unit->regs[src1].type, host_dest,
                                 X86_SP, ctx->regs[src1].spill_offset);
                 host_shifted = host_dest;
@@ -2823,7 +2823,7 @@ static bool translate_block(HostX86Context *ctx, int block_index)
             const X86Register host_dest = ctx->regs[dest].host_reg;
             const X86Register host_src1 = ctx->regs[src1].host_reg;
             const X86Register host_src2 = ctx->regs[src2].host_reg;
-            const bool src2_spilled = is_spilled(ctx, src2, insn_index);
+            const bool src2_spilled = is_spilled(ctx, insn_index, src2);
             ASSERT(host_dest != host_src2 || src2_spilled);
             const bool is64 = (int_type_is_64(unit->regs[src1].type));
             const int operand_size = is64 ? 64 : 32;
@@ -2845,7 +2845,7 @@ static bool translate_block(HostX86Context *ctx, int block_index)
                     (UINT64_C(1) << insn->bitfield.count) - 1;
                 const uint64_t src1_mask = ~(src2_mask << insn->bitfield.start);
                 if (host_dest == host_src1
-                 && !is_spilled(ctx, src1, insn_index)) {
+                 && !is_spilled(ctx, insn_index, src1)) {
                     ASSERT(ctx->regs[dest].temp_allocated);
                     const X86Register host_temp = ctx->regs[dest].host_temp;
                     ASSERT(host_temp != host_src2);
@@ -2985,7 +2985,7 @@ static bool translate_block(HostX86Context *ctx, int block_index)
             if (insn->src_imm == 0xFF) {
                 const X86Register host_dest = ctx->regs[dest].host_reg;
                 const X86Register host_src1 = ctx->regs[src1].host_reg;
-                if (!is_spilled(ctx, src1, insn_index)) {
+                if (!is_spilled(ctx, insn_index, src1)) {
                     maybe_append_empty_rex(&code, host_src1, host_dest, -1);
                 }
                 append_insn_ModRM_ctx(&code, false, X86OP_MOVZX_Gv_Eb,
@@ -3134,7 +3134,7 @@ static bool translate_block(HostX86Context *ctx, int block_index)
             const X86Register host_dest = ctx->regs[dest].host_reg;
             switch (unit->regs[src1].type) {
               case RTLTYPE_INT32:
-                if (is_spilled(ctx, src1, insn_index)) {
+                if (is_spilled(ctx, insn_index, src1)) {
                     append_load(&code, RTLTYPE_FLOAT32, host_dest,
                                 X86_SP, -1, ctx->regs[src1].spill_offset);
                 } else {
@@ -3143,7 +3143,7 @@ static bool translate_block(HostX86Context *ctx, int block_index)
                 }
                 break;
               case RTLTYPE_INT64:
-                if (is_spilled(ctx, src1, insn_index)) {
+                if (is_spilled(ctx, insn_index, src1)) {
                     append_load(&code, RTLTYPE_FLOAT64, host_dest,
                                 X86_SP, -1, ctx->regs[src1].spill_offset);
                 } else {
@@ -3152,7 +3152,7 @@ static bool translate_block(HostX86Context *ctx, int block_index)
                 }
                 break;
               case RTLTYPE_FLOAT32:
-                if (is_spilled(ctx, src1, insn_index)) {
+                if (is_spilled(ctx, insn_index, src1)) {
                     append_load_gpr(&code, RTLTYPE_INT32, host_dest,
                                     X86_SP, ctx->regs[src1].spill_offset);
                 } else {
@@ -3161,7 +3161,7 @@ static bool translate_block(HostX86Context *ctx, int block_index)
                 }
                 break;
               case RTLTYPE_FLOAT64:
-                if (is_spilled(ctx, src1, insn_index)) {
+                if (is_spilled(ctx, insn_index, src1)) {
                     append_load_gpr(&code, RTLTYPE_INT64, host_dest,
                                     X86_SP, ctx->regs[src1].spill_offset);
                 } else {
@@ -3182,7 +3182,7 @@ static bool translate_block(HostX86Context *ctx, int block_index)
             const X86Register host_dest = ctx->regs[dest].host_reg;
             if (type_dest == type_src1) {
                 const X86Register host_src1 = ctx->regs[src1].host_reg;
-                if (is_spilled(ctx, src1, insn_index)) {
+                if (is_spilled(ctx, insn_index, src1)) {
                     append_load(&code, type_src1, host_dest,
                                 X86_SP, -1, ctx->regs[src1].spill_offset);
                 } else if (host_dest != host_src1) {
@@ -3250,7 +3250,7 @@ static bool translate_block(HostX86Context *ctx, int block_index)
           case RTLOP_FNABS: {
             const X86Register host_dest = ctx->regs[dest].host_reg;
             ASSERT(host_dest != ctx->regs[src1].host_reg
-                   || is_spilled(ctx, src1, insn_index));
+                   || is_spilled(ctx, insn_index, src1));
             ASSERT(ctx->regs[dest].temp_allocated);
             const X86Register host_temp = ctx->regs[dest].host_temp;
             const bool is64 = (unit->regs[dest].type == RTLTYPE_FLOAT64);
@@ -3275,7 +3275,7 @@ static bool translate_block(HostX86Context *ctx, int block_index)
                 insn->opcode == RTLOP_FABS ? X86OP_ANDPS :
                             /* RTLOP_FNABS */ X86OP_ORPS);
             X86Register host_src1;
-            if (is_spilled(ctx, src1, insn_index)) {
+            if (is_spilled(ctx, insn_index, src1)) {
                 host_src1 = X86_XMM15;
                 append_load(&code, unit->regs[src1].type, host_src1,
                             X86_SP, -1, ctx->regs[src1].spill_offset);
@@ -3298,7 +3298,7 @@ static bool translate_block(HostX86Context *ctx, int block_index)
                 insn->opcode==RTLOP_FSUB ? (is64 ? X86OP_SUBSD : X86OP_SUBSS) :
                 insn->opcode==RTLOP_FMUL ? (is64 ? X86OP_MULSD : X86OP_MULSS) :
                           /* RTLOP_FDIV */ (is64 ? X86OP_DIVSD : X86OP_DIVSS));
-            if (host_dest == host_src2 && !is_spilled(ctx, src2, insn_index)) {
+            if (host_dest == host_src2 && !is_spilled(ctx, insn_index, src2)) {
                 append_insn_ModRM_ctx(&code, false, opcode, host_dest,
                                       ctx, insn_index, src1);
             } else {
@@ -3337,7 +3337,7 @@ static bool translate_block(HostX86Context *ctx, int block_index)
 
             if (!(ctx->last_cmp_reg == cmp1 && ctx->last_cmp_target == cmp2)) {
                 X86Register host_cmp1;
-                if (!is_spilled(ctx, cmp1, insn_index)) {
+                if (!is_spilled(ctx, insn_index, cmp1)) {
                     host_cmp1 = ctx->regs[cmp1].host_reg;
                 } else {
                     ASSERT(ctx->regs[dest].temp_allocated);
@@ -3612,7 +3612,7 @@ static bool translate_block(HostX86Context *ctx, int block_index)
                 append_imm32(&code, (uint32_t)src2_reg->value.i64);
             } else {
                 X86Register host_value = ctx->regs[src2].host_reg;
-                if (is_spilled(ctx, src2, insn_index)) {
+                if (is_spilled(ctx, insn_index, src2)) {
                     /* src3 is our value temporary (see register allocation).
                      * For plain stores, if we run out of GPRs we'll just use
                      * XMM15 instead, so there's no collision with the base
@@ -3803,7 +3803,7 @@ static bool translate_block(HostX86Context *ctx, int block_index)
                     append_insn_ModRM_mem(&code, is64, X86OP_MOV_Ev_Gv,
                                           host_value, host_base, host_index,
                                           offset);
-                    if (!is_spilled(ctx, src2, insn_index)
+                    if (!is_spilled(ctx, insn_index, src2)
                      && unit->regs[src2].death > insn_index) {
                         append_insn_R(&code, is64, X86OP_BSWAP_rAX,
                                       host_value);
@@ -3836,7 +3836,7 @@ static bool translate_block(HostX86Context *ctx, int block_index)
                 append_insn_ModRM_mem(&code, false, X86OP_MOVBE_Mw_Gw,
                                       host_value, host_base, host_index,
                                       offset);
-            } else if (is_spilled(ctx, src2, insn_index)
+            } else if (is_spilled(ctx, insn_index, src2)
                        || unit->regs[src2].death <= insn_index) {
                 append_insn_R(&code, false, X86OP_BSWAP_rAX, host_value);
                 append_insn_ModRM_reg(&code, false, X86OP_SHIFT_Ev_Ib,
@@ -3931,20 +3931,20 @@ static bool translate_block(HostX86Context *ctx, int block_index)
             }
 
             /* Reload src1 and src3, if needed. */
-            if (is_spilled(ctx, src1, insn_index)) {
+            if (is_spilled(ctx, insn_index, src1)) {
                 append_load_gpr(&code, RTLTYPE_ADDRESS, host_temp,
                                 X86_SP, ctx->regs[src1].spill_offset);
                 host_src1 = host_temp;
                 host_temp = host_dest;
                 /* Make sure we're not about to overwrite src2 if src3 is
                  * also spilled (the register allocator guarantees this). */
-                ASSERT(!(!is_spilled(ctx, src2, insn_index)
+                ASSERT(!(!is_spilled(ctx, insn_index, src2)
                          && host_dest == ctx->regs[src2].host_reg));
                 /* temp_index is only used to check the assertion below
                  * that no more than two temporary registers are used. */
                 temp_index++;
             }
-            if (is_spilled(ctx, insn->src3, insn_index)) {
+            if (is_spilled(ctx, insn_index, insn->src3)) {
                 append_load_gpr(&code, unit->regs[insn->src3].type, host_temp,
                                 X86_SP, ctx->regs[insn->src3].spill_offset);
                 host_src3 = host_temp;
@@ -3988,7 +3988,7 @@ static bool translate_block(HostX86Context *ctx, int block_index)
             bool index_spilled = false;
             if (insn->host_data_16) {
                 HostX86RegInfo *index_info = &ctx->regs[insn->host_data_16];
-                if (is_spilled(ctx, insn->host_data_16, insn_index)) {
+                if (is_spilled(ctx, insn_index, insn->host_data_16)) {
                     log_warning(handle, "Slow reload of spilled CMPXCHG"
                                 " index register");
                     index_spilled = true;
