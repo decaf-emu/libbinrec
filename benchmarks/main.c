@@ -225,17 +225,17 @@ static bool process_command_line(int argc, char **argv)
                     fprintf(stderr, "Missing host optimization flag\n");
                     goto usage;
                 } else if (strcmp(name, "x86-address-op") == 0) {
-                    opt_common |= BINREC_OPT_H_X86_ADDRESS_OPERANDS;
+                    opt_host |= BINREC_OPT_H_X86_ADDRESS_OPERANDS;
                 } else if (strcmp(name, "x86-branch-align") == 0) {
-                    opt_common |= BINREC_OPT_H_X86_BRANCH_ALIGNMENT;
+                    opt_host |= BINREC_OPT_H_X86_BRANCH_ALIGNMENT;
                 } else if (strcmp(name, "x86-cond-codes") == 0) {
-                    opt_common |= BINREC_OPT_H_X86_CONDITION_CODES;
+                    opt_host |= BINREC_OPT_H_X86_CONDITION_CODES;
                 } else if (strcmp(name, "x86-fixed-regs") == 0) {
-                    opt_common |= BINREC_OPT_H_X86_FIXED_REGS;
+                    opt_host |= BINREC_OPT_H_X86_FIXED_REGS;
                 } else if (strcmp(name, "x86-merge-regs") == 0) {
-                    opt_common |= BINREC_OPT_H_X86_MERGE_REGS;
+                    opt_host |= BINREC_OPT_H_X86_MERGE_REGS;
                 } else if (strcmp(name, "x86-store-imm") == 0) {
-                    opt_common |= BINREC_OPT_H_X86_STORE_IMMEDIATE;
+                    opt_host |= BINREC_OPT_H_X86_STORE_IMMEDIATE;
                 } else {
                     fprintf(stderr, "Unknown host optimization flag %s\n",
                             name);
