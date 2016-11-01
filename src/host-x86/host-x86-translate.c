@@ -1960,7 +1960,7 @@ static bool translate_fzcast(HostX86Context *ctx, int insn_index)
     const long jnc1_end = code.len;
     ASSERT(jnc1_end == jnc1_pos + 2);
     /* RC=0: round to even */
-    maybe_append_empty_rex(&code, host_temp, host_temp, -1);
+    maybe_append_empty_rex(&code, host_temp, -1, -1);
     append_insn_ModRM_reg(&code, false, X86OP_UNARY_Eb, X86OP_UNARY_TEST,
                           host_temp);
     append_imm8(&code, 1);
@@ -2719,14 +2719,10 @@ static bool translate_block(HostX86Context *ctx, int block_index)
                 }
             }
             /* Registers SP-DI require a REX prefix (even if empty) to
-             * access the low byte as a byte register.  For these
-             * instructions, there is no other register to worry about,
-             * so we just pass host_dest as the second register; the REX
-             * will get properly added if host_dest is one of the REX-only
-             * byte registers. */
-            maybe_append_empty_rex(&code, host_dest, host_dest, -1);
+             * access the low byte as a byte register. */
+            maybe_append_empty_rex(&code, host_dest, -1, -1);
             append_insn_ModRM_reg(&code, false, set_opcode, 0, host_dest);
-            maybe_append_empty_rex(&code, host_dest, host_dest, -1);
+            maybe_append_empty_rex(&code, host_dest, -1, -1);
             append_insn_ModRM_reg(&code, false, X86OP_MOVZX_Gv_Eb,
                                   host_dest, host_dest);
             break;
@@ -3122,9 +3118,9 @@ static bool translate_block(HostX86Context *ctx, int block_index)
                 }
             }
 
-            maybe_append_empty_rex(&code, host_dest, host_dest, -1);
+            maybe_append_empty_rex(&code, host_dest, -1, -1);
             append_insn_ModRM_reg(&code, false, set_opcode, 0, host_dest);
-            maybe_append_empty_rex(&code, host_dest, host_dest, -1);
+            maybe_append_empty_rex(&code, host_dest, -1, -1);
             append_insn_ModRM_reg(&code, false, X86OP_MOVZX_Gv_Eb,
                                   host_dest, host_dest);
             break;
@@ -3389,7 +3385,7 @@ static bool translate_block(HostX86Context *ctx, int block_index)
                 const int jump_disp = (host_dest >= X86_SP ? 4 : 3);
                 append_jump_raw(&code, X86OP_JP_Jb, X86OP_JP_Jz, jump_disp);
                 const long jump_from = code.len;
-                maybe_append_empty_rex(&code, host_dest, host_dest, -1);
+                maybe_append_empty_rex(&code, host_dest, -1, -1);
                 const X86Opcode set_opcode = invert ? X86OP_SETNZ : X86OP_SETZ;
                 append_insn_ModRM_reg(&code, false, set_opcode, 0, host_dest);
                 const long jump_to = code.len;
@@ -3398,10 +3394,10 @@ static bool translate_block(HostX86Context *ctx, int block_index)
                 const X86Opcode set_opcode =
                     (cmpsel==RTLFCMP_GT ? (invert ? X86OP_SETBE : X86OP_SETA)
                                         : (invert ? X86OP_SETB : X86OP_SETAE));
-                maybe_append_empty_rex(&code, host_dest, host_dest, -1);
+                maybe_append_empty_rex(&code, host_dest, -1, -1);
                 append_insn_ModRM_reg(&code, false, set_opcode, 0, host_dest);
                 if (!dest_initted) {
-                    maybe_append_empty_rex(&code, host_dest, host_dest, -1);
+                    maybe_append_empty_rex(&code, host_dest, -1, -1);
                     append_insn_ModRM_reg(&code, false, X86OP_MOVZX_Gv_Eb,
                                           host_dest, host_dest);
                 }
@@ -3441,7 +3437,7 @@ static bool translate_block(HostX86Context *ctx, int block_index)
                 break;
             }
 
-            maybe_append_empty_rex(&code, host_src1, host_src1, -1);
+            maybe_append_empty_rex(&code, host_src1, -1, -1);
             append_insn_ModRM_reg(&code, false, X86OP_UNARY_Eb,
                                   X86OP_UNARY_TEST, host_src1);
             append_imm8(&code, bit);
@@ -3450,9 +3446,9 @@ static bool translate_block(HostX86Context *ctx, int block_index)
             ctx->last_cmp_target = 0;
             ctx->last_cmp_imm = 0;
 
-            maybe_append_empty_rex(&code, host_dest, host_dest, -1);
+            maybe_append_empty_rex(&code, host_dest, -1, -1);
             append_insn_ModRM_reg(&code, false, X86OP_SETC, 0, host_dest);
-            maybe_append_empty_rex(&code, host_dest, host_dest, -1);
+            maybe_append_empty_rex(&code, host_dest, -1, -1);
             append_insn_ModRM_reg(&code, false, X86OP_MOVZX_Gv_Eb,
                                   host_dest, host_dest);
             break;
