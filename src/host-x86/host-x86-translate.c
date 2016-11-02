@@ -701,80 +701,11 @@ static ALWAYS_INLINE void append_move_or_load_gpr(
 /*-----------------------------------------------------------------------*/
 
 /**
- * append_compare_imm:  Append an instruction to compare the value of the
- * given integer RTL register to an immediate value, using the shortest
- * possible encoding for the immediate value.
- */
-static ALWAYS_INLINE void append_compare_imm(
-    HostX86Context *ctx, const RTLUnit *unit, int insn_index,
-    CodeBuffer *code, int reg, uint32_t imm)
-{
-    ASSERT(rtl_register_is_int(&unit->regs[reg]));
-
-    const bool is64 = int_type_is_64(unit->regs[reg].type);
-    if (imm + 128 < 256) {
-        append_insn_ModRM_ctx(code, is64, X86OP_IMM_Ev_Ib, X86OP_IMM_CMP,
-                              ctx, insn_index, reg);
-        append_imm8(code, (uint8_t)imm);
-    } else {
-        append_insn_ModRM_ctx(code, is64, X86OP_IMM_Ev_Iz, X86OP_IMM_CMP,
-                              ctx, insn_index, reg);
-        append_imm32(code, imm);
-    }
-}
-
-/*-----------------------------------------------------------------------*/
-
-/**
- * append_test_reg:  Append an instruction to test the value of the given
- * integer RTL register for zeroness.  If the CONDITION_CODES optimization
- * is enabled, also update EFLAGS state fields appropriately.
- */
-static ALWAYS_INLINE void append_test_reg(
-    HostX86Context *ctx, const RTLUnit *unit, int insn_index,
-    CodeBuffer *code, int reg)
-{
-    ASSERT(rtl_register_is_int(&unit->regs[reg]));
-
-    if (is_spilled(ctx, insn_index, reg)) {
-        const bool is64 = int_type_is_64(unit->regs[reg].type);
-        append_insn_ModRM_mem(code, is64, X86OP_IMM_Ev_Ib, X86OP_IMM_CMP,
-                              X86_SP, -1, ctx->regs[reg].spill_offset);
-        append_imm8(code, 0);
-        if (ctx->handle->host_opt & BINREC_OPT_H_X86_CONDITION_CODES) {
-            ctx->last_test_reg = reg;
-            ctx->last_cmp_reg = reg;
-            ctx->last_cmp_target = 0;
-            ctx->last_cmp_imm = 0;
-        }
-    } else {
-        const X86Register host_reg = ctx->regs[reg].host_reg;
-        uint8_t rex = 0;
-        if (int_type_is_64(ctx->unit->regs[reg].type)) {
-            rex |= X86_REX_W;
-        }
-        if (host_reg & 8) {
-            rex |= X86_REX_R | X86_REX_B;
-        }
-        if (rex) {
-            append_rex_opcode(code, rex, X86OP_TEST_Ev_Gv);
-        } else {
-            append_opcode(code, X86OP_TEST_Ev_Gv);
-        }
-        append_ModRM(code, X86MOD_REG, host_reg & 7, host_reg & 7);
-        if (ctx->handle->host_opt & BINREC_OPT_H_X86_CONDITION_CODES) {
-            ctx->last_test_reg = reg;
-            ctx->last_cmp_reg = 0;
-        }
-    }
-}
-
-/*-----------------------------------------------------------------------*/
-
-/**
- * append_compare_or_test:  Append a compare or test instruction for the
+ * append_compare:  Append an appropriate comparison instruction for the
  * given parameters.  src2==0 implies a register-immediate compare.
- * Helper function for handling forwarded conditions.
+ *
+ * If the operation is a floating-point compare, it must be a comparison
+ * that only requires one test (GT or GE).
  *
  * [Parameters]
  *     ctx: Translation context.
@@ -789,55 +720,112 @@ static ALWAYS_INLINE void append_test_reg(
  *     fcmp_ordered: True if a floating-point comparison should use the
  *         ordered comparison instruction (COMIS[SD]), false otherwise.
  *         Ignored for integer compares.
+ *     clear_reg: X86Register to clear before performing the comparison,
+ *         or -1 to not clear any register.
+ * [Return value]
+ *     True if a comparison instruction was added; false if the comparison
+ *     was optimized out.
  */
-static ALWAYS_INLINE void append_compare_or_test(
+static ALWAYS_INLINE bool append_compare(
     HostX86Context *ctx, int insn_index, CodeBuffer *code, int src1,
-    int src2, int32_t src_imm, X86Register src1_temp, bool fcmp_ordered)
+    int src2, int32_t src_imm, X86Register src1_temp, bool fcmp_ordered,
+    int clear_reg)
 {
     const RTLUnit * const unit = ctx->unit;
+    const RTLRegister * const src1_reg = &unit->regs[src1];
+    const HostX86RegInfo * const src1_info = &ctx->regs[src1];
+    X86Register host_src1 = src1_info->host_reg;
 
     if (src2) {
-        if (ctx->last_cmp_reg != src1
-         || ctx->last_cmp_target != src2) {
-            const RTLRegister * const src1_reg = &unit->regs[src1];
-            const HostX86RegInfo * const src1_info = &ctx->regs[src1];
-            X86Register host_src1 = src1_info->host_reg;
-            if (is_spilled(ctx, insn_index, src1)) {
-                host_src1 = src1_temp;
-                append_load(code, src1_reg->type, host_src1,
-                            X86_SP, -1, src1_info->spill_offset);
-            }
-            if (rtl_register_is_int(src1_reg)) {
-                const bool is64 = int_type_is_64(src1_reg->type);
-                append_insn_ModRM_ctx(code, is64, X86OP_CMP_Gv_Ev, host_src1,
-                                      ctx, insn_index, src2);
-            } else {
-                const bool is64 = (unit->regs[src1].type == RTLTYPE_FLOAT64);
-                const X86Opcode opcode = is64
-                    ? (fcmp_ordered ? X86OP_COMISD : X86OP_UCOMISD)
-                    : (fcmp_ordered ? X86OP_COMISS : X86OP_UCOMISS);
-                append_insn_ModRM_ctx(code, false, opcode, host_src1,
-                                      ctx, insn_index, src2);
-            }
+        if (ctx->last_cmp_reg == src1 && ctx->last_cmp_target == src2) {
+            return false;
+        }
+        if (is_spilled(ctx, insn_index, src1)) {
+            host_src1 = src1_temp;
+            append_load(code, src1_reg->type, host_src1,
+                        X86_SP, -1, src1_info->spill_offset);
+        }
+        if (clear_reg >= 0) {
+            append_insn_ModRM_reg(code, false, X86OP_XOR_Gv_Ev,
+                                  clear_reg, clear_reg);
+        }
+        if (rtl_register_is_int(src1_reg)) {
+            const bool is64 = int_type_is_64(src1_reg->type);
+            append_insn_ModRM_ctx(code, is64, X86OP_CMP_Gv_Ev, host_src1,
+                                  ctx, insn_index, src2);
+        } else {
+            const bool is64 = (src1_reg->type == RTLTYPE_FLOAT64);
+            const X86Opcode opcode = is64
+                ? (fcmp_ordered ? X86OP_COMISD : X86OP_UCOMISD)
+                : (fcmp_ordered ? X86OP_COMISS : X86OP_UCOMISS);
+            append_insn_ModRM_ctx(code, false, opcode, host_src1,
+                                  ctx, insn_index, src2);
+        }
+        if (ctx->handle->host_opt & BINREC_OPT_H_X86_CONDITION_CODES) {
             ctx->last_test_reg = 0;
             ctx->last_cmp_reg = src1;
             ctx->last_cmp_target = src2;
         }
+
     } else if (src_imm) {
-        if (ctx->last_cmp_reg != src1
-         || ctx->last_cmp_target != 0
-         || ctx->last_cmp_imm != src_imm) {
-            append_compare_imm(ctx, unit, insn_index, code, src1, src_imm);
+        if (ctx->last_cmp_reg == src1
+         && ctx->last_cmp_target == 0
+         && ctx->last_cmp_imm == src_imm) {
+            return false;
+        }
+        if (clear_reg >= 0) {
+            append_insn_ModRM_reg(code, false, X86OP_XOR_Gv_Ev,
+                                  clear_reg, clear_reg);
+        }
+        ASSERT(rtl_register_is_int(src1_reg));
+        const bool is64 = int_type_is_64(src1_reg->type);
+        if ((uint32_t)src_imm + 128 < 256) {
+            append_insn_ModRM_ctx(code, is64, X86OP_IMM_Ev_Ib, X86OP_IMM_CMP,
+                                  ctx, insn_index, src1);
+            append_imm8(code, (uint8_t)src_imm);
+        } else {
+            append_insn_ModRM_ctx(code, is64, X86OP_IMM_Ev_Iz, X86OP_IMM_CMP,
+                                  ctx, insn_index, src1);
+            append_imm32(code, src_imm);
+        }
+        if (ctx->handle->host_opt & BINREC_OPT_H_X86_CONDITION_CODES) {
             ctx->last_test_reg = 0;
             ctx->last_cmp_reg = src1;
             ctx->last_cmp_target = 0;
             ctx->last_cmp_imm = src_imm;
         }
+
     } else {
-        if (ctx->last_test_reg != src1) {
-            append_test_reg(ctx, unit, insn_index, code, src1);
+        if (ctx->last_test_reg == src1) {
+            return false;
+        }
+        if (clear_reg >= 0) {
+            append_insn_ModRM_reg(code, false, X86OP_XOR_Gv_Ev,
+                                  clear_reg, clear_reg);
+        }
+        ASSERT(rtl_register_is_int(src1_reg));
+        const bool is64 = int_type_is_64(src1_reg->type);
+        if (is_spilled(ctx, insn_index, src1)) {
+            append_insn_ModRM_mem(code, is64, X86OP_IMM_Ev_Ib, X86OP_IMM_CMP,
+                                  X86_SP, -1, src1_info->spill_offset);
+            append_imm8(code, 0);
+            if (ctx->handle->host_opt & BINREC_OPT_H_X86_CONDITION_CODES) {
+                ctx->last_test_reg = src1;
+                ctx->last_cmp_reg = src1;
+                ctx->last_cmp_target = 0;
+                ctx->last_cmp_imm = 0;
+            }
+        } else {
+            append_insn_ModRM_reg(code, is64, X86OP_TEST_Ev_Gv,
+                                  host_src1, host_src1);
+            if (ctx->handle->host_opt & BINREC_OPT_H_X86_CONDITION_CODES) {
+                ctx->last_test_reg = src1;
+                ctx->last_cmp_reg = 0;
+            }
         }
     }
+
+    return true;
 }
 
 /*-----------------------------------------------------------------------*/
@@ -2253,15 +2241,14 @@ static bool translate_block(HostX86Context *ctx, int block_index)
             if (insn->host_data_16) {
                 const int32_t cmp2 = insn->host_data_32;
                 const bool cmp2_is_imm = (insn->host_data_16 & 0x10) != 0;
-                append_compare_or_test(ctx, insn_index, &code, insn->src3,
-                                       cmp2_is_imm ? 0 : cmp2, cmp2,
-                                       (insn->host_data_16 >> 8) & 0x1F,
-                                       (insn->host_data_16 & 0x20) != 0);
+                append_compare(ctx, insn_index, &code, insn->src3,
+                               cmp2_is_imm ? 0 : cmp2, cmp2,
+                               (insn->host_data_16 >> 8) & 0x1F,
+                               (insn->host_data_16 & 0x20) != 0, -1);
                 condition = insn->host_data_16 & 0xF;
             } else {
-                if (ctx->last_test_reg != insn->src3) {
-                    append_test_reg(ctx, unit, insn_index, &code, insn->src3);
-                }
+                append_compare(ctx, insn_index, &code, insn->src3,
+                               0, 0, 0, false, -1);
                 condition = X86CC_NZ;
             }
 
@@ -2802,7 +2789,6 @@ static bool translate_block(HostX86Context *ctx, int block_index)
           case RTLOP_SGTU:
           case RTLOP_SGTS: {
             const X86Register host_dest = ctx->regs[dest].host_reg;
-            const bool is64 = (int_type_is_64(unit->regs[src1].type));
             const X86Opcode set_opcode = (
                 insn->opcode == RTLOP_SLTU ? X86OP_SETB :
                 insn->opcode == RTLOP_SLTS ? X86OP_SETL :
@@ -2819,30 +2805,15 @@ static bool translate_block(HostX86Context *ctx, int block_index)
              * and in that case we have to do the XOR first.  Naturally,
              * this implies we also can't use XOR if the destination
              * register overlaps either of the source registers. */
-            bool cleared_dest = false;
-
-            if (!(ctx->last_cmp_reg == src1 && ctx->last_cmp_target == src2)) {
-                X86Register host_src1 = ctx->regs[src1].host_reg;
-                if (is_spilled(ctx, insn_index, src1)) {
-                    append_load_gpr(&code, unit->regs[src1].type, host_dest,
-                                    X86_SP, ctx->regs[src1].spill_offset);
-                    host_src1 = host_dest;
-                }
-                if (host_dest != host_src1
+            const bool should_clear_dest =
+                (!is_spilled(ctx, insn_index, src1)
+                 && host_dest != ctx->regs[src1].host_reg
                  && (is_spilled(ctx, insn_index, src2)
-                  || host_dest != ctx->regs[src2].host_reg)) {
-                    append_insn_ModRM_reg(&code, false, X86OP_XOR_Gv_Ev,
-                                          host_dest, host_dest);
-                    cleared_dest = true;
-                }
-                append_insn_ModRM_ctx(&code, is64, X86OP_CMP_Gv_Ev, host_src1,
-                                      ctx, insn_index, src2);
-                if (handle->host_opt & BINREC_OPT_H_X86_CONDITION_CODES) {
-                    ctx->last_test_reg = 0;
-                    ctx->last_cmp_reg = src1;
-                    ctx->last_cmp_target = src2;
-                }
-            }
+                     || host_dest != ctx->regs[src2].host_reg));
+            const bool added_compare = append_compare(
+                ctx, insn_index, &code, src1, src2, 0, host_dest, false,
+                should_clear_dest ? (int)host_dest : -1);
+            const bool cleared_dest = should_clear_dest && added_compare;
 
             /* Registers SP-DI require a REX prefix (even if empty) to
              * access the low byte as a byte register. */
@@ -3211,7 +3182,6 @@ static bool translate_block(HostX86Context *ctx, int block_index)
           case RTLOP_SGTUI:
           case RTLOP_SGTSI: {
             const X86Register host_dest = ctx->regs[dest].host_reg;
-            const uint32_t imm = (uint32_t)insn->src_imm;  // As for ADDI etc.
             const X86Opcode set_opcode = (
                 insn->opcode == RTLOP_SLTUI ? X86OP_SETB :
                 insn->opcode == RTLOP_SLTSI ? X86OP_SETL :
@@ -3221,38 +3191,13 @@ static bool translate_block(HostX86Context *ctx, int block_index)
 
             /* See comments in the SEQ/SLTU/SLTS/SGTU/SGTS case for why we
              * conditionally use XOR to clear dest. */
-            bool cleared_dest = false;
-
-            if (insn->opcode == RTLOP_SEQI && imm == 0) {
-                if (ctx->last_test_reg != src1) {
-                    if (is_spilled(ctx, insn_index, src1)
-                     || host_dest != ctx->regs[src1].host_reg) {
-                        append_insn_ModRM_reg(&code, false, X86OP_XOR_Gv_Ev,
-                                              host_dest, host_dest);
-                        cleared_dest = true;
-                    }
-                    append_test_reg(ctx, unit, insn_index, &code, src1);
-                }
-            } else {
-                if (ctx->last_cmp_reg != src1
-                 || ctx->last_cmp_target != 0
-                 || ctx->last_cmp_imm != (int32_t)imm) {
-                    if (is_spilled(ctx, insn_index, src1)
-                     || host_dest != ctx->regs[src1].host_reg) {
-                        append_insn_ModRM_reg(&code, false, X86OP_XOR_Gv_Ev,
-                                              host_dest, host_dest);
-                        cleared_dest = true;
-                    }
-                    append_compare_imm(ctx, unit, insn_index, &code, src1,
-                                       imm);
-                    if (handle->host_opt & BINREC_OPT_H_X86_CONDITION_CODES) {
-                        ctx->last_test_reg = (imm == 0 ? src1 : 0);
-                        ctx->last_cmp_reg = src1;
-                        ctx->last_cmp_target = 0;
-                        ctx->last_cmp_imm = imm;
-                    }
-                }
-            }
+            const bool should_clear_dest =
+                (is_spilled(ctx, insn_index, src1)
+                 || host_dest != ctx->regs[src1].host_reg);
+            const bool added_compare = append_compare(
+                ctx, insn_index, &code, src1, 0, insn->src_imm, 0, false,
+                should_clear_dest ? (int)host_dest : -1);
+            const bool cleared_dest = should_clear_dest && added_compare;
 
             maybe_append_empty_rex(&code, host_dest, -1, -1);
             append_insn_ModRM_reg(&code, false, set_opcode, 0, host_dest);
@@ -4309,10 +4254,10 @@ static bool translate_block(HostX86Context *ctx, int block_index)
             const int target_block = unit->label_blockmap[insn->label];
             ASSERT(target_block >= 0);
 
-            append_compare_or_test(ctx, insn_index, &code, src1, src2,
-                                   insn->host_data_32,
-                                   (insn->host_data_16 >> 8) & 0x1F,
-                                   (insn->host_data_16 & 0x20) != 0);
+            append_compare(ctx, insn_index, &code, src1, src2,
+                           insn->host_data_32,
+                           (insn->host_data_16 >> 8) & 0x1F,
+                           (insn->host_data_16 & 0x20) != 0, -1);
 
             uint8_t jump_condition;
             if (insn->host_data_16) {
