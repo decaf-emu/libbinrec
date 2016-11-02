@@ -59,7 +59,7 @@ static const uint8_t expected_code[] = {
     0xB8,0x03,0x00,0x00,0x00,           // mov $3,%eax
     0x8B,0x14,0x24,                     // mov (%rsp),%edx
     0x3B,0xD1,                          // cmp %ecx,%edx
-    0x77,0xE7,                          // jz L1
+    0x77,0xE7,                          // ja L1
     0x48,0x83,0xC4,0x10,                // add $16,%rsp
     0x41,0x5E,                          // pop %r14
     0x41,0x5D,                          // pop %r13
