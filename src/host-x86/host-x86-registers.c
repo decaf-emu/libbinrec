@@ -1488,11 +1488,7 @@ static void first_pass_for_block(HostX86Context *ctx, int block_index)
 
           case RTLOP_SELECT:
             if (ctx->handle->host_opt & BINREC_OPT_H_X86_FORWARD_CONDITIONS) {
-                /* We can only optimize integer SELECT (there's no CMOVcc
-                 * equivalent for XMM registers). */
-                if (rtl_register_is_int(&unit->regs[insn->src1])) {
-                    host_x86_optimize_conditional_move(ctx, insn_index);
-                }
+                host_x86_optimize_conditional_move(ctx, insn_index);
             }
             break;
 
