@@ -132,6 +132,17 @@ enum {
 
 /*-----------------------------------------------------------------------*/
 
+/* Constants which might be required by floating-point operations. */
+enum {
+    LC_FLOAT32_SIGNBIT = 0,  // 1<<31
+    LC_FLOAT32_INV_SIGNBIT,  // ~(1<<31)
+    LC_FLOAT64_SIGNBIT,      // 1<<63
+    LC_FLOAT64_INV_SIGNBIT,  // ~(1<<63)
+    NUM_LOCAL_CONSTANTS
+};
+
+/*-----------------------------------------------------------------------*/
+
 /* Data associated with each RTL register. */
 typedef struct HostX86RegInfo {
     /* Has a host register been allocated for this register? */
@@ -272,6 +283,12 @@ typedef struct HostX86Context {
     int stack_callsave[32];
     /* Stack offset of temporary storage for STMXCSR/LDMXCSR (-1 if none). */
     int stack_mxcsr;
+
+    /* Offsets to local floating-point constants from the start of the code
+     * buffer.  Zero indicates that the constant is not used.  Entries will
+     * be set to 1 during the initial pass if the corresponding constant is
+     * needed, then updated to the final offset when the prologue is added. */
+    long const_loc[NUM_LOCAL_CONSTANTS];
 } HostX86Context;
 
 /*************************************************************************/

@@ -120,6 +120,17 @@ extern "C" {
  * the access will improperly "leak" outside the guest memory region.
  * However, accesses to the top 32k of memory using single-register (not
  * lmw/stmw) D-form instructions with rA = 0 are handled correctly.
+ *
+ *
+ * Host-specific notes
+ * ===================
+ *
+ * Intel/AMD x86 64-bit architecture (BINREC_ARCH_X86_*)
+ * -----------------------------------------------------
+ * Translated code must be located at a 16-byte-aligned address for correct
+ * behavior.  If the code is not correctly aligned, certain floating-point
+ * operations may crash due to misaligned accesses.  libbinrec will always
+ * request 16-byte alignment if a code_malloc() callback is supplied.
  */
 
 /*************************************************************************/
@@ -151,8 +162,8 @@ typedef struct binrec_t binrec_t;
  * note on library limitations in the README file.
  */
 typedef enum binrec_arch_t {
-    /* Constant used to indicate an unsupported architecture by
-     * binrec_native_arch(). */
+    /* Constant used by binrec_native_arch() to indicate an unsupported
+     * architecture. */
     BINREC_ARCH_INVALID = 0,
 
     /* PowerPC 32-bit architecture as implemented in PowerPC 7xx

@@ -14,42 +14,40 @@
 static const binrec_setup_t setup = {
     .host = BINREC_ARCH_X86_64_SYSV,
 };
-static const unsigned int host_opt = 0;
+static const unsigned int host_opt = BINREC_OPT_H_X86_FORWARD_CONDITIONS;
 
 static int add_rtl(RTLUnit *unit)
 {
-    alloc_dummy_registers(unit, 8, RTLTYPE_FLOAT32);
-
-    int reg1, reg2;
+    int reg1, reg2, reg3, reg4;
     EXPECT(reg1 = rtl_alloc_register(unit, RTLTYPE_FLOAT32));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg1, 0, 0, 0x3F800000));
     EXPECT(reg2 = rtl_alloc_register(unit, RTLTYPE_FLOAT32));
-    EXPECT(rtl_add_insn(unit, RTLOP_FNEG, reg2, reg1, 0, 0));
-    EXPECT(rtl_add_insn(unit, RTLOP_NOP, 0, reg1, 0, 0));
+    EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg2, 0, 0, 0x40000000));
+    EXPECT(reg3 = rtl_alloc_register(unit, RTLTYPE_INT32));
+    EXPECT(rtl_add_insn(unit, RTLOP_FCMP, reg3, reg1, reg2, RTLFCMP_GT));
+    EXPECT(reg4 = rtl_alloc_register(unit, RTLTYPE_FLOAT32));
+    EXPECT(rtl_add_insn(unit, RTLOP_SELECT, reg4, reg1, reg2, reg3));
 
     return EXIT_SUCCESS;
 }
 
 static const uint8_t expected_code[] = {
     0x48,0x83,0xEC,0x08,                // sub $8,%rsp
-    0xEB,0x1A,                          // jmp 0x20
-    0x00,0x00,0x00,0x00,0x00,0x00,0x00, // (padding)
-    0x00,0x00,0x00,                     // (padding)
-
-    0x00,0x00,0x00,0x80,                // (data)
-    0x00,0x00,0x00,0x00,                // (data)
-    0x00,0x00,0x00,0x00,                // (data)
-    0x00,0x00,0x00,0x00,                // (data)
-
     0xB8,0x00,0x00,0x80,0x3F,           // mov $0x3F800000,%eax
-    0x66,0x44,0x0F,0x6E,0xC0,           // movd %eax,%xmm8
-    0x45,0x0F,0x28,0xC8,                // movaps %xmm8,%xmm9
-    0x44,0x0F,0x57,0x0D,0xDA,0xFF,0xFF, // xorps -38(%rip),%xmm9
-      0xFF,
+    0x66,0x0F,0x6E,0xC0,                // movd %eax,%xmm0
+    0xB8,0x00,0x00,0x00,0x40,           // mov $0x40000000,%eax
+    0x66,0x0F,0x6E,0xC8,                // movd %eax,%xmm1
+    0x0F,0x2E,0xC1,                     // ucomiss %xmm1,%xmm0
+    0x77,0x3,                           // ja L0
+    0x0F,0x28,0xC1,                     // movaps %xmm1,%xmm0
     0x48,0x83,0xC4,0x08,                // add $8,%rsp
     0xC3,                               // ret
 };
 
-static const char expected_log[] = "";
+static const char expected_log[] =
+    #ifdef RTL_DEBUG_OPTIMIZE
+        "[info] Killing instruction 2\n"
+    #endif
+    "";
 
 #include "tests/rtl-translate-test.i"

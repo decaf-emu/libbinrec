@@ -48,7 +48,7 @@
  * be required, so this does not add undue register pressure.
  *
  * Before the register allocation pass itself, we perform a more
- * lightweight scan of the code (see first_pass_for_block()) for two
+ * lightweight scan of the code (see first_pass_for_block()) for three
  * primary purposes:
  *
  * - We record which RTL registers are stored in which aliases at the end
@@ -61,6 +61,10 @@
  *   host_data_32 is repurposed during the actual allocation pass to store
  *   a bitmask of host registers which should be saved and restored around
  *   the call by the code generator.
+ *
+ * - We record any floating-point constants required by the unit, so they
+ *   can be inserted between the prologue and the first translated
+ *   instruction.
  *
  * During the first pass, we also perform any enabled optimizations on the
  * RTL instruction stream; we do this as part of the same pass to avoid the
@@ -483,10 +487,7 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
         }
     }
 
-    if (insn->opcode == RTLOP_SELECT || insn->opcode == RTLOP_CMPXCHG
-     || ((insn->opcode == RTLOP_CALL || insn->opcode == RTLOP_CALL_TRANSPARENT)
-         && insn->src3 != 0))
-    {
+    if (rtl_opcode_has_src3(insn->opcode) && insn->src3) {
         ASSERT(insn->src3 < unit->next_reg);
         const RTLRegister * const src3_reg = &unit->regs[insn->src3];
         const HostX86RegInfo * const src3_info = &ctx->regs[insn->src3];
@@ -883,16 +884,6 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
                  * optimization. */
                 break;
 
-              case RTLOP_FNEG:
-              case RTLOP_FABS:
-              case RTLOP_FNABS:
-                /* We need dest to be free for loading the constant to
-                 * manipulate the sign bit, so we can't reuse src1. */
-                if (!src1_info->spilled) {
-                    avoid_regs |= 1u << src1_info->host_reg;
-                }
-                break;
-
               case RTLOP_FTESTEXC:
                 /* As for SEQ, etc. */
                 if (!src1_info->spilled) {
@@ -1132,13 +1123,6 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
             need_temp = (int_type_is_64(src1_reg->type) || src1_info->spilled);
             break;
 
-          case RTLOP_FNEG:
-          case RTLOP_FABS:
-          case RTLOP_FNABS:
-            /* Temporary GPR needed to load immediate value. */
-            need_temp = true;
-            break;
-
           case RTLOP_FCMP:
             /* Temporary needed if the first operand is spilled. */
             need_temp = src1_info->spilled;
@@ -1224,13 +1208,6 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
         }
 
         /* Mark additional touched registers for specific instructions. */
-        if (insn->opcode == RTLOP_FNEG || insn->opcode == RTLOP_FABS
-         || insn->opcode == RTLOP_FNABS) {
-            /* XMM15 is used to reload spilled source values. */
-            if (src1_info->spilled) {
-                ctx->block_regs_touched |= 1u << X86_XMM15;
-            }
-        }
         if (insn->opcode == RTLOP_CMPXCHG) {
             if (dest_info->temp_allocated && dest_info->host_temp == X86_R15) {
                 ctx->block_regs_touched |= 1u << X86_XMM15;
@@ -1411,9 +1388,8 @@ static bool allocate_regs_for_block(HostX86Context *ctx, int block_index)
 /*-----------------------------------------------------------------------*/
 
 /**
- * first_pass_for_block:  Collect data for aliases referenced by the given
- * basic block, and allocate host registers for RTL registers with
- * allocation constraints if the corresponding optimization is enabled.
+ * first_pass_for_block:  Run an initial analysis pass on the given basic
+ * block, and perform any enabled RTL-level optimizations.
  *
  * [Parameters]
  *     ctx: Translation context.
@@ -1653,6 +1629,23 @@ static void first_pass_for_block(HostX86Context *ctx, int block_index)
             ctx->regs[insn->dest].avoid_regs |= 1u << X86_CX;
             break;
           }  // case RTLOP_{SLL,SRL,SRA,ROL,ROR}
+
+          case RTLOP_FNEG:
+          case RTLOP_FNABS:
+            if (unit->regs[insn->dest].type == RTLTYPE_FLOAT64) {
+                ctx->const_loc[LC_FLOAT64_SIGNBIT] = 1;
+            } else {
+                ctx->const_loc[LC_FLOAT32_SIGNBIT] = 1;
+            }
+            break;
+
+          case RTLOP_FABS:
+            if (unit->regs[insn->dest].type == RTLTYPE_FLOAT64) {
+                ctx->const_loc[LC_FLOAT64_INV_SIGNBIT] = 1;
+            } else {
+                ctx->const_loc[LC_FLOAT32_INV_SIGNBIT] = 1;
+            }
+            break;
 
           case RTLOP_FCMP: {
             /* For less-than comparisons, it's faster to swap the operands

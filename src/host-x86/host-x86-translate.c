@@ -29,8 +29,20 @@
  */
 
 /*************************************************************************/
-/******************* Local data structure definitions ********************/
+/************* Local constant and data structure definitions *************/
 /*************************************************************************/
+
+/* Table of local constant data to insert in the prologue. */
+static const struct {
+    uint8_t data[16];
+} local_constants[NUM_LOCAL_CONSTANTS] = {
+    [LC_FLOAT32_SIGNBIT    ] = {{0x00,0x00,0x00,0x80}},
+    [LC_FLOAT32_INV_SIGNBIT] = {{0xFF,0xFF,0xFF,0x7F}},
+    [LC_FLOAT64_SIGNBIT    ] = {{0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x80}},
+    [LC_FLOAT64_INV_SIGNBIT] = {{0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0x7F}},
+};
+
+/*-----------------------------------------------------------------------*/
 
 /**
  * CodeBuffer:  Structure encapsulating an output code buffer and its
@@ -433,6 +445,36 @@ static ALWAYS_INLINE void append_insn_ModRM_ctx(
         append_insn_ModRM_reg(code, is64, opcode, reg1,
                               ctx->regs[rtl_reg2].host_reg);
     }
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
+ * append_insn_ModRM_riprel:  Append an instruction which takes a ModR/M
+ * byte, encoding an EA using RIP-relative addressing.  The instruction is
+ * assumed not to have any additional bytes (such as immediate data) after
+ * the EA displacement.
+ *
+ * [Parameters]
+ *     code: Output code buffer.
+ *     opcode: Instruction opcode.
+ *     reg: Register for ModR/M reg field.
+ *     offset: Offset of the address to encode, counting from the base of
+ *         the code buffer.
+ */
+static ALWAYS_INLINE void append_insn_ModRM_riprel(
+    CodeBuffer *code, X86Opcode opcode, X86Register reg, long offset)
+{
+    if (reg & 8) {
+        append_rex_opcode(code, X86_REX_R, opcode);
+    } else {
+        append_opcode(code, opcode);
+    }
+    append_ModRM(code, X86MOD_DISP0, reg & 7, X86MODRM_RIP_REL);
+    /* Displacement is measured from the end of this instruction. */
+    const long disp = offset - (code->len + 4);
+    ASSERT((uint64_t)disp + 0x80000000u < UINT64_C(0x100000000));
+    append_imm32(code, disp);
 }
 
 /*-----------------------------------------------------------------------*/
@@ -1585,14 +1627,52 @@ static bool append_prologue(HostX86Context *ctx)
         }
     }
 
-    handle->code_len = code.len;
-
     if (is_windows_seh) {
         /* Make sure the prologue is the same length we said it would be. */
         const int code_offset =
             (int) *ALIGNED_CAST(uint64_t *, handle->code_buffer);
-        ASSERT(handle->code_len == code_offset + handle->code_buffer[9]);
+        ASSERT(code.len == code_offset + handle->code_buffer[9]);
     }
+
+    /* If we have any local constants, insert them here with a jump over
+     * them to the first instruction. */
+    int num_xmm_constants = 0;
+    for (int i = 0; i < lenof(ctx->const_loc); i++) {
+        if (ctx->const_loc[i]) {
+            num_xmm_constants++;
+        }
+    }
+    if (num_xmm_constants) {
+        /* For the moment, we can't have more than 4 constants so the
+         * jump will always be a short (2-byte) one. */
+        const int padding = (16 - (code.len + 2)) & 15;
+        const int disp = padding + 16*num_xmm_constants;
+
+        handle->code_len = code.len;
+        if (UNLIKELY(!binrec_ensure_code_space(handle, 2+disp))) {
+            log_error(handle, "No memory for local constants");
+            return false;
+        }
+        code.buffer = handle->code_buffer;
+        code.buffer_size = handle->code_buffer_size;
+
+        append_jump_raw(&code, X86OP_JMP_Jb, X86OP_JMP_Jz, disp);
+        ASSERT(code.len + padding <= code.buffer_size);
+        memset(&code.buffer[code.len], 0, padding);
+        code.len += padding;
+        ASSERT(code.len % 16 == 0);
+
+        for (int i = 0; i < lenof(ctx->const_loc); i++) {
+            if (ctx->const_loc[i]) {
+                ctx->const_loc[i] = code.len;
+                ASSERT(code.len + 16 <= code.buffer_size);
+                memcpy(&code.buffer[code.len], &local_constants[i], 16);
+                code.len += 16;
+            }
+        }
+    }
+
+    handle->code_len = code.len;
 
     return true;
 }
@@ -3352,40 +3432,19 @@ static bool translate_block(HostX86Context *ctx, int block_index)
           case RTLOP_FABS:
           case RTLOP_FNABS: {
             const X86Register host_dest = ctx->regs[dest].host_reg;
-            ASSERT(host_dest != ctx->regs[src1].host_reg
-                   || is_spilled(ctx, insn_index, src1));
-            ASSERT(ctx->regs[dest].temp_allocated);
-            const X86Register host_temp = ctx->regs[dest].host_temp;
             const bool is64 = (unit->regs[dest].type == RTLTYPE_FLOAT64);
-            if (is64) {
-                const uint64_t sign_bit = UINT64_C(1) << 63;
-                const uint64_t imm =
-                    (insn->opcode == RTLOP_FABS ? ~sign_bit : sign_bit);
-                append_insn_R(&code, true, X86OP_MOV_rAX_Iv, host_temp);
-                append_imm32(&code, (uint32_t)imm);
-                append_imm32(&code, (uint32_t)(imm >> 32));
-            } else {
-                const uint32_t sign_bit = 1u << 31;
-                const uint32_t imm =
-                    (insn->opcode == RTLOP_FABS ? ~sign_bit : sign_bit);
-                append_insn_R(&code, false, X86OP_MOV_rAX_Iv, host_temp);
-                append_imm32(&code, imm);
-            }
-            append_insn_ModRM_reg(&code, is64, X86OP_MOVD_V_E,
-                                  host_dest, host_temp);
-            const X86UnaryOpcode opcode = (
+            const X86Opcode opcode = (
                 insn->opcode == RTLOP_FNEG ? X86OP_XORPS :
                 insn->opcode == RTLOP_FABS ? X86OP_ANDPS :
                             /* RTLOP_FNABS */ X86OP_ORPS);
-            X86Register host_src1;
-            if (is_spilled(ctx, insn_index, src1)) {
-                host_src1 = X86_XMM15;
-                append_load(&code, unit->regs[src1].type, host_src1,
-                            X86_SP, -1, ctx->regs[src1].spill_offset);
-            } else {
-                host_src1 = ctx->regs[src1].host_reg;
-            }
-            append_insn_ModRM_reg(&code, false, opcode, host_dest, host_src1);
+            const int lc_id =
+                (insn->opcode == RTLOP_FABS
+                 ? (is64 ? LC_FLOAT64_INV_SIGNBIT : LC_FLOAT32_INV_SIGNBIT)
+                 : (is64 ? LC_FLOAT64_SIGNBIT : LC_FLOAT32_SIGNBIT));
+            const long lc_offset = ctx->const_loc[lc_id];
+            ASSERT(lc_offset);
+            append_move_or_load(&code, ctx, unit, insn_index, host_dest, src1);
+            append_insn_ModRM_riprel(&code, opcode, host_dest, lc_offset);
             break;
           }  // case RTLOP_FNEG, RTLOP_FABS, RTLOP_FNABS
 
