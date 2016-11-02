@@ -3564,8 +3564,39 @@ static bool translate_block(HostX86Context *ctx, int block_index)
           case RTLOP_FMADD:
           case RTLOP_FMSUB:
           case RTLOP_FNMADD:
-          case RTLOP_FNMSUB:
-            break;  // FIXME: not yet implemented
+          case RTLOP_FNMSUB: {
+            // FIXME: implement FMA version
+            /* Without the FMA extension, we just do separate multiply/add
+             * operations and eat the precision loss.  Yum. */
+            const X86Register host_dest = ctx->regs[dest].host_reg;
+            const X86Register host_src2 = ctx->regs[src2].host_reg;
+            const bool is64 = (unit->regs[dest].type == RTLTYPE_FLOAT64);
+            const X86Opcode mul_opcode = (is64 ? X86OP_MULSD : X86OP_MULSS);
+            const X86Opcode add_opcode =
+                (insn->opcode == RTLOP_FMADD || insn->opcode == RTLOP_FNMADD
+                 ? (is64 ? X86OP_ADDSD : X86OP_ADDSS)
+                 : (is64 ? X86OP_SUBSD : X86OP_SUBSS));
+            if (host_dest == host_src2 && !is_spilled(ctx, insn_index, src2)) {
+                append_insn_ModRM_ctx(&code, false, mul_opcode, host_dest,
+                                      ctx, insn_index, src1);
+            } else {
+                append_move_or_load(&code, ctx, unit, insn_index,
+                                    host_dest, src1);
+                append_insn_ModRM_ctx(&code, false, mul_opcode, host_dest,
+                                      ctx, insn_index, src2);
+            }
+            append_insn_ModRM_ctx(&code, false, add_opcode, host_dest,
+                                  ctx, insn_index, insn->src3);
+            if (insn->opcode == RTLOP_FNMADD || insn->opcode == RTLOP_FNMSUB) {
+                const int lc_id =
+                    (is64 ? LC_FLOAT64_SIGNBIT : LC_FLOAT32_SIGNBIT);
+                const long lc_offset = ctx->const_loc[lc_id];
+                ASSERT(lc_offset);
+                append_insn_ModRM_riprel(&code, X86OP_XORPS, host_dest,
+                                         lc_offset);
+            }
+            break;
+          }  // case RTLOP_FMADD, RTLOP_FMSUB, RTLOP_FNMADD, RTLOP_FNMSUB
 
           case RTLOP_FGETSTATE:
             append_insn_ModRM_mem(

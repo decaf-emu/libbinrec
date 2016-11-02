@@ -131,6 +131,12 @@ extern "C" {
  * behavior.  If the code is not correctly aligned, certain floating-point
  * operations may crash due to misaligned accesses.  libbinrec will always
  * request 16-byte alignment if a code_malloc() callback is supplied.
+ *
+ * Full (non-rounding) support for fused multiply-add operations is only
+ * supported on CPUs which support the FMA3 instruction set.  On CPUs
+ * without that extension, fused multiply-add operations will be translated
+ * to separate multiply and add instructions, which will cause the
+ * intermediate result to be rounded.
  */
 
 /*************************************************************************/

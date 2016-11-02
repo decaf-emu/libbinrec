@@ -1029,14 +1029,27 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
 
         /* If none of the special cases apply, allocate a register normally. */
         if (!host_allocated) {
-            /* Be careful not to allocate an unclobberable input register.
-             * (Effectively this just means rCX in shift/rotate instructions,
-             * since the fixed inputs rAX to MUL/IMUL and rDX:rAX to DIV/IDIV
-             * are also outputs.) */
-            if (insn->opcode == RTLOP_SLL || insn->opcode == RTLOP_SRL
-             || insn->opcode == RTLOP_SRA || insn->opcode == RTLOP_ROL
-             || insn->opcode == RTLOP_ROR) {
+            /* Be careful not to allocate an unclobberable input register. */
+            switch (insn->opcode) {
+              case RTLOP_SLL:
+              case RTLOP_SRL:
+              case RTLOP_SRA:
+              case RTLOP_ROL:
+              case RTLOP_ROR:
+                /* rCX is used for the shift count. */
                 avoid_regs |= 1u << X86_CX;
+                break;
+              case RTLOP_FMADD:
+              case RTLOP_FMSUB:
+              case RTLOP_FNMADD:
+              case RTLOP_FNMSUB:
+                // FIXME: non-FMA only
+                /* Avoid src3 since we'd have to exchange it with src1 or
+                 * src2 and there's no XMM equivalent to XCHG. */
+                if (!ctx->regs[insn->src3].spilled) {
+                    avoid_regs |= 1u << ctx->regs[insn->src3].host_reg;
+                }
+                break;
             }
             dest_info->host_reg = allocate_register(
                 ctx, insn_index, dest, dest_reg, avoid_regs, soft_avoid);
@@ -1662,7 +1675,18 @@ static void first_pass_for_block(HostX86Context *ctx, int block_index)
                 dest_reg->result.src2 = insn->src2;
                 dest_reg->result.fcmp = insn->fcmp;
             }
+            break;
           }  // case RTLOP_FCMP
+
+          case RTLOP_FNMADD:
+          case RTLOP_FNMSUB:
+            // FIXME: only if no FMA extension
+            if (unit->regs[insn->dest].type == RTLTYPE_FLOAT64) {
+                ctx->const_loc[LC_FLOAT64_SIGNBIT] = 1;
+            } else {
+                ctx->const_loc[LC_FLOAT32_SIGNBIT] = 1;
+            }
+            break;
 
           case RTLOP_FZCAST:
             if (!int_type_is_64(unit->regs[insn->src1].type)) {
