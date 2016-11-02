@@ -1070,8 +1070,9 @@ static ALWAYS_INLINE void reload_base_and_index(
 
 /**
  * reload_store_source_gpr:  Return the GPR containing the data value for
- * an integer store instruction.  If necessary, save RAX in XMM15; the
- * caller needs to restore it after the store in this case.
+ * an integer or byte-reversed float store instruction.  If necessary,
+ * save RAX in XMM15; the caller needs to restore it after the store in
+ * this case.
  *
  * [Parameters]
  *     code: Output code buffer.
@@ -1093,16 +1094,37 @@ static ALWAYS_INLINE bool reload_store_source_gpr(
 {
     const RTLUnit * const unit = ctx->unit;
     const RTLInsn * const insn = &unit->insns[insn_index];
+    const int src2 = insn->src2;
+    const RTLRegister * const src2_reg = &unit->regs[src2];
+    const HostX86RegInfo * const src2_info = &ctx->regs[src2];
 
-    if (!is_spilled(ctx, insn_index, insn->src2)) {
-        *host_value_ret = ctx->regs[insn->src2].host_reg;
+    RTLDataType type = src2_reg->type;
+    bool is_float = false;
+    if (type == RTLTYPE_FLOAT32) {
+        is_float = true;
+        type = RTLTYPE_INT32;
+    } else if (type == RTLTYPE_FLOAT64) {
+        is_float = true;
+        type = RTLTYPE_INT64;
+    }
+    const bool is64 = int_type_is_64(type);
+
+    const bool spilled = is_spilled(ctx, insn_index, src2);
+    if (!is_float && !spilled) {
+        *host_value_ret = src2_info->host_reg;
         return false;
     }
 
     X86Register host_value = insn->src3;
     if (host_value != *host_base_ptr && (int)host_value != *host_index_ptr) {
-        append_load_gpr(code, unit->regs[insn->src2].type, host_value,
-                        X86_SP, ctx->regs[insn->src2].spill_offset);
+        if (spilled) {
+            append_load_gpr(code, type, host_value,
+                            X86_SP, src2_info->spill_offset);
+        } else {
+            ASSERT(is_float);
+            append_insn_ModRM_reg(code, is64, X86OP_MOVD_E_V,
+                                  src2_info->host_reg, host_value);
+        }
         *host_value_ret = host_value;
         return false;
     }
@@ -1121,8 +1143,13 @@ static ALWAYS_INLINE bool reload_store_source_gpr(
         *host_index_ptr = -1;
     }
     append_insn_ModRM_reg(code, true, X86OP_MOVD_V_E, X86_XMM15, X86_AX);
-    append_load_gpr(code, unit->regs[insn->src2].type, X86_AX,
-                    X86_SP, ctx->regs[insn->src2].spill_offset);
+    if (spilled) {
+        append_load_gpr(code, type, X86_AX, X86_SP, src2_info->spill_offset);
+    } else {
+        ASSERT(is_float);
+        append_insn_ModRM_reg(code, is64, X86OP_MOVD_E_V,
+                              src2_info->host_reg, X86_AX);
+    }
     *host_value_ret = X86_AX;
     return true;
 }
@@ -3941,8 +3968,24 @@ static bool translate_block(HostX86Context *ctx, int block_index)
                 }
                 break;
               }  // case RTLTYPE_{INT32,INT64,ADDRESS}
+              case RTLTYPE_FLOAT32:
+              case RTLTYPE_FLOAT64: {
+                const bool is64 = (unit->regs[dest].type == RTLTYPE_FLOAT64);
+                if (handle->setup.host_features & BINREC_FEATURE_X86_MOVBE) {
+                    append_insn_ModRM_mem(&code, is64, X86OP_MOVBE_Gy_My,
+                                          host_temp, host_base, host_index,
+                                          offset);
+                } else {
+                    append_insn_ModRM_mem(&code, is64, X86OP_MOV_Gv_Ev,
+                                          host_temp, host_base, host_index,
+                                          offset);
+                    append_insn_R(&code, is64, X86OP_BSWAP_rAX, host_temp);
+                }
+                append_insn_ModRM_reg(&code, is64, X86OP_MOVD_V_E,
+                                      host_dest, host_temp);
+                break;
+              }  // case RTLTYPE_{FLOAT32,FLOAT64}
               default:
-                // FIXME: handle FP registers when we support those
                 log_error(handle, "Invalid data type %s in LOAD_BR",
                           rtl_type_name(unit->regs[dest].type));
             }
@@ -4031,8 +4074,22 @@ static bool translate_block(HostX86Context *ctx, int block_index)
                 }
                 break;
               }  // case RTLTYPE_{INT32,INT64,ADDRESS}
+              case RTLTYPE_FLOAT32:
+              case RTLTYPE_FLOAT64: {
+                const bool is64 = (unit->regs[src2].type == RTLTYPE_FLOAT64);
+                if (handle->setup.host_features & BINREC_FEATURE_X86_MOVBE) {
+                    append_insn_ModRM_mem(&code, is64, X86OP_MOVBE_My_Gy,
+                                          host_value, host_base, host_index,
+                                          offset);
+                } else {
+                    append_insn_R(&code, is64, X86OP_BSWAP_rAX, host_value);
+                    append_insn_ModRM_mem(&code, is64, X86OP_MOV_Ev_Gv,
+                                          host_value, host_base, host_index,
+                                          offset);
+                }
+                break;
+              }  // case RTLTYPE_{FLOAT32,FLOAT64}
               default:
-                // FIXME: handle FP registers when we support those
                 log_error(handle, "Invalid data type %s in STORE_BR",
                           rtl_type_name(unit->regs[src2].type));
             }

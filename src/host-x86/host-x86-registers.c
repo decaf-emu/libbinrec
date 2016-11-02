@@ -430,9 +430,11 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
             ctx->block_regs_touched |= 1u << X86_R15;
             used_r15 = true;
         }
-        if (src2_info->spilled) {
+        if (src2_info->spilled || (insn->opcode == RTLOP_STORE_BR
+                                   && rtl_register_is_float(src2_reg))) {
             int value_temp;
-            if (rtl_register_is_int(src2_reg)) {
+            if (rtl_register_is_int(src2_reg)
+             || insn->opcode == RTLOP_STORE_BR) {
                 value_temp = get_gpr(ctx, 0);
                 if (value_temp < 0) {
                     if (insn->opcode == RTLOP_STORE) {
@@ -450,7 +452,7 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
                         }
                     }
                 }
-            } else {  // non-integer
+            } else {  // non-integer, non-byte-reversed
                 value_temp = get_xmm(ctx, 0);
                 if (value_temp < 0) {
                     value_temp = X86_XMM15;
@@ -1164,6 +1166,11 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
                            | 1u << ctx->regs[insn->host_data_16].host_reg;
             } else {
                 need_temp = false;
+            }
+            if (!need_temp && insn->opcode == RTLOP_LOAD_BR) {
+                /* Temporary also needed if loading a byte-reversed float.
+                 * In this case, we don't have to avoid anything. */
+                need_temp = rtl_register_is_float(dest_reg);
             }
             break;
 
