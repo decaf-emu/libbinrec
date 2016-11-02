@@ -23,8 +23,6 @@ static int add_rtl(RTLUnit *unit)
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg1, 0, 0, 1));
     EXPECT(reg2 = rtl_alloc_register(unit, RTLTYPE_INT32));
     EXPECT(rtl_add_insn(unit, RTLOP_SEQI, reg2, reg1, 0, 0));
-    /* SEQI with a zero immediate generates a test rather than a cmp, so
-     * the cmp for SLTSI can't be optimized out. */
     EXPECT(reg3 = rtl_alloc_register(unit, RTLTYPE_INT32));
     EXPECT(rtl_add_insn(unit, RTLOP_SLTSI, reg3, reg1, 0, 0));
 
@@ -37,9 +35,8 @@ static const uint8_t expected_code[] = {
     0x33,0xC9,                          // xor %ecx,%ecx
     0x85,0xC0,                          // test %eax,%eax
     0x0F,0x94,0xC1,                     // setz %cl
-    0x33,0xC9,                          // xor %ecx,%ecx
-    0x83,0xF8,0x00,                     // cmp $0,%eax
     0x0F,0x9C,0xC1,                     // setl %cl
+    0x0F,0xB6,0xC9,                     // movzbl %cl,%ecx
     0x48,0x83,0xC4,0x08,                // add $8,%rsp
     0xC3,                               // ret
 };

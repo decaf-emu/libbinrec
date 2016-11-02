@@ -18,7 +18,7 @@ static const unsigned int host_opt = BINREC_OPT_H_X86_CONDITION_CODES;
 
 static int add_rtl(RTLUnit *unit)
 {
-    int reg1, reg2, reg3, reg4, reg5, reg6, reg7;
+    int reg1, reg2, reg3, reg4, reg5;
     EXPECT(reg1 = rtl_alloc_register(unit, RTLTYPE_INT32));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg1, 0, 0, 1));
     EXPECT(reg2 = rtl_alloc_register(unit, RTLTYPE_INT32));
@@ -29,10 +29,6 @@ static int add_rtl(RTLUnit *unit)
     EXPECT(rtl_add_insn(unit, RTLOP_SELECT, reg4, reg1, reg2, reg3));
     EXPECT(reg5 = rtl_alloc_register(unit, RTLTYPE_INT32));
     EXPECT(rtl_add_insn(unit, RTLOP_SLTSI, reg5, reg3, 0, 0));
-    EXPECT(reg6 = rtl_alloc_register(unit, RTLTYPE_INT32));
-    EXPECT(rtl_add_insn(unit, RTLOP_SELECT, reg6, reg4, reg4, reg4));
-    EXPECT(reg7 = rtl_alloc_register(unit, RTLTYPE_INT32));
-    EXPECT(rtl_add_insn(unit, RTLOP_SLTSI, reg7, reg4, 0, 0));
 
     return EXIT_SUCCESS;
 }
@@ -44,15 +40,8 @@ static const uint8_t expected_code[] = {
     0xBA,0x03,0x00,0x00,0x00,           // mov $3,%edx
     0x85,0xD2,                          // test %edx,%edx
     0x0F,0x44,0xC1,                     // cmovz %ecx,%eax
-    0x33,0xC9,                          // xor %ecx,%ecx
-    0x83,0xFA,0x00,                     // cmp $0,%edx
-    0x0F,0x9C,0xC1,                     // setl %cl
-    0x85,0xC0,                          // test %eax,%eax
-    0x8B,0xC8,                          // mov %eax,%ecx
-    0x0F,0x44,0xC8,                     // cmovz %eax,%ecx
-    0x33,0xC9,                          // xor %ecx,%ecx
-    0x83,0xF8,0x00,                     // cmp $0,%eax
-    0x0F,0x9C,0xC1,                     // setl %cl
+    0x0F,0x9C,0xC0,                     // setl %al
+    0x0F,0xB6,0xC0,                     // movzbl %al,%eax
     0x48,0x83,0xC4,0x08,                // add $8,%rsp
     0xC3,                               // ret
 };

@@ -42,11 +42,11 @@ static const uint8_t expected_code[] = {
     0x83,0xC1,0x02,                     // add $2,%ecx
     0xC1,0xE0,0x02,                     // shl $2,%eax
     0x33,0xD2,                          // xor %edx,%edx
-    0x83,0xF9,0x00,                     // cmp $0,%ecx
+    0x85,0xC9,                          // test %ecx,%ecx
     0x0F,0x9C,0xC2,                     // setl %dl
     0xC1,0xE0,0x02,                     // shl $2,%eax
     0x33,0xC9,                          // xor %ecx,%ecx
-    0x83,0xF8,0x00,                     // cmp $0,%eax
+    0x85,0xC0,                          // test %eax,%eax
     0x0F,0x9C,0xC1,                     // setl %cl
     0x48,0x83,0xC4,0x08,                // add $8,%rsp
     0xC3,                               // ret

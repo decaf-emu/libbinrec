@@ -46,7 +46,7 @@ static const uint8_t expected_code[] = {
     0xF6,0xC0,0x20,                     // test $0x20,%al
     0x0F,0x95,0xC2,                     // setnz %dl
     0x33,0xC0,                          // xor %eax,%eax
-    0x83,0xF9,0x00,                     // cmp $0,%ecx
+    0x85,0xC9,                          // test %ecx,%ecx
     0x0F,0x9C,0xC0,                     // setl %al
     0x48,0x83,0xC4,0x08,                // add $8,%rsp
     0xC3,                               // ret

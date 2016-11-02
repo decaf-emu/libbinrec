@@ -717,6 +717,9 @@ static ALWAYS_INLINE void append_move_or_load_gpr(
  *     src_imm: Immediate comparand if src2 == 0.
  *     src1_temp: Temporary host register for reloading src1.  Ignored if
  *         src1 does not need to be reloaded.
+ *     icmp_eq: True if an integer comparison is an equality comparison.
+ *         Used to eliminate comparisons against immediate 0 after an
+ *         instruction which does not set the full set of flags.
  *     fcmp_ordered: True if a floating-point comparison should use the
  *         ordered comparison instruction (COMIS[SD]), false otherwise.
  *         Ignored for integer compares.
@@ -728,8 +731,8 @@ static ALWAYS_INLINE void append_move_or_load_gpr(
  */
 static ALWAYS_INLINE bool append_compare(
     HostX86Context *ctx, int insn_index, CodeBuffer *code, int src1,
-    int src2, int32_t src_imm, X86Register src1_temp, bool fcmp_ordered,
-    int clear_reg)
+    int src2, int32_t src_imm, X86Register src1_temp, bool icmp_eq,
+    bool fcmp_ordered, int clear_reg)
 {
     const RTLUnit * const unit = ctx->unit;
     const RTLRegister * const src1_reg = &unit->regs[src1];
@@ -796,7 +799,12 @@ static ALWAYS_INLINE bool append_compare(
         }
 
     } else {
-        if (ctx->last_test_reg == src1) {
+        if (icmp_eq && ctx->last_test_reg == src1) {
+            return false;
+        }
+        if (ctx->last_cmp_reg == src1
+         && ctx->last_cmp_target == 0
+         && ctx->last_cmp_imm == 0) {
             return false;
         }
         if (clear_reg >= 0) {
@@ -809,19 +817,15 @@ static ALWAYS_INLINE bool append_compare(
             append_insn_ModRM_mem(code, is64, X86OP_IMM_Ev_Ib, X86OP_IMM_CMP,
                                   X86_SP, -1, src1_info->spill_offset);
             append_imm8(code, 0);
-            if (ctx->handle->host_opt & BINREC_OPT_H_X86_CONDITION_CODES) {
-                ctx->last_test_reg = src1;
-                ctx->last_cmp_reg = src1;
-                ctx->last_cmp_target = 0;
-                ctx->last_cmp_imm = 0;
-            }
         } else {
             append_insn_ModRM_reg(code, is64, X86OP_TEST_Ev_Gv,
                                   host_src1, host_src1);
-            if (ctx->handle->host_opt & BINREC_OPT_H_X86_CONDITION_CODES) {
-                ctx->last_test_reg = src1;
-                ctx->last_cmp_reg = 0;
-            }
+        }
+        if (ctx->handle->host_opt & BINREC_OPT_H_X86_CONDITION_CODES) {
+            ctx->last_test_reg = src1;
+            ctx->last_cmp_reg = src1;
+            ctx->last_cmp_target = 0;
+            ctx->last_cmp_imm = 0;
         }
     }
 
@@ -2239,17 +2243,18 @@ static bool translate_block(HostX86Context *ctx, int block_index)
             /* Set the x86 condition flags based on the condition register. */
             X86CondCode condition;
             if (insn->host_data_16) {
+                condition = insn->host_data_16 & 0xF;
                 const int32_t cmp2 = insn->host_data_32;
                 const bool cmp2_is_imm = (insn->host_data_16 & 0x10) != 0;
                 append_compare(ctx, insn_index, &code, insn->src3,
                                cmp2_is_imm ? 0 : cmp2, cmp2,
                                (insn->host_data_16 >> 8) & 0x1F,
+                               (condition & 0xE) == X86CC_Z,
                                (insn->host_data_16 & 0x20) != 0, -1);
-                condition = insn->host_data_16 & 0xF;
             } else {
-                append_compare(ctx, insn_index, &code, insn->src3,
-                               0, 0, 0, false, -1);
                 condition = X86CC_NZ;
+                append_compare(ctx, insn_index, &code, insn->src3,
+                               0, 0, 0, true, false, -1);
             }
 
             /* Put one of the source values in the destination register, if
@@ -2810,8 +2815,10 @@ static bool translate_block(HostX86Context *ctx, int block_index)
                  && host_dest != ctx->regs[src1].host_reg
                  && (is_spilled(ctx, insn_index, src2)
                      || host_dest != ctx->regs[src2].host_reg));
+            /* We don't bother checking for SEQ since icmp_eq is only used
+             * for register-immediate compares. */
             const bool added_compare = append_compare(
-                ctx, insn_index, &code, src1, src2, 0, host_dest, false,
+                ctx, insn_index, &code, src1, src2, 0, host_dest, false, false,
                 should_clear_dest ? (int)host_dest : -1);
             const bool cleared_dest = should_clear_dest && added_compare;
 
@@ -3195,7 +3202,8 @@ static bool translate_block(HostX86Context *ctx, int block_index)
                 (is_spilled(ctx, insn_index, src1)
                  || host_dest != ctx->regs[src1].host_reg);
             const bool added_compare = append_compare(
-                ctx, insn_index, &code, src1, 0, insn->src_imm, 0, false,
+                ctx, insn_index, &code, src1, 0, insn->src_imm, 0,
+                insn->opcode == RTLOP_SEQI, false,
                 should_clear_dest ? (int)host_dest : -1);
             const bool cleared_dest = should_clear_dest && added_compare;
 
@@ -4254,11 +4262,6 @@ static bool translate_block(HostX86Context *ctx, int block_index)
             const int target_block = unit->label_blockmap[insn->label];
             ASSERT(target_block >= 0);
 
-            append_compare(ctx, insn_index, &code, src1, src2,
-                           insn->host_data_32,
-                           (insn->host_data_16 >> 8) & 0x1F,
-                           (insn->host_data_16 & 0x20) != 0, -1);
-
             uint8_t jump_condition;
             if (insn->host_data_16) {
                 jump_condition = insn->host_data_16 & 0xF;
@@ -4268,6 +4271,12 @@ static bool translate_block(HostX86Context *ctx, int block_index)
             }
             const X86Opcode short_opcode = X86OP_Jcc_Jb | jump_condition;
             const X86Opcode long_opcode = X86OP_Jcc_Jz | jump_condition;
+
+            append_compare(ctx, insn_index, &code, src1, src2,
+                           insn->host_data_32,
+                           (insn->host_data_16 >> 8) & 0x1F,
+                           (jump_condition & 0xE) == X86CC_Z,
+                           (insn->host_data_16 & 0x20) != 0, -1);
 
             /* If we have any aliases or spills to reload that would
              * conflict with live registers, we have to invert the sense of
