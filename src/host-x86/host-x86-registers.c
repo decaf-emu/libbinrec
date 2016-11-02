@@ -392,15 +392,18 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
     const RTLRegister * const src2_reg = &unit->regs[src2];
     const HostX86RegInfo * const src2_info = &ctx->regs[src2];
 
-    /* Special cases for store-type instructions.  These instructions
-     * don't have destination register operands, so we don't have a place
-     * to record an arbitrary temporary register for reloading spilled
-     * value; instead, we unconditionally use R15 or XMM15 (as
-     * appropriate) to store the reloaded value, so we need to mark the
-     * relevant register as touched so it's saved and restored in the
-     * prologue/epilogue if needed.  For reloading store source values,
-     * we co-opt the offset (a.k.a. src3) field of the instruction to
-     * avoid having to save GPRs to XMM registers if possible. */
+    /* Special cases for store-type instructions.  These don't have
+     * destination register operands, and (except for SET_ALIAS) the
+     * host_data fields of the instruction are already used for address
+     * optimization, so we don't have a place to record an arbitrary
+     * temporary register for reloading a spilled value.  Instead, we
+     * co-opt the instruction's src3 field to hold a temporary register
+     * for reloading the store source value, and we unconditionally use
+     * R15 as a temporary for reloading the address if necessary.  (For
+     * SET_ALIAS, we unconditionally use R15 or XMM15 to store the
+     * reloaded value, since SET_ALIAS source values should generally not
+     * be spilled in the first place and thus it's not worth the effort to
+     * add special handling.) */
     switch (insn->opcode) {
       case RTLOP_SET_ALIAS:
         if (src1_info->spilled) {
@@ -1247,6 +1250,53 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
         }
     }  // if (dest)
 
+    /* For conditional instructions with forwarded conditions, we need a
+     * temporary if the condition is a register-register compare and the
+     * first comparand is spilled.  We handle this separately from
+     * temporary allocation above because GOTO_IF_* have no dest register
+     * and we thus need to squeeze the register into bits 8-12 of the
+     * host_data_16 field.  (We could potentially use dest_info->host_temp
+     * for SELECT, but we don't so that we can handle all three of these
+     * instructions with the same logic.) */
+    if (insn->opcode == RTLOP_SELECT
+     || insn->opcode == RTLOP_GOTO_IF_Z
+     || insn->opcode == RTLOP_GOTO_IF_NZ) {
+        if (insn->host_data_16 && !(insn->host_data_16 & 0x10)) {
+            const bool is_select = (insn->opcode == RTLOP_SELECT);
+            const int cmp1 = is_select ? insn->src3 : insn->src1;
+            const int cmp2 = is_select ? insn->host_data_32 : insn->src2;
+            if (ctx->regs[cmp1].spilled) {
+                int cmp1_temp;
+                /* Avoid clobbering the second comparand.  This is
+                 * technically unnecessary if cmp2 is also spilled, but
+                 * the case of both registers being spilled should be
+                 * sufficiently uncommon that it's not worth the extra
+                 * effort to handle that case. */
+                if (is_select
+                 && dest_info->host_reg != ctx->regs[cmp2].host_reg) {
+                    /* We can use the SELECT output as the temporary if it
+                     * doesn't overlap cmp2. */
+                    cmp1_temp = dest_info->host_reg;
+                } else {
+                    const uint32_t avoid_regs = 1u << ctx->regs[cmp2].host_reg;
+                    if (rtl_register_is_int(&unit->regs[cmp1])) {
+                        cmp1_temp = get_gpr(ctx, avoid_regs);
+                        if (cmp1_temp < 0) {
+                            cmp1_temp = X86_R15;
+                        }
+                    } else {  // non-integer
+                        cmp1_temp = get_xmm(ctx, avoid_regs);
+                        if (cmp1_temp < 0) {
+                            cmp1_temp = X86_XMM15;
+                        }
+                    }
+                }
+                insn->host_data_16 |= cmp1_temp << 8;
+                ctx->block_regs_touched |= 1u << cmp1_temp;
+            }
+        }
+    }
+
     return true;
 }
 
@@ -1436,6 +1486,16 @@ static void first_pass_for_block(HostX86Context *ctx, int block_index)
             block_info->alias_store[insn->alias] = insn->src1;
             break;
 
+          case RTLOP_SELECT:
+            if (ctx->handle->host_opt & BINREC_OPT_H_X86_FORWARD_CONDITIONS) {
+                /* We can only optimize integer SELECT (there's no CMOVcc
+                 * equivalent for XMM registers). */
+                if (rtl_register_is_int(&unit->regs[insn->src1])) {
+                    host_x86_optimize_conditional_move(ctx, insn_index);
+                }
+            }
+            break;
+
           case RTLOP_MULHU:
           case RTLOP_MULHS: {
             if (!do_fixed_regs) {
@@ -1598,6 +1658,23 @@ static void first_pass_for_block(HostX86Context *ctx, int block_index)
             break;
           }  // case RTLOP_{SLL,SRL,SRA,ROL,ROR}
 
+          case RTLOP_FCMP: {
+            /* For less-than comparisons, it's faster to swap the operands
+             * and the sense of the comparison so we don't need to check
+             * the parity flag. */
+            RTLFloatCompare cmpsel = insn->fcmp & 7;
+            if (cmpsel == RTLFCMP_LT || cmpsel == RTLFCMP_LE) {
+                insn->fcmp += RTLFCMP_GT - RTLFCMP_LT;
+                int temp = insn->src1;
+                insn->src1 = insn->src2;
+                insn->src2 = temp;
+                RTLRegister *dest_reg = &unit->regs[insn->dest];
+                dest_reg->result.src1 = insn->src1;
+                dest_reg->result.src2 = insn->src2;
+                dest_reg->result.fcmp = insn->fcmp;
+            }
+          }  // case RTLOP_FCMP
+
           case RTLOP_FZCAST:
             if (!int_type_is_64(unit->regs[insn->src1].type)) {
                 break;  // MXCSR not needed for converting from uint32. */
@@ -1669,6 +1746,13 @@ static void first_pass_for_block(HostX86Context *ctx, int block_index)
             ctx->regs[insn->dest].avoid_regs |= 1u << X86_AX;
             break;
           }  // case RTLOP_CMPXCHG
+
+          case RTLOP_GOTO_IF_Z:
+          case RTLOP_GOTO_IF_NZ:
+            if (ctx->handle->host_opt & BINREC_OPT_H_X86_FORWARD_CONDITIONS) {
+                host_x86_optimize_conditional_branch(ctx, insn_index);
+            }
+            break;
 
           case RTLOP_CALL:
             /* Non-tail calls require special handling to preserve

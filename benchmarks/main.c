@@ -165,6 +165,7 @@ static bool process_command_line(int argc, char **argv)
                     "        -Hx86-branch-align   Branch target alignment\n"
                     "        -Hx86-cond-codes     Condition code reuse\n"
                     "        -Hx86-fixed-regs     Smarter register allocation\n"
+                    "        -Hx86-forward-cond   Condition forwarding\n"
                     "        -Hx86-store-imm      Use mem-imm form for constant stores\n"
                     "    -O[LEVEL]   Select optimization level.\n"
                     "        -O0         Disable all optimizations (default).\n"
@@ -232,6 +233,8 @@ static bool process_command_line(int argc, char **argv)
                     opt_host |= BINREC_OPT_H_X86_CONDITION_CODES;
                 } else if (strcmp(name, "x86-fixed-regs") == 0) {
                     opt_host |= BINREC_OPT_H_X86_FIXED_REGS;
+                } else if (strcmp(name, "x86-forward-cond") == 0) {
+                    opt_host |= BINREC_OPT_H_X86_FORWARD_CONDITIONS;
                 } else if (strcmp(name, "x86-merge-regs") == 0) {
                     opt_host |= BINREC_OPT_H_X86_MERGE_REGS;
                 } else if (strcmp(name, "x86-store-imm") == 0) {
@@ -332,6 +335,7 @@ static bool process_command_line(int argc, char **argv)
                 opt_host |= BINREC_OPT_H_X86_BRANCH_ALIGNMENT
                           | BINREC_OPT_H_X86_CONDITION_CODES
                           | BINREC_OPT_H_X86_FIXED_REGS
+                          | BINREC_OPT_H_X86_FORWARD_CONDITIONS;
                           | BINREC_OPT_H_X86_STORE_IMMEDIATE;
             }
         }

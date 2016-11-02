@@ -46,6 +46,33 @@
  *      - host_data_16 holds the optional index register, as for loads.
  *      - host_data_32 always holds the access offset (even if zero).
  *
+ * - For the SELECT instruction:
+ *      - If host_data_16 is nonzero, it indicates that the comparands
+ *        given in the condition register's result structure should be
+ *        compared at the move point (condition-forwarding optimization)
+ *        The contents of host_data_16 are as follows:
+ *           0x8000 - bit always set (indicates data present)
+ *           0x000F - condition
+ *           0x0010 - true if a register-immediate compare, false if a
+ *                       register-register compare
+ *           0x0020 - true for ordered floating-point compares (COMIS[SD])
+ *           0x1F00 - register to use for src1 reload (if needed)
+ *        In this case, the src3 field is rewritten to the src1 field
+ *        from the register's result structure.
+ *      - host_data_32 holds the second comparand for a condition-forwarded
+ *        operation, either a register index or an immediate value.
+ *
+ * - For conditional branch instructions (GOTO_IF_Z and GOTO_IF_NZ):
+ *      - If host_data_16 is nonzero, it indicates that the comparands
+ *        given in the condition register's result structure should be
+ *        compared at the branch point (condition-forwarding optimization);
+ *        the value of host_data_16 is set as for SELECT.  In this case,
+ *        the src1 and (if a register-register comparison) src2 fields of
+ *        the instruction are rewritten to the values from the condition
+ *        register's result structure.
+ *      - host_data_32 holds the immediate value from a register-immediate
+ *        comparison for a condition-forwarded branch.
+ *
  * - For the CALL group of instructions:
  *      - host_data_16 indicates whether the call is a tail call (nonzero)
  *        or a non-tail call (zero).
@@ -305,6 +332,32 @@ extern PURE_FUNCTION int host_x86_int_arg_register(
 extern void host_x86_optimize_address(HostX86Context *ctx, int insn_index);
 
 /**
+ * host_x86_optimize_conditional_branch:  Attempt to optimize the given
+ * conditional branch instruction by forwarding the comparison used to set
+ * its condition register.
+ *
+ * [Parameters]
+ *     ctx: Translation context.
+ *     insn_index: Instruction index in ctx->unit->insns[].
+ */
+#define host_x86_optimize_conditional_branch INTERNAL(host_x86_optimize_conditional_branch)
+extern void host_x86_optimize_conditional_branch(HostX86Context *ctx,
+                                                 int insn_index);
+
+/**
+ * host_x86_optimize_conditional_move:  Attempt to optimize the given
+ * SELECT instruction by forwarding the comparison used to set its
+ * condition register.
+ *
+ * [Parameters]
+ *     ctx: Translation context.
+ *     insn_index: Instruction index in ctx->unit->insns[].
+ */
+#define host_x86_optimize_conditional_move INTERNAL(host_x86_optimize_conditional_move)
+extern void host_x86_optimize_conditional_move(HostX86Context *ctx,
+                                               int insn_index);
+
+/**
  * host_x86_optimize_immediate_store:  Attempt to optimize a store of a
  * constant value to an immediate store instruction.  If successful, the
  * LOAD_IMM instruction that set the constant will be killed and the
@@ -315,7 +368,7 @@ extern void host_x86_optimize_address(HostX86Context *ctx, int insn_index);
  *     insn_index: Instruction index in ctx->unit->insns[].
  */
 #define host_x86_optimize_immediate_store INTERNAL(host_x86_optimize_immediate_store)
-extern void host_x86_optimize_immediate_store(HostX86Context * const ctx,
+extern void host_x86_optimize_immediate_store(HostX86Context *ctx,
                                               int insn_index);
 
 /*************************************************************************/

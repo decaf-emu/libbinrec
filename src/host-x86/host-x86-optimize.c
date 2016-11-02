@@ -11,6 +11,7 @@
 #include "src/endian.h"
 #include "src/host-x86.h"
 #include "src/host-x86/host-x86-internal.h"
+#include "src/host-x86/host-x86-opcodes.h"
 #include "src/rtl-internal.h"
 
 /*************************************************************************/
@@ -102,11 +103,121 @@ static int maybe_eliminate_zcast(
     return reg_index;
 }
 
+/*-----------------------------------------------------------------------*/
+
+/**
+ * get_compare_condition:  Return the x86 condition code (the low 4 bits
+ * of a Jcc/SETcc/etc. instruction) corresponding to the given register's
+ * result data, or -1 if the register is not a comparison result or the
+ * comparison cannot be converted to a single x86 condition code.
+ *
+ * [Parameters]
+ *     reg: RTL register.
+ *     invert: True to invert the returned condition.
+ * [Return value]
+ *     x86 condition code (0-15), or -1 if none.
+ */
+static int get_compare_condition(const RTLRegister *reg, bool invert)
+{
+    if (reg->source != RTLREG_RESULT && reg->source != RTLREG_RESULT_NOFOLD) {
+        return -1;
+    }
+
+    switch (reg->result.opcode) {
+      case RTLOP_SEQ:
+      case RTLOP_SEQI:
+        return invert ? X86CC_NZ : X86CC_Z;
+      case RTLOP_SLTU:
+      case RTLOP_SLTUI:
+        return invert ? X86CC_AE : X86CC_B;
+      case RTLOP_SLTS:
+      case RTLOP_SLTSI:
+        return invert ? X86CC_GE : X86CC_L;
+      case RTLOP_SGTU:
+      case RTLOP_SGTUI:
+        return invert ? X86CC_BE : X86CC_A;
+      case RTLOP_SGTS:
+      case RTLOP_SGTSI:
+        return invert ? X86CC_LE : X86CC_G;
+      case RTLOP_FCMP:
+        invert ^= ((reg->result.fcmp & RTLFCMP_INVERT) != 0);
+        switch ((RTLFloatCompare)(reg->result.fcmp & 7)) {
+            case RTLFCMP_GT: return invert ? X86CC_BE : X86CC_A;
+            case RTLFCMP_GE: return invert ? X86CC_B : X86CC_AE;
+            default:         return -1;
+        }
+      default:
+        return -1;
+    }
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
+ * forward_condition:  Attempt to forward a comparison result to the given
+ * instruction.  On success, set the host_data_16 field of the instruction
+ * appropriately.  Helper function for host_x86_optimize_conditional_branch()
+ * and host_x86_optimize_conditional_move().
+ *
+ * [Parameters]
+ *     ctx: Translation context.
+ *     insn_index: Index of conditional branch or move instruction.
+ *     cond: Condition register.
+ * [Return value]
+ *     Condition code (X86CondCode) for the forwarded condition, or -1 if
+ *     no condition could be forwarded.
+ */
+static int forward_condition(HostX86Context *ctx, int insn_index, int cond)
+{
+    const RTLUnit * const unit = ctx->unit;
+    RTLInsn * const insn = &unit->insns[insn_index];
+    const RTLRegister * const cond_reg = &unit->regs[cond];
+
+    /* There's no benefit to forwarding the condition if we can't kill the
+     * register containing the compare result. */
+    if (!is_reg_killable(unit, cond, insn_index)) {
+        return -1;
+    }
+
+    const bool invert = (insn->opcode == RTLOP_GOTO_IF_Z);
+    const int jump_condition = get_compare_condition(cond_reg, invert);
+    if (jump_condition < 0) {
+        return -1;
+    }
+
+    const int cmp1 = cond_reg->result.src1;
+    if (unit->regs[cmp1].death < insn_index) {
+#ifdef RTL_DEBUG_OPTIMIZE
+        log_info(unit->handle, "Extending r%d live range to %d",
+                 cmp1, insn_index);
+#endif
+        unit->regs[cmp1].death = insn_index;
+    }
+    if (!cond_reg->result.is_imm) {
+        const int cmp2 = cond_reg->result.src2;
+        if (unit->regs[cmp2].death < insn_index) {
+#ifdef RTL_DEBUG_OPTIMIZE
+            log_info(unit->handle, "Extending r%d live range to %d",
+                     cmp2, insn_index);
+#endif
+            unit->regs[cmp2].death = insn_index;
+        }
+    }
+
+    kill_reg(ctx, cond, false);
+
+    insn->host_data_16 = 0x8000
+                       | (cond_reg->result.fcmp & RTLFCMP_ORDERED ? 0x20 : 0)
+                       | (cond_reg->result.is_imm ? 0x10 : 0)
+                       | jump_condition;
+    return jump_condition;
+}
+
 /*************************************************************************/
 /********************** Internal interface routines **********************/
 /*************************************************************************/
 
-void host_x86_optimize_address(HostX86Context * const ctx, int insn_index)
+void host_x86_optimize_address(HostX86Context *ctx, int insn_index)
 {
     ASSERT(ctx);
     ASSERT(ctx->handle);
@@ -212,8 +323,66 @@ void host_x86_optimize_address(HostX86Context * const ctx, int insn_index)
 
 /*-----------------------------------------------------------------------*/
 
-void host_x86_optimize_immediate_store(HostX86Context * const ctx,
-                                       int insn_index)
+void host_x86_optimize_conditional_branch(HostX86Context *ctx, int insn_index)
+{
+    ASSERT(ctx);
+    ASSERT(ctx->handle);
+    ASSERT(ctx->unit);
+    ASSERT(insn_index >= 0);
+    ASSERT((uint32_t)insn_index < ctx->unit->num_insns);
+    ASSERT(ctx->unit->insns[insn_index].opcode == RTLOP_GOTO_IF_Z
+        || ctx->unit->insns[insn_index].opcode == RTLOP_GOTO_IF_NZ);
+
+    const RTLUnit * const unit = ctx->unit;
+    RTLInsn * const insn = &unit->insns[insn_index];
+    const int cond = insn->src1;
+    const RTLRegister * const cond_reg = &unit->regs[cond];
+
+    const int jump_condition = forward_condition(ctx, insn_index, cond);
+    if (jump_condition < 0) {
+        return;
+    }
+
+    insn->src1 = cond_reg->result.src1;
+    if (cond_reg->result.is_imm) {
+        insn->host_data_32 = cond_reg->result.src_imm;
+    } else {
+        insn->src2 = cond_reg->result.src2;
+    }
+}
+
+/*-----------------------------------------------------------------------*/
+
+void host_x86_optimize_conditional_move(HostX86Context *ctx, int insn_index)
+{
+    ASSERT(ctx);
+    ASSERT(ctx->handle);
+    ASSERT(ctx->unit);
+    ASSERT(insn_index >= 0);
+    ASSERT((uint32_t)insn_index < ctx->unit->num_insns);
+    ASSERT(ctx->unit->insns[insn_index].opcode == RTLOP_SELECT);
+
+    const RTLUnit * const unit = ctx->unit;
+    RTLInsn * const insn = &unit->insns[insn_index];
+    const int cond = insn->src3;
+    const RTLRegister * const cond_reg = &unit->regs[cond];
+
+    const int jump_condition = forward_condition(ctx, insn_index, cond);
+    if (jump_condition < 0) {
+        return;
+    }
+
+    insn->src3 = cond_reg->result.src1;
+    if (cond_reg->result.is_imm) {
+        insn->host_data_32 = cond_reg->result.src_imm;
+    } else {
+        insn->host_data_32 = cond_reg->result.src2;
+    }
+}
+
+/*-----------------------------------------------------------------------*/
+
+void host_x86_optimize_immediate_store(HostX86Context *ctx, int insn_index)
 {
     ASSERT(ctx);
     ASSERT(ctx->handle);
@@ -226,7 +395,6 @@ void host_x86_optimize_immediate_store(HostX86Context * const ctx,
          && ctx->unit->insns[insn_index].opcode <= RTLOP_STORE_I16_BR));
     ASSERT(ctx->unit->regs[ctx->unit->insns[insn_index].src2].source
            == RTLREG_CONSTANT);
-
 
     RTLUnit * const unit = ctx->unit;
     RTLInsn * const insn = &unit->insns[insn_index];

@@ -176,6 +176,7 @@ typedef enum X86Opcode {
     X86OP_OUTSB         = 0x6E,
     X86OP_OUTSW         = 0x6F,  // Also OUTSD
 
+    X86OP_Jcc_Jb        = 0x70,
     X86OP_JO_Jb         = 0x70,
     X86OP_JNO_Jb        = 0x71,
     X86OP_JB_Jb         = 0x72,
@@ -409,6 +410,7 @@ typedef enum X86Opcode {
     X86OP_SYSEXIT       = 0x0F35,
     X86OP_GETSEC        = 0x0F37,
 
+    X86OP_CMOVcc        = 0x0F40,
     X86OP_CMOVO         = 0x0F40,
     X86OP_CMOVNO        = 0x0F41,
     X86OP_CMOVB         = 0x0F42,
@@ -538,6 +540,7 @@ typedef enum X86Opcode {
     X86OP_MOVDQA_W_V    = 0x660F7F,
     X86OP_MOVDQU_W_V    = 0xF30F7F,
 
+    X86OP_Jcc_Jz        = 0x0F80,
     X86OP_JO_Jz         = 0x0F80,
     X86OP_JNO_Jz        = 0x0F81,
     X86OP_JB_Jz         = 0x0F82,
@@ -557,7 +560,8 @@ typedef enum X86Opcode {
     X86OP_JLE_Jz        = 0x0F8E,
     X86OP_JG_Jz         = 0x0F8F,
 
-    X86OP_SETO          = 0x0F90,  // Set opcode field of R/M byte to 0.
+    X86OP_SETcc         = 0x0F90,  // Set opcode field of R/M byte to 0.
+    X86OP_SETO          = 0x0F90,
     X86OP_SETNO         = 0x0F91,
     X86OP_SETB          = 0x0F92,
     X86OP_SETC          = X86OP_SETB,
@@ -1099,6 +1103,33 @@ typedef enum X86BLSOpcode {
 /*************************************************************************/
 /******* Other constants and utility functions for code generation *******/
 /*************************************************************************/
+
+/**
+ * X86CondCode:  Constants for the low 4 bits of a conditional instruction
+ * (Jcc, SETcc, etc.).
+ */
+typedef enum X86CondCode {
+    X86CC_O  = 0x0,
+    X86CC_NO = 0x1,
+    X86CC_B  = 0x2,
+    X86CC_C  = X86CC_B,
+    X86CC_AE = 0x3,
+    X86CC_NC = X86CC_AE,
+    X86CC_E  = 0x4,
+    X86CC_Z  = X86CC_E,
+    X86CC_NE = 0x5,
+    X86CC_NZ = X86CC_NE,
+    X86CC_BE = 0x6,
+    X86CC_A  = 0x7,
+    X86CC_S  = 0x8,
+    X86CC_NS = 0x9,
+    X86CC_P  = 0xA,
+    X86CC_NP = 0xB,
+    X86CC_L  = 0xC,
+    X86CC_GE = 0xD,
+    X86CC_LE = 0xE,
+    X86CC_G  = 0xF,
+} X86CondCode;
 
 /**
  * X86Mod:  Constants for the "mod" field of a ModR/M byte.

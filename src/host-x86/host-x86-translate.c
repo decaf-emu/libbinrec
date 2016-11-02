@@ -701,6 +701,31 @@ static ALWAYS_INLINE void append_move_or_load_gpr(
 /*-----------------------------------------------------------------------*/
 
 /**
+ * append_compare_imm:  Append an instruction to compare the value of the
+ * given integer RTL register to an immediate value, using the shortest
+ * possible encoding for the immediate value.
+ */
+static ALWAYS_INLINE void append_compare_imm(
+    HostX86Context *ctx, const RTLUnit *unit, int insn_index,
+    CodeBuffer *code, int reg, uint32_t imm)
+{
+    ASSERT(rtl_register_is_int(&unit->regs[reg]));
+
+    const bool is64 = int_type_is_64(unit->regs[reg].type);
+    if (imm + 128 < 256) {
+        append_insn_ModRM_ctx(code, is64, X86OP_IMM_Ev_Ib, X86OP_IMM_CMP,
+                              ctx, insn_index, reg);
+        append_imm8(code, (uint8_t)imm);
+    } else {
+        append_insn_ModRM_ctx(code, is64, X86OP_IMM_Ev_Iz, X86OP_IMM_CMP,
+                              ctx, insn_index, reg);
+        append_imm32(code, imm);
+    }
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
  * append_test_reg:  Append an instruction to test the value of the given
  * integer RTL register for zeroness.  If the CONDITION_CODES optimization
  * is enabled, also update EFLAGS state fields appropriately.
@@ -740,6 +765,77 @@ static ALWAYS_INLINE void append_test_reg(
         if (ctx->handle->host_opt & BINREC_OPT_H_X86_CONDITION_CODES) {
             ctx->last_test_reg = reg;
             ctx->last_cmp_reg = 0;
+        }
+    }
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
+ * append_compare_or_test:  Append a compare or test instruction for the
+ * given parameters.  src2==0 implies a register-immediate compare.
+ * Helper function for handling forwarded conditions.
+ *
+ * [Parameters]
+ *     ctx: Translation context.
+ *     insn_index: Index of current instruction in ctx->unit->insns[].
+ *     code: Output code buffer.
+ *     src1: RTL register containing first comparand.
+ *     src2: RTL register containing second comparand, or 0 for a
+ *         register-immediate compare.
+ *     src_imm: Immediate comparand if src2 == 0.
+ *     src1_temp: Temporary host register for reloading src1.  Ignored if
+ *         src1 does not need to be reloaded.
+ *     fcmp_ordered: True if a floating-point comparison should use the
+ *         ordered comparison instruction (COMIS[SD]), false otherwise.
+ *         Ignored for integer compares.
+ */
+static ALWAYS_INLINE void append_compare_or_test(
+    HostX86Context *ctx, int insn_index, CodeBuffer *code, int src1,
+    int src2, int32_t src_imm, X86Register src1_temp, bool fcmp_ordered)
+{
+    const RTLUnit * const unit = ctx->unit;
+
+    if (src2) {
+        if (ctx->last_cmp_reg != src1
+         || ctx->last_cmp_target != src2) {
+            const RTLRegister * const src1_reg = &unit->regs[src1];
+            const HostX86RegInfo * const src1_info = &ctx->regs[src1];
+            X86Register host_src1 = src1_info->host_reg;
+            if (is_spilled(ctx, insn_index, src1)) {
+                host_src1 = src1_temp;
+                append_load(code, src1_reg->type, host_src1,
+                            X86_SP, -1, src1_info->spill_offset);
+            }
+            if (rtl_register_is_int(src1_reg)) {
+                const bool is64 = int_type_is_64(src1_reg->type);
+                append_insn_ModRM_ctx(code, is64, X86OP_CMP_Gv_Ev, host_src1,
+                                      ctx, insn_index, src2);
+            } else {
+                const bool is64 = (unit->regs[src1].type == RTLTYPE_FLOAT64);
+                const X86Opcode opcode = is64
+                    ? (fcmp_ordered ? X86OP_COMISD : X86OP_UCOMISD)
+                    : (fcmp_ordered ? X86OP_COMISS : X86OP_UCOMISS);
+                append_insn_ModRM_ctx(code, false, opcode, host_src1,
+                                      ctx, insn_index, src2);
+            }
+            ctx->last_test_reg = 0;
+            ctx->last_cmp_reg = src1;
+            ctx->last_cmp_target = src2;
+        }
+    } else if (src_imm) {
+        if (ctx->last_cmp_reg != src1
+         || ctx->last_cmp_target != 0
+         || ctx->last_cmp_imm != src_imm) {
+            append_compare_imm(ctx, unit, insn_index, code, src1, src_imm);
+            ctx->last_test_reg = 0;
+            ctx->last_cmp_reg = src1;
+            ctx->last_cmp_target = 0;
+            ctx->last_cmp_imm = src_imm;
+        }
+    } else {
+        if (ctx->last_test_reg != src1) {
+            append_test_reg(ctx, unit, insn_index, code, src1);
         }
     }
 }
@@ -2153,8 +2249,20 @@ static bool translate_block(HostX86Context *ctx, int block_index)
             const bool is64 = (int_type_is_64(unit->regs[src1].type));
 
             /* Set the x86 condition flags based on the condition register. */
-            if (ctx->last_test_reg != insn->src3) {
-                append_test_reg(ctx, unit, insn_index, &code, insn->src3);
+            X86CondCode condition;
+            if (insn->host_data_16) {
+                const int32_t cmp2 = insn->host_data_32;
+                const bool cmp2_is_imm = (insn->host_data_16 & 0x10) != 0;
+                append_compare_or_test(ctx, insn_index, &code, insn->src3,
+                                       cmp2_is_imm ? 0 : cmp2, cmp2,
+                                       (insn->host_data_16 >> 8) & 0x1F,
+                                       (insn->host_data_16 & 0x20) != 0);
+                condition = insn->host_data_16 & 0xF;
+            } else {
+                if (ctx->last_test_reg != insn->src3) {
+                    append_test_reg(ctx, unit, insn_index, &code, insn->src3);
+                }
+                condition = X86CC_NZ;
             }
 
             /* Put one of the source values in the destination register, if
@@ -2172,11 +2280,12 @@ static bool translate_block(HostX86Context *ctx, int block_index)
             }
 
             /* Conditionally move the other value into the register. */
+            const X86Opcode opcode = X86OP_CMOVcc | condition;
             if (dest_is_src1) {
-                append_insn_ModRM_ctx(&code, is64, X86OP_CMOVZ, host_dest,
+                append_insn_ModRM_ctx(&code, is64, opcode ^ 1, host_dest,
                                       ctx, insn_index, src2);
             } else {
-                append_insn_ModRM_ctx(&code, is64, X86OP_CMOVNZ, host_dest,
+                append_insn_ModRM_ctx(&code, is64, opcode, host_dest,
                                       ctx, insn_index, src1);
             }
             break;
@@ -3103,7 +3212,6 @@ static bool translate_block(HostX86Context *ctx, int block_index)
           case RTLOP_SGTSI: {
             const X86Register host_dest = ctx->regs[dest].host_reg;
             const uint32_t imm = (uint32_t)insn->src_imm;  // As for ADDI etc.
-            const bool is64 = (int_type_is_64(unit->regs[src1].type));
             const X86Opcode set_opcode = (
                 insn->opcode == RTLOP_SLTUI ? X86OP_SETB :
                 insn->opcode == RTLOP_SLTSI ? X86OP_SETL :
@@ -3135,17 +3243,8 @@ static bool translate_block(HostX86Context *ctx, int block_index)
                                               host_dest, host_dest);
                         cleared_dest = true;
                     }
-                    if (imm + 128 < 256) {
-                        append_insn_ModRM_ctx(
-                            &code, is64, X86OP_IMM_Ev_Ib, X86OP_IMM_CMP,
-                            ctx, insn_index, src1);
-                        append_imm8(&code, (uint8_t)imm);
-                    } else {
-                        append_insn_ModRM_ctx(
-                            &code, is64, X86OP_IMM_Ev_Iz, X86OP_IMM_CMP,
-                            ctx, insn_index, src1);
-                        append_imm32(&code, imm);
-                    }
+                    append_compare_imm(ctx, unit, insn_index, &code, src1,
+                                       imm);
                     if (handle->host_opt & BINREC_OPT_H_X86_CONDITION_CODES) {
                         ctx->last_test_reg = (imm == 0 ? src1 : 0);
                         ctx->last_cmp_reg = src1;
@@ -3356,34 +3455,24 @@ static bool translate_block(HostX86Context *ctx, int block_index)
 
           case RTLOP_FCMP: {
             const X86Register host_dest = ctx->regs[dest].host_reg;
-            /* For less-than comparisons, it's faster to swap the operands
-             * and the sense of the comparison so we don't need to check
-             * the parity flag. */
             RTLFloatCompare cmpsel = insn->fcmp & 7;
-            int cmp1, cmp2;
-            if (cmpsel == RTLFCMP_LT || cmpsel == RTLFCMP_LE) {
-                cmpsel += RTLFCMP_GT - RTLFCMP_LT;
-                cmp1 = src2;
-                cmp2 = src1;
-            } else {
-                cmp1 = src1;
-                cmp2 = src2;
-            }
+            /* LT/LE are converted to GT/GE during the first pass. */
+            ASSERT(cmpsel != RTLFCMP_LT && cmpsel != RTLFCMP_LE);
             const bool do_compare =
-                !(ctx->last_cmp_reg == cmp1 && ctx->last_cmp_target == cmp2);
+                !(ctx->last_cmp_reg == src1 && ctx->last_cmp_target == src2);
             const bool invert = (insn->fcmp & RTLFCMP_INVERT) != 0;
 
             /* Reload src1 (if necessary) before any XOR to increase code
              * parallelism. */
-            X86Register host_cmp1;
+            X86Register host_src1;
             if (do_compare) {
-                if (!is_spilled(ctx, insn_index, cmp1)) {
-                    host_cmp1 = ctx->regs[cmp1].host_reg;
+                if (!is_spilled(ctx, insn_index, src1)) {
+                    host_src1 = ctx->regs[src1].host_reg;
                 } else {
                     ASSERT(ctx->regs[dest].temp_allocated);
-                    host_cmp1 = ctx->regs[dest].host_temp;
-                    append_load(&code, unit->regs[cmp1].type, host_cmp1,
-                                X86_SP, -1, ctx->regs[cmp1].spill_offset);
+                    host_src1 = ctx->regs[dest].host_temp;
+                    append_load(&code, unit->regs[src1].type, host_src1,
+                                X86_SP, -1, ctx->regs[src1].spill_offset);
                 }
             }
 
@@ -3402,17 +3491,17 @@ static bool translate_block(HostX86Context *ctx, int block_index)
             }
 
             if (do_compare) {
-                const bool is64 = (unit->regs[cmp1].type == RTLTYPE_FLOAT64);
+                const bool is64 = (unit->regs[src1].type == RTLTYPE_FLOAT64);
                 const bool ordered = (insn->fcmp & RTLFCMP_ORDERED) != 0;
                 const X86Opcode cmp_opcode = is64
                     ? (ordered ? X86OP_COMISD : X86OP_UCOMISD)
                     : (ordered ? X86OP_COMISS : X86OP_UCOMISS);
-                append_insn_ModRM_ctx(&code, false, cmp_opcode, host_cmp1,
-                                      ctx, insn_index, cmp2);
+                append_insn_ModRM_ctx(&code, false, cmp_opcode, host_src1,
+                                      ctx, insn_index, src2);
                 if (handle->host_opt & BINREC_OPT_H_X86_CONDITION_CODES) {
                     ctx->last_test_reg = 0;
-                    ctx->last_cmp_reg = cmp1;
-                    ctx->last_cmp_target = cmp2;
+                    ctx->last_cmp_reg = src1;
+                    ctx->last_cmp_target = src2;
                 }
             }
 
@@ -4214,20 +4303,26 @@ static bool translate_block(HostX86Context *ctx, int block_index)
 
           case RTLOP_GOTO_IF_Z:
           case RTLOP_GOTO_IF_NZ: {
-            const X86Opcode short_opcode =
-                (insn->opcode == RTLOP_GOTO_IF_Z ? X86OP_JZ_Jb : X86OP_JNZ_Jb);
-            const X86Opcode long_opcode =
-                (insn->opcode == RTLOP_GOTO_IF_Z ? X86OP_JZ_Jz : X86OP_JNZ_Jz);
-
             ASSERT(insn->label > 0);
             ASSERT(insn->label < unit->next_label);
             ASSERT(block_info->unresolved_branch_offset < 0);
             const int target_block = unit->label_blockmap[insn->label];
             ASSERT(target_block >= 0);
 
-            if (ctx->last_test_reg != src1) {
-                append_test_reg(ctx, unit, insn_index, &code, src1);
+            append_compare_or_test(ctx, insn_index, &code, src1, src2,
+                                   insn->host_data_32,
+                                   (insn->host_data_16 >> 8) & 0x1F,
+                                   (insn->host_data_16 & 0x20) != 0);
+
+            uint8_t jump_condition;
+            if (insn->host_data_16) {
+                jump_condition = insn->host_data_16 & 0xF;
+            } else {
+                jump_condition = (insn->opcode == RTLOP_GOTO_IF_Z
+                                  ? X86OP_JZ_Jb : X86OP_JNZ_Jb) & 0xF;
             }
+            const X86Opcode short_opcode = X86OP_Jcc_Jb | jump_condition;
+            const X86Opcode long_opcode = X86OP_Jcc_Jz | jump_condition;
 
             /* If we have any aliases or spills to reload that would
              * conflict with live registers, we have to invert the sense of
@@ -4239,13 +4334,13 @@ static bool translate_block(HostX86Context *ctx, int block_index)
                                          .len = 0};
                 ASSERT(reload_regs_for_block(&reload_code, ctx, block_index,
                                              target_block));
-                /* Flipping the low bit of the opcode will invert the sense
-                 * of the branch. */
-                const long reload_jump = code.len;
                 /* Write this jump as though the next one (to the target
                  * label) will have a 32-bit displacement.  If it ends up
                  * having an 8-bit displacement, we'll fix up this
                  * instruction afterwards. */
+                const long reload_jump = code.len;
+                /* Flipping the low bit of the opcode will invert the sense
+                 * of the branch. */
                 append_jump_raw(&code, short_opcode ^ 1, long_opcode ^ 1,
                                 reload_code.len + 5);
                 const long reload_start = code.len;

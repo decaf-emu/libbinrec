@@ -749,12 +749,10 @@ typedef struct binrec_setup_t {
 
 /**
  * BINREC_OPT_H_X86_FORWARD_CONDITIONS:  When a register used as the
- * condition for a conditional branch or move is the boolean result of a
- * comparison, forward the comparison condition to the branch or move
- * instruction instead of storing the comparison result in a register and
- * testing the zeroness of that register.
- *
- * This optimization is not currently implemented.
+ * condition for a conditional branch or move is the result of a comparison
+ * instruction and that register is not used elsewhere, eliminate the
+ * register and forward the comparison condition to the branch or move
+ * instruction.
  */
 #define BINREC_OPT_H_X86_FORWARD_CONDITIONS  (1<<4)
 
