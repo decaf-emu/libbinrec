@@ -106,6 +106,7 @@ const char *rtl_type_name(RTLDataType type)
         [RTLTYPE_ADDRESS   ] = "address",
         [RTLTYPE_FLOAT32   ] = "float32",
         [RTLTYPE_FLOAT64   ] = "float64",
+        [RTLTYPE_V2_FLOAT32] = "float32[2]",
         [RTLTYPE_V2_FLOAT64] = "float64[2]",
         [RTLTYPE_FPSTATE   ] = "fpstate"
     };
@@ -124,6 +125,7 @@ const char *rtl_type_suffix(RTLDataType type)
         [RTLTYPE_ADDRESS   ] = "addr",
         [RTLTYPE_FLOAT32   ] = "f32",
         [RTLTYPE_FLOAT64   ] = "f64",
+        [RTLTYPE_V2_FLOAT32] = "f32x2",
         [RTLTYPE_V2_FLOAT64] = "f64x2",
         [RTLTYPE_FPSTATE   ] = "fpstate"
     };

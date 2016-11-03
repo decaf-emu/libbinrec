@@ -309,6 +309,7 @@ static void rtl_describe_register(const RTLRegister *reg,
             [RTLOP_FABS   ] = "abs",
             [RTLOP_FNABS  ] = "-abs",
             [RTLOP_FSQRT  ] = "sqrt",
+            [RTLOP_VFCAST ] = "vfcast",
         };
         static const bool is_signed[RTLOP__LAST + 1] = {
             [RTLOP_DIVS ] = true,
@@ -350,6 +351,7 @@ static void rtl_describe_register(const RTLRegister *reg,
           case RTLOP_FABS:
           case RTLOP_FNABS:
           case RTLOP_FSQRT:
+          case RTLOP_VFCAST:
             snprintf(buf, bufsize, "%s(r%d)",
                      operators[reg->result.opcode], reg->result.src1);
             break;
@@ -441,6 +443,21 @@ static void rtl_describe_register(const RTLRegister *reg,
           case RTLOP_FTESTEXC:
             snprintf(buf, bufsize, "ftestexc(r%d, %s)",
                      reg->result.src1, fexc_name(reg->result.src_imm));
+            break;
+          case RTLOP_VBUILD2:
+            snprintf(buf, bufsize, "{r%d, r%d}",
+                     reg->result.src1, reg->result.src2);
+            break;
+          case RTLOP_VBROADCAST:
+            snprintf(buf, bufsize, "vbroadcast(r%d)", reg->result.src1);
+            break;
+          case RTLOP_VEXTRACT:
+            snprintf(buf, bufsize, "r%d[%d]",
+                     reg->result.src1, reg->result.elem);
+            break;
+          case RTLOP_VINSERT:
+            snprintf(buf, bufsize, "vinsert(r%d, r%d, %d)",
+                     reg->result.src1, reg->result.src2, reg->result.elem);
             break;
           case RTLOP_ATOMIC_INC:
             snprintf(buf, bufsize, "atomic_inc((r%d).%s)",
@@ -563,6 +580,11 @@ static void rtl_decode_insn(const RTLUnit *unit, uint32_t index,
         [RTLOP_FTESTEXC  ] = "FTESTEXC",
         [RTLOP_FCLEAREXC ] = "FCLEAREXC",
         [RTLOP_FSETROUND ] = "FSETROUND",
+        [RTLOP_VBUILD2   ] = "VBUILD2",
+        [RTLOP_VBROADCAST] = "VBROADCAST",
+        [RTLOP_VEXTRACT  ] = "VEXTRACT",
+        [RTLOP_VINSERT   ] = "VINSERT",
+        [RTLOP_VFCAST    ] = "VFCAST",
         [RTLOP_LOAD_IMM  ] = "LOAD_IMM",
         [RTLOP_LOAD_ARG  ] = "LOAD_ARG",
         [RTLOP_LOAD      ] = "LOAD",
@@ -672,6 +694,8 @@ static void rtl_decode_insn(const RTLUnit *unit, uint32_t index,
       case RTLOP_FABS:
       case RTLOP_FNABS:
       case RTLOP_FSQRT:
+      case RTLOP_VBROADCAST:
+      case RTLOP_VFCAST:
         s += snprintf_assert(s, top - s, "%-10s r%d, r%d\n", name, dest, src1);
         APPEND_REG_DESC(src1);
         return;
@@ -714,6 +738,7 @@ static void rtl_decode_insn(const RTLUnit *unit, uint32_t index,
       case RTLOP_FSUB:
       case RTLOP_FMUL:
       case RTLOP_FDIV:
+      case RTLOP_VBUILD2:
         s += snprintf_assert(s, top - s, "%-10s r%d, r%d, r%d\n",
                              name, dest, src1, src2);
         APPEND_REG_DESC(src1);
@@ -777,6 +802,19 @@ static void rtl_decode_insn(const RTLUnit *unit, uint32_t index,
       case RTLOP_FSETROUND:
         s += snprintf_assert(s, top - s, "%-10s %s\n", name,
                              fround_name(insn->src_imm));
+        return;
+
+      case RTLOP_VEXTRACT:
+        s += snprintf_assert(s, top - s, "%-10s r%d, r%d, %d\n",
+                             name, dest, src1, insn->elem);
+        APPEND_REG_DESC(src1);
+        return;
+
+      case RTLOP_VINSERT:
+        s += snprintf_assert(s, top - s, "%-10s r%d, r%d, r%d, %d\n",
+                             name, dest, src1, src2, insn->elem);
+        APPEND_REG_DESC(src1);
+        APPEND_REG_DESC(src2);
         return;
 
       case RTLOP_LOAD_IMM:

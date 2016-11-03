@@ -127,6 +127,11 @@ extern "C" {
  *
  * Intel/AMD x86 64-bit architecture (BINREC_ARCH_X86_*)
  * -----------------------------------------------------
+ * Translated code assumes support for all instruction set extensions
+ * through SSE3.  Use of later extensions can be enabled by setting
+ * appropriate feature bits (BINREC_FEATURE_X86_*) in the host_features
+ * field of binrec_setup_t.
+ *
  * Translated code must be located at a 16-byte-aligned address for correct
  * behavior.  If the code is not correctly aligned, certain floating-point
  * operations may crash due to misaligned accesses.  libbinrec will always

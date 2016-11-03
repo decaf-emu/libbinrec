@@ -572,11 +572,12 @@ static ALWAYS_INLINE void append_load(
                               host_dest, host_base, host_index, offset);
         return;
       case RTLTYPE_FLOAT64:
+      case RTLTYPE_V2_FLOAT32:
         append_insn_ModRM_mem(code, false, X86OP_MOVSD_V_W,
                               host_dest, host_base, host_index, offset);
         return;
       default:
-        ASSERT(!rtl_type_is_scalar(type));
+        ASSERT(type == RTLTYPE_V2_FLOAT64);
         append_insn_ModRM_mem(code, false, X86OP_MOVAPS_V_W,
                               host_dest, host_base, host_index, offset);
         return;
@@ -635,11 +636,12 @@ static ALWAYS_INLINE void append_store(
                               host_base, host_index, offset);
         return;
       case RTLTYPE_FLOAT64:
+      case RTLTYPE_V2_FLOAT32:
         append_insn_ModRM_mem(code, false, X86OP_MOVSD_W_V, host_src,
                               host_base, host_index, offset);
         return;
       default:
-        ASSERT(!rtl_type_is_scalar(type));
+        ASSERT(type == RTLTYPE_V2_FLOAT64);
         append_insn_ModRM_mem(code, false, X86OP_MOVAPS_W_V, host_src,
                               host_base, host_index, offset);
         return;
@@ -3391,14 +3393,8 @@ static bool translate_block(HostX86Context *ctx, int block_index)
             const RTLDataType type_src1 = unit->regs[src1].type;
             const X86Register host_dest = ctx->regs[dest].host_reg;
             if (type_dest == type_src1) {
-                const X86Register host_src1 = ctx->regs[src1].host_reg;
-                if (is_spilled(ctx, insn_index, src1)) {
-                    append_load(&code, type_src1, host_dest,
-                                X86_SP, -1, ctx->regs[src1].spill_offset);
-                } else if (host_dest != host_src1) {
-                    append_insn_ModRM_reg(&code, false, X86OP_MOVAPS_V_W,
-                                          host_dest, host_src1);
-                }
+                append_move_or_load(&code, ctx, unit, insn_index,
+                                    host_dest, src1);
             } else if (type_dest == RTLTYPE_FLOAT64) {
                 ASSERT(type_src1 == RTLTYPE_FLOAT32);
                 append_insn_ModRM_ctx(&code, false, X86OP_CVTSS2SD, host_dest,
@@ -3717,6 +3713,170 @@ static bool translate_block(HostX86Context *ctx, int block_index)
                 &code, false, X86OP_MISC_0FAE, X86OP_MISC0FAE_LDMXCSR,
                 X86_SP, -1, ctx->stack_mxcsr);
             break;
+
+          case RTLOP_VBUILD2: {
+            const X86Register host_dest = ctx->regs[dest].host_reg;
+            append_move_or_load(&code, ctx, unit, insn_index, host_dest, src1);
+            if (unit->regs[dest].type == RTLTYPE_V2_FLOAT32) {
+                X86Register host_src2;
+                if (is_spilled(ctx, insn_index, src2)) {
+                    ASSERT(ctx->regs[dest].temp_allocated);
+                    host_src2 = ctx->regs[dest].host_temp;
+                    append_load(&code, RTLTYPE_FLOAT32, host_src2,
+                                X86_SP, -1, ctx->regs[src2].spill_offset);
+                } else {
+                    host_src2 = ctx->regs[src2].host_reg;
+                }
+                append_insn_ModRM_reg(&code, false, X86OP_UNPCKLPS,
+                                      host_dest, host_src2);
+                /* Ensure that the high half of the register is clear,
+                 * so that later floating-point operations don't raise
+                 * unnecessary exceptions. */
+                append_insn_ModRM_reg(&code, false, X86OP_MOVQ_V_W,
+                                      host_dest, host_dest);
+            } else {
+                ASSERT(unit->regs[dest].type == RTLTYPE_V2_FLOAT64);
+                append_insn_ModRM_ctx(&code, false, X86OP_MOVHPS_V_M,
+                                      host_dest, ctx, insn_index, src2);
+            }
+            break;
+          }  // case RTLOP_VBUILD2
+
+          case RTLOP_VBROADCAST: {
+            const X86Register host_dest = ctx->regs[dest].host_reg;
+            if (unit->regs[dest].type == RTLTYPE_V2_FLOAT32) {
+                append_move_or_load(&code, ctx, unit, insn_index,
+                                    host_dest, src1);
+                append_insn_ModRM_reg(&code, false, X86OP_UNPCKLPS,
+                                      host_dest, host_dest);
+                /* If we loaded src1 from memory, the rest of the register
+                 * will have been cleared, so we don't need to manually
+                 * clear the high half here. */
+                if (!is_spilled(ctx, insn_index, src1)) {
+                    append_insn_ModRM_reg(&code, false, X86OP_MOVQ_V_W,
+                                          host_dest, host_dest);
+                }
+            } else {
+                ASSERT(unit->regs[dest].type == RTLTYPE_V2_FLOAT64);
+                append_insn_ModRM_ctx(&code, false, X86OP_MOVDDUP,
+                                      host_dest, ctx, insn_index, src1);
+            }
+            break;
+          }  // case RTLOP_VBROADCAST
+
+          case RTLOP_VEXTRACT: {
+            const X86Register host_dest = ctx->regs[dest].host_reg;
+            if (insn->elem == 0) {
+                /* Can't use append_move_or_load() since we change the type. */
+                const RTLDataType element_type =
+                    rtl_vector_element_type(unit->regs[src1].type);
+                if (is_spilled(ctx, insn_index, src1)) {
+                    append_load(&code, element_type, host_dest,
+                                X86_SP, -1, ctx->regs[src1].spill_offset);
+                } else if (ctx->regs[src1].host_reg != host_dest) {
+                    append_move(&code, element_type, host_dest,
+                                ctx->regs[src1].host_reg);
+                }
+            } else if (unit->regs[src1].type == RTLTYPE_V2_FLOAT32) {
+                if (is_spilled(ctx, insn_index, src1)) {
+                    append_load(&code, RTLTYPE_FLOAT32, host_dest,
+                                X86_SP, -1, ctx->regs[src1].spill_offset + 4);
+                } else {
+                    if (ctx->regs[src1].host_reg != host_dest) {
+                        append_move(&code, RTLTYPE_V2_FLOAT32, host_dest,
+                                    ctx->regs[src1].host_reg);
+                    }
+                    append_insn_ModRM_reg(&code, false, X86OP_PSHIFTQ_U_I,
+                                          X86OP_PSHIFT_SRLDQ, host_dest);
+                    append_imm8(&code, 4);
+                }
+            } else {
+                ASSERT(unit->regs[src1].type == RTLTYPE_V2_FLOAT64);
+                /* We can't just call append_insn_ModRM_ctx() unconditionally
+                 * with MOVLPS (a.k.a. MOVHLPS) because that reads from the
+                 * second doubleword of an XMM register but the _first_
+                 * doubleword at a memory address. */
+                if (is_spilled(ctx, insn_index, src1)) {
+                    append_load(&code, RTLTYPE_FLOAT64, host_dest,
+                                X86_SP, -1, ctx->regs[src1].spill_offset + 8);
+                } else {
+                    append_insn_ModRM_reg(&code, false, X86OP_MOVHLPS,
+                                          host_dest, ctx->regs[src1].host_reg);
+                }
+            }
+            break;
+          }  // case RTLOP_VEXTRACT
+
+          case RTLOP_VINSERT: {
+            const X86Register host_dest = ctx->regs[dest].host_reg;
+            append_move_or_load(&code, ctx, unit, insn_index, host_dest, src1);
+            if (unit->regs[dest].type == RTLTYPE_V2_FLOAT32) {
+                X86Register host_src2;
+                if (is_spilled(ctx, insn_index, src2)) {
+                    ASSERT(ctx->regs[dest].temp_allocated);
+                    host_src2 = ctx->regs[dest].host_temp;
+                    append_load(&code, RTLTYPE_FLOAT32, host_src2,
+                                X86_SP, -1, ctx->regs[src2].spill_offset);
+                } else {
+                    host_src2 = ctx->regs[src2].host_reg;
+                }
+                if (insn->elem == 0) {
+                    /* PSLLQ instead of PSLLDQ to keep the high half of the
+                     * register clear. */
+                    append_insn_ModRM_reg(&code, false, X86OP_PSHIFTQ_U_I,
+                                          X86OP_PSHIFT_SLL, host_dest);
+                    append_imm8(&code, 32);
+                    append_insn_ModRM_reg(
+                        &code, false, X86OP_MOVSS_V_W, host_dest, host_src2);
+                } else {
+                    /* UNPCKLPS pushes the second element of the old vector
+                     * into the high half of the register, so we need an
+                     * extra MOVQ to clear it even if src2 was reloaded
+                     * (and therefore has a zero second word). */
+                    append_insn_ModRM_reg(&code, false, X86OP_UNPCKLPS,
+                                          host_dest, host_src2);
+                    append_insn_ModRM_reg(&code, false, X86OP_MOVQ_V_W,
+                                          host_dest, host_dest);
+                }
+            } else {
+                ASSERT(unit->regs[dest].type == RTLTYPE_V2_FLOAT64);
+                if (insn->elem == 0) {
+                    if (is_spilled(ctx, insn_index, src2)) {
+                        append_insn_ModRM_mem(
+                            &code, false, X86OP_MOVLPS_V_M, host_dest,
+                            X86_SP, -1, ctx->regs[src2].spill_offset);
+                    } else {
+                        append_insn_ModRM_reg(
+                            &code, false, X86OP_MOVSD_V_W, host_dest,
+                            ctx->regs[src2].host_reg);
+                    }
+                } else {
+                    append_insn_ModRM_ctx(&code, false, X86OP_MOVHPS_V_M,
+                                          host_dest, ctx, insn_index, src2);
+                }
+            }
+            break;
+          }  // case RTLOP_VINSERT
+
+          case RTLOP_VFCAST: {
+            const RTLDataType type_dest = unit->regs[dest].type;
+            const RTLDataType type_src1 = unit->regs[src1].type;
+            const X86Register host_dest = ctx->regs[dest].host_reg;
+            if (type_dest == type_src1) {
+                append_move_or_load(&code, ctx, unit, insn_index,
+                                    host_dest, src1);
+            } else if (type_dest == RTLTYPE_V2_FLOAT64) {
+                ASSERT(type_src1 == RTLTYPE_V2_FLOAT32);
+                append_insn_ModRM_ctx(&code, false, X86OP_CVTPS2PD, host_dest,
+                                      ctx, insn_index, src1);
+            } else {
+                ASSERT(type_dest == RTLTYPE_V2_FLOAT32);
+                ASSERT(type_src1 == RTLTYPE_V2_FLOAT64);
+                append_insn_ModRM_ctx(&code, false, X86OP_CVTPD2PS, host_dest,
+                                      ctx, insn_index, src1);
+            }
+            break;
+          }  // case RTLOP_VFCAST
 
           case RTLOP_LOAD_IMM: {
             const uint64_t imm = insn->src_imm;

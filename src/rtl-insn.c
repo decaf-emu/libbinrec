@@ -1148,6 +1148,228 @@ static bool make_fsetround(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
 /*-----------------------------------------------------------------------*/
 
 /**
+ * make_vbuild2:  Encode a VBUILD2 instruction.
+ */
+static bool make_vbuild2(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
+                         int src2, uint64_t other)
+{
+    ASSERT(unit != NULL);
+    ASSERT(unit->regs != NULL);
+    ASSERT(insn != NULL);
+
+#ifdef ENABLE_OPERAND_SANITY_CHECKS
+    OPERAND_ASSERT(dest != 0);
+    OPERAND_ASSERT(src1 != 0);
+    OPERAND_ASSERT(src2 != 0);
+    OPERAND_ASSERT(unit->regs[dest].source == RTLREG_UNDEFINED);
+    OPERAND_ASSERT(unit->regs[src1].source != RTLREG_UNDEFINED);
+    OPERAND_ASSERT(unit->regs[src2].source != RTLREG_UNDEFINED);
+    OPERAND_ASSERT(rtl_register_is_vector(&unit->regs[dest]));
+    /* Currently we only have 2-element vector types, so this test will
+     * always be true. */
+    ASSERT(rtl_vector_length(unit->regs[dest].type) == 2);
+    OPERAND_ASSERT(unit->regs[src1].type
+                   == rtl_vector_element_type(unit->regs[dest].type));
+    OPERAND_ASSERT(unit->regs[src2].type == unit->regs[src1].type);
+#endif
+
+    insn->dest = dest;
+    insn->src1 = src1;
+    insn->src2 = src2;
+
+    RTLRegister * const destreg = &unit->regs[dest];
+    RTLRegister * const src1reg = &unit->regs[src1];
+    RTLRegister * const src2reg = &unit->regs[src2];
+    const int insn_index = unit->num_insns;
+    /* We have no way to represent vector constants, so all vector
+     * operations are non-foldable. */
+    destreg->source = RTLREG_RESULT_NOFOLD;
+    destreg->result.opcode = insn->opcode;
+    destreg->result.is_imm = 0;
+    destreg->result.src1 = src1;
+    destreg->result.src2 = src2;
+    rtl_mark_live(unit, insn_index, destreg, dest);
+    rtl_mark_live(unit, insn_index, src1reg, src1);
+    rtl_mark_live(unit, insn_index, src2reg, src2);
+
+    return true;
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
+ * make_vbroadcast:  Encode a VBROADCAST instruction.
+ */
+static bool make_vbroadcast(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
+                            int src2, uint64_t other)
+{
+    ASSERT(unit != NULL);
+    ASSERT(unit->regs != NULL);
+    ASSERT(insn != NULL);
+
+#ifdef ENABLE_OPERAND_SANITY_CHECKS
+    OPERAND_ASSERT(dest != 0);
+    OPERAND_ASSERT(src1 != 0);
+    OPERAND_ASSERT(unit->regs[dest].source == RTLREG_UNDEFINED);
+    OPERAND_ASSERT(unit->regs[src1].source != RTLREG_UNDEFINED);
+    OPERAND_ASSERT(rtl_register_is_vector(&unit->regs[dest]));
+    OPERAND_ASSERT(unit->regs[src1].type
+                   == rtl_vector_element_type(unit->regs[dest].type));
+#endif
+
+    insn->dest = dest;
+    insn->src1 = src1;
+
+    RTLRegister * const destreg = &unit->regs[dest];
+    RTLRegister * const src1reg = &unit->regs[src1];
+    const int insn_index = unit->num_insns;
+    destreg->source = RTLREG_RESULT_NOFOLD;
+    destreg->result.opcode = insn->opcode;
+    destreg->result.is_imm = 0;
+    destreg->result.src1 = src1;
+    rtl_mark_live(unit, insn_index, destreg, dest);
+    rtl_mark_live(unit, insn_index, src1reg, src1);
+
+    return true;
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
+ * make_vextract:  Encode a VEXTRACT instruction.
+ */
+static bool make_vextract(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
+                          int src2, uint64_t other)
+{
+    ASSERT(unit != NULL);
+    ASSERT(unit->regs != NULL);
+    ASSERT(insn != NULL);
+
+#ifdef ENABLE_OPERAND_SANITY_CHECKS
+    OPERAND_ASSERT(dest != 0);
+    OPERAND_ASSERT(src1 != 0);
+    OPERAND_ASSERT(unit->regs[dest].source == RTLREG_UNDEFINED);
+    OPERAND_ASSERT(unit->regs[src1].source != RTLREG_UNDEFINED);
+    OPERAND_ASSERT(rtl_register_is_vector(&unit->regs[src1]));
+    OPERAND_ASSERT(unit->regs[dest].type
+                   == rtl_vector_element_type(unit->regs[src1].type));
+    OPERAND_ASSERT(other <
+                   (unsigned int)rtl_vector_length(unit->regs[src1].type));
+#endif
+
+    insn->dest = dest;
+    insn->src1 = src1;
+    insn->elem = other;
+
+    RTLRegister * const destreg = &unit->regs[dest];
+    RTLRegister * const src1reg = &unit->regs[src1];
+    const int insn_index = unit->num_insns;
+    destreg->source = RTLREG_RESULT_NOFOLD;
+    destreg->result.opcode = insn->opcode;
+    destreg->result.is_imm = 0;
+    destreg->result.src1 = src1;
+    destreg->result.elem = other;
+    rtl_mark_live(unit, insn_index, destreg, dest);
+    rtl_mark_live(unit, insn_index, src1reg, src1);
+
+    return true;
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
+ * make_vinsert:  Encode a VINSERT instruction.
+ */
+static bool make_vinsert(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
+                         int src2, uint64_t other)
+{
+    ASSERT(unit != NULL);
+    ASSERT(unit->regs != NULL);
+    ASSERT(insn != NULL);
+
+#ifdef ENABLE_OPERAND_SANITY_CHECKS
+    OPERAND_ASSERT(dest != 0);
+    OPERAND_ASSERT(src1 != 0);
+    OPERAND_ASSERT(src2 != 0);
+    OPERAND_ASSERT(unit->regs[dest].source == RTLREG_UNDEFINED);
+    OPERAND_ASSERT(unit->regs[src1].source != RTLREG_UNDEFINED);
+    OPERAND_ASSERT(unit->regs[src2].source != RTLREG_UNDEFINED);
+    OPERAND_ASSERT(rtl_register_is_vector(&unit->regs[dest]));
+    OPERAND_ASSERT(unit->regs[src1].type == unit->regs[dest].type);
+    OPERAND_ASSERT(unit->regs[src2].type
+                   == rtl_vector_element_type(unit->regs[dest].type));
+    OPERAND_ASSERT(other <
+                   (unsigned int)rtl_vector_length(unit->regs[dest].type));
+#endif
+
+    insn->dest = dest;
+    insn->src1 = src1;
+    insn->src2 = src2;
+    insn->elem = other;
+
+    RTLRegister * const destreg = &unit->regs[dest];
+    RTLRegister * const src1reg = &unit->regs[src1];
+    RTLRegister * const src2reg = &unit->regs[src2];
+    const int insn_index = unit->num_insns;
+    destreg->source = RTLREG_RESULT_NOFOLD;
+    destreg->result.opcode = insn->opcode;
+    destreg->result.is_imm = 0;
+    destreg->result.src1 = src1;
+    destreg->result.src2 = src2;
+    destreg->result.elem = other;
+    rtl_mark_live(unit, insn_index, destreg, dest);
+    rtl_mark_live(unit, insn_index, src1reg, src1);
+    rtl_mark_live(unit, insn_index, src2reg, src2);
+
+    return true;
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
+ * make_vfcast:  Encode a VFCAST instruction.
+ */
+static bool make_vfcast(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
+                        int src2, uint64_t other)
+{
+    ASSERT(unit != NULL);
+    ASSERT(unit->regs != NULL);
+    ASSERT(insn != NULL);
+    ASSERT(dest >= 0 && dest < unit->next_reg);
+    ASSERT(src1 >= 0 && src1 < unit->next_reg);
+
+#ifdef ENABLE_OPERAND_SANITY_CHECKS
+    OPERAND_ASSERT(dest != 0);
+    OPERAND_ASSERT(src1 != 0);
+    OPERAND_ASSERT(unit->regs[dest].source == RTLREG_UNDEFINED);
+    OPERAND_ASSERT(unit->regs[src1].source != RTLREG_UNDEFINED);
+    OPERAND_ASSERT(rtl_register_is_vector(&unit->regs[dest]));
+    /* Currently we don't have any integer vector types, so this test will
+     * always be true. */
+    ASSERT(rtl_type_is_float(rtl_vector_element_type(unit->regs[dest].type)));
+    OPERAND_ASSERT(rtl_register_is_vector(&unit->regs[src1]));
+    ASSERT(rtl_type_is_float(rtl_vector_element_type(unit->regs[src1].type)));
+#endif
+
+    insn->dest = dest;
+    insn->src1 = src1;
+
+    RTLRegister * const destreg = &unit->regs[dest];
+    RTLRegister * const src1reg = &unit->regs[src1];
+    const int insn_index = unit->num_insns;
+    destreg->source = RTLREG_RESULT;
+    destreg->result.opcode = insn->opcode;
+    destreg->result.is_imm = 0;
+    destreg->result.src1 = src1;
+    rtl_mark_live(unit, insn_index, destreg, dest);
+    rtl_mark_live(unit, insn_index, src1reg, src1);
+
+    return true;
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
  * make_load_imm:  Encode a LOAD_IMM instruction.
  */
 static bool make_load_imm(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
@@ -1781,6 +2003,11 @@ bool (* const makefunc_table[])(RTLUnit *, RTLInsn *, int, int, int,
     [RTLOP_FTESTEXC  ] = make_ftestexc,
     [RTLOP_FCLEAREXC ] = make_0op,
     [RTLOP_FSETROUND ] = make_fsetround,
+    [RTLOP_VBUILD2   ] = make_vbuild2,
+    [RTLOP_VBROADCAST] = make_vbroadcast,
+    [RTLOP_VEXTRACT  ] = make_vextract,
+    [RTLOP_VINSERT   ] = make_vinsert,
+    [RTLOP_VFCAST    ] = make_vfcast,
     [RTLOP_LOAD_IMM  ] = make_load_imm,
     [RTLOP_LOAD_ARG  ] = make_load_arg,
     [RTLOP_LOAD      ] = make_load,

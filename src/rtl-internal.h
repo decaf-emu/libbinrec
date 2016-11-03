@@ -114,6 +114,7 @@ typedef struct RTLInsn {
                 int16_t offset;     // Byte offset for load/store instructions
                 uint16_t alias;     // Alias index for SET/GET_ALIAS
                 uint8_t arg_index;  // Argument index for LOAD_ARG
+                uint8_t elem;       // Vector element
                 uint16_t label;     // GOTO target label
             };
             uint16_t host_data_16;  // For use by host translators
@@ -205,6 +206,7 @@ struct RTLRegister {
                             uint8_t start;  // Start bit for bitfields
                             uint8_t count;  // Bit count for bitfields
                         };
+                        uint8_t elem;  // Vector element
                         uint8_t fcmp;  // Floating-point comparison type
                     };
                 };
@@ -616,7 +618,8 @@ extern void rtl_opt_thread_branches(RTLUnit *unit);
 /*------------------------- Register management -------------------------*/
 
 /**
- * rtl_type_is_int:  Return whether the given data type is an integral type.
+ * rtl_type_is_int:  Return whether the given data type is a scalar
+ * integral type.
  */
 static inline CONST_FUNCTION bool rtl_type_is_int(RTLDataType type)
 {
@@ -624,12 +627,12 @@ static inline CONST_FUNCTION bool rtl_type_is_int(RTLDataType type)
 }
 
 /**
- * rtl_type_is_float:  Return whether the given data type is a
+ * rtl_type_is_float:  Return whether the given data type is a scalar
  * floating-point type.
  */
 static inline CONST_FUNCTION bool rtl_type_is_float(RTLDataType type)
 {
-    return type >= RTLTYPE_FLOAT32 && type < RTLTYPE_FPSTATE;
+    return type >= RTLTYPE_FLOAT32 && type <= RTLTYPE_FLOAT64;
 }
 
 /**
@@ -638,6 +641,33 @@ static inline CONST_FUNCTION bool rtl_type_is_float(RTLDataType type)
 static inline CONST_FUNCTION bool rtl_type_is_scalar(RTLDataType type)
 {
     return type <= RTLTYPE_FLOAT64;
+}
+
+/**
+ * rtl_type_is_vector:  Return whether the given data type is a vector type.
+ */
+static inline CONST_FUNCTION bool rtl_type_is_vector(RTLDataType type)
+{
+    return type >= RTLTYPE_V2_FLOAT32 && type <= RTLTYPE_V2_FLOAT64;
+}
+
+/**
+ * rtl_vector_length:  Return the number of elements in the given vector type.
+ */
+static inline CONST_FUNCTION int rtl_vector_length(RTLDataType type)
+{
+    return rtl_type_is_vector(type) ? 2 : 1;
+}
+
+/**
+ * rtl_vector_element_type:  Return the scalar element type for the given
+ * vector type.
+ */
+static inline CONST_FUNCTION RTLDataType rtl_vector_element_type(RTLDataType type)
+{
+    return (type == RTLTYPE_V2_FLOAT32 ? RTLTYPE_FLOAT32 :
+            type == RTLTYPE_V2_FLOAT64 ? RTLTYPE_FLOAT64 :
+            type);
 }
 
 /**
@@ -665,6 +695,15 @@ static inline PURE_FUNCTION bool rtl_register_is_float(const RTLRegister *reg)
 static inline PURE_FUNCTION bool rtl_register_is_scalar(const RTLRegister *reg)
 {
     return rtl_type_is_scalar(reg->type);
+}
+
+/**
+ * rtl_register_is_vector:  Return whether the given register has a vector
+ * type.
+ */
+static inline PURE_FUNCTION bool rtl_register_is_vector(const RTLRegister *reg)
+{
+    return rtl_type_is_vector(reg->type);
 }
 
 /*------------------- Miscellaneous utility functions -------------------*/

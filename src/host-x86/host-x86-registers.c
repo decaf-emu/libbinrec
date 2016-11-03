@@ -223,6 +223,7 @@ static int allocate_frame_slot(HostX86Context *ctx, RTLDataType type)
         [RTLTYPE_ADDRESS   ] = 8,
         [RTLTYPE_FLOAT32   ] = 4,
         [RTLTYPE_FLOAT64   ] = 8,
+        [RTLTYPE_V2_FLOAT32] = 8,
         [RTLTYPE_V2_FLOAT64] = 16,
         [RTLTYPE_FPSTATE   ] = 4,
     };
@@ -1009,6 +1010,7 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
                         0,
                         1<<(RTLOP_FSUB-56),
                         1<<(RTLOP_FDIV-64),
+                        1<<(RTLOP_VBUILD2-72) | 1<<(RTLOP_VINSERT-72),
                     };
                     ASSERT(insn->opcode >= RTLOP__FIRST
                            && insn->opcode <= RTLOP__LAST);
@@ -1142,6 +1144,17 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
             /* Temporary needed if the first operand is spilled. */
             need_temp = src1_info->spilled;
             temp_is_fpr = true;
+            break;
+
+          case RTLOP_VBUILD2:
+          case RTLOP_VINSERT:
+            /* Temporary needed for inserting a spilled 32-bit float. */
+            if (unit->regs[dest].type == RTLTYPE_V2_FLOAT32) {
+                need_temp = src2_info->spilled;
+                temp_is_fpr = true;
+            } else {
+                need_temp = false;
+            }
             break;
 
           case RTLOP_LOAD_IMM:

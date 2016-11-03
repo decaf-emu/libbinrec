@@ -123,6 +123,7 @@ typedef enum RTLDataType {
     RTLTYPE_ADDRESS,    // Host-pointer-sized integer
     RTLTYPE_FLOAT32,    // 32-bit floating point
     RTLTYPE_FLOAT64,    // 64-bit floating point
+    RTLTYPE_V2_FLOAT32, // Vector of 2 x RTLTYPE_FLOAT32
     RTLTYPE_V2_FLOAT64, // Vector of 2 x RTLTYPE_FLOAT64
     RTLTYPE_FPSTATE,    // Floating point state word
 } RTLDataType;
@@ -298,6 +299,14 @@ typedef enum RTLOpcode {
                         //    [no operands; clears all pending exceptions]
     RTLOP_FSETROUND,    // set_rounding_mode(IMMEDIATE(other))
                         //    [other is one of RTLFROUND_*]
+
+    /* Vector manipulation */
+    RTLOP_VBUILD2,      // dest = {src1, src2}
+                        //    [dest must be a 2-element vector of typeof(src1)]
+    RTLOP_VBROADCAST,   // dest[*] = src1
+    RTLOP_VEXTRACT,     // dest = src1[other]
+    RTLOP_VINSERT,      // dest = src1; dest[other] = src2
+    RTLOP_VFCAST,       // dest[*] = (typeof(dest[*]))src1[*]
 
     /* Non-memory load operations.  If LOAD_ARG instructions are used,
      * they must be the first instructions in the unit, or the argument

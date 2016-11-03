@@ -794,6 +794,11 @@ static inline uint64_t fold_constant(RTLUnit * const unit,
       case RTLOP_FTESTEXC:
       case RTLOP_FCLEAREXC:
       case RTLOP_FSETROUND:
+      case RTLOP_VBUILD2:
+      case RTLOP_VBROADCAST:
+      case RTLOP_VEXTRACT:
+      case RTLOP_VINSERT:
+      case RTLOP_VFCAST:
       case RTLOP_LOAD_IMM:
       case RTLOP_LOAD_ARG:
       case RTLOP_LOAD:
@@ -1037,6 +1042,11 @@ static inline bool convert_to_regimm(RTLUnit * const unit,
       case RTLOP_FTESTEXC:
       case RTLOP_FCLEAREXC:
       case RTLOP_FSETROUND:
+      case RTLOP_VBUILD2:
+      case RTLOP_VBROADCAST:
+      case RTLOP_VEXTRACT:
+      case RTLOP_VINSERT:
+      case RTLOP_VFCAST:
       case RTLOP_LOAD_IMM:
       case RTLOP_LOAD_ARG:
       case RTLOP_LOAD:
