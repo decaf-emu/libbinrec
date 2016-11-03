@@ -506,8 +506,6 @@ static inline bool is_valid_insn(uint32_t insn)
             case 0x0C: // fall through
             case 0x0E: // fall through
             case 0x0F: return (insn_XO_10(insn) & 0x3E0) == 0;
-            case 0x10: return TEST_BIT(0x000F0000, insn_XO_10(insn) >> 5);
-            case 0x16: return insn_XO_10(insn) == XO_DCBZ_L;
             default:   return TEST_BIT(0xF6B40000, insn_XO_5(insn));
         }
         break;
