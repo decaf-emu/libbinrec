@@ -2595,11 +2595,12 @@ static inline void translate_x1F(
         const int host_address = rtl_alloc_register(unit, RTLTYPE_ADDRESS);
         rtl_add_insn(unit, RTLOP_ADD,
                      host_address, ctx->membase_reg, addr_aligned, 0);
-        // FIXME: use V2_FLOAT64 when we have a way to create one
-        const int zero = rtl_imm64(unit, 0);
-        for (int i = 0; i < 32; i += 8) {
-            rtl_add_insn(unit, RTLOP_STORE, 0, host_address, zero, i);
-        }
+        const int zero_64 = rtl_alloc_register(unit, RTLTYPE_FLOAT64);
+        rtl_add_insn(unit, RTLOP_LOAD_IMM, zero_64, 0, 0, 0);
+        const int zero_128 = rtl_alloc_register(unit, RTLTYPE_V2_FLOAT64);
+        rtl_add_insn(unit, RTLOP_VBROADCAST, zero_128, zero_64, 0, 0);
+        rtl_add_insn(unit, RTLOP_STORE, 0, host_address, zero_128, 0);
+        rtl_add_insn(unit, RTLOP_STORE, 0, host_address, zero_128, 16);
         return;
       }  // case XO_DCBZ
 
