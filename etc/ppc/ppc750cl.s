@@ -3,6 +3,7 @@
 # No copyright is claimed on this file.
 #
 # Update history:
+#    - 2016-11-03: Fixed an incorrect comment.
 #    - 2016-10-14: Fixed cases in which mtcrf and mcrxr tests could leave
 #         blank failure records.
 #    - 2016-10-14: Made the icbi test a little more semantically sensible.
@@ -12650,7 +12651,7 @@ get_load_address:
    bl check_ps
    # In some cases, the high word of a double value loaded from lfd can
    # leak into the second slot of a paired-single value.  We assume here
-   # that ps_add(x,0) properly returns x.
+   # that ps_mr works correctly.
 0: ps_mr %f4,%f0
    lfd %f4,8(%r31)    # 1.0
    ps_merge01 %f3,%f4,%f4

@@ -182,14 +182,23 @@ typedef struct GuestPPCBlockInfo {
     int label;
 } GuestPPCBlockInfo;
 
-/* RTL register set corresponding to guest CPU state.  CR is recorded as
- * both 32 1-bit aliases (crb[]) and one 32-bit alias (cr); the semantics
- * of their interaction are that (1) the base value of CR is the value of
- * the RTL alias GuestPPCContext.alias.cr, and (2) for each bit b in CR, if
- * the corresponding bit is set in GuestPPCContext.crb_loaded, the value of
- * the bit is the value of the RTL alias GuestPPCContext.crb[b], else the
- * value of the bit is the value of the corresponding bit in the base value
- * of CR as determined above. */
+/*
+ * RTL register set corresponding to guest CPU state.
+ *
+ * FPR aliases in GuestPPCContext.alias.fpr[] are of type V2_FLOAT64;
+ * depending on how the FPRs are used, additional aliases are allocated in
+ * alias_fpr_32[], alias_fpr_64[], and alias_fpr_ps[].  The register stored
+ * in GuestPPCContext.live.fpr[] always holds the current value of the FPR,
+ * which may be of scalar or vector type.
+ *
+ * CR is recorded as both 32 1-bit aliases (crb[]) and one 32-bit alias
+ * (cr); the semantics of their interaction are that (1) the base value of
+ * CR is the value of the RTL alias GuestPPCContext.alias.cr, and (2) for
+ * each bit b in CR, if the corresponding bit is set in
+ * GuestPPCContext.crb_loaded, the value of the bit is the value of the RTL
+ * alias GuestPPCContext.crb[b], else the value of the bit is the value of
+ * the corresponding bit in the base value of CR as determined above.
+ * */
 typedef struct GuestPPCRegSet {
     uint16_t gpr[32];
     uint16_t fpr[32];
