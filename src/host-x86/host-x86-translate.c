@@ -3744,7 +3744,11 @@ static bool translate_block(HostX86Context *ctx, int block_index)
 
           case RTLOP_VBROADCAST: {
             const X86Register host_dest = ctx->regs[dest].host_reg;
-            if (unit->regs[dest].type == RTLTYPE_V2_FLOAT32) {
+            if (unit->regs[src1].source == RTLREG_CONSTANT
+             && unit->regs[src1].value.i64 == 0) {
+                append_insn_ModRM_reg(&code, false, X86OP_XORPS,
+                                      host_dest, host_dest);
+            } else if (unit->regs[dest].type == RTLTYPE_V2_FLOAT32) {
                 append_move_or_load(&code, ctx, unit, insn_index,
                                     host_dest, src1);
                 append_insn_ModRM_reg(&code, false, X86OP_UNPCKLPS,

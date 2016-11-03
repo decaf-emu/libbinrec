@@ -1724,6 +1724,24 @@ static void first_pass_for_block(HostX86Context *ctx, int block_index)
             }
             break;
 
+          case RTLOP_VBROADCAST:
+            if (ctx->handle->common_opt & BINREC_OPT_DSE) {
+                const int src1 = insn->src1;
+                RTLRegister * const src1_reg = &unit->regs[src1];
+                if (src1_reg->source == RTLREG_CONSTANT
+                 && src1_reg->value.i64 == 0
+                 && src1_reg->death == insn_index) {
+                    /* As in host-x86-optimize.c:kill_reg(). */
+                    ASSERT(!ctx->regs[src1].host_allocated);
+                    src1_reg->death =
+                        rtl_opt_prev_reg_use(unit, src1, insn_index);
+                    if (src1_reg->death == src1_reg->birth) {
+                        rtl_opt_kill_insn(unit, src1_reg->birth, true);
+                    }
+                }
+            }
+            break;
+
           case RTLOP_STORE:
           case RTLOP_STORE_I8:
           case RTLOP_STORE_I16:
