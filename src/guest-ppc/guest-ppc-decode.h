@@ -261,42 +261,23 @@ typedef enum PPCExtendedOpcode3F {
     XO_FNMADD = 0x1F,
 } PPCExtendedOpcode3F;
 
-/* 750CL-specific extended opcodes */
-typedef enum PPCExtendedOpcode04_750CL {
-    XO_PS_CMPU0   = 0x000,
-    XO_PS_CMPO0   = 0x020,
-    XO_PS_CMPU1   = 0x040,
-    XO_PS_CMPO1   = 0x060,
-
-    XO_PSQ_LX     = 0x06,  // 6 bits
-    XO_PSQ_LUX    = 0x26,  // 6 bits
-
-    XO_PSQ_STX    = 0x07,  // 6 bits
-    XO_PSQ_STUX   = 0x27,  // 6 bits
-
-    XO_PS_NEG     = 0x028,
-    XO_PS_MR      = 0x048,
-    XO_PS_NABS    = 0x088,
-    XO_PS_ABS     = 0x108,
-
+/* 750CL-specific extended opcodes (low 5 bits) */
+typedef enum PPCExtendedOpcode04_750CL_5 {
+    XO_PS_CMP     = 0x00,  // ps_cmp[uo][01]
+    XO_PSQ_LX     = 0x06,  // Insn bit 25 (XO mask 0x20) indicates psq_lux.
+    XO_PSQ_STX    = 0x07,  // Insn bit 25 (XO mask 0x20) indicates psq_stux.
+    XO_PS_MOVE    = 0x08,  // ps_mr, ps_neg, ps_abs, ps_nabs
     XO_PS_SUM0    = 0x0A,
     XO_PS_SUM1    = 0x0B,
     XO_PS_MULS0   = 0x0C,
     XO_PS_MULS1   = 0x0D,
     XO_PS_MADDS0  = 0x0E,
     XO_PS_MADDS1  = 0x0F,
-
-    XO_PS_MERGE00 = 0x210,
-    XO_PS_MERGE01 = 0x230,
-    XO_PS_MERGE10 = 0x250,
-    XO_PS_MERGE11 = 0x270,
-
+    xO_PS_MERGE   = 0x10,  // ps_merge[01][01]
     XO_PS_DIV     = 0x12,
     XO_PS_SUB     = 0x14,
     XO_PS_ADD     = 0x15,
-
-    XO_DCBZ_L     = 0x3F6,
-
+    XO_PS_MISC    = 0x16,  // dcbz_l
     XO_PS_SEL     = 0x17,
     XO_PS_RES     = 0x18,
     XO_PS_MUL     = 0x19,
@@ -305,7 +286,27 @@ typedef enum PPCExtendedOpcode04_750CL {
     XO_PS_MADD    = 0x1D,
     XO_PS_NMSUB   = 0x1E,
     XO_PS_NMADD   = 0x1F,
-} PPCExtendedOpcode04_750CL;
+} PPCExtendedOpcode04_750CL_5;
+
+/* 750CL-specific extended opcodes (full 10 bits) */
+typedef enum PPCExtendedOpcode04_750CL_10 {
+    XO_PS_CMPU0   = 0x000,
+    XO_PS_CMPO0   = 0x020,
+    XO_PS_CMPU1   = 0x040,
+    XO_PS_CMPO1   = 0x060,
+
+    XO_PS_NEG     = 0x028,
+    XO_PS_MR      = 0x048,
+    XO_PS_NABS    = 0x088,
+    XO_PS_ABS     = 0x108,
+
+    XO_PS_MERGE00 = 0x210,
+    XO_PS_MERGE01 = 0x230,
+    XO_PS_MERGE10 = 0x250,
+    XO_PS_MERGE11 = 0x270,
+
+    XO_DCBZ_L     = 0x3F6,
+} PPCExtendedOpcode04_750CL_10;
 
 /*************************************************************************/
 /****************** Other instruction-related constants ******************/

@@ -1106,6 +1106,44 @@ static inline void translate_compare(
 /*-----------------------------------------------------------------------*/
 
 /**
+ * translate_dcbz:  Translate a dcbz or dcbz_l instruction.
+ *
+ * [Parameters]
+ *     ctx: Translation context.
+ *     insn: Instruction word.
+ */
+static inline void translate_dcbz(GuestPPCContext *ctx, uint32_t insn)
+{
+    RTLUnit * const unit = ctx->unit;
+
+    int addr32;
+    if (insn_rA(insn)) {
+        const int rA = get_gpr(ctx, insn_rA(insn));
+        const int rB = get_gpr(ctx, insn_rB(insn));
+        addr32 = rtl_alloc_register(unit, RTLTYPE_INT32);
+        rtl_add_insn(unit, RTLOP_ADD, addr32, rA, rB, 0);
+    } else {
+        addr32 = get_gpr(ctx, insn_rB(insn));
+    }
+    const int addr32_aligned = rtl_alloc_register(unit, RTLTYPE_INT32);
+    rtl_add_insn(unit, RTLOP_ANDI, addr32_aligned, addr32, 0, -32);
+    const int addr_aligned = rtl_alloc_register(unit, RTLTYPE_ADDRESS);
+    rtl_add_insn(unit, RTLOP_ZCAST, addr_aligned, addr32_aligned, 0, 0);
+    const int host_address = rtl_alloc_register(unit, RTLTYPE_ADDRESS);
+    rtl_add_insn(unit, RTLOP_ADD,
+                 host_address, ctx->membase_reg, addr_aligned, 0);
+
+    const int zero_64 = rtl_alloc_register(unit, RTLTYPE_FLOAT64);
+    rtl_add_insn(unit, RTLOP_LOAD_IMM, zero_64, 0, 0, 0);
+    const int zero_128 = rtl_alloc_register(unit, RTLTYPE_V2_FLOAT64);
+    rtl_add_insn(unit, RTLOP_VBROADCAST, zero_128, zero_64, 0, 0);
+    rtl_add_insn(unit, RTLOP_STORE, 0, host_address, zero_128, 0);
+    rtl_add_insn(unit, RTLOP_STORE, 0, host_address, zero_128, 16);
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
  * translate_load_store_gpr:  Translate an integer load or store instruction.
  *
  * [Parameters]
@@ -2578,31 +2616,9 @@ static inline void translate_x1F(
         rtl_add_insn(unit, RTLOP_GOTO,
                      0, 0, 0, guest_ppc_get_epilogue_label(ctx));
         return;
-      case XO_DCBZ: {
-        int addr32;
-        if (insn_rA(insn)) {
-            const int rA = get_gpr(ctx, insn_rA(insn));
-            const int rB = get_gpr(ctx, insn_rB(insn));
-            addr32 = rtl_alloc_register(unit, RTLTYPE_INT32);
-            rtl_add_insn(unit, RTLOP_ADD, addr32, rA, rB, 0);
-        } else {
-            addr32 = get_gpr(ctx, insn_rB(insn));
-        }
-        const int addr32_aligned = rtl_alloc_register(unit, RTLTYPE_INT32);
-        rtl_add_insn(unit, RTLOP_ANDI, addr32_aligned, addr32, 0, -32);
-        const int addr_aligned = rtl_alloc_register(unit, RTLTYPE_ADDRESS);
-        rtl_add_insn(unit, RTLOP_ZCAST, addr_aligned, addr32_aligned, 0, 0);
-        const int host_address = rtl_alloc_register(unit, RTLTYPE_ADDRESS);
-        rtl_add_insn(unit, RTLOP_ADD,
-                     host_address, ctx->membase_reg, addr_aligned, 0);
-        const int zero_64 = rtl_alloc_register(unit, RTLTYPE_FLOAT64);
-        rtl_add_insn(unit, RTLOP_LOAD_IMM, zero_64, 0, 0, 0);
-        const int zero_128 = rtl_alloc_register(unit, RTLTYPE_V2_FLOAT64);
-        rtl_add_insn(unit, RTLOP_VBROADCAST, zero_128, zero_64, 0, 0);
-        rtl_add_insn(unit, RTLOP_STORE, 0, host_address, zero_128, 0);
-        rtl_add_insn(unit, RTLOP_STORE, 0, host_address, zero_128, 16);
+      case XO_DCBZ:
+        translate_dcbz(ctx, insn);
         return;
-      }  // case XO_DCBZ
 
       /* XO_5 = 0x17 */
       case XO_LWZX:
@@ -2799,6 +2815,17 @@ static inline void translate_insn(
       case OPCD_TWI:
         translate_trap(ctx, address, insn, rtl_imm32(unit, insn_SIMM(insn)));
         return;
+
+      case OPCD_x04:
+        switch ((PPCExtendedOpcode04_750CL_5)insn_XO_5(insn)) {
+          case XO_PS_MISC:
+            ASSERT(insn_XO_10(insn) == XO_DCBZ_L);
+            /* We treat "locked" cache identically to normal cache. */
+            translate_dcbz(ctx, insn);
+            return;
+          default: return;  // FIXME: not yet implemented
+        }
+        ASSERT(!"Missing 0x04 extended opcode handler");
 
       case OPCD_MULLI:
         translate_arith_imm(ctx, insn, RTLOP_MULI, false, false, false);
