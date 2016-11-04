@@ -57,7 +57,8 @@ extern "C" {
  * slot of the register for paired-single mode, and the second value of
  * each pair holding the value of the ps1 slot for paired-single mode.
  * The translated code will take care of converting between single and
- * double precision as needed.
+ * double precision as needed.  Note that the FPR array must be aligned to
+ * a multiple of 16 bytes to avoid crashes due to misaligned accesses.
  *
  * The client program is responsible for setting the host's floating-point
  * rounding mode based on FPSCR[RN] and clearing any pending floating-point
@@ -654,8 +655,8 @@ typedef struct binrec_setup_t {
  * translate paired-single load and store instructions to appropriate host
  * instructions based on those values.  Otherwise, the translated host
  * code will read the GQRs and choose an appropriate load or store
- * operation at runtime, which is typically more than an order of
- * magnitude slower.
+ * operation at runtime, which can be more than an order of magnitude
+ * slower.
  *
  * If guest code modifies a GQR and then performs a paired-single load or
  * store based on that GQR, the translated code will take the new value of

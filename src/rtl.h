@@ -320,8 +320,10 @@ typedef enum RTLOpcode {
 
     /* Memory load and store operations.  Address operands must be of
      * ADDRESS type, offsets must be in [-32768,+32767], and for 8/16-bit
-     * loads, the value operand must be of INT32 type.  Behavior is
-     * undefined if the address is not a multiple of the access size. */
+     * loads, the value operand must be of INT32 type.  For vector load and
+     * store operations, the first element of the vector is loaded from or
+     * stored to the lowest address in memory.  Behavior is undefined if
+     * the address is not a multiple of the value size. */
     RTLOP_LOAD,         // dest = *(typeof(dest) *)(src1 + other)
     RTLOP_LOAD_U8,      // dest = *(uint8_t *)(src1 + other)
     RTLOP_LOAD_S8,      // dest = *(int8_t *)(src1 + other)

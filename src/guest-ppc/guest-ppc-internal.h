@@ -15,6 +15,60 @@
 
 struct RTLInsn;
 
+/*
+ * Floating-point registers (FPRs) can be used in up to three modes:
+ * double-precision, single-precision, and the 750CL-specific paired-single
+ * mode.  Correctly(*) handling all three modes requires a fair amount of
+ * analysis and state tracking, as described below.
+ *
+ * (*) The translator does not attempt to reproduce the data hazards
+ *     present on the 750CL when using double precision and paired-single
+ *     instructions on the same register in close proximity without
+ *     intervening format-conversion operations.  Such instruction
+ *     sequences are explicitly documented as a "programming error" in the
+ *     750CL manual, and it should be reasonable to assume that real-world
+ *     programs do not rely on such behavior.
+ *
+ * During the initial scan, we track the type of data stored in each FPR
+ * based on the instructions with which it is used.  We then allocate a
+ * primary alias for each FPR used in the translation unit, of type
+ * V2_FLOAT64 if the register is ever used in paired-single mode and
+ * FLOAT64 (scalar) if not; the primary alias is bound to the appropriate
+ * location in the processor state block.  Additional aliases are allocated
+ * for each data type other than that of the primary alias; these aliases
+ * will hold the current value across basic blocks which use the regsiter
+ * in the same mode, to avoid having to convert between formats at every
+ * block boundary.
+ *
+ * When a format conversion is needed, it is performed according to the
+ * following table:
+ *
+ *    V2_FLOAT64 -> FLOAT32: extract element 0, convert to FLOAT32
+ *    V2_FLOAT64 -> FLOAT64: extract element 0
+ *    V2_FLOAT64 -> V2_FLOAT32: convert to V2_FLOAT32
+ *
+ *    V2_FLOAT32 -> FLOAT32: extract element 0
+ *    V2_FLOAT32 -> FLOAT64: convert to V2_FLOAT64, copy to primary alias,
+ *                              extract element 0
+ *    V2_FLOAT32 -> V2_FLOAT64: convert to V2_FLOAT64
+ *
+ *    FLOAT64 -> FLOAT32: convert to FLOAT32
+ *    FLOAT64 -> V2_FLOAT32: load primary alias, insert into element 0,
+ *                              convert result to V2_FLOAT32
+ *    FLOAT64 -> V2_FLOAT64: load primary alias, insert into element 0,
+ *
+ *    FLOAT32 -> FLOAT64: convert to FLOAT64; if primary alias is not
+ *                           V2_FLOAT64, store to second slot in PSB
+ *    FLOAT32 -> V2_FLOAT32: broadcast to V2_FLOAT32
+ *    FLOAT32 -> V2_FLOAT64: convert to FLOAT64, broadcast to V2_FLOAT64
+ *
+ * Note the logic for converting from FLOAT32; all instructions with
+ * scalar single-precision outputs are architecturally defined to copy
+ * their result to the second paired-single slot (except frsp, but in fact
+ * that instruction is implemented to copy its result in the same manner,
+ * so we don't have to treat it specially).
+ */
+
 /*************************************************************************/
 /*********************** Architectural constants *************************/
 /*************************************************************************/
@@ -130,6 +184,14 @@ struct RTLInsn;
 /*********************** Internal data structures ************************/
 /*************************************************************************/
 
+/* Constants indicating the current data type stored in an FPR. */
+enum {
+    FPR_NONE = 0,
+    FPR_SINGLE,
+    FPR_DOUBLE,
+    FPR_PAIRED,
+};
+
 /* Scan data for a single basic block. */
 typedef struct GuestPPCBlockInfo {
     /* Start address and length (in bytes) of the block. */
@@ -168,6 +230,10 @@ typedef struct GuestPPCBlockInfo {
      * with the TRIM_CR_STORES optimization. */
     uint32_t crb_changed_recursive;
 
+    /* Type of the first and last access to each FPR in the block (FPR_*). */
+    uint8_t fpr_type_first[32];
+    uint8_t fpr_type_last[32];
+
     /* Does this block contain a trap instruction (tw/twi)? */
     bool has_trap;
 
@@ -185,11 +251,12 @@ typedef struct GuestPPCBlockInfo {
 /*
  * RTL register set corresponding to guest CPU state.
  *
- * FPR aliases in GuestPPCContext.alias.fpr[] are of type V2_FLOAT64;
- * depending on how the FPRs are used, additional aliases are allocated in
- * alias_fpr_32[], alias_fpr_64[], and alias_fpr_ps[].  The register stored
+ * FPR aliases in GuestPPCContext.alias.fpr[] are of type FLOAT64 or
+ * V2_FLOAT64; depending on how the FPRs are used, additional aliases are
+ * allocated in alias_fpr_32[], alias_fpr_64[] (only used if the primary
+ * alias is of type V2_FLOAT64), and alias_fpr_ps[].  The register stored
  * in GuestPPCContext.live.fpr[] always holds the current value of the FPR,
- * which may be of scalar or vector type.
+ * which may be of any floating-point scalar or vector type.
  *
  * CR is recorded as both 32 1-bit aliases (crb[]) and one 32-bit alias
  * (cr); the semantics of their interaction are that (1) the base value of
@@ -236,6 +303,9 @@ typedef struct GuestPPCContext {
     /* Alias registers for guest CPU state. */
     GuestPPCRegSet alias;
 
+    /* Set of FPR registers which need vector (paired-single) aliases. */
+    uint32_t fpr_is_ps;
+
     /* Set of CR bits which are modified by the unit.  These bits are
      * stored in the same order as the CR word, so that the MSB corresponds
      * to CR bit 0. */
@@ -249,12 +319,13 @@ typedef struct GuestPPCContext {
 
     /* RTL registers for each CPU register live in the current block. */
     GuestPPCRegSet live;
+    /* Current type of each live FPR. */
+    uint8_t fpr_type[32];
 
     /* Most recent SET_ALIAS instruction for each register (if killable),
      * or -1 for none. */
     struct {
         int gpr[32];
-        int fpr[32];
         int crb[32];
         int cr;
         int lr;

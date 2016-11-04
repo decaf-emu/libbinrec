@@ -109,8 +109,13 @@ static bool init_unit(GuestPPCContext *ctx)
 
     for (int i = 0; i < 32; i++) {
         if ((fpr_used | fpr_changed) & (1 << i)) {
-            ctx->alias.fpr[i] =
-                rtl_alloc_alias_register(unit, RTLTYPE_V2_FLOAT64);
+            if (ctx->fpr_is_ps & (1 << i)) {
+                ctx->alias.fpr[i] =
+                    rtl_alloc_alias_register(unit, RTLTYPE_V2_FLOAT64);
+            } else {
+                ctx->alias.fpr[i] =
+                    rtl_alloc_alias_register(unit, RTLTYPE_FLOAT64);
+            }
             rtl_set_alias_storage(unit, ctx->alias.fpr[i], ctx->psb_reg,
                                   ctx->handle->setup.state_offset_fpr + i*16);
         }

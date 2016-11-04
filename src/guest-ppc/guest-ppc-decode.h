@@ -14,6 +14,7 @@
 /***************************** Opcode tables *****************************/
 /*************************************************************************/
 
+/* Primary opcodes */
 typedef enum PPCOpcode {
     OPCD_TWI    = 0x03,
     OPCD_MULLI  = 0x07,
@@ -73,6 +74,7 @@ typedef enum PPCOpcode {
     OPCD_x04    = 0x04,
 } PPCOpcode;
 
+/* Extended opcodes for OPCD 0x13 */
 typedef enum PPCExtendedOpcode13 {
     XO_MCRF   = 0x000,
     XO_BCLR   = 0x010,
@@ -89,6 +91,7 @@ typedef enum PPCExtendedOpcode13 {
     XO_BCCTR  = 0x210,
 } PPCExtendedOpcode13;
 
+/* Extended opcodes for OPCD 0x1F */
 typedef enum PPCExtendedOpcode1F {
     XO_CMP    = 0x000,
     XO_CMPL   = 0x020,
@@ -214,6 +217,7 @@ typedef enum PPCExtendedOpcode1F {
     XO_NAND   = 0x1DC,
 } PPCExtendedOpcode1F;
 
+/* Extended opcodes for OPCD 0x3B (low 5 bits) */
 typedef enum PPCExtendedOpcode3B {
     XO_FDIVS  = 0x12,
     XO_FSUBS  = 0x14,
@@ -226,29 +230,8 @@ typedef enum PPCExtendedOpcode3B {
     XO_FNMADDS= 0x1F,
 } PPCExtendedOpcode3B;
 
-typedef enum PPCExtendedOpcode3F {
-    XO_FCMPU  = 0x000,
-    XO_FCMPO  = 0x020,
-    XO_MCRFS  = 0x040,
-
-    XO_MTFSB1 = 0x026,
-    XO_MTFSB0 = 0x046,
-    XO_MTFSFI = 0x086,
-
-    XO_MFFS   = 0x247,
-    XO_MTFSF  = 0x2C7,
-
-    XO_FNEG   = 0x028,
-    XO_FMR    = 0x048,
-    XO_FNABS  = 0x088,
-    XO_FABS   = 0x108,
-
-    XO_FRSP   = 0x00C,
-
-    XO_FCTIW  = 0x00E,
-
-    XO_FCTIWZ = 0x00F,
-
+/* Extended opcodes for OPCD 0x3F (low 5 bits: XO[5] set) */
+typedef enum PPCExtendedOpcode3F_5 {
     XO_FDIV   = 0x12,
     XO_FSUB   = 0x14,
     XO_FADD   = 0x15,
@@ -259,7 +242,26 @@ typedef enum PPCExtendedOpcode3F {
     XO_FMADD  = 0x1D,
     XO_FNMSUB = 0x1E,
     XO_FNMADD = 0x1F,
-} PPCExtendedOpcode3F;
+} PPCExtendedOpcode3F_5;
+
+/* Extended opcodes for OPCD 0x3F (full 10 bits: XO[5] clear) */
+typedef enum PPCExtendedOpcode3F_10 {
+    XO_FCMPU  = 0x000,
+    XO_FCMPO  = 0x020,
+    XO_MCRFS  = 0x040,
+    XO_MTFSB1 = 0x026,
+    XO_MTFSB0 = 0x046,
+    XO_MTFSFI = 0x086,
+    XO_MFFS   = 0x247,
+    XO_MTFSF  = 0x2C7,
+    XO_FNEG   = 0x028,
+    XO_FMR    = 0x048,
+    XO_FNABS  = 0x088,
+    XO_FABS   = 0x108,
+    XO_FRSP   = 0x00C,
+    XO_FCTIW  = 0x00E,
+    XO_FCTIWZ = 0x00F,
+} PPCExtendedOpcode3F_10;
 
 /* 750CL-specific extended opcodes (low 5 bits) */
 typedef enum PPCExtendedOpcode04_750CL_5 {
@@ -273,7 +275,7 @@ typedef enum PPCExtendedOpcode04_750CL_5 {
     XO_PS_MULS1   = 0x0D,
     XO_PS_MADDS0  = 0x0E,
     XO_PS_MADDS1  = 0x0F,
-    xO_PS_MERGE   = 0x10,  // ps_merge[01][01]
+    XO_PS_MERGE   = 0x10,  // ps_merge[01][01]
     XO_PS_DIV     = 0x12,
     XO_PS_SUB     = 0x14,
     XO_PS_ADD     = 0x15,

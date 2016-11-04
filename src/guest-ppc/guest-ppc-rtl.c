@@ -67,6 +67,125 @@ static inline PURE_FUNCTION uint32_t get_insn_at(
 /*-----------------------------------------------------------------------*/
 
 /**
+ * convert_fpr:  Convert a floating-point value from one type to another,
+ * and return an RTL register containing the converted value.
+ *
+ * [Parameters]
+ *     ctx: Translation context.
+ *     index: FPR index.
+ *     reg: RTL register containing FPR's value.
+ *     old_type: Type of "reg".
+ *     new_type: Type to convert value to.  Must be different from old_type.
+ * [Return value]
+ *     Index of RTL register containing converted value.
+ */
+static inline int convert_fpr(GuestPPCContext *ctx, int index, int reg,
+                              RTLDataType old_type, RTLDataType new_type)
+{
+    ASSERT(old_type != new_type);
+    ASSERT(rtl_type_is_float(old_type)
+           || (rtl_type_is_vector(old_type) && rtl_vector_length(old_type) == 2
+               && rtl_type_is_float(rtl_vector_element_type(old_type))));
+    ASSERT(rtl_type_is_float(new_type)
+           || (rtl_type_is_vector(new_type) && rtl_vector_length(new_type) == 2
+               && rtl_type_is_float(rtl_vector_element_type(new_type))));
+
+    RTLUnit * const unit = ctx->unit;
+
+    if (old_type == RTLTYPE_V2_FLOAT64) {
+        if (new_type == RTLTYPE_V2_FLOAT32) {
+            const int new_reg = rtl_alloc_register(unit, RTLTYPE_V2_FLOAT32);
+            rtl_add_insn(unit, RTLOP_VFCAST, new_reg, reg, 0, 0);
+            return new_reg;
+        } else {
+            const int f64 = rtl_alloc_register(unit, RTLTYPE_FLOAT64);
+            rtl_add_insn(unit, RTLOP_VEXTRACT, f64, reg, 0, 0);
+            if (new_type == RTLTYPE_FLOAT64) {
+                return f64;
+            } else {
+                ASSERT(new_type == RTLTYPE_FLOAT32);
+                const int new_reg = rtl_alloc_register(unit, RTLTYPE_FLOAT32);
+                rtl_add_insn(unit, RTLOP_FCAST, new_reg, f64, 0, 0);
+                return new_reg;
+            }
+        }
+
+    } else if (old_type == RTLTYPE_V2_FLOAT32) {
+        if (new_type == RTLTYPE_FLOAT32) {
+            const int new_reg = rtl_alloc_register(unit, RTLTYPE_FLOAT32);
+            rtl_add_insn(unit, RTLOP_VEXTRACT, new_reg, reg, 0, 0);
+            return new_reg;
+        } else {
+            const int f64x2 = rtl_alloc_register(unit, RTLTYPE_V2_FLOAT64);
+            rtl_add_insn(unit, RTLOP_VFCAST, f64x2, reg, 0, 0);
+            if (new_type == RTLTYPE_V2_FLOAT64) {
+                return f64x2;
+            } else {
+                ASSERT(new_type == RTLTYPE_FLOAT64);
+                ASSERT(unit->aliases[ctx->alias.fpr[index]].type
+                       == RTLTYPE_V2_FLOAT64);
+                rtl_add_insn(unit, RTLOP_SET_ALIAS,
+                             0, f64x2, 0, ctx->alias.fpr[index]);
+                const int new_reg = rtl_alloc_register(unit, RTLTYPE_FLOAT64);
+                rtl_add_insn(unit, RTLOP_VEXTRACT, new_reg, f64x2, 0, 0);
+                return new_reg;
+            }
+        }
+
+    } else if (old_type == RTLTYPE_FLOAT64) {
+        if (new_type == RTLTYPE_FLOAT32) {
+            const int new_reg = rtl_alloc_register(unit, RTLTYPE_FLOAT32);
+            rtl_add_insn(unit, RTLOP_FCAST, new_reg, reg, 0, 0);
+            return new_reg;
+        } else {
+            ASSERT(unit->aliases[ctx->alias.fpr[index]].type
+                   == RTLTYPE_V2_FLOAT64);
+            const int old_f64x2 = rtl_alloc_register(unit, RTLTYPE_V2_FLOAT64);
+            rtl_add_insn(unit, RTLOP_GET_ALIAS,
+                         old_f64x2, 0, 0, ctx->alias.fpr[index]);
+            const int f64x2 = rtl_alloc_register(unit, RTLTYPE_V2_FLOAT64);
+            rtl_add_insn(unit, RTLOP_VINSERT, f64x2, old_f64x2, reg, 0);
+            if (new_type == RTLTYPE_V2_FLOAT64) {
+                return f64x2;
+            } else {
+                ASSERT(new_type == RTLTYPE_V2_FLOAT32);
+                const int new_reg = rtl_alloc_register(unit,
+                                                       RTLTYPE_V2_FLOAT32);
+                rtl_add_insn(unit, RTLOP_VFCAST, new_reg, f64x2, 0, 0);
+                return new_reg;
+            }
+        }
+
+    } else {
+        ASSERT(old_type == RTLTYPE_FLOAT32);
+        if (new_type == RTLTYPE_V2_FLOAT32) {
+            const int new_reg = rtl_alloc_register(unit, RTLTYPE_V2_FLOAT32);
+            rtl_add_insn(unit, RTLOP_VBROADCAST, new_reg, reg, 0, 0);
+            return new_reg;
+        } else {
+            const int f64 = rtl_alloc_register(unit, RTLTYPE_FLOAT64);
+            rtl_add_insn(unit, RTLOP_FCAST, f64, reg, 0, 0);
+            if (new_type == RTLTYPE_V2_FLOAT64) {
+                const int new_reg = rtl_alloc_register(unit,
+                                                       RTLTYPE_V2_FLOAT64);
+                rtl_add_insn(unit, RTLOP_VBROADCAST, new_reg, f64, 0, 0);
+                return new_reg;
+            } else {
+                ASSERT(new_type == RTLTYPE_FLOAT64);
+                if (!(ctx->fpr_is_ps & (1 << index))) {
+                    rtl_add_insn(unit, RTLOP_STORE, 0, ctx->psb_reg, f64,
+                                 (ctx->handle->setup.state_offset_fpr
+                                  + 16*index + 8));
+                }
+                return f64;
+            }
+        }
+    }
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
  * get_gpr, get_fpr, get_cr, get_crb, get_lr, get_ctr, get_xer, get_fpscr:
  * Return an RTL register containing the value of the given PowerPC register.
  * This will either be the register last used in a corresponding set or get
@@ -77,6 +196,7 @@ static inline PURE_FUNCTION uint32_t get_insn_at(
  *     ctx: Translation context.
  *     index: PowerPC register index (get_gpr(), get_fpr()) or CR bit index
  *         (get_crb()).
+ *     type: Floating-point data type (RTLTYPE_*) (get_fpr() only).
  * [Return value]
  *     RTL register index.
  */
@@ -94,18 +214,27 @@ static inline int get_gpr(GuestPPCContext * const ctx, int index)
     }
 }
 
-static inline int get_fpr(GuestPPCContext * const ctx, int index)
+static inline int get_fpr(GuestPPCContext * const ctx, int index,
+                          RTLDataType type)
 {
+    int reg;
     if (ctx->live.fpr[index]) {
-        return ctx->live.fpr[index];
+        reg = ctx->live.fpr[index];
     } else {
+        const RTLDataType base_type = (ctx->fpr_is_ps & (1 << index)
+                                       ? RTLTYPE_V2_FLOAT64 : RTLTYPE_FLOAT64);
         RTLUnit * const unit = ctx->unit;
-        const int reg = rtl_alloc_register(unit, RTLTYPE_V2_FLOAT64);
+        reg = rtl_alloc_register(unit, base_type);
         ASSERT(ctx->alias.fpr[index]);
         rtl_add_insn(unit, RTLOP_GET_ALIAS, reg, 0, 0, ctx->alias.fpr[index]);
-        ctx->live.fpr[index] = reg;
-        return reg;
+        ctx->fpr_type[index] = base_type;
     }
+    ASSERT(ctx->fpr_type[index]);
+    if (type != ctx->fpr_type[index]) {
+        reg = convert_fpr(ctx, index, reg, ctx->fpr_type[index], type);
+        ctx->fpr_type[index] = type;
+    }
+    return reg;
 }
 
 static inline int get_cr(GuestPPCContext * const ctx)
@@ -267,13 +396,8 @@ static inline void set_gpr(GuestPPCContext * const ctx, int index, int reg)
 
 static inline void set_fpr(GuestPPCContext * const ctx, int index, int reg)
 {
-    RTLUnit * const unit = ctx->unit;
-    if (ctx->last_set.fpr[index] >= 0) {
-        rtl_opt_kill_insn(unit, ctx->last_set.fpr[index], false);
-    }
-    ctx->last_set.fpr[index] = unit->num_insns;
-    rtl_add_insn(unit, RTLOP_SET_ALIAS, 0, reg, 0, ctx->alias.fpr[index]);
     ctx->live.fpr[index] = reg;
+    ctx->fpr_type[index] = ctx->unit->regs[reg].type;
 }
 
 static inline void set_cr(GuestPPCContext * const ctx, int reg)
@@ -416,6 +540,80 @@ static inline int get_ea_indexed(GuestPPCContext *ctx, uint32_t insn,
 /*-----------------------------------------------------------------------*/
 
 /**
+ * gen_load_store_address:  Generate the address for a load or store operation.
+ *
+ * [Parameters]
+ *     ctx: Translation context.
+ *     insn: Instruction word.
+ *     is_indexed: True if the access is an indexed access, false if not.
+ *     update: True if rA will be updated, false if not.
+ *     disp_ret: Pointer to variable to receive the access offset for the
+ *         load/store instruction.  Always receives zero if is_indexed or
+ *         update is true.
+ *     ea_ret: Pointer to variable to receive the effective address to
+ *         write back to rA for an update operation.  Not modified (and may
+ *         be NULL) if update is false.
+ * [Return value]
+ *     RTL register containing the host address for the load/store instruction.
+ */
+static int gen_load_store_address(GuestPPCContext *ctx, uint32_t insn,
+                                  bool is_indexed, bool update,
+                                  int *disp_ret, int *ea_ret)
+{
+    ASSERT(ctx);
+    ASSERT(disp_ret);
+    ASSERT(!update || ea_ret);
+
+    RTLUnit * const unit = ctx->unit;
+    int host_address;
+
+    if (update) {
+        ASSERT(insn_rA(insn) != 0);
+        if (is_indexed) {
+            host_address = get_ea_indexed(ctx, insn, ea_ret);
+        } else {
+            int ea;
+            const int rA = get_gpr(ctx, insn_rA(insn));
+            if (insn_d(insn) != 0) {
+                ea = rtl_alloc_register(unit, RTLTYPE_INT32);
+                rtl_add_insn(unit, RTLOP_ADDI, ea, rA, 0, insn_d(insn));
+            } else {
+                ea = rA;
+            }
+            const int ea_zcast = rtl_alloc_register(unit, RTLTYPE_ADDRESS);
+            rtl_add_insn(unit, RTLOP_ZCAST, ea_zcast, ea, 0, 0);
+            host_address = rtl_alloc_register(unit, RTLTYPE_ADDRESS);
+            rtl_add_insn(unit, RTLOP_ADD,
+                         host_address, ctx->membase_reg, ea_zcast, 0);
+            *ea_ret = ea;
+        }
+        *disp_ret = 0;
+    } else {
+        if (is_indexed) {
+            host_address = get_ea_indexed(ctx, insn, NULL);
+            *disp_ret = 0;
+        } else {
+            if (insn_rA(insn) != 0 || insn_d(insn) >= 0) {
+                host_address = get_ea_base(ctx, insn);
+                *disp_ret = insn_d(insn);
+            } else {
+                const int offset = rtl_alloc_register(unit, RTLTYPE_ADDRESS);
+                rtl_add_insn(unit, RTLOP_LOAD_IMM,
+                             offset, 0, 0, (uint32_t)insn_d(insn));
+                host_address = rtl_alloc_register(unit, RTLTYPE_ADDRESS);
+                rtl_add_insn(unit, RTLOP_ADD,
+                             host_address, ctx->membase_reg, offset, 0);
+                *disp_ret = 0;
+            }
+        }
+    }
+
+    return host_address;
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
  * flush_live_regs:  Finalize all pending stores of guest registers.
  *
  * [Parameters]
@@ -425,9 +623,24 @@ static inline int get_ea_indexed(GuestPPCContext *ctx, uint32_t insn,
  */
 static void flush_live_regs(GuestPPCContext *ctx, bool clear)
 {
+    for (int i = 0; i < 32; i++) {
+        int reg = ctx->live.fpr[i];
+        if (reg) {
+            const RTLDataType base_type = (ctx->fpr_is_ps & (1 << i)
+                                           ? RTLTYPE_V2_FLOAT64
+                                           : RTLTYPE_FLOAT64);
+            if (ctx->fpr_type[i] != base_type) {
+                reg = convert_fpr(ctx, i, reg, ctx->fpr_type[i], base_type);
+            }
+            rtl_add_insn(ctx->unit, RTLOP_SET_ALIAS,
+                         0, reg, 0, ctx->alias.fpr[i]);
+        }
+    }
+
     memset(&ctx->last_set, -1, sizeof(ctx->last_set));
     if (clear) {
         memset(&ctx->live, 0, sizeof(ctx->live));
+        memset(ctx->fpr_type, 0, sizeof(ctx->fpr_type));
         ctx->crb_dirty = 0;
     }
 }
@@ -1059,7 +1272,7 @@ static inline void translate_branch(
 /*-----------------------------------------------------------------------*/
 
 /**
- * translate_compare:  Translate an integer comapre instruction.
+ * translate_compare:  Translate an integer compare instruction.
  *
  * [Parameters]
  *     ctx: Translation context.
@@ -1106,6 +1319,45 @@ static inline void translate_compare(
 /*-----------------------------------------------------------------------*/
 
 /**
+ * translate_compare_fp:  Translate an integer compare instruction.
+ *
+ * [Parameters]
+ *     ctx: Translation context.
+ *     insn: Instruction word.
+ *     ordered: True for an ordered comparison (invalid exception on QNaN),
+ *         false for an unordered comparison.
+ */
+static inline void translate_compare_fp(
+    GuestPPCContext *ctx, uint32_t insn, bool ordered)
+{
+    RTLUnit * const unit = ctx->unit;
+
+    const int obit = ordered ? RTLFCMP_ORDERED : 0;
+    const int frA = get_fpr(ctx, insn_frA(insn), RTLTYPE_FLOAT64);
+    const int frB = get_fpr(ctx, insn_frB(insn), RTLTYPE_FLOAT64);
+
+    const int lt = rtl_alloc_register(unit, RTLTYPE_INT32);
+    rtl_add_insn(unit, RTLOP_FCMP, lt, frA, frB, obit | RTLFCMP_LT);
+    const int gt = rtl_alloc_register(unit, RTLTYPE_INT32);
+    rtl_add_insn(unit, RTLOP_FCMP, gt, frA, frB, obit | RTLFCMP_GT);
+    const int eq = rtl_alloc_register(unit, RTLTYPE_INT32);
+    rtl_add_insn(unit, RTLOP_FCMP, eq, frA, frB, obit | RTLFCMP_EQ);
+    const int fpstate = rtl_alloc_register(unit, RTLTYPE_FPSTATE);
+    rtl_add_insn(unit, RTLOP_FGETSTATE, fpstate, 0, 0, 0);
+    const int un = rtl_alloc_register(unit, RTLTYPE_INT32);
+    rtl_add_insn(unit, RTLOP_FTESTEXC, un, fpstate, 0, RTLFEXC_INVALID);
+
+    // FIXME: FPSCR update
+
+    set_crb(ctx, insn_crfD(insn)*4+0, lt);
+    set_crb(ctx, insn_crfD(insn)*4+1, gt);
+    set_crb(ctx, insn_crfD(insn)*4+2, eq);
+    set_crb(ctx, insn_crfD(insn)*4+3, un);
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
  * translate_dcbz:  Translate a dcbz or dcbz_l instruction.
  *
  * [Parameters]
@@ -1144,6 +1396,64 @@ static inline void translate_dcbz(GuestPPCContext *ctx, uint32_t insn)
 /*-----------------------------------------------------------------------*/
 
 /**
+ * translate_load_store_fpr:  Translate a floating-point load or store
+ * instruction.
+ *
+ * [Parameters]
+ *     ctx: Translation context.
+ *     insn: Instruction word.
+ *     is_single: True if a single-precision (32-bit) operation, false if a
+ *       double-precision (64-bit) operation.
+ *     is_store: True if the instruction is a store instruction.
+ *     is_indexed: True if the access is an indexed access (like lwx or stwx).
+ *     update: True if register rA should be updated with the final EA.
+ */
+static inline void translate_load_store_fpr(
+    GuestPPCContext *ctx, uint32_t insn, bool is_single, bool is_store,
+    bool is_indexed, bool update)
+{
+    RTLUnit * const unit = ctx->unit;
+
+    const RTLDataType type = is_single ? RTLTYPE_FLOAT32 : RTLTYPE_FLOAT64;
+    const RTLOpcode rtlop = (ctx->handle->host_little_endian
+                             ? (is_store ? RTLOP_STORE_BR : RTLOP_LOAD_BR)
+                             : (is_store ? RTLOP_STORE : RTLOP_LOAD));
+
+    int disp, ea;
+    const int host_address =
+        gen_load_store_address(ctx, insn, is_indexed, update, &disp, &ea);
+
+    if (is_store) {
+        /* If storing a single-precision value but the register is
+         * currently in double-precision mode, we don't want to convert it
+         * to single-precision because that would overwrite the register's
+         * ps1 slot in the PSB. */
+        int value;
+        if (is_single && ctx->fpr_type[insn_frD(insn)] != RTLTYPE_FLOAT32
+                      && ctx->fpr_type[insn_frD(insn)] != RTLTYPE_V2_FLOAT32) {
+            const int f64 = get_fpr(ctx, insn_frD(insn), RTLTYPE_FLOAT64);
+            value = rtl_alloc_register(unit, RTLTYPE_FLOAT32);
+            rtl_add_insn(unit, RTLOP_FCAST, value, f64, 0, 0);
+        } else {
+            value = get_fpr(ctx, insn_frD(insn), type);
+        }
+        rtl_add_insn(unit, rtlop, 0, host_address, value, disp);
+    } else {
+        const int value = rtl_alloc_register(unit, type);
+        rtl_add_insn(unit, rtlop, value, host_address, 0, disp);
+        set_fpr(ctx, insn_frD(insn), value);
+    }
+
+    if (update) {
+        if (is_indexed || insn_d(insn) != 0) {
+            set_gpr(ctx, insn_rA(insn), ea);
+        }
+    }
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
  * translate_load_store_gpr:  Translate an integer load or store instruction.
  *
  * [Parameters]
@@ -1177,46 +1487,9 @@ static inline void translate_load_store_gpr(
         }
     }
 
-    int ea, host_address, disp;
-    if (update) {
-        ASSERT(insn_rA(insn) != 0);
-        if (is_indexed) {
-            host_address = get_ea_indexed(ctx, insn, &ea);
-        } else {
-            const int rA = get_gpr(ctx, insn_rA(insn));
-            if (insn_d(insn) != 0) {
-                ea = rtl_alloc_register(unit, RTLTYPE_INT32);
-                rtl_add_insn(unit, RTLOP_ADDI, ea, rA, 0, insn_d(insn));
-            } else {
-                ea = rA;
-            }
-            const int ea_zcast = rtl_alloc_register(unit, RTLTYPE_ADDRESS);
-            rtl_add_insn(unit, RTLOP_ZCAST, ea_zcast, ea, 0, 0);
-            host_address = rtl_alloc_register(unit, RTLTYPE_ADDRESS);
-            rtl_add_insn(unit, RTLOP_ADD,
-                         host_address, ctx->membase_reg, ea_zcast, 0);
-        }
-        disp = 0;
-    } else {
-        ea = 0;  // Not used, but required to avoid an "uninitialized" warning.
-        if (is_indexed) {
-            host_address = get_ea_indexed(ctx, insn, NULL);
-            disp = 0;
-        } else {
-            if (insn_rA(insn) != 0 || insn_d(insn) >= 0) {
-                host_address = get_ea_base(ctx, insn);
-                disp = insn_d(insn);
-            } else {
-                const int offset = rtl_alloc_register(unit, RTLTYPE_ADDRESS);
-                rtl_add_insn(unit, RTLOP_LOAD_IMM,
-                             offset, 0, 0, (uint32_t)insn_d(insn));
-                host_address = rtl_alloc_register(unit, RTLTYPE_ADDRESS);
-                rtl_add_insn(unit, RTLOP_ADD,
-                             host_address, ctx->membase_reg, offset, 0);
-                disp = 0;
-            }
-        }
-    }
+    int disp, ea;
+    const int host_address =
+        gen_load_store_address(ctx, insn, is_indexed, update, &disp, &ea);
 
     if (is_store) {
         const int value = get_gpr(ctx, insn_rS(insn));
@@ -2664,15 +2937,41 @@ static inline void translate_x1F(
         translate_load_store_gpr(ctx, insn, RTLOP_STORE_I16, true, true, true);
         return;
       case XO_LFSX:
+        translate_load_store_fpr(ctx, insn, true, false, true, false);
+        return;
       case XO_LFSUX:
+        translate_load_store_fpr(ctx, insn, true, false, true, true);
+        return;
       case XO_LFDX:
+        translate_load_store_fpr(ctx, insn, false, false, true, false);
+        return;
       case XO_LFDUX:
+        translate_load_store_fpr(ctx, insn, false, false, true, true);
+        return;
       case XO_STFSX:
+        translate_load_store_fpr(ctx, insn, true, true, true, false);
+        return;
       case XO_STFSUX:
+        translate_load_store_fpr(ctx, insn, true, true, true, true);
+        return;
       case XO_STFDX:
+        translate_load_store_fpr(ctx, insn, false, true, true, false);
+        return;
       case XO_STFDUX:
-      case XO_STFIWX:
-        return;  // FIXME: not yet implemented
+        translate_load_store_fpr(ctx, insn, false, true, true, true);
+        return;
+      case XO_STFIWX: {
+        const RTLOpcode rtlop =
+            ctx->handle->host_little_endian ? RTLOP_STORE_BR : RTLOP_STORE;
+        const int host_address = get_ea_indexed(ctx, insn, NULL);
+        const int f64 = get_fpr(ctx, insn_frD(insn), RTLTYPE_FLOAT64);
+        const int i64 = rtl_alloc_register(unit, RTLTYPE_INT64);
+        rtl_add_insn(unit, RTLOP_BITCAST, i64, f64, 0, 0);
+        const int i32 = rtl_alloc_register(unit, RTLTYPE_INT32);
+        rtl_add_insn(unit, RTLOP_ZCAST, i32, i64, 0, 0);
+        rtl_add_insn(unit, rtlop, 0, host_address, i32, 0);
+        return;
+      }  // case XO_STFIWX
 
       /* XO_5 = 0x18 */
       case XO_SLW:
@@ -3112,7 +3411,64 @@ static inline void translate_insn(
         translate_load_store_multiple(ctx, insn, true);
         return;
 
-      default: return;  // FIXME: not yet implemented
+      case OPCD_LFS:
+        translate_load_store_fpr(ctx, insn, true, false, false, false);
+        return;
+
+      case OPCD_LFSU:
+        translate_load_store_fpr(ctx, insn, true, false, false, true);
+        return;
+
+      case OPCD_LFD:
+        translate_load_store_fpr(ctx, insn, false, false, false, false);
+        return;
+
+      case OPCD_LFDU:
+        translate_load_store_fpr(ctx, insn, false, false, false, true);
+        return;
+
+      case OPCD_STFS:
+        translate_load_store_fpr(ctx, insn, true, true, false, false);
+        return;
+
+      case OPCD_STFSU:
+        translate_load_store_fpr(ctx, insn, true, true, false, true);
+        return;
+
+      case OPCD_STFD:
+        translate_load_store_fpr(ctx, insn, false, true, false, false);
+        return;
+
+      case OPCD_STFDU:
+        translate_load_store_fpr(ctx, insn, false, true, false, true);
+        return;
+
+      case OPCD_PSQ_L:
+      case OPCD_PSQ_LU:
+      case OPCD_x3B:
+      case OPCD_PSQ_ST:
+      case OPCD_PSQ_STU:
+        return;  // FIXME: not yet implemented
+
+      case OPCD_x3F:
+        if (insn_XO_5(insn) & 0x10) {
+            switch ((PPCExtendedOpcode3F_5)insn_XO_5(insn)) {
+              default: return;  // FIXME: not yet implemented
+            }
+            ASSERT(!"Missing 0x3F_5 extended opcode handler");
+        } else {
+            switch ((PPCExtendedOpcode3F_10)insn_XO_10(insn)) {
+              case XO_FCMPU:
+                translate_compare_fp(ctx, insn, false);
+                return;
+              case XO_FCMPO:
+                translate_compare_fp(ctx, insn, true);
+                return;
+              default: return;  // FIXME: not yet implemented
+            }
+            ASSERT(!"Missing 0x3F_10 extended opcode handler");
+        }
+
     }  // switch (insn_OPCD(insn))
 
     ASSERT(!"Missing primary opcode handler");
@@ -3162,6 +3518,7 @@ bool guest_ppc_translate_block(GuestPPCContext *ctx, int index)
     }
 
     memset(&ctx->live, 0, sizeof(ctx->live));
+    memset(ctx->fpr_type, 0, sizeof(ctx->fpr_type));
     ctx->crb_dirty = 0;
     memset(&ctx->last_set, -1, sizeof(ctx->last_set));
 
