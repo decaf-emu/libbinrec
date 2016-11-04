@@ -950,7 +950,8 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
                      *   count)
                      * - BFINS with src1==src2 (since we need to write dest
                      *   before reading src2)
-                     * - LOAD to an XMM register (different register types)
+                     * - LOAD or LOAD_BR to an XMM register (different
+                     *   register types)
                      */
                     bool src1_ok;
                     switch (insn->opcode) {
@@ -971,6 +972,7 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
                         src1_ok = (src1_info->host_reg != src2_info->host_reg);
                         break;
                       case RTLOP_LOAD:
+                      case RTLOP_LOAD_BR:
                         src1_ok = rtl_register_is_int(dest_reg);
                         break;
                       default:
