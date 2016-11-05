@@ -37,8 +37,8 @@ int main(void)
     EXPECT_FALSE(unit->error);
 
     EXPECT_FALSE(rtl_add_insn(unit, RTLOP_FCMP,
-                              reg3, reg1, reg2, RTLFCMP_EQ + 1));
-    EXPECT_ICE("Operand constraint violated: (other & 7) <= RTLFCMP_EQ");
+                              reg3, reg1, reg2, RTLFCMP_UN + 1));
+    EXPECT_ICE("Operand constraint violated: (other & 7) <= RTLFCMP_UN");
     EXPECT_EQ(unit->num_insns, 2);
     EXPECT(unit->error);
     unit->error = false;

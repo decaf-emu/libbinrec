@@ -1026,7 +1026,7 @@ static bool make_fcmp(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
     OPERAND_ASSERT(rtl_register_is_float(&unit->regs[src1]));
     OPERAND_ASSERT(unit->regs[src2].type == unit->regs[src1].type);
     OPERAND_ASSERT(other <= 31);
-    OPERAND_ASSERT((other & 7) <= RTLFCMP_EQ);
+    OPERAND_ASSERT((other & 7) <= RTLFCMP_UN);
 #endif
 
     insn->dest = dest;

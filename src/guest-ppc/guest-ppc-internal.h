@@ -16,6 +16,11 @@
 struct RTLInsn;
 
 /*
+ * Notes on translator design
+ * ==========================
+ *
+ * Floating-point registers
+ * ------------------------
  * Floating-point registers (FPRs) can be used in up to three modes:
  * double-precision, single-precision, and the 750CL-specific paired-single
  * mode.  Correctly(*) handling all three modes requires a fair amount of
@@ -39,6 +44,7 @@ struct RTLInsn;
  * will hold the current value across basic blocks which use the regsiter
  * in the same mode, to avoid having to convert between formats at every
  * block boundary.
+ * FIXME: we currently don't have additional aliases; edit this later
  *
  * When a format conversion is needed, it is performed according to the
  * following table:
@@ -67,6 +73,67 @@ struct RTLInsn;
  * their result to the second paired-single slot (except frsp, but in fact
  * that instruction is implemented to copy its result in the same manner,
  * so we don't have to treat it specially).
+ *
+ * CR and FPSCR bits
+ * -----------------
+ * The condition register (CR) is normally accessed only in units of 4
+ * bits (a CR field written by a compare or Rc=1 instruction) or 1 bit (a
+ * specific bit tested by a conditional branch).  In order to allow the
+ * RTL core to detect dead stores, such as multiple compare instructions
+ * writing to the same CR field, we treat each bit of CR as a separate
+ * "register" with an associated alias; the bit value is extracted from CR
+ * into the alias at the beginning of the unit if its value is needed, and
+ * all modified bits are merged back into the CR word when returning to
+ * the translated code's caller.  This allows the RTL core to detect and
+ * eliminate dead stores to individual bits: for example, if a unit
+ * contains several pairs of compare and branch-if-equal instructions, the
+ * LT, GT, and SO stores (and the associated compare/extract operations)
+ * can be omitted as long as there is another compare later in the unit
+ * which overwrites them.
+ *
+ * In some common cases, this will not be enough to fully eliminate
+ * unnecessary stores.  Consider this (admittedly somewhat contrived)
+ * instruction sequence:
+ *
+ *       andi. r0,r3,8
+ *       bne 4f
+ *       andi. r0,r3,4
+ *       bne 3f
+ *       andi. r0,r3,2
+ *       bne 2f
+ *       andi. r0,r3,1
+ *       bne 1f
+ *       b 0f
+ *    4: addi r4,r4,1
+ *    3: addi r4,r4,1
+ *    2: addi r4,r4,1
+ *    1: addi r4,r4,1
+ *    0: blr
+ *
+ * In this example, whichever branch is taken will leave the unit without
+ * further writes to CR, so none of the bit stores can be trivially
+ * eliminated.  The BINREC_OPT_G_PPC_TRIM_CR_STORES optimization improves
+ * performance for cases such as this by finding cases in which CR bits
+ * are only written on one side of a conditional branch and moving the bit
+ * stores, along with the instructions that set those bits (typically
+ * set-conditional or bit-extract operations), so they are only executed
+ * on that code path.  While this does not reduce code size (and may
+ * actually increase it slightly, since setting bits on the taken side of
+ * a conditional branch requires flipping the sense of the branch and
+ * adding an extra unconditional jump afterward), it does help ensure that
+ * the actual control flow goes through as few CR-modifying instructions
+ * as possible.
+ *
+ * Similar logic applies to the FI, FR, and FPRF fields of FPSCR, which
+ * are rewritten by most floating-point instructions.  Since these bits
+ * are always written as a unit (except in the case of fcmp/ps_cmp, which
+ * only write the FPCC bits) and since there are no instructions which
+ * read individual bits from those fields, we allocate a single alias for
+ * all 7 bits instead of separate aliases for each bit.  The remainder of
+ * the register is not treated specially; exception bits accumulate rather
+ * than being overwritten by each instruction, and there are no
+ * instructions other than the mtfs group which write RN, so there is no
+ * benefit to using separate aliases for each bit.
  */
 
 /*************************************************************************/
@@ -217,7 +284,8 @@ typedef struct GuestPPCBlockInfo {
         lr_used : 1,
         ctr_used : 1,
         xer_used : 1,
-        fpscr_used : 1;
+        fpscr_used : 1,
+        fr_fi_fprf_used : 1;
     uint8_t
         cr_changed : 1,
         lr_changed : 1,
@@ -265,7 +333,12 @@ typedef struct GuestPPCBlockInfo {
  * GuestPPCContext.crb_loaded, the value of the bit is the value of the RTL
  * alias GuestPPCContext.crb[b], else the value of the bit is the value of
  * the corresponding bit in the base value of CR as determined above.
- * */
+ *
+ * fr_fi_fprf holds the value of bits 13-19 of FPSCR (the FI, FR, and FPRF
+ * fields of that register).  The alias is always allocated if FPSCR is
+ * used by the unit, so the current value of FPSCR is always the value of
+ * the fr_fi_fprf alias inserted into the value of the fpscr alias.
+ */
 typedef struct GuestPPCRegSet {
     uint16_t gpr[32];
     uint16_t fpr[32];
@@ -275,6 +348,7 @@ typedef struct GuestPPCRegSet {
     uint16_t ctr;
     uint16_t xer;
     uint16_t fpscr;
+    uint16_t fr_fi_fprf;
     uint16_t nia;
 } GuestPPCRegSet;
 
@@ -332,6 +406,7 @@ typedef struct GuestPPCContext {
         int ctr;
         int xer;
         int fpscr;
+        int fr_fi_fprf;
     } last_set;
 
     /* True if the next instruction should be skipped.  Used when
@@ -400,6 +475,18 @@ extern bool guest_ppc_translate_block(GuestPPCContext *ctx, int index);
  */
 #define guest_ppc_flush_cr INTERNAL(guest_ppc_flush_cr)
 extern void guest_ppc_flush_cr(GuestPPCContext *ctx, bool make_live);
+
+/**
+ * guest_ppc_flush_fpscr:  Flush the FR/FI/FPRF alias to the full FPSCR
+ * register.
+ *
+ * [Parameters]
+ *     ctx: Translation context.
+ *     make_live: True to leave the flushed FPSCR value live in its alias,
+ *         false to leave the alias liveness state unchanged.
+ */
+#define guest_ppc_flush_fpscr INTERNAL(guest_ppc_flush_fpscr)
+extern void guest_ppc_flush_fpscr(GuestPPCContext *ctx, bool make_live);
 
 /*-------- Input code scanning (guest-ppc-scan.c) --------*/
 

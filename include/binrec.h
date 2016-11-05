@@ -692,6 +692,33 @@ typedef struct binrec_setup_t {
 #define BINREC_OPT_G_PPC_IGNORE_FPSCR_FR  (1<<1)
 
 /**
+ * BINREC_OPT_G_PPC_IGNORE_FPSCR_VXFOO:  Do not set FPSCR exception bits
+ * for specific invalid exception types (the "VXFOO" bits).
+ *
+ * The PowerPC architecture includes several FPSCR bits which indicate
+ * specific types of floating-point invalid operation exceptions, such as
+ * subtraction of infinities (VXISI) or use of a signaling NaN (VXSNAN).
+ * Detecting these cases on a host architecture which does not expose such
+ * informtion requires additional manual checks on the operands to each
+ * floating-point operation and can have a severe impact on performance.
+ * Enabling this optimization allows the translator to skip these checks,
+ * instead only setting the primary exception bit (VX) when an invalid
+ * operation exception is reported by the host CPU.
+ *
+ * In order to preserve the PowerPC architectural invariant that the VX
+ * bit is hardwired as the logical OR of all VXFOO bits, if an instruction
+ * sets VX with this optimization enabled, it also sets the VXSNAN bit
+ * regardless of the true cause of the exception.
+ *
+ * Instructions which directly manipulate FPSCR (such as mtfsf) are not
+ * affected by this optimization and continue to behave normally.
+ *
+ * This optimization is UNSAFE for obvious reasons, though it is believed
+ * that most real-life PowerPC code does not make use of the VXFOO bits.
+ */
+#define BINREC_OPT_G_PPC_IGNORE_FPSCR_VXFOO  (1<<2)
+
+/**
  * BINREC_OPT_G_PPC_NATIVE_RECIPROCAL:  Translate guest PowerPC
  * reciprocal-estimate instructions (fres and frsqrte) directly to their
  * host equivalents, maintaining compliance with the PowerPC architecture
@@ -714,7 +741,7 @@ typedef struct binrec_setup_t {
  * This optimization cannot currently be disabled; the translator behaves
  * as if it was always set.
  */
-#define BINREC_OPT_G_PPC_NATIVE_RECIPROCAL  (1<<2)
+#define BINREC_OPT_G_PPC_NATIVE_RECIPROCAL  (1<<3)
 
 /**
  * BINREC_OPT_G_PPC_TRIM_CR_STORES:  Analyze the data flow through each
@@ -726,7 +753,7 @@ typedef struct binrec_setup_t {
  * in the processor state block.  System call and trap handlers are not
  * affected.
  */
-#define BINREC_OPT_G_PPC_TRIM_CR_STORES  (1<<3)
+#define BINREC_OPT_G_PPC_TRIM_CR_STORES  (1<<4)
 
 /*------------ Host-architecture-specific optimization flags ------------*/
 

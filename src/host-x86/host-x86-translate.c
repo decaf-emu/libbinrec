@@ -3571,8 +3571,9 @@ static bool translate_block(HostX86Context *ctx, int block_index)
                 ASSERT(jump_to - jump_from == jump_disp);
             } else {
                 const X86Opcode set_opcode =
-                    (cmpsel==RTLFCMP_GT ? (invert ? X86OP_SETBE : X86OP_SETA)
-                                        : (invert ? X86OP_SETB : X86OP_SETAE));
+                    (cmpsel==RTLFCMP_GT ? (invert ? X86OP_SETBE : X86OP_SETA) :
+                     cmpsel==RTLFCMP_GE ? (invert ? X86OP_SETB : X86OP_SETAE) :
+                                          (invert ? X86OP_SETNP : X86OP_SETP));
                 maybe_append_empty_rex(&code, host_dest, -1, -1);
                 append_insn_ModRM_reg(&code, false, set_opcode, 0, host_dest);
                 if (!dest_initted) {

@@ -731,6 +731,7 @@ static inline uint64_t fold_constant(RTLUnit * const unit,
             case RTLFCMP_GT: result = val1 >  val2; break;
             case RTLFCMP_GE: result = val1 >= val2; break;
             case RTLFCMP_EQ: result = val1 == val2; break;
+            case RTLFCMP_UN: result = isnan(val1) || isnan(val2); break;
         }
         if (reg->result.fcmp & RTLFCMP_INVERT) {
             result = !result;

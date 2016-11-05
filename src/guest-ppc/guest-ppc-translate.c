@@ -72,6 +72,7 @@ static bool init_unit(GuestPPCContext *ctx)
     bool ctr_used = false;
     bool xer_used = false;
     bool fpscr_used = false;
+    bool fr_fi_fprf_used = false;
     bool cr_changed = false;
     bool lr_changed = false;
     bool ctr_changed = false;
@@ -94,6 +95,7 @@ static bool init_unit(GuestPPCContext *ctx)
         xer_changed |= ctx->blocks[i].xer_changed;
         fpscr_used |= ctx->blocks[i].fpscr_used;
         fpscr_changed |= ctx->blocks[i].fpscr_changed;
+        fr_fi_fprf_used |= ctx->blocks[i].fr_fi_fprf_used;
     }
     ctx->crb_changed = bitrev32(crb_changed);
 
@@ -156,6 +158,15 @@ static bool init_unit(GuestPPCContext *ctx)
         ctx->alias.fpscr = rtl_alloc_alias_register(unit, RTLTYPE_INT32);
         rtl_set_alias_storage(unit, ctx->alias.fpscr, ctx->psb_reg,
                               ctx->handle->setup.state_offset_fpscr);
+        ctx->alias.fr_fi_fprf = rtl_alloc_alias_register(unit, RTLTYPE_INT32);
+        if (fr_fi_fprf_used) {
+            const int fpscr = rtl_alloc_register(unit, RTLTYPE_INT32);
+            rtl_add_insn(unit, RTLOP_GET_ALIAS, fpscr, 0, 0, ctx->alias.fpscr);
+            const int fff = rtl_alloc_register(unit, RTLTYPE_INT32);
+            rtl_add_insn(unit, RTLOP_BFEXT, fff, fpscr, 0, 12 | 7<<8);
+            rtl_add_insn(unit, RTLOP_SET_ALIAS,
+                         0, fff, 0, ctx->alias.fr_fi_fprf);
+        }
     }
 
     if (UNLIKELY(rtl_get_error_state(unit))) {
@@ -184,6 +195,7 @@ static bool add_epilogue(GuestPPCContext *ctx)
         rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, ctx->epilogue_label);
     }
     guest_ppc_flush_cr(ctx, false);
+    guest_ppc_flush_fpscr(ctx, false);
     rtl_add_insn(unit, RTLOP_RETURN, 0, 0, 0, 0);
 
     if (UNLIKELY(rtl_get_error_state(unit))) {

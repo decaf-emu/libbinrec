@@ -49,7 +49,7 @@ int main(void)
      * default cases in various switch blocks. */
     unit->insns[2].opcode = (RTLOpcode)0;
     unit->insns[5].src2 = reg5;
-    unit->insns[6].fcmp = RTLFCMP_EQ + 1;
+    unit->insns[6].fcmp = RTLFCMP_UN + 1;
     unit->insns[8].src_imm = RTLFEXC_ZERO_DIVIDE + 1;
     unit->insns[9].src_imm = RTLFROUND_CEIL + 1;
     unit->regs[reg3].result.opcode = (RTLOpcode)0;

@@ -144,6 +144,7 @@ static inline CONST_FUNCTION const char *fcmp_name(RTLFloatCompare fcmp)
         case RTLFCMP_GT: return "GT";
         case RTLFCMP_GE: return "GE";
         case RTLFCMP_EQ: return "EQ";
+        case RTLFCMP_UN: return "UN";
     }
     return "???";
 }

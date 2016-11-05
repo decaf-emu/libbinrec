@@ -186,11 +186,11 @@ static inline int convert_fpr(GuestPPCContext *ctx, int index, int reg,
 /*-----------------------------------------------------------------------*/
 
 /**
- * get_gpr, get_fpr, get_cr, get_crb, get_lr, get_ctr, get_xer, get_fpscr:
- * Return an RTL register containing the value of the given PowerPC register.
- * This will either be the register last used in a corresponding set or get
- * operation, or a newly allocated register (in which case an appropriate
- * GET_ALIAS instruction will also be added).
+ * get_gpr, get_fpr, get_cr, get_crb, get_lr, get_ctr, get_xer, get_fpscr,
+ * get_fr_fi_fprf:  Return an RTL register containing the value of the
+ * given PowerPC register.  This will either be the register last used in
+ * a corresponding set or get operation, or a newly allocated register (in
+ * which case an appropriate GET_ALIAS instruction will also be added).
  *
  * [Parameters]
  *     ctx: Translation context.
@@ -335,6 +335,20 @@ static inline int get_fpscr(GuestPPCContext * const ctx)
     }
 }
 
+static inline int get_fr_fi_fprf(GuestPPCContext * const ctx)
+{
+    if (ctx->live.fr_fi_fprf) {
+        return ctx->live.fr_fi_fprf;
+    } else {
+        RTLUnit * const unit = ctx->unit;
+        const int reg = rtl_alloc_register(unit, RTLTYPE_INT32);
+        ASSERT(ctx->alias.fr_fi_fprf);
+        rtl_add_insn(unit, RTLOP_GET_ALIAS, reg, 0, 0, ctx->alias.fr_fi_fprf);
+        ctx->live.fr_fi_fprf = reg;
+        return reg;
+    }
+}
+
 /*-----------------------------------------------------------------------*/
 
 /**
@@ -374,8 +388,9 @@ static inline int test_crb(GuestPPCContext * const ctx, int index)
 /*-----------------------------------------------------------------------*/
 
 /**
- * set_gpr, set_fpr, set_cr, set_crb, set_lr, set_ctr, set_xer, set_fpscr:
- * Store the given RTL register to the given PowerPC register.
+ * set_gpr, set_fpr, set_cr, set_crb, set_lr, set_ctr, set_xer, set_fpscr,
+ * set_fr_fi_fprf:  Store the given RTL register to the given PowerPC
+ * register.
  *
  * [Parameters]
  *     ctx: Translation context.
@@ -467,6 +482,17 @@ static inline void set_fpscr(GuestPPCContext * const ctx, int reg)
     ctx->last_set.fpscr = unit->num_insns;
     rtl_add_insn(unit, RTLOP_SET_ALIAS, 0, reg, 0, ctx->alias.fpscr);
     ctx->live.fpscr = reg;
+}
+
+static inline void set_fr_fi_fprf(GuestPPCContext * const ctx, int reg)
+{
+    RTLUnit * const unit = ctx->unit;
+    if (ctx->last_set.fr_fi_fprf >= 0) {
+        rtl_opt_kill_insn(unit, ctx->last_set.fr_fi_fprf, false);
+    }
+    ctx->last_set.fr_fi_fprf = unit->num_insns;
+    rtl_add_insn(unit, RTLOP_SET_ALIAS, 0, reg, 0, ctx->alias.fr_fi_fprf);
+    ctx->live.fr_fi_fprf = reg;
 }
 
 /*-----------------------------------------------------------------------*/
@@ -709,6 +735,43 @@ static int merge_cr(GuestPPCContext *ctx, bool make_live)
 /*-----------------------------------------------------------------------*/
 
 /**
+ * merge_fpscr:  Merge the FR/FI/FPRF alias into FPSCR and return an RTL
+ * register containing the merged value.  Helper for guest_ppc_flush_fpscr().
+ *
+ * [Parameters]
+ *     ctx: Translation context.
+ *     make_live: True to always leave FPSCR live in its alias, false to not
+ *         call get_fpscr() if FPSCR is not live.
+ * [Return value]
+ *     RTL register containing merged value of FPSCR.
+ */
+static int merge_fpscr(GuestPPCContext *ctx, bool make_live)
+{
+    RTLUnit * const unit = ctx->unit;
+
+    int fpscr;
+    if (make_live) {
+        fpscr = get_fpscr(ctx);
+    } else if (ctx->live.fpscr) {
+        fpscr = ctx->live.fpscr;
+    } else {
+        fpscr = rtl_alloc_register(unit, RTLTYPE_INT32);
+        rtl_add_insn(unit, RTLOP_GET_ALIAS, fpscr, 0, 0, ctx->alias.fpscr);
+    }
+
+    const int fr_fi_fprf = get_fr_fi_fprf(ctx);
+    const int shifted_fprf = rtl_alloc_register(unit, RTLTYPE_INT32);
+    rtl_add_insn(unit, RTLOP_SLLI, shifted_fprf, fr_fi_fprf, 0, 12);
+
+    const int merged_fpscr = rtl_alloc_register(unit, RTLTYPE_INT32);
+    rtl_add_insn(unit, RTLOP_OR, merged_fpscr, fpscr, shifted_fprf, 0);
+
+    return merged_fpscr;
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
  * post_insn_callback:  Add RTL to call the post-instruction callback if
  * one has been set.
  *
@@ -721,6 +784,7 @@ static void post_insn_callback(GuestPPCContext *ctx, uint32_t address)
     if (ctx->handle->post_insn_callback) {
         flush_live_regs(ctx, false);
         guest_ppc_flush_cr(ctx, false);
+        guest_ppc_flush_fpscr(ctx, false);
         RTLUnit * const unit = ctx->unit;
         const int func = rtl_alloc_register(unit, RTLTYPE_ADDRESS);
         rtl_add_insn(unit, RTLOP_LOAD_IMM, func, 0, 0,
@@ -1319,7 +1383,7 @@ static inline void translate_compare(
 /*-----------------------------------------------------------------------*/
 
 /**
- * translate_compare_fp:  Translate an integer compare instruction.
+ * translate_compare_fp:  Translate a floating-point compare instruction.
  *
  * [Parameters]
  *     ctx: Translation context.
@@ -1342,17 +1406,49 @@ static inline void translate_compare_fp(
     rtl_add_insn(unit, RTLOP_FCMP, gt, frA, frB, obit | RTLFCMP_GT);
     const int eq = rtl_alloc_register(unit, RTLTYPE_INT32);
     rtl_add_insn(unit, RTLOP_FCMP, eq, frA, frB, obit | RTLFCMP_EQ);
-    const int fpstate = rtl_alloc_register(unit, RTLTYPE_FPSTATE);
-    rtl_add_insn(unit, RTLOP_FGETSTATE, fpstate, 0, 0, 0);
     const int un = rtl_alloc_register(unit, RTLTYPE_INT32);
-    rtl_add_insn(unit, RTLOP_FTESTEXC, un, fpstate, 0, RTLFEXC_INVALID);
-
-    // FIXME: FPSCR update
+    rtl_add_insn(unit, RTLOP_FCMP, un, frA, frB, obit | RTLFCMP_UN);
 
     set_crb(ctx, insn_crfD(insn)*4+0, lt);
     set_crb(ctx, insn_crfD(insn)*4+1, gt);
     set_crb(ctx, insn_crfD(insn)*4+2, eq);
     set_crb(ctx, insn_crfD(insn)*4+3, un);
+
+    const int fr_fi_fprf = get_fr_fi_fprf(ctx);
+    const int masked = rtl_alloc_register(unit, RTLTYPE_INT32);
+    rtl_add_insn(unit, RTLOP_ANDI, masked, fr_fi_fprf, 0, 0x70);
+    const int shifted_lt = rtl_alloc_register(unit, RTLTYPE_INT32);
+    rtl_add_insn(unit, RTLOP_SLLI, shifted_lt, lt, 0, 3);
+    const int shifted_gt = rtl_alloc_register(unit, RTLTYPE_INT32);
+    rtl_add_insn(unit, RTLOP_SLLI, shifted_gt, gt, 0, 2);
+    const int shifted_eq = rtl_alloc_register(unit, RTLTYPE_INT32);
+    rtl_add_insn(unit, RTLOP_SLLI, shifted_eq, eq, 0, 1);
+    const int lt_gt = rtl_alloc_register(unit, RTLTYPE_INT32);
+    rtl_add_insn(unit, RTLOP_OR, lt_gt, shifted_lt, shifted_gt, 0);
+    const int eq_un = rtl_alloc_register(unit, RTLTYPE_INT32);
+    rtl_add_insn(unit, RTLOP_OR, eq_un, shifted_eq, un, 0);
+    const int fpcc = rtl_alloc_register(unit, RTLTYPE_INT32);
+    rtl_add_insn(unit, RTLOP_OR, fpcc, lt_gt, eq_un, 0);
+    const int merged = rtl_alloc_register(unit, RTLTYPE_INT32);
+    rtl_add_insn(unit, RTLOP_OR, merged, masked, fpcc, 0);
+    set_fr_fi_fprf(ctx, merged);
+
+    const int fpstate = rtl_alloc_register(unit, RTLTYPE_FPSTATE);
+    rtl_add_insn(unit, RTLOP_FGETSTATE, fpstate, 0, 0, 0);
+    const int invalid = rtl_alloc_register(unit, RTLTYPE_INT32);
+    rtl_add_insn(unit, RTLOP_FTESTEXC, invalid, fpstate, 0, RTLFEXC_INVALID);
+    const int label = rtl_alloc_label(unit);
+    rtl_add_insn(unit, RTLOP_GOTO_IF_Z, 0, invalid, 0, label);
+    const int fpscr = get_fpscr(ctx);
+    if (ordered && !(ctx->handle->guest_opt
+                     & BINREC_OPT_G_PPC_IGNORE_FPSCR_VXFOO)) {
+        // FIXME: not yet implemented (check for SNaN vs. QNaN)
+    }
+    const int new_fpscr = rtl_alloc_register(unit, RTLTYPE_INT32);
+    rtl_add_insn(unit, RTLOP_ORI,
+                 new_fpscr, fpscr, 0, FPSCR_VX | FPSCR_VXSNAN);
+    set_fpscr(ctx, new_fpscr);
+    rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, label);
 }
 
 /*-----------------------------------------------------------------------*/
@@ -2526,6 +2622,7 @@ static void translate_trap(
 
     flush_live_regs(ctx, false);
     guest_ppc_flush_cr(ctx, false);
+    guest_ppc_flush_fpscr(ctx, false);
     set_nia_imm(ctx, address);
     const int trap_handler = rtl_alloc_register(unit, RTLTYPE_ADDRESS);
     rtl_add_insn(unit, RTLOP_LOAD, trap_handler, ctx->psb_reg, 0,
@@ -3208,6 +3305,7 @@ static inline void translate_insn(
             nia = rtl_imm32(unit, address + 4);
         }
         guest_ppc_flush_cr(ctx, true);
+        guest_ppc_flush_fpscr(ctx, true);
         flush_live_regs(ctx, true);
         set_nia(ctx, nia);
         const int sc_handler = rtl_alloc_register(unit, RTLTYPE_ADDRESS);
@@ -3529,6 +3627,7 @@ bool guest_ppc_translate_block(GuestPPCContext *ctx, int index)
         if (ctx->handle->pre_insn_callback) {
             flush_live_regs(ctx, false);
             guest_ppc_flush_cr(ctx, false);
+            guest_ppc_flush_fpscr(ctx, false);
             const int func = rtl_alloc_register(unit, RTLTYPE_ADDRESS);
             rtl_add_insn(unit, RTLOP_LOAD_IMM, func, 0, 0,
                          (uintptr_t)ctx->handle->pre_insn_callback);
@@ -3585,6 +3684,28 @@ void guest_ppc_flush_cr(GuestPPCContext *ctx, bool make_live)
             ctx->crb_dirty = 0;
         } else {
             rtl_add_insn(unit, RTLOP_SET_ALIAS, 0, cr, 0, ctx->alias.cr);
+        }
+    }
+}
+
+/*-----------------------------------------------------------------------*/
+
+void guest_ppc_flush_fpscr(GuestPPCContext *ctx, bool make_live)
+{
+    ASSERT(ctx);
+    ASSERT(ctx->handle);
+    ASSERT(ctx->unit);
+
+    RTLUnit * const unit = ctx->unit;
+
+    if (ctx->alias.fpscr) {
+        const int fpscr = merge_fpscr(ctx, make_live);
+        if (make_live) {
+            set_fpscr(ctx, fpscr);
+            ctx->last_set.fr_fi_fprf = -1;
+            ctx->live.fr_fi_fprf = 0;
+        } else {
+            rtl_add_insn(unit, RTLOP_SET_ALIAS, 0, fpscr, 0, ctx->alias.fpscr);
         }
     }
 }
