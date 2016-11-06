@@ -3317,7 +3317,8 @@ static bool translate_block(HostX86Context *ctx, int block_index)
             const X86Opcode set_opcode = (
                 insn->opcode == RTLOP_SLTUI ? X86OP_SETB :
                 insn->opcode == RTLOP_SLTSI ? X86OP_SETL :
-                insn->opcode == RTLOP_SGTUI ? X86OP_SETA :
+                insn->opcode == RTLOP_SGTUI ? (insn->src_imm == 0
+                                               ? X86OP_SETNZ : X86OP_SETA) :
                 insn->opcode == RTLOP_SGTSI ? X86OP_SETG :
                              /* RTLOP_SEQI */ X86OP_SETZ);
 
@@ -3328,7 +3329,7 @@ static bool translate_block(HostX86Context *ctx, int block_index)
                  || host_dest != ctx->regs[src1].host_reg);
             const bool added_compare = append_compare(
                 ctx, insn_index, &code, src1, 0, insn->src_imm, 0,
-                insn->opcode == RTLOP_SEQI, false,
+                set_opcode==X86OP_SETZ || set_opcode==X86OP_SETNZ, false,
                 should_clear_dest ? (int)host_dest : -1);
             const bool cleared_dest = should_clear_dest && added_compare;
 
