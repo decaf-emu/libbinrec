@@ -378,8 +378,7 @@ static inline int test_crb(GuestPPCContext * const ctx, int index)
         } else {
             const int cr = get_cr(ctx);
             reg = rtl_alloc_register(unit, RTLTYPE_INT32);
-            rtl_add_insn(unit, RTLOP_ANDI,
-                         reg, cr, 0, (int32_t)(0x80000000u >> index));
+            rtl_add_insn(unit, RTLOP_ANDI, reg, cr, 0, 0x80000000u >> index);
         }
         return reg;
     }
@@ -751,7 +750,7 @@ static int merge_cr(GuestPPCContext *ctx, bool make_live)
             rtl_add_insn(unit, RTLOP_GET_ALIAS, old_cr, 0, 0, ctx->alias.cr);
         }
         cr = rtl_alloc_register(unit, RTLTYPE_INT32);
-        rtl_add_insn(unit, RTLOP_ANDI, cr, old_cr, 0, (int32_t)~crb_loaded);
+        rtl_add_insn(unit, RTLOP_ANDI, cr, old_cr, 0, ~crb_loaded);
     }
 
     while (crb_loaded) {
@@ -807,8 +806,8 @@ static int merge_fpscr(GuestPPCContext *ctx, bool make_live)
 
     const int masked_fpscr = rtl_alloc_register(unit, RTLTYPE_INT32);
     rtl_add_insn(unit, RTLOP_ANDI, masked_fpscr, fpscr, 0,
-                 (int32_t)~(FPSCR_FEX | FPSCR_VX | FPSCR_FR | FPSCR_FI
-                            | FPSCR_FPRF | FPSCR_RESV20));
+                 ~(FPSCR_FEX | FPSCR_VX | FPSCR_FR | FPSCR_FI | FPSCR_FPRF
+                   | FPSCR_RESV20));
     const int shifted_fprf = rtl_alloc_register(unit, RTLTYPE_INT32);
     rtl_add_insn(unit, RTLOP_SLLI,
                  shifted_fprf, fr_fi_fprf, 0, FPSCR_FPRF_SHIFT);
@@ -1150,7 +1149,7 @@ static void translate_addsub_reg(
         }
         const int xer = get_xer(ctx);
         const int masked_xer = rtl_alloc_register(unit, RTLTYPE_INT32);
-        rtl_add_insn(unit, RTLOP_ANDI, masked_xer, xer, 0, (int32_t)~XER_OV);
+        rtl_add_insn(unit, RTLOP_ANDI, masked_xer, xer, 0, ~XER_OV);
         const int SO_OV = rtl_imm32(unit, XER_SO | XER_OV);
         const int bits_to_set = rtl_alloc_register(unit, RTLTYPE_INT32);
         rtl_add_insn(unit, RTLOP_SELECT, bits_to_set, SO_OV, ov, ov);
@@ -1486,7 +1485,7 @@ static inline void translate_compare(
                      gt, rA, 0, imm);
         rtl_add_insn(unit, RTLOP_SEQI, eq, rA, 0, imm);
     } else {
-        const int32_t rB = get_gpr(ctx, insn_rB(insn));
+        const int rB = get_gpr(ctx, insn_rB(insn));
         rtl_add_insn(unit, is_signed ? RTLOP_SLTS : RTLOP_SLTU, lt, rA, rB, 0);
         rtl_add_insn(unit, is_signed ? RTLOP_SGTS : RTLOP_SGTU, gt, rA, rB, 0);
         rtl_add_insn(unit, RTLOP_SEQ, eq, rA, rB, 0);
@@ -2122,7 +2121,7 @@ static inline void translate_logic_imm(
     const int rS = get_gpr(ctx, insn_rS(insn));
     const uint32_t imm = shift_imm ? insn_UIMM(insn)<<16 : insn_UIMM(insn);
     const int result = rtl_alloc_register(unit, RTLTYPE_INT32);
-    rtl_add_insn(unit, rtlop, result, rS, 0, (int32_t)imm);
+    rtl_add_insn(unit, rtlop, result, rS, 0, imm);
     set_gpr(ctx, insn_rA(insn), result);
 
     if (set_cr0) {
@@ -2353,7 +2352,7 @@ static inline void translate_muldiv_reg(
             xer = get_xer(ctx);
         }
         const int masked_xer = rtl_alloc_register(unit, RTLTYPE_INT32);
-        rtl_add_insn(unit, RTLOP_ANDI, masked_xer, xer, 0, (int32_t)~XER_OV);
+        rtl_add_insn(unit, RTLOP_ANDI, masked_xer, xer, 0, ~XER_OV);
         if (rtlop == RTLOP_MUL) {
             /* mullwo's overflow check is for signed integers, so we can't
              * just check for the high word being nonzero. */
@@ -2389,8 +2388,7 @@ static inline void translate_muldiv_reg(
 
         if (do_overflow) {
             const int new_xer = rtl_alloc_register(unit, RTLTYPE_INT32);
-            rtl_add_insn(unit, RTLOP_ORI,
-                         new_xer, xer, 0, (int32_t)(XER_SO | XER_OV));
+            rtl_add_insn(unit, RTLOP_ORI, new_xer, xer, 0, XER_SO | XER_OV);
             rtl_add_insn(unit, RTLOP_SET_ALIAS, 0, new_xer, 0, ctx->alias.xer);
             rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, div_continue_label);
         }
@@ -2477,10 +2475,9 @@ static void translate_rotate_mask(
             }
             const uint32_t mask = ((1u << count) - 1) << start;
             const int rS_masked = rtl_alloc_register(unit, RTLTYPE_INT32);
-            rtl_add_insn(unit, RTLOP_ANDI,
-                         rS_masked, rS_rotated, 0, (int32_t)~mask);
+            rtl_add_insn(unit, RTLOP_ANDI, rS_masked, rS_rotated, 0, ~mask);
             const int rA_masked = rtl_alloc_register(unit, RTLTYPE_INT32);
-            rtl_add_insn(unit, RTLOP_ANDI, rA_masked, rA, 0, (int32_t)mask);
+            rtl_add_insn(unit, RTLOP_ANDI, rA_masked, rA, 0, mask);
             result = rtl_alloc_register(unit, RTLTYPE_INT32);
             rtl_add_insn(unit, RTLOP_OR, result, rS_masked, rA_masked, 0);
         }
@@ -2509,7 +2506,7 @@ static void translate_rotate_mask(
             rtl_add_insn(unit, RTLOP_ROL, rotated, rS, rB, 0);
         }
         result = rtl_alloc_register(unit, RTLTYPE_INT32);
-        rtl_add_insn(unit, RTLOP_ANDI, result, rotated, 0, (int32_t)mask);
+        rtl_add_insn(unit, RTLOP_ANDI, result, rotated, 0, mask);
     }
 
     set_gpr(ctx, insn_rA(insn), result);
@@ -2564,7 +2561,7 @@ static void translate_shift(
     if (is_sra) {
         int test;
         if (is_imm) {
-            const int32_t mask = (int32_t)((1u << insn_SH(insn)) - 1);
+            const uint32_t mask = (1u << insn_SH(insn)) - 1;
             test = rtl_alloc_register(unit, RTLTYPE_INT32);
             rtl_add_insn(unit, RTLOP_ANDI, test, rS, 0, mask);
         } else {
@@ -3415,8 +3412,7 @@ static inline void translate_x3F(
                 if (mask) {
                     const int new_fpscr =
                         rtl_alloc_register(unit, RTLTYPE_INT32);
-                    rtl_add_insn(unit, RTLOP_ANDI,
-                                 new_fpscr, fpscr, 0, (int32_t)~mask);
+                    rtl_add_insn(unit, RTLOP_ANDI, new_fpscr, fpscr, 0, ~mask);
                     set_fpscr(ctx, new_fpscr);
                 }
             }
@@ -3435,8 +3431,7 @@ static inline void translate_x3F(
                 if (insn_XO_10(insn) == XO_MTFSB1) {
                     rtl_add_insn(unit, RTLOP_ORI, new_fprf, fprf, 0, mask);
                 } else {
-                    rtl_add_insn(unit, RTLOP_ANDI,
-                                 new_fprf, fprf, 0, (int32_t)~mask);
+                    rtl_add_insn(unit, RTLOP_ANDI, new_fprf, fprf, 0, ~mask);
                 }
                 set_fr_fi_fprf(ctx, new_fprf);
 
@@ -3451,10 +3446,10 @@ static inline void translate_x3F(
                     if (FPSCR_ALL_EXCEPTIONS & crbD_mask) {
                         mask |= FPSCR_FX;
                     }
-                    rtl_add_insn(unit, RTLOP_ORI, new_fpscr, fpscr, 0, (int32_t)mask);
+                    rtl_add_insn(unit, RTLOP_ORI, new_fpscr, fpscr, 0, mask);
                 } else {  // mtfsb0
                     rtl_add_insn(unit, RTLOP_ANDI,
-                                 new_fpscr, fpscr, 0, (int32_t)~crbD_mask);
+                                 new_fpscr, fpscr, 0, ~crbD_mask);
                 }
                 set_fpscr(ctx, new_fpscr);
                 if (FPSCR_RN & crbD_mask) {
@@ -3481,7 +3476,7 @@ static inline void translate_x3F(
                 if (insn_IMM(insn) & 9) {
                     new_fpscr = rtl_alloc_register(unit, RTLTYPE_INT32);
                     rtl_add_insn(unit, RTLOP_ORI, new_fpscr, masked_fpscr, 0,
-                                 (int32_t)((insn_IMM(insn) & 9) << 28));
+                                 (insn_IMM(insn) & 9) << 28);
                 } else {
                     new_fpscr = masked_fpscr;
                 }
@@ -3496,7 +3491,7 @@ static inline void translate_x3F(
                     rtl_add_insn(unit, RTLOP_ORI, new_fpscr, fpscr, 0, 1u<<19);
                 } else {
                     rtl_add_insn(unit, RTLOP_ANDI,
-                                 new_fpscr, fpscr, 0, (int32_t)~(1u<<19));
+                                 new_fpscr, fpscr, 0, ~(1u<<19));
                 }
                 set_fpscr(ctx, new_fpscr);
                 const int fprf = get_fr_fi_fprf(ctx);
@@ -3531,8 +3526,7 @@ static inline void translate_x3F(
                 const int masked_fpscr =
                     rtl_alloc_register(unit, RTLTYPE_INT32);
                 uint32_t mask = 0xF0000000u >> (insn_crfD(insn) * 4);
-                rtl_add_insn(unit, RTLOP_ANDI,
-                             masked_fpscr, fpscr, 0, (int32_t)~mask);
+                rtl_add_insn(unit, RTLOP_ANDI, masked_fpscr, fpscr, 0, ~mask);
                 int imm = insn_IMM(insn);
                 if (insn_crfD(insn) == 5) {
                     imm &= 7;
@@ -3613,7 +3607,7 @@ static inline void translate_x3F(
                         FPSCR_FEX | FPSCR_VX | FPSCR_FR | FPSCR_FI
                         | FPSCR_FPRF | FPSCR_RESV20);
                     new_fpscr = rtl_alloc_register(unit, RTLTYPE_INT32);
-                    rtl_add_insn(unit, RTLOP_ANDI, new_fpscr, bits, 0, (int32_t)mask);
+                    rtl_add_insn(unit, RTLOP_ANDI, new_fpscr, bits, 0, mask);
                 } else {
                     uint32_t mask = 0;
                     for (int i = 0; i < 8; i++) {
@@ -3626,12 +3620,11 @@ static inline void translate_x3F(
                     const int fpscr = get_fpscr(ctx);
                     const int masked_bits =
                         rtl_alloc_register(unit, RTLTYPE_INT32);
-                    rtl_add_insn(unit, RTLOP_ANDI,
-                                 masked_bits, bits, 0, (int32_t)mask);
+                    rtl_add_insn(unit, RTLOP_ANDI, masked_bits, bits, 0, mask);
                     const int masked_fpscr =
                         rtl_alloc_register(unit, RTLTYPE_INT32);
                     rtl_add_insn(unit, RTLOP_ANDI,
-                                 masked_fpscr, fpscr, 0, (int32_t)~mask);
+                                 masked_fpscr, fpscr, 0, ~mask);
                     new_fpscr = rtl_alloc_register(unit, RTLTYPE_INT32);
                     rtl_add_insn(unit, RTLOP_OR,
                                  new_fpscr, masked_fpscr, masked_bits, 0);
