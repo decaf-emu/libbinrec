@@ -1679,7 +1679,12 @@ void rtl_opt_alias_data_flow(RTLUnit *unit)
                  * any previously set alias with bound storage, since the
                  * value has to be flushed to storage before the call. */
                 for (int i = 1; i < unit->next_alias; i++) {
-                    if (unit->aliases[i].base && alias_refs[i].has_set) {
+                    /* We don't bother checking has_set here because
+                     * set_used is only read if has_set is true, and
+                     * every code path which sets has_set also writes
+                     * set_used, so there's no sensible way to test the
+                     * !has_set code path. */
+                    if (unit->aliases[i].base) {
                         alias_refs[i].set_used = true;
                     }
                 }

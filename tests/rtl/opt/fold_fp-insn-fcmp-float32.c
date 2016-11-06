@@ -130,6 +130,31 @@ static int add_rtl(RTLUnit *unit)
     EXPECT(reg = rtl_alloc_register(unit, RTLTYPE_INT32));
     EXPECT(rtl_add_insn(unit, RTLOP_FCMP, reg, reg1, reg5, RTLFCMP_NUN));
 
+    EXPECT(reg = rtl_alloc_register(unit, RTLTYPE_INT32));
+    EXPECT(rtl_add_insn(unit, RTLOP_FCMP, reg, reg5, reg1, RTLFCMP_LT));
+    EXPECT(reg = rtl_alloc_register(unit, RTLTYPE_INT32));
+    EXPECT(rtl_add_insn(unit, RTLOP_FCMP, reg, reg5, reg1, RTLFCMP_LE));
+    EXPECT(reg = rtl_alloc_register(unit, RTLTYPE_INT32));
+    EXPECT(rtl_add_insn(unit, RTLOP_FCMP, reg, reg5, reg1, RTLFCMP_GT));
+    EXPECT(reg = rtl_alloc_register(unit, RTLTYPE_INT32));
+    EXPECT(rtl_add_insn(unit, RTLOP_FCMP, reg, reg5, reg1, RTLFCMP_GE));
+    EXPECT(reg = rtl_alloc_register(unit, RTLTYPE_INT32));
+    EXPECT(rtl_add_insn(unit, RTLOP_FCMP, reg, reg5, reg1, RTLFCMP_EQ));
+    EXPECT(reg = rtl_alloc_register(unit, RTLTYPE_INT32));
+    EXPECT(rtl_add_insn(unit, RTLOP_FCMP, reg, reg5, reg1, RTLFCMP_UN));
+    EXPECT(reg = rtl_alloc_register(unit, RTLTYPE_INT32));
+    EXPECT(rtl_add_insn(unit, RTLOP_FCMP, reg, reg5, reg1, RTLFCMP_NLT));
+    EXPECT(reg = rtl_alloc_register(unit, RTLTYPE_INT32));
+    EXPECT(rtl_add_insn(unit, RTLOP_FCMP, reg, reg5, reg1, RTLFCMP_NLE));
+    EXPECT(reg = rtl_alloc_register(unit, RTLTYPE_INT32));
+    EXPECT(rtl_add_insn(unit, RTLOP_FCMP, reg, reg5, reg1, RTLFCMP_NGT));
+    EXPECT(reg = rtl_alloc_register(unit, RTLTYPE_INT32));
+    EXPECT(rtl_add_insn(unit, RTLOP_FCMP, reg, reg5, reg1, RTLFCMP_NGE));
+    EXPECT(reg = rtl_alloc_register(unit, RTLTYPE_INT32));
+    EXPECT(rtl_add_insn(unit, RTLOP_FCMP, reg, reg5, reg1, RTLFCMP_NEQ));
+    EXPECT(reg = rtl_alloc_register(unit, RTLTYPE_INT32));
+    EXPECT(rtl_add_insn(unit, RTLOP_FCMP, reg, reg5, reg1, RTLFCMP_NUN));
+
     return EXIT_SUCCESS;
 }
 
@@ -186,8 +211,20 @@ static const char expected[] =
         "[info] Folded r51 to constant value 1 at 50\n"
         "[info] Folded r52 to constant value 1 at 51\n"
         "[info] Folded r53 to constant value 0 at 52\n"
-        "[info] r1 no longer used, setting death = birth\n"
+        "[info] Folded r54 to constant value 0 at 53\n"
+        "[info] Folded r55 to constant value 0 at 54\n"
+        "[info] Folded r56 to constant value 0 at 55\n"
+        "[info] Folded r57 to constant value 0 at 56\n"
+        "[info] Folded r58 to constant value 0 at 57\n"
+        "[info] Folded r59 to constant value 1 at 58\n"
+        "[info] Folded r60 to constant value 1 at 59\n"
+        "[info] Folded r61 to constant value 1 at 60\n"
+        "[info] Folded r62 to constant value 1 at 61\n"
+        "[info] Folded r63 to constant value 1 at 62\n"
+        "[info] Folded r64 to constant value 1 at 63\n"
+        "[info] Folded r65 to constant value 0 at 64\n"
         "[info] r5 no longer used, setting death = birth\n"
+        "[info] r1 no longer used, setting death = birth\n"
     #endif
     "    0: LOAD_IMM   r1, 2.0f\n"
     "    1: LOAD_IMM   r2, 3.0f\n"
@@ -242,8 +279,20 @@ static const char expected[] =
     "   50: LOAD_IMM   r51, 1\n"
     "   51: LOAD_IMM   r52, 1\n"
     "   52: LOAD_IMM   r53, 0\n"
+    "   53: LOAD_IMM   r54, 0\n"
+    "   54: LOAD_IMM   r55, 0\n"
+    "   55: LOAD_IMM   r56, 0\n"
+    "   56: LOAD_IMM   r57, 0\n"
+    "   57: LOAD_IMM   r58, 0\n"
+    "   58: LOAD_IMM   r59, 1\n"
+    "   59: LOAD_IMM   r60, 1\n"
+    "   60: LOAD_IMM   r61, 1\n"
+    "   61: LOAD_IMM   r62, 1\n"
+    "   62: LOAD_IMM   r63, 1\n"
+    "   63: LOAD_IMM   r64, 1\n"
+    "   64: LOAD_IMM   r65, 0\n"
     "\n"
-    "Block 0: <none> --> [0,52] --> <none>\n"
+    "Block 0: <none> --> [0,64] --> <none>\n"
     ;
 
 #include "tests/rtl-optimize-test.i"
