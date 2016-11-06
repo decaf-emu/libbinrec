@@ -335,7 +335,7 @@ static bool process_command_line(int argc, char **argv)
                 opt_host |= BINREC_OPT_H_X86_BRANCH_ALIGNMENT
                           | BINREC_OPT_H_X86_CONDITION_CODES
                           | BINREC_OPT_H_X86_FIXED_REGS
-                          | BINREC_OPT_H_X86_FORWARD_CONDITIONS;
+                          | BINREC_OPT_H_X86_FORWARD_CONDITIONS
                           | BINREC_OPT_H_X86_STORE_IMMEDIATE;
             }
         }
