@@ -49,7 +49,7 @@ static const char expected[] =
     "   27: GOTO_IF_Z  r21, L1\n"
     "   28: FCLEAREXC\n"
     "   29: GET_ALIAS  r22, a9\n"
-    "   30: ORI        r23, r22, 16777216\n"
+    "   30: ORI        r23, r22, 17301504\n"
     "   31: SET_ALIAS  a9, r23\n"
     "   32: LABEL      L1\n"
     "   33: LOAD_IMM   r24, 4\n"

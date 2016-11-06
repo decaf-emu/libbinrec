@@ -1569,7 +1569,7 @@ static inline void translate_compare_fp(
     if (ordered && !(ctx->handle->guest_opt
                      & BINREC_OPT_G_PPC_IGNORE_FPSCR_VXFOO)) {
         /* If both values have maximum exponent and high mantissa bit set,
-         * they're both QNaNs and thus we should set VXVC instead of VXSNAN. */
+         * they're both QNaNs and thus we should not set VXSNAN. */
         const int frA_bits = rtl_alloc_register(unit, RTLTYPE_INT64);
         rtl_add_insn(unit, RTLOP_BITCAST, frA_bits, frA, 0, 0);
         const int frB_bits = rtl_alloc_register(unit, RTLTYPE_INT64);
@@ -1587,14 +1587,14 @@ static inline void translate_compare_fp(
         const int label_snan = rtl_alloc_label(unit);
         rtl_add_insn(unit, RTLOP_GOTO_IF_Z, 0, test, 0, label_snan);
         const int new_fpscr = rtl_alloc_register(unit, RTLTYPE_INT32);
-        rtl_add_insn(unit, RTLOP_ORI,
-                     new_fpscr, fpscr, 0, FPSCR_VX | FPSCR_VXVC);
+        rtl_add_insn(unit, RTLOP_ORI, new_fpscr, fpscr, 0, FPSCR_VXVC);
         rtl_add_insn(unit, RTLOP_SET_ALIAS, 0, new_fpscr, 0, ctx->alias.fpscr);
         rtl_add_insn(unit, RTLOP_GOTO, 0, 0, 0, label);
         rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, label_snan);
     }
     const int new_fpscr = rtl_alloc_register(unit, RTLTYPE_INT32);
-    rtl_add_insn(unit, RTLOP_ORI, new_fpscr, fpscr, 0, FPSCR_VXSNAN);
+    rtl_add_insn(unit, RTLOP_ORI, new_fpscr, fpscr, 0,
+                 ordered ? (FPSCR_VXSNAN | FPSCR_VXVC) : FPSCR_VXSNAN);
     rtl_add_insn(unit, RTLOP_SET_ALIAS, 0, new_fpscr, 0, ctx->alias.fpscr);
     rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, label);
 }
