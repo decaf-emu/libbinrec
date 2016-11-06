@@ -990,7 +990,7 @@ static void update_rounding_mode(GuestPPCContext *ctx)
  *     set_ca: True if XER[CA] should be set according to the result.
  *     set_cr0: True if CR0 should be set according to the result.
  */
-static inline void translate_arith_imm(
+static void translate_arith_imm(
     GuestPPCContext *ctx, uint32_t insn, RTLOpcode rtlop, bool shift_imm,
     bool set_ca, bool set_cr0)
 {
@@ -1174,7 +1174,7 @@ static void translate_addsub_reg(
  *     insn: Instruction word.
  *     rtlop: RTL instruction to perform the operation.
  */
-static inline void translate_bitmisc(
+static void translate_bitmisc(
     GuestPPCContext *ctx, uint32_t insn, RTLOpcode rtlop)
 {
     RTLUnit * const unit = ctx->unit;
@@ -1400,7 +1400,7 @@ static void translate_branch_terminal(
  *     AA: AA bit of instruction word.
  *     LK: LK bit of instruction word.
  */
-static inline void translate_branch(
+static void translate_branch(
     GuestPPCContext *ctx, uint32_t address, int BO, int BI, int32_t disp,
     int AA, int LK)
 {
@@ -1466,7 +1466,7 @@ static inline void translate_branch(
  *         false for a register-register compare (X-form instruction).
  *     is_signed: True for a signed compare, false for an unsigned compare.
  */
-static inline void translate_compare(
+static void translate_compare(
     GuestPPCContext *ctx, uint32_t insn, bool is_imm, bool is_signed)
 {
     RTLUnit * const unit = ctx->unit;
@@ -1512,7 +1512,7 @@ static inline void translate_compare(
  *     ordered: True for an ordered comparison (invalid exception on QNaN),
  *         false for an unordered comparison.
  */
-static inline void translate_compare_fp(
+static void translate_compare_fp(
     GuestPPCContext *ctx, uint32_t insn, bool ordered)
 {
     RTLUnit * const unit = ctx->unit;
@@ -1607,7 +1607,7 @@ static inline void translate_compare_fp(
  *     ctx: Translation context.
  *     insn: Instruction word.
  */
-static inline void translate_dcbz(GuestPPCContext *ctx, uint32_t insn)
+static void translate_dcbz(GuestPPCContext *ctx, uint32_t insn)
 {
     RTLUnit * const unit = ctx->unit;
 
@@ -1651,7 +1651,7 @@ static inline void translate_dcbz(GuestPPCContext *ctx, uint32_t insn)
  *     is_indexed: True if the access is an indexed access (like lwx or stwx).
  *     update: True if register rA should be updated with the final EA.
  */
-static inline void translate_load_store_fpr(
+static void translate_load_store_fpr(
     GuestPPCContext *ctx, uint32_t insn, bool is_single, bool is_store,
     bool is_indexed, bool update)
 {
@@ -1708,7 +1708,7 @@ static inline void translate_load_store_fpr(
  *     is_indexed: True if the access is an indexed access (like lwx or stwx).
  *     update: True if register rA should be updated with the final EA.
  */
-static inline void translate_load_store_gpr(
+static void translate_load_store_gpr(
     GuestPPCContext *ctx, uint32_t insn, RTLOpcode rtlop, bool is_store,
     bool is_indexed, bool update)
 {
@@ -1761,7 +1761,7 @@ static inline void translate_load_store_gpr(
  *     insn: Instruction word.
  *     is_store: True if the instruction is a store instruction (stmw).
  */
-static inline void translate_load_store_multiple(
+static void translate_load_store_multiple(
     GuestPPCContext *ctx, uint32_t insn, bool is_store)
 {
     RTLUnit * const unit = ctx->unit;
@@ -1842,7 +1842,7 @@ static inline void translate_load_store_multiple(
  *     is_store: True if the instruction is a store instruction (stswi/stswx).
  *     is_imm: True if the instruction has an immediate count (lswi/stswi).
  */
-static inline void translate_load_store_string(
+static void translate_load_store_string(
     GuestPPCContext *ctx, uint32_t insn, bool is_store, bool is_imm)
 {
     RTLUnit * const unit = ctx->unit;
@@ -2074,7 +2074,7 @@ static inline void translate_load_store_string(
  *     invert_crbB: True if the value of crbB should be inverted.
  *     invert_result: True if the result should be inverted.
  */
-static inline void translate_logic_crb(
+static void translate_logic_crb(
     GuestPPCContext *ctx, uint32_t insn, RTLOpcode rtlop, bool invert_crbB,
     bool invert_result)
 {
@@ -2112,7 +2112,7 @@ static inline void translate_logic_crb(
  *     shift_imm: True if the immediate value should be shifted left 16 bits.
  *     set_cr0: True if CR0 should be set according to the result.
  */
-static inline void translate_logic_imm(
+static void translate_logic_imm(
     GuestPPCContext *ctx, uint32_t insn, RTLOpcode rtlop, bool shift_imm,
     bool set_cr0)
 {
@@ -2142,7 +2142,7 @@ static inline void translate_logic_imm(
  *     invert_rB: True if the value of rB should be inverted.
  *     invert_result: True if the result should be inverted.
  */
-static inline void translate_logic_reg(
+static void translate_logic_reg(
     GuestPPCContext *ctx, uint32_t insn, RTLOpcode rtlop, bool invert_rB,
     bool invert_result)
 {
@@ -2182,7 +2182,7 @@ static inline void translate_logic_reg(
  *     insn: Instruction word.
  *     to_spr: True for mtspr, false for mfspr.
  */
-static inline void translate_move_spr(
+static void translate_move_spr(
     GuestPPCContext *ctx, uint32_t address, uint32_t insn, bool to_spr)
 {
     RTLUnit * const unit = ctx->unit;
@@ -2297,7 +2297,7 @@ static inline void translate_move_spr(
  *     rtlop: RTL register-immediate instruction to perform the operation.
  *     do_overflow: True to update XER[SO:OV] based on overflow state.
  */
-static inline void translate_muldiv_reg(
+static void translate_muldiv_reg(
     GuestPPCContext *ctx, uint32_t insn, RTLOpcode rtlop, bool do_overflow)
 {
     RTLUnit * const unit = ctx->unit;
