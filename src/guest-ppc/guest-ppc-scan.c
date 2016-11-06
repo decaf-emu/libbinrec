@@ -959,7 +959,9 @@ static void update_used_changed(GuestPPCContext *ctx, GuestPPCBlockInfo *block,
             break;
 
           case 0x07:  // mffs, mtfsf
-            mark_fpscr_used(block, true);
+            if (!(insn_XO_10(insn) == XO_MTFSF && insn_FM(insn) == 0xFF)) {
+                mark_fpscr_used(block, true);
+            }
             if (insn_XO_10(insn) == XO_MFFS) {
                 mark_fpr_changed(block, insn_frD(insn), FPR_DOUBLE);
             } else {

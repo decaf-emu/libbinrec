@@ -3574,7 +3574,15 @@ static inline void translate_x3F(
             rtl_add_insn(unit, RTLOP_BITCAST, result, fpscr64, 0, 0);
             set_fpr(ctx, insn_frD(insn), result);
             if (insn_Rc(insn)) {
-                update_cr1(ctx);
+                /* We already have FEX/VX, so avoid recomputing them. */
+                const int fx = rtl_alloc_register(unit, RTLTYPE_INT32);
+                rtl_add_insn(unit, RTLOP_BFEXT, fx, fpscr, 0, 31 | 1<<8);
+                const int ox = rtl_alloc_register(unit, RTLTYPE_INT32);
+                rtl_add_insn(unit, RTLOP_BFEXT, ox, fpscr, 0, 28 | 1<<8);
+                set_crb(ctx, 4, fx);
+                set_crb(ctx, 5, fex);
+                set_crb(ctx, 6, vx);
+                set_crb(ctx, 7, ox);
             }
             return;
           }  // case XO_MFFS
