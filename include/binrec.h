@@ -76,6 +76,10 @@ extern "C" {
  * any floating-point operations of its own only needs to set host
  * floating-point state once, before first calling translated code.
  *
+ * The overflow and underflow exception enable bits (OE and UE) in FPSCR
+ * are ignored; floating-point operations are performed as if both
+ * exceptions are masked (OE=0 and UE=0).
+ *
  * The "non-IEEE" (NI) flag in FPSCR is ignored; floating-point operations
  * will always be performed in full precision.
  *
