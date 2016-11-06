@@ -165,6 +165,7 @@ struct RTLInsn;
 #define FPSCR_FR_SHIFT      18
 #define FPSCR_FI_SHIFT      17
 #define FPSCR_FPRF_SHIFT    12
+#define FPSCR_RESV20_SHIFT  11  // Reserved bit, can't be set.
 #define FPSCR_VXSOFT_SHIFT  10
 #define FPSCR_VXSQRT_SHIFT   9
 #define FPSCR_VXCVI_SHIFT    8
@@ -191,6 +192,7 @@ struct RTLInsn;
 #define FPSCR_FR      (1u << FPSCR_FR_SHIFT)
 #define FPSCR_FI      (1u << FPSCR_FI_SHIFT)
 #define FPSCR_FPRF    (31u << FPSCR_FPRF_SHIFT)
+#define FPSCR_RESV20  (1u << FPSCR_RESV20_SHIFT)
 #define FPSCR_VXSOFT  (1u << FPSCR_VXSOFT_SHIFT)
 #define FPSCR_VXSQRT  (1u << FPSCR_VXSQRT_SHIFT)
 #define FPSCR_VXCVI   (1u << FPSCR_VXCVI_SHIFT)
@@ -201,6 +203,19 @@ struct RTLInsn;
 #define FPSCR_XE      (1u << FPSCR_XE_SHIFT)
 #define FPSCR_NI      (1u << FPSCR_NI_SHIFT)
 #define FPSCR_RN      (3u << FPSCR_RN_SHIFT)
+
+/* Mask for all VXFOO exception bits. */
+#define FPSCR_ALL_VXFOO  (FPSCR_VXSNAN | FPSCR_VXISI | FPSCR_VXIDI \
+                          | FPSCR_VXZDZ | FPSCR_VXIMZ | FPSCR_VXVC \
+                          | FPSCR_VXSOFT | FPSCR_VXSQRT | FPSCR_VXCVI)
+
+/* Mask for all non-hardwired exception bits. */
+#define FPSCR_ALL_EXCEPTIONS  (FPSCR_OX | FPSCR_UX | FPSCR_ZX | FPSCR_XX \
+                               | FPSCR_ALL_VXFOO)
+
+/* Mask for all exception enable bits. */
+#define FPSCR_ALL_ENABLES  (FPSCR_VE | FPSCR_OE | FPSCR_UE | FPSCR_ZE \
+                            | FPSCR_XE)
 
 /* Rounding modes for FPSCR[RN]. */
 #define FPSCR_RN_N    0  // Round to nearest.

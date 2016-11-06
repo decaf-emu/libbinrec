@@ -60,9 +60,15 @@ extern "C" {
  * double precision as needed.  Note that the FPR array must be aligned to
  * a multiple of 16 bytes to avoid crashes due to misaligned accesses.
  *
- * The client program is responsible for setting the host's floating-point
- * rounding mode based on FPSCR[RN] and clearing any pending floating-point
- * exceptions before calling translated code.
+ * Translated code assume that the host's floating-point rounding mode is
+ * set based on FPSCR[RN] and all host floating-point exception flags are
+ * clear on entry.  The code will maintain these invariants on all
+ * outbound control transfers, so a client program which does not perform
+ * any floating-point operations of its own only needs to set host
+ * floating-point state once, before first calling translated code.
+ *
+ * The "non-IEEE" (NI) flag in FPSCR is ignored; floating-point operations
+ * will always be performed in full precision.
  *
  * The conditional load/store instructions (lwarx and stwcx.) rely on
  * hardware support for their behavior.  Since such hardware support is
@@ -113,9 +119,12 @@ extern "C" {
  * (0x11) are decoded as that instruction.  This deviates from the PowerPC
  * specification, in which only the instruction 0x4400_0002 is a valid sc
  * instruction, but is done to allow the use of that instruction as (for
- * example) a callout to native code in a PowerPC system emulator.
+ * example) a callout to native code in a PowerPC system emulator in which
+ * the specific function to call is encoded in the instruction word.  If
+ * this behavior is not desired, the system call handler can simply treat
+ * any instruction word other than 0x4400_0002 as an illegal instruction.
  *
- * If D-form (immediate offset) load or store instruction has an offset
+ * If a D-form (immediate offset) load or store instruction has an offset
  * which causes the final address to wrap around the 32-bit address space,
  * such as lwz rD,16(rA) where the value of rA is 0xFFFFFFF0 or greater,
  * the access will improperly "leak" outside the guest memory region.

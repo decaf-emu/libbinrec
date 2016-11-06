@@ -421,6 +421,8 @@ static inline CONST_FUNCTION unsigned int insn_tbr(const uint32_t insn)
 /* Miscellaneous fields */
 static inline CONST_FUNCTION unsigned int insn_CRM(const uint32_t insn)
     {return (insn >> 12) & 0xFF;}
+static inline CONST_FUNCTION unsigned int insn_FM(const uint32_t insn)
+    {return (insn >> 17) & 0xFF;}
 static inline CONST_FUNCTION unsigned int insn_IMM(const uint32_t insn)
     {return (insn >> 12) & 0xF;}
 static inline CONST_FUNCTION unsigned int insn_L(const uint32_t insn)
