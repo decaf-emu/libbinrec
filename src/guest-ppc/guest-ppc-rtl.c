@@ -2830,10 +2830,14 @@ static inline void translate_x1F(
         return;
       case XO_MCRXR: {
         const int xer = get_xer(ctx);
+        int crb[4];
         for (int bit = 0; bit < 4; bit++) {
-            const int crb = rtl_alloc_register(unit, RTLTYPE_INT32);
-            rtl_add_insn(unit, RTLOP_BFEXT, crb, xer, 0, (31-bit) | (1<<8));
-            set_crb(ctx, insn_crfD(insn)*4 + bit, crb);
+            crb[bit] = rtl_alloc_register(unit, RTLTYPE_INT32);
+            rtl_add_insn(unit, RTLOP_BFEXT,
+                         crb[bit], xer, 0, (31-bit) | (1<<8));
+        }
+        for (int bit = 0; bit < 4; bit++) {
+            set_crb(ctx, insn_crfD(insn)*4 + bit, crb[bit]);
         }
         const int new_xer = rtl_alloc_register(unit, RTLTYPE_INT32);
         rtl_add_insn(unit, RTLOP_ANDI, new_xer, xer, 0, 0x0FFFFFFF);
@@ -2968,11 +2972,16 @@ static inline void translate_x1F(
             const int rS = get_gpr(ctx, insn_rS(insn));
             for (int i = 0; i < 8; i++) {
                 if (insn_CRM(insn) & (0x80 >> i)) {
-                    for (int bit = i*4; bit < i*4+4; bit++) {
-                        const int reg = rtl_alloc_register(unit, RTLTYPE_INT32);
+                    int crb[4];
+                    for (int j = 0; j < 4; j++) {
+                        const int bit = i*4+j;
+                        crb[j] = rtl_alloc_register(unit, RTLTYPE_INT32);
                         rtl_add_insn(unit, RTLOP_BFEXT,
-                                     reg, rS, 0, (31-bit) | (1<<8));
-                        set_crb(ctx, bit, reg);
+                                     crb[j], rS, 0, (31-bit) | (1<<8));
+                    }
+                    for (int j = 0; j < 4; j++) {
+                        const int bit = i*4+j;
+                        set_crb(ctx, bit, crb[j]);
                     }
                 }
             }
@@ -3829,12 +3838,16 @@ static inline void translate_insn(
 
       case OPCD_x13:
         switch ((PPCExtendedOpcode13)insn_XO_10(insn)) {
-          case XO_MCRF:
+          case XO_MCRF: {
+            int crb[4];
             for (int i = 0; i < 4; i++) {
-                set_crb(ctx, insn_crfD(insn)*4 + i,
-                        get_crb(ctx, insn_crfS(insn)*4 + i));
+                crb[i] = get_crb(ctx, insn_crfS(insn)*4 + i);
+            }
+            for (int i = 0; i < 4; i++) {
+                set_crb(ctx, insn_crfD(insn)*4 + i, crb[i]);
             }
             return;
+          }
           case XO_BCLR:
             translate_branch_terminal(ctx, address, insn_BO(insn),
                                       insn_BI(insn), insn_LK(insn),
