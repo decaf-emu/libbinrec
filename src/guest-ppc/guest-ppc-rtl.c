@@ -498,57 +498,46 @@ static inline void set_fr_fi_fprf(GuestPPCContext * const ctx, int reg)
 /*-----------------------------------------------------------------------*/
 
 /**
- * set_fpscr_fex:  Store the given RTL register to FPSCR, setting the FEX
- * bit if appropriate.
+ * get_fpscr_fex_vx:  Return RTL registers containing the FEX and VX bits
+ * for the given value of FPSCR.
  *
  * [Parameters]
  *     ctx: Translation context.
- *     reg: Register to store.
+ *     fpscr: RTL register containing the FPSCR value.
+ *     fex_ret: Pointer to variable to receive an RTL register containing
+ *        the value of the FEX bit.
+ *     vx_ret: Pointer to variable to receive an RTL register containing
+ *        the value of the VX bit.
  */
-static void set_fpscr_fex(GuestPPCContext *ctx, int reg)
+static void get_fpscr_fex_vx(GuestPPCContext *ctx, int fpscr,
+                             int *fex_ret, int *vx_ret)
 {
+    ASSERT(fex_ret);
+    ASSERT(vx_ret);
+
     RTLUnit * const unit = ctx->unit;
 
+    const int vx_test = rtl_alloc_register(unit, RTLTYPE_INT32);
+    rtl_add_insn(unit, RTLOP_ANDI, vx_test, fpscr, 0, FPSCR_ALL_VXFOO);
+    const int vx = rtl_alloc_register(unit, RTLTYPE_INT32);
+    rtl_add_insn(unit, RTLOP_SGTUI, vx, vx_test, 0, 0);
+    *vx_ret = vx;
+
     const int x_bits = rtl_alloc_register(unit, RTLTYPE_INT32);
-    rtl_add_insn(unit, RTLOP_SRLI, x_bits, reg, 0, FPSCR_XX_SHIFT);
+    rtl_add_insn(unit, RTLOP_BFEXT, x_bits, fpscr, 0, FPSCR_XX_SHIFT | 4<<8);
+    const int vx_shifted = rtl_alloc_register(unit, RTLTYPE_INT32);
+    rtl_add_insn(unit, RTLOP_SLLI, vx_shifted, vx, 0, 4);
     const int e_bits = rtl_alloc_register(unit, RTLTYPE_INT32);
-    rtl_add_insn(unit, RTLOP_SRLI, e_bits, reg, 0, FPSCR_XE_SHIFT);
+    rtl_add_insn(unit, RTLOP_SRLI, e_bits, fpscr, 0, FPSCR_XE_SHIFT);
+    const int x_bits_vx = rtl_alloc_register(unit, RTLTYPE_INT32);
+    rtl_add_insn(unit, RTLOP_OR, x_bits_vx, x_bits, vx_shifted, 0);
     const int both_bits = rtl_alloc_register(unit, RTLTYPE_INT32);
-    rtl_add_insn(unit, RTLOP_AND, both_bits, x_bits, e_bits, 0);
+    rtl_add_insn(unit, RTLOP_AND, both_bits, x_bits_vx, e_bits, 0);
     const int test = rtl_alloc_register(unit, RTLTYPE_INT32);
     rtl_add_insn(unit, RTLOP_ANDI, test, both_bits, 0, 31);
     const int fex = rtl_alloc_register(unit, RTLTYPE_INT32);
     rtl_add_insn(unit, RTLOP_SGTUI, fex, test, 0, 0);
-    const int fex_shifted = rtl_alloc_register(unit, RTLTYPE_INT32);
-    rtl_add_insn(unit, RTLOP_SLLI, fex_shifted, fex, 0, FPSCR_FEX_SHIFT);
-    const int new_fpscr = rtl_alloc_register(unit, RTLTYPE_INT32);
-    rtl_add_insn(unit, RTLOP_OR, new_fpscr, reg, fex_shifted, 0);
-    set_fpscr(ctx, new_fpscr);
-}
-
-/*-----------------------------------------------------------------------*/
-
-/**
- * set_fpscr_vx_fex:  Store the given RTL register to FPSCR, setting the
- * VX and FEX bits if appropriate.
- *
- * [Parameters]
- *     ctx: Translation context.
- *     reg: Register to store.
- */
-static void set_fpscr_vx_fex(GuestPPCContext *ctx, int reg)
-{
-    RTLUnit * const unit = ctx->unit;
-
-    const int vx_test = rtl_alloc_register(unit, RTLTYPE_INT32);
-    rtl_add_insn(unit, RTLOP_ANDI, vx_test, reg, 0, FPSCR_ALL_VXFOO);
-    const int vx = rtl_alloc_register(unit, RTLTYPE_INT32);
-    rtl_add_insn(unit, RTLOP_SGTUI, vx, vx_test, 0, 0);
-    const int vx_shifted = rtl_alloc_register(unit, RTLTYPE_INT32);
-    rtl_add_insn(unit, RTLOP_SLLI, vx_shifted, vx, 0, FPSCR_VX_SHIFT);
-    const int new_fpscr = rtl_alloc_register(unit, RTLTYPE_INT32);
-    rtl_add_insn(unit, RTLOP_OR, new_fpscr, reg, vx_shifted, 0);
-    set_fpscr_fex(ctx, new_fpscr);
+    *fex_ret = fex;
 }
 
 /*-----------------------------------------------------------------------*/
@@ -818,7 +807,8 @@ static int merge_fpscr(GuestPPCContext *ctx, bool make_live)
 
     const int masked_fpscr = rtl_alloc_register(unit, RTLTYPE_INT32);
     rtl_add_insn(unit, RTLOP_ANDI, masked_fpscr, fpscr, 0,
-                 (int32_t)~(FPSCR_FR | FPSCR_FI | FPSCR_FPRF | FPSCR_RESV20));
+                 (int32_t)~(FPSCR_FEX | FPSCR_VX | FPSCR_FR | FPSCR_FI
+                            | FPSCR_FPRF | FPSCR_RESV20));
     const int shifted_fprf = rtl_alloc_register(unit, RTLTYPE_INT32);
     rtl_add_insn(unit, RTLOP_SLLI,
                  shifted_fprf, fr_fi_fprf, 0, FPSCR_FPRF_SHIFT);
@@ -927,12 +917,10 @@ static void update_cr1(GuestPPCContext *ctx)
     RTLUnit * const unit = ctx->unit;
 
     const int fpscr = get_fpscr(ctx);
+    int fex, vx;
+    get_fpscr_fex_vx(ctx, fpscr, &fex, &vx);
     const int fx = rtl_alloc_register(unit, RTLTYPE_INT32);
     rtl_add_insn(unit, RTLOP_BFEXT, fx, fpscr, 0, 31 | 1<<8);
-    const int fex = rtl_alloc_register(unit, RTLTYPE_INT32);
-    rtl_add_insn(unit, RTLOP_BFEXT, fex, fpscr, 0, 30 | 1<<8);
-    const int vx = rtl_alloc_register(unit, RTLTYPE_INT32);
-    rtl_add_insn(unit, RTLOP_BFEXT, vx, fpscr, 0, 29 | 1<<8);
     const int ox = rtl_alloc_register(unit, RTLTYPE_INT32);
     rtl_add_insn(unit, RTLOP_BFEXT, ox, fpscr, 0, 28 | 1<<8);
     set_crb(ctx, 4, fx);
@@ -1575,7 +1563,7 @@ static inline void translate_compare_fp(
     rtl_add_insn(unit, RTLOP_GOTO_IF_Z, 0, invalid, 0, label);
     rtl_add_insn(unit, RTLOP_FCLEAREXC, 0, 0, 0, 0);
     const int fpscr = get_fpscr(ctx);
-    /* FPSCR is set conditionally, so we can't save it. */
+    /* FPSCR is changed conditionally, so we can't save it. */
     ctx->live.fpscr = 0;
     ctx->last_set.fpscr = -1;
     if (ordered && !(ctx->handle->guest_opt
@@ -1606,8 +1594,7 @@ static inline void translate_compare_fp(
         rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, label_snan);
     }
     const int new_fpscr = rtl_alloc_register(unit, RTLTYPE_INT32);
-    rtl_add_insn(unit, RTLOP_ORI,
-                 new_fpscr, fpscr, 0, FPSCR_VX | FPSCR_VXSNAN);
+    rtl_add_insn(unit, RTLOP_ORI, new_fpscr, fpscr, 0, FPSCR_VXSNAN);
     rtl_add_insn(unit, RTLOP_SET_ALIAS, 0, new_fpscr, 0, ctx->alias.fpscr);
     rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, label);
 }
@@ -3386,7 +3373,15 @@ static inline void translate_x3F(
             } else {  // crfS != 4
                 const int crfS_bit = insn_crfS(insn) * 4;
                 const int fpscr = get_fpscr(ctx);
-                if (insn_crfS(insn) == 3) {
+                if (insn_crfS(insn) == 0) {
+                    get_fpscr_fex_vx(ctx, fpscr, &crb[1], &crb[2]);
+                    crb[0] = rtl_alloc_register(unit, RTLTYPE_INT32);
+                    rtl_add_insn(unit, RTLOP_BFEXT,
+                                 crb[0], fpscr, 0, 31 | 1<<8);
+                    crb[3] = rtl_alloc_register(unit, RTLTYPE_INT32);
+                    rtl_add_insn(unit, RTLOP_BFEXT,
+                                 crb[3], fpscr, 0, 28 | 1<<8);
+                } else if (insn_crfS(insn) == 3) {
                     const int fprf = get_fr_fi_fprf(ctx);
                     crb[0] = rtl_alloc_register(unit, RTLTYPE_INT32);
                     rtl_add_insn(unit, RTLOP_BFEXT,
@@ -3409,19 +3404,11 @@ static inline void translate_x3F(
                 uint32_t mask = ((FPSCR_FX | FPSCR_ALL_EXCEPTIONS)
                                  & (0xF0000000u >> crfS_bit));
                 if (mask) {
-                    mask |= FPSCR_FEX;
-                    if (insn_crfS(insn) > 0) {
-                        mask |= FPSCR_VX;
-                    }
                     const int new_fpscr =
                         rtl_alloc_register(unit, RTLTYPE_INT32);
                     rtl_add_insn(unit, RTLOP_ANDI,
                                  new_fpscr, fpscr, 0, (int32_t)~mask);
-                    if (insn_crfS(insn) == 0) {
-                        set_fpscr_fex(ctx, new_fpscr);
-                    } else {
-                        set_fpscr_vx_fex(ctx, new_fpscr);
-                    }
+                    set_fpscr(ctx, new_fpscr);
                 }
             }
 
@@ -3450,39 +3437,17 @@ static inline void translate_x3F(
             } else {
                 const int fpscr = get_fpscr(ctx);
                 const int new_fpscr = rtl_alloc_register(unit, RTLTYPE_INT32);
-
                 if (insn_XO_10(insn) == XO_MTFSB1) {
-                    if ((FPSCR_ALL_EXCEPTIONS|FPSCR_ALL_ENABLES) & crbD_mask) {
-                        uint32_t mask = crbD_mask | FPSCR_FX;
-                        if (FPSCR_ALL_VXFOO & crbD_mask) {
-                            mask |= FPSCR_VX;
-                        }
-                        rtl_add_insn(unit, RTLOP_ORI,
-                                     new_fpscr, fpscr, 0, (int32_t)mask);
-                        set_fpscr_fex(ctx, new_fpscr);
-                    } else {
-                        rtl_add_insn(unit, RTLOP_ORI,
-                                     new_fpscr, fpscr, 0, (int32_t)crbD_mask);
-                        set_fpscr(ctx, new_fpscr);
+                    uint32_t mask = crbD_mask;
+                    if (FPSCR_ALL_EXCEPTIONS & crbD_mask) {
+                        mask |= FPSCR_FX;
                     }
-
+                    rtl_add_insn(unit, RTLOP_ORI, new_fpscr, fpscr, 0, (int32_t)mask);
                 } else {  // mtfsb0
-                    if (FPSCR_ALL_VXFOO & crbD_mask) {
-                        rtl_add_insn(unit, RTLOP_ANDI, new_fpscr, fpscr, 0,
-                                     (int32_t)~(crbD_mask | FPSCR_FEX | FPSCR_VX));
-                        set_fpscr_vx_fex(ctx, new_fpscr);
-                    } else if ((FPSCR_ALL_EXCEPTIONS | FPSCR_ALL_ENABLES)
-                               & crbD_mask) {
-                        rtl_add_insn(unit, RTLOP_ANDI, new_fpscr, fpscr, 0,
-                                     (int32_t)~(crbD_mask | FPSCR_FEX));
-                        set_fpscr_fex(ctx, new_fpscr);
-                    } else {
-                        rtl_add_insn(unit, RTLOP_ANDI, new_fpscr, fpscr, 0,
-                                     (int32_t)~crbD_mask);
-                        set_fpscr(ctx, new_fpscr);
-                    }
+                    rtl_add_insn(unit, RTLOP_ANDI,
+                                 new_fpscr, fpscr, 0, (int32_t)~crbD_mask);
                 }
-
+                set_fpscr(ctx, new_fpscr);
                 if (FPSCR_RN & crbD_mask) {
                     update_rounding_mode(ctx);
                 }
@@ -3502,7 +3467,7 @@ static inline void translate_x3F(
                 const int masked_fpscr =
                     rtl_alloc_register(unit, RTLTYPE_INT32);
                 rtl_add_insn(unit, RTLOP_ANDI,
-                             masked_fpscr, fpscr, 0, 0x2FFFFFFF);
+                             masked_fpscr, fpscr, 0, 0x0FFFFFFF);
                 int new_fpscr;
                 if (insn_IMM(insn) & 9) {
                     new_fpscr = rtl_alloc_register(unit, RTLTYPE_INT32);
@@ -3511,7 +3476,7 @@ static inline void translate_x3F(
                 } else {
                     new_fpscr = masked_fpscr;
                 }
-                set_fpscr_fex(ctx, new_fpscr);
+                set_fpscr(ctx, new_fpscr);
 
             } else if (crfD == 3) {
                 const int fpscr = get_fpscr(ctx);
@@ -3519,14 +3484,12 @@ static inline void translate_x3F(
                 if (insn_IMM(insn) & 8) {
                     /* The omission of FPSCR_FX here is deliberate, since
                      * mtfsfi does not set FPSCR[FX] for nonzero crfD. */
-                    rtl_add_insn(unit, RTLOP_ORI,
-                                 new_fpscr, fpscr, 0, FPSCR_VX | (1u<<19));
-                    set_fpscr_fex(ctx, new_fpscr);
+                    rtl_add_insn(unit, RTLOP_ORI, new_fpscr, fpscr, 0, 1u<<19);
                 } else {
-                    rtl_add_insn(unit, RTLOP_ANDI, new_fpscr, fpscr, 0,
-                                 (int32_t)~(FPSCR_FEX | FPSCR_VX | 1u<<19));
-                    set_fpscr_vx_fex(ctx, new_fpscr);
+                    rtl_add_insn(unit, RTLOP_ANDI,
+                                 new_fpscr, fpscr, 0, (int32_t)~(1u<<19));
                 }
+                set_fpscr(ctx, new_fpscr);
                 const int fprf = get_fr_fi_fprf(ctx);
                 const int masked_fprf = rtl_alloc_register(unit, RTLTYPE_INT32);
                 rtl_add_insn(unit, RTLOP_ANDI, masked_fprf, fprf, 0, 0x0F);
@@ -3558,11 +3521,7 @@ static inline void translate_x3F(
                 const int fpscr = get_fpscr(ctx);
                 const int masked_fpscr =
                     rtl_alloc_register(unit, RTLTYPE_INT32);
-                uint32_t mask =
-                    FPSCR_FEX | (0xF0000000u >> (insn_crfD(insn) * 4));
-                if (insn_crfD(insn) <= 5) {
-                    mask |= FPSCR_VX;
-                }
+                uint32_t mask = 0xF0000000u >> (insn_crfD(insn) * 4);
                 rtl_add_insn(unit, RTLOP_ANDI,
                              masked_fpscr, fpscr, 0, (int32_t)~mask);
                 int imm = insn_IMM(insn);
@@ -3577,20 +3536,16 @@ static inline void translate_x3F(
                 } else {
                     new_fpscr = masked_fpscr;
                 }
-                if (insn_crfD(insn) <= 5) {
-                    set_fpscr_vx_fex(ctx, new_fpscr);
-                } else {
-                    set_fpscr_fex(ctx, new_fpscr);
-                    if (insn_crfD(insn) == 7) {
-                        static const uint8_t rounding_mode[4] = {
-                            [FPSCR_RN_N] = RTLFROUND_NEAREST,
-                            [FPSCR_RN_Z] = RTLFROUND_TRUNC,
-                            [FPSCR_RN_P] = RTLFROUND_CEIL,
-                            [FPSCR_RN_M] = RTLFROUND_FLOOR,
-                        };
-                        rtl_add_insn(unit, RTLOP_FSETROUND,
-                                     0, 0, 0, rounding_mode[imm & 3]);
-                    }
+                set_fpscr(ctx, new_fpscr);
+                if (insn_crfD(insn) == 7) {
+                    static const uint8_t rounding_mode[4] = {
+                        [FPSCR_RN_N] = RTLFROUND_NEAREST,
+                        [FPSCR_RN_Z] = RTLFROUND_TRUNC,
+                        [FPSCR_RN_P] = RTLFROUND_CEIL,
+                        [FPSCR_RN_M] = RTLFROUND_FLOOR,
+                    };
+                    rtl_add_insn(unit, RTLOP_FSETROUND,
+                                 0, 0, 0, rounding_mode[imm & 3]);
                 }
             }  // if (crfD == ...)
 
@@ -3601,9 +3556,20 @@ static inline void translate_x3F(
           }  // case XO_MTFSFI
 
           case XO_MFFS: {
+            int fex, vx;
+            get_fpscr_fex_vx(ctx, get_fpscr(ctx), &fex, &vx);
             const int fpscr = merge_fpscr(ctx, true);
+            const int shifted_fex = rtl_alloc_register(unit, RTLTYPE_INT32);
+            rtl_add_insn(unit, RTLOP_SLLI,
+                         shifted_fex, fex, 0, FPSCR_FEX_SHIFT);
+            const int shifted_vx = rtl_alloc_register(unit, RTLTYPE_INT32);
+            rtl_add_insn(unit, RTLOP_SLLI, shifted_vx, vx, 0, FPSCR_VX_SHIFT);
+            const int fex_vx = rtl_alloc_register(unit, RTLTYPE_INT32);
+            rtl_add_insn(unit, RTLOP_OR, fex_vx, shifted_fex, shifted_vx, 0);
+            const int final_fpscr = rtl_alloc_register(unit, RTLTYPE_INT32);
+            rtl_add_insn(unit, RTLOP_OR, final_fpscr, fpscr, fex_vx, 0);
             const int fpscr64 = rtl_alloc_register(unit, RTLTYPE_INT64);
-            rtl_add_insn(unit, RTLOP_ZCAST, fpscr64, fpscr, 0, 0);
+            rtl_add_insn(unit, RTLOP_ZCAST, fpscr64, final_fpscr, 0, 0);
             const int result = rtl_alloc_register(unit, RTLTYPE_FLOAT64);
             rtl_add_insn(unit, RTLOP_BITCAST, result, fpscr64, 0, 0);
             set_fpr(ctx, insn_frD(insn), result);
@@ -3640,10 +3606,6 @@ static inline void translate_x3F(
                     }
                     mask &= ~(FPSCR_FEX | FPSCR_VX | FPSCR_FR | FPSCR_FI
                               | FPSCR_FPRF | FPSCR_RESV20);
-                    uint32_t inv_mask = ~mask & ~FPSCR_FEX;
-                    if (FM_fpscr & 0x74) {
-                        inv_mask &= ~FPSCR_VX;
-                    }
                     const int fpscr = get_fpscr(ctx);
                     const int masked_bits =
                         rtl_alloc_register(unit, RTLTYPE_INT32);
@@ -3652,16 +3614,12 @@ static inline void translate_x3F(
                     const int masked_fpscr =
                         rtl_alloc_register(unit, RTLTYPE_INT32);
                     rtl_add_insn(unit, RTLOP_ANDI,
-                                 masked_fpscr, fpscr, 0, (int32_t)inv_mask);
+                                 masked_fpscr, fpscr, 0, (int32_t)~mask);
                     new_fpscr = rtl_alloc_register(unit, RTLTYPE_INT32);
                     rtl_add_insn(unit, RTLOP_OR,
                                  new_fpscr, masked_fpscr, masked_bits, 0);
                 }
-                if (FM_fpscr & 0x74) {
-                    set_fpscr_vx_fex(ctx, new_fpscr);
-                } else {
-                    set_fpscr_fex(ctx, new_fpscr);
-                }
+                set_fpscr(ctx, new_fpscr);
                 if (FM_fpscr & 0x01) {
                     update_rounding_mode(ctx);
                 }

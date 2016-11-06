@@ -32,7 +32,7 @@ static const char expected[] =
     "   10: SET_ALIAS  a1, r8\n"
     "   11: GET_ALIAS  r9, a2\n"
     "   12: GET_ALIAS  r10, a3\n"
-    "   13: ANDI       r11, r9, -522241\n"
+    "   13: ANDI       r11, r9, -1611134977\n"
     "   14: SLLI       r12, r10, 12\n"
     "   15: OR         r13, r11, r12\n"
     "   16: SET_ALIAS  a2, r13\n"

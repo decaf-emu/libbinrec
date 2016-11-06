@@ -60,6 +60,15 @@ extern "C" {
  * double precision as needed.  Note that the FPR array must be aligned to
  * a multiple of 16 bytes to avoid crashes due to misaligned accesses.
  *
+ * The FEX and VX bits in FPSCR are not written to the copy of FPSCR
+ * stored in the PSB; they are instead generated when needed by a
+ * floating-point instruction with Rc=1 or the mffs or mcrfs instructions.
+ * (This mimics the implementation of the bits on PowerPC CPUs: they have
+ * no associated physical storage, and instead are hardwired to the
+ * appropriate function of other FPSCR bits.)  Client code which needs to
+ * check the state of FPSCR[FEX] or FPSCR[VX] should manually compute them
+ * based on the relevant exception and mask bits.
+ *
  * Translated code assume that the host's floating-point rounding mode is
  * set based on FPSCR[RN] and all host floating-point exception flags are
  * clear on entry.  The code will maintain these invariants on all
@@ -712,14 +721,13 @@ typedef struct binrec_setup_t {
  * floating-point operation and can have a severe impact on performance.
  * Enabling this optimization allows the translator to skip these checks,
  * instead only setting the primary exception bit (VX) when an invalid
- * operation exception is reported by the host CPU.
+ * operation exception is reported by the host CPU.  (Since FPSCR[VX] is a
+ * virtual bit hardwired to the logical OR of all VXFOO bits, this
+ * optimization is implemented by unconditionally setting VXSNAN when the
+ * host CPU reports an invalid operation exception, regardless of the true
+ * cause of the exception.)
  *
- * In order to preserve the PowerPC architectural invariant that the VX
- * bit is hardwired as the logical OR of all VXFOO bits, if an instruction
- * sets VX with this optimization enabled, it also sets the VXSNAN bit
- * regardless of the true cause of the exception.
- *
- * Instructions which directly manipulate FPSCR (such as mtfsf) are not
+ * Instructions which directly manipulate FPSCR, such as mtfsf, are not
  * affected by this optimization and continue to behave normally.
  *
  * This optimization is UNSAFE for obvious reasons, though it is believed
