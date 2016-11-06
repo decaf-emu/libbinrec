@@ -1455,7 +1455,7 @@ bool rtl_optimize_unit(RTLUnit *unit, unsigned int flags)
     ASSERT(unit->label_blockmap != NULL);
 
     /* Allocate and clear a buffer for block "seen" flags, used by some
-     * optimizers.  We double the size to make room for entry overflow
+     * optimizers.  We triple the size to make room for entry overflow
      * blocks which might be added by branch threading (this is overkill,
      * but it's guaranteed to be enough space because at most one overflow
      * block can be added per block exit, and there are at most two exits

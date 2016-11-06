@@ -173,8 +173,8 @@ void rtl_update_live_ranges(RTLUnit * const unit)
             const RTLBlock * const entry_block = &unit->blocks[entry_index];
             for (int i = 0; (i < lenof(entry_block->entries)
                              && entry_block->entries[i] >= 0); i++) {
-                if (block->entries[i] > latest_entry_block) {
-                    latest_entry_block = block->entries[i];
+                if (entry_block->entries[i] > latest_entry_block) {
+                    latest_entry_block = entry_block->entries[i];
                 }
             }
         }
@@ -183,7 +183,8 @@ void rtl_update_live_ranges(RTLUnit * const unit)
             const int min_death = unit->blocks[latest_entry_block].last_insn;
             block->min_death = min_death;
             for (int reg = unit->first_live_reg;
-                 reg != 0 && unit->regs[reg].birth < birth_limit; reg++)
+                 reg < unit->next_reg && unit->regs[reg].birth < birth_limit;
+                 reg++)
             {
                 if (unit->regs[reg].death >= birth_limit
                  && unit->regs[reg].death < min_death) {
