@@ -78,6 +78,7 @@ static bool init_unit(GuestPPCContext *ctx)
     bool ctr_changed = false;
     bool xer_changed = false;
     bool fpscr_changed = false;
+    bool fr_fi_fprf_changed = false;
     for (int i = 0; i < ctx->num_blocks; i++) {
         gpr_used |= ctx->blocks[i].gpr_used;
         gpr_changed |= ctx->blocks[i].gpr_changed;
@@ -96,8 +97,10 @@ static bool init_unit(GuestPPCContext *ctx)
         fpscr_used |= ctx->blocks[i].fpscr_used;
         fpscr_changed |= ctx->blocks[i].fpscr_changed;
         fr_fi_fprf_used |= ctx->blocks[i].fr_fi_fprf_used;
+        fr_fi_fprf_changed |= ctx->blocks[i].fr_fi_fprf_changed;
     }
     ctx->crb_changed = bitrev32(crb_changed);
+    ctx->fpscr_changed = fpscr_changed;
 
     /* Allocate alias registers for all required guest registers. */
 
@@ -158,14 +161,18 @@ static bool init_unit(GuestPPCContext *ctx)
         ctx->alias.fpscr = rtl_alloc_alias_register(unit, RTLTYPE_INT32);
         rtl_set_alias_storage(unit, ctx->alias.fpscr, ctx->psb_reg,
                               ctx->handle->setup.state_offset_fpscr);
-        ctx->alias.fr_fi_fprf = rtl_alloc_alias_register(unit, RTLTYPE_INT32);
-        if (fr_fi_fprf_used) {
-            const int fpscr = rtl_alloc_register(unit, RTLTYPE_INT32);
-            rtl_add_insn(unit, RTLOP_GET_ALIAS, fpscr, 0, 0, ctx->alias.fpscr);
-            const int fff = rtl_alloc_register(unit, RTLTYPE_INT32);
-            rtl_add_insn(unit, RTLOP_BFEXT, fff, fpscr, 0, 12 | 7<<8);
-            rtl_add_insn(unit, RTLOP_SET_ALIAS,
-                         0, fff, 0, ctx->alias.fr_fi_fprf);
+        if (fr_fi_fprf_used || fr_fi_fprf_changed) {
+            ctx->alias.fr_fi_fprf =
+                rtl_alloc_alias_register(unit, RTLTYPE_INT32);
+            if (fr_fi_fprf_used) {
+                const int fpscr = rtl_alloc_register(unit, RTLTYPE_INT32);
+                rtl_add_insn(unit, RTLOP_GET_ALIAS,
+                             fpscr, 0, 0, ctx->alias.fpscr);
+                const int fff = rtl_alloc_register(unit, RTLTYPE_INT32);
+                rtl_add_insn(unit, RTLOP_BFEXT, fff, fpscr, 0, 12 | 7<<8);
+                rtl_add_insn(unit, RTLOP_SET_ALIAS,
+                             0, fff, 0, ctx->alias.fr_fi_fprf);
+            }
         }
     }
 

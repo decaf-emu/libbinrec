@@ -49,13 +49,7 @@ static const char expected[] =
     "   27: GET_ALIAS  r22, a5\n"
     "   28: OR         r23, r21, r22\n"
     "   29: SET_ALIAS  a6, r23\n"
-    "   30: GET_ALIAS  r24, a7\n"
-    "   31: GET_ALIAS  r25, a8\n"
-    "   32: ANDI       r26, r24, -1611134977\n"
-    "   33: SLLI       r27, r25, 12\n"
-    "   34: OR         r28, r26, r27\n"
-    "   35: SET_ALIAS  a7, r28\n"
-    "   36: RETURN\n"
+    "   30: RETURN\n"
     "\n"
     "Alias 1: int32 @ 956(r1)\n"
     "Alias 2: int32, no bound storage\n"
@@ -66,7 +60,7 @@ static const char expected[] =
     "Alias 7: int32 @ 944(r1)\n"
     "Alias 8: int32, no bound storage\n"
     "\n"
-    "Block 0: <none> --> [0,36] --> <none>\n"
+    "Block 0: <none> --> [0,30] --> <none>\n"
     ;
 
 #include "tests/rtl-disasm-test.i"

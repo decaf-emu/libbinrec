@@ -4193,7 +4193,7 @@ void guest_ppc_flush_fpscr(GuestPPCContext *ctx, bool make_live)
 
     RTLUnit * const unit = ctx->unit;
 
-    if (ctx->alias.fpscr) {
+    if (ctx->fpscr_changed && ctx->alias.fr_fi_fprf) {
         const int fpscr = merge_fpscr(ctx, make_live);
         if (make_live) {
             set_fpscr(ctx, fpscr);

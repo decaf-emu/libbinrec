@@ -306,7 +306,8 @@ typedef struct GuestPPCBlockInfo {
         lr_changed : 1,
         ctr_changed : 1,
         xer_changed : 1,
-        fpscr_changed : 1;
+        fpscr_changed : 1,
+        fr_fi_fprf_changed : 1;
 
     /* Bitmask of CR bits which are set at least once on every code path
      * from the beginning of this block to an exit from the unit.  Used
@@ -351,8 +352,8 @@ typedef struct GuestPPCBlockInfo {
  *
  * fr_fi_fprf holds the value of bits 13-19 of FPSCR (the FI, FR, and FPRF
  * fields of that register).  The alias is always allocated if FPSCR is
- * used by the unit, so the current value of FPSCR is always the value of
- * the fr_fi_fprf alias inserted into the value of the fpscr alias.
+ * used by the unit, but its value is not valid unless
+ * GuestPPCContext.fr_fi_fprf_loaded is true.
  */
 typedef struct GuestPPCRegSet {
     uint16_t gpr[32];
@@ -405,6 +406,12 @@ typedef struct GuestPPCContext {
     /* Set of CR bits which have live registers.  Bits are in natural order
      * (the LSB corresponds to CR bit 0), as with GuestPPCBlockInfo bitmaps. */
     uint32_t crb_dirty;
+
+    /* Flag indicating whether FPSCR is written by any instruction in the
+     * unit. */
+    bool fpscr_changed;
+    /* Flag indicating whether the fr_fi_fprf alias contains a valid value. */
+    bool fr_fi_fprf_loaded;
 
     /* RTL registers for each CPU register live in the current block. */
     GuestPPCRegSet live;
