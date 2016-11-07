@@ -218,8 +218,10 @@ static inline int get_fpr(GuestPPCContext * const ctx, int index,
                           RTLDataType type)
 {
     int reg;
+    RTLDataType current_type;
     if (ctx->live.fpr[index]) {
         reg = ctx->live.fpr[index];
+        current_type = ctx->fpr_type[index];
     } else {
         const RTLDataType base_type = (ctx->fpr_is_ps & (1 << index)
                                        ? RTLTYPE_V2_FLOAT64 : RTLTYPE_FLOAT64);
@@ -227,12 +229,10 @@ static inline int get_fpr(GuestPPCContext * const ctx, int index,
         reg = rtl_alloc_register(unit, base_type);
         ASSERT(ctx->alias.fpr[index]);
         rtl_add_insn(unit, RTLOP_GET_ALIAS, reg, 0, 0, ctx->alias.fpr[index]);
-        ctx->fpr_type[index] = base_type;
+        current_type = base_type;
     }
-    ASSERT(ctx->fpr_type[index]);
-    if (type != ctx->fpr_type[index]) {
-        reg = convert_fpr(ctx, index, reg, ctx->fpr_type[index], type);
-        ctx->fpr_type[index] = type;
+    if (type != current_type) {
+        reg = convert_fpr(ctx, index, reg, current_type, type);
     }
     return reg;
 }
@@ -696,6 +696,7 @@ static void flush_live_regs(GuestPPCContext *ctx, bool clear)
     for (int i = 0; i < 32; i++) {
         int reg = ctx->live.fpr[i];
         if (reg) {
+            ASSERT(ctx->fpr_type[i] == ctx->unit->regs[reg].type);
             const RTLDataType base_type = (ctx->fpr_is_ps & (1 << i)
                                            ? RTLTYPE_V2_FLOAT64
                                            : RTLTYPE_FLOAT64);
@@ -2168,6 +2169,34 @@ static void translate_logic_reg(
 
     if (insn_Rc(insn)) {
         update_cr0(ctx, result);
+    }
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
+ * translate_move_fpr:  Translate an fmr/fneg/fabs/fnabs instruction.
+ *
+ * [Parameters]
+ *     ctx: Translation context.
+ *     insn: Instruction word.
+ *     opcode: RTL opcode for the operation.
+ */
+static void translate_move_fpr(
+    GuestPPCContext *ctx, uint32_t insn, RTLOpcode opcode)
+{
+    const int frB = get_fpr(ctx, insn_frB(insn), RTLTYPE_FLOAT64);
+    if (opcode == RTLOP_MOVE) {
+        set_fpr(ctx, insn_frD(insn), frB);
+    } else {
+        RTLUnit * const unit = ctx->unit;
+        const int result = rtl_alloc_register(unit, RTLTYPE_FLOAT64);
+        rtl_add_insn(unit, opcode, result, frB, 0, 0);
+        set_fpr(ctx, insn_frD(insn), result);
+    }
+
+    if (insn_Rc(insn)) {
+        update_cr1(ctx);
     }
 }
 
@@ -3675,6 +3704,22 @@ static inline void translate_x3F(
             }
             return;
           }  // case XO_MTFSF
+
+          case XO_FNEG:
+            translate_move_fpr(ctx, insn, RTLOP_FNEG);
+            return;
+
+          case XO_FMR:
+            translate_move_fpr(ctx, insn, RTLOP_MOVE);
+            return;
+
+          case XO_FNABS:
+            translate_move_fpr(ctx, insn, RTLOP_FNABS);
+            return;
+
+          case XO_FABS:
+            translate_move_fpr(ctx, insn, RTLOP_FABS);
+            return;
 
           default: return;  // FIXME: not yet implemented
         }
