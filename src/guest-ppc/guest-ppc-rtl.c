@@ -847,6 +847,86 @@ static void post_insn_callback(GuestPPCContext *ctx, uint32_t address)
 /*-----------------------------------------------------------------------*/
 
 /**
+ * check_snan:  Check whether the given floating-point RTL register is a
+ * signaling NaN, and branch to the given label if so.
+ *
+ * [Parameters]
+ *     ctx: Translation context.
+ *     reg: Register to check (must be of scalar floating-point type).
+ *     label: Label to branch to if the value is an SNaN.
+ */
+static void check_snan(GuestPPCContext *ctx, int reg, int label)
+{
+    RTLUnit * const unit = ctx->unit;
+
+    RTLDataType bits_type;
+    int type_size, snan_start, snan_count;
+    if (unit->regs[reg].type == RTLTYPE_FLOAT32) {
+        bits_type = RTLTYPE_INT32;
+        type_size = 32;
+        snan_start = 22;
+        snan_count = 9;
+    } else {
+        ASSERT(unit->regs[reg].type == RTLTYPE_FLOAT64);
+        bits_type = RTLTYPE_INT64;
+        type_size = 64;
+        snan_start = 51;
+        snan_count = 12;
+    }
+    const uint32_t snan_value = (1u << snan_count) - 2;
+
+    const int not_snan_label = rtl_alloc_label(unit);
+    const int bits = rtl_alloc_register(unit, bits_type);
+    rtl_add_insn(unit, RTLOP_BITCAST, bits, reg, 0, 0);
+    const int mantissa_test = rtl_alloc_register(unit, bits_type);
+    rtl_add_insn(unit, RTLOP_SLLI,
+                 mantissa_test, bits, 0, type_size - snan_start);
+    const int snan_test = rtl_alloc_register(unit, bits_type);
+    rtl_add_insn(unit, RTLOP_BFEXT,
+                 snan_test, bits, 0, snan_start | snan_count<<8);
+    const int is_snan = rtl_alloc_register(unit, RTLTYPE_INT32);
+    rtl_add_insn(unit, RTLOP_SEQI, is_snan, snan_test, 0, snan_value);
+    rtl_add_insn(unit, RTLOP_GOTO_IF_Z, 0, is_snan, 0, not_snan_label);
+    rtl_add_insn(unit, RTLOP_GOTO_IF_NZ, 0, mantissa_test, 0, label);
+    rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, not_snan_label);
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
+ * set_fpscr_exceptions:  Set the given exception bit in FPSCR, along with
+ * the FX bit if any exception bit was not already set.
+ *
+ * FPSCR will be set directly with a SET_ALIAS instruction.
+ *
+ * [Parameters]
+ *     ctx: Translation context.
+ *     fpscr: RTL register containing current value of FPSCR.
+ *     exceptions: Bitmask of exception bits to set.
+ */
+static void set_fpscr_exceptions(GuestPPCContext *ctx, int fpscr,
+                                 uint32_t exceptions)
+{
+    RTLUnit * const unit = ctx->unit;
+
+    const int unset_bits = rtl_alloc_register(unit, RTLTYPE_INT32);
+    rtl_add_insn(unit, RTLOP_NOT, unset_bits, fpscr, 0, 0);
+    const int new_fpscr = rtl_alloc_register(unit, RTLTYPE_INT32);
+    rtl_add_insn(unit, RTLOP_ORI, new_fpscr, fpscr, 0, exceptions);
+    const int fx_test = rtl_alloc_register(unit, RTLTYPE_INT32);
+    rtl_add_insn(unit, RTLOP_ANDI, fx_test, unset_bits, 0, exceptions);
+    rtl_add_insn(unit, RTLOP_SET_ALIAS, 0, new_fpscr, 0, ctx->alias.fpscr);
+    const int label = rtl_alloc_label(unit);
+    rtl_add_insn(unit, RTLOP_GOTO_IF_Z, 0, fx_test, 0, label);
+    const int with_fx = rtl_alloc_register(unit, RTLTYPE_INT32);
+    rtl_add_insn(unit, RTLOP_ORI, with_fx, new_fpscr, 0, FPSCR_FX);
+    rtl_add_insn(unit, RTLOP_SET_ALIAS, 0, with_fx, 0, ctx->alias.fpscr);
+    rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, label);
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
  * set_nia:  Set the NIA field of the processor state block to the value
  * of the given RTL register.
  *
@@ -1559,8 +1639,8 @@ static void translate_compare_fp(
     rtl_add_insn(unit, RTLOP_FGETSTATE, fpstate, 0, 0, 0);
     const int invalid = rtl_alloc_register(unit, RTLTYPE_INT32);
     rtl_add_insn(unit, RTLOP_FTESTEXC, invalid, fpstate, 0, RTLFEXC_INVALID);
-    const int label = rtl_alloc_label(unit);
-    rtl_add_insn(unit, RTLOP_GOTO_IF_Z, 0, invalid, 0, label);
+    const int label_out = rtl_alloc_label(unit);
+    rtl_add_insn(unit, RTLOP_GOTO_IF_Z, 0, invalid, 0, label_out);
     rtl_add_insn(unit, RTLOP_FCLEAREXC, 0, 0, 0, 0);
     const int fpscr = get_fpscr(ctx);
     /* FPSCR is changed conditionally, so we can't save it. */
@@ -1568,35 +1648,25 @@ static void translate_compare_fp(
     ctx->last_set.fpscr = -1;
     if (ordered && !(ctx->handle->guest_opt
                      & BINREC_OPT_G_PPC_IGNORE_FPSCR_VXFOO)) {
-        /* If both values have maximum exponent and high mantissa bit set,
-         * they're both QNaNs and thus we should not set VXSNAN. */
-        const int frA_bits = rtl_alloc_register(unit, RTLTYPE_INT64);
-        rtl_add_insn(unit, RTLOP_BITCAST, frA_bits, frA, 0, 0);
-        const int frB_bits = rtl_alloc_register(unit, RTLTYPE_INT64);
-        rtl_add_insn(unit, RTLOP_BITCAST, frB_bits, frB, 0, 0);
-        const int both_bits = rtl_alloc_register(unit, RTLTYPE_INT64);
-        rtl_add_insn(unit, RTLOP_AND, both_bits, frA_bits, frB_bits, 0);
-        const int temp1 = rtl_alloc_register(unit, RTLTYPE_INT64);
-        rtl_add_insn(unit, RTLOP_SRLI, temp1, both_bits, 0, 51);
-        const int temp2 = rtl_alloc_register(unit, RTLTYPE_INT32);
-        rtl_add_insn(unit, RTLOP_ZCAST, temp2, temp1, 0, 0);
-        const int temp3 = rtl_alloc_register(unit, RTLTYPE_INT32);
-        rtl_add_insn(unit, RTLOP_ANDI, temp3, temp2, 0, 0xFFF);
-        const int test = rtl_alloc_register(unit, RTLTYPE_INT32);
-        rtl_add_insn(unit, RTLOP_SEQI, test, temp3, 0, 0xFFF);
+        /* If neither value is an SNaN, this is a VXVC exception from
+         * ordered comparison of a QNaN. */
         const int label_snan = rtl_alloc_label(unit);
-        rtl_add_insn(unit, RTLOP_GOTO_IF_Z, 0, test, 0, label_snan);
-        const int new_fpscr = rtl_alloc_register(unit, RTLTYPE_INT32);
-        rtl_add_insn(unit, RTLOP_ORI, new_fpscr, fpscr, 0, FPSCR_VXVC);
-        rtl_add_insn(unit, RTLOP_SET_ALIAS, 0, new_fpscr, 0, ctx->alias.fpscr);
-        rtl_add_insn(unit, RTLOP_GOTO, 0, 0, 0, label);
+        check_snan(ctx, frA, label_snan);
+        check_snan(ctx, frB, label_snan);
+        set_fpscr_exceptions(ctx, fpscr, FPSCR_VXVC);
+        rtl_add_insn(unit, RTLOP_GOTO, 0, 0, 0, label_out);
         rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, label_snan);
+        /* If this is a VXSNAN exception, we only set VXVC if VE is clear. */
+        const int label_no_vxvc = rtl_alloc_label(unit);
+        const int ve_test = rtl_alloc_register(unit, RTLTYPE_INT32);
+        rtl_add_insn(unit, RTLOP_ANDI, ve_test, fpscr, 0, FPSCR_VE);
+        rtl_add_insn(unit, RTLOP_GOTO_IF_NZ, 0, ve_test, 0, label_no_vxvc);
+        set_fpscr_exceptions(ctx, fpscr, FPSCR_VXSNAN | FPSCR_VXVC);
+        rtl_add_insn(unit, RTLOP_GOTO, 0, 0, 0, label_out);
+        rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, label_no_vxvc);
     }
-    const int new_fpscr = rtl_alloc_register(unit, RTLTYPE_INT32);
-    rtl_add_insn(unit, RTLOP_ORI, new_fpscr, fpscr, 0,
-                 ordered ? (FPSCR_VXSNAN | FPSCR_VXVC) : FPSCR_VXSNAN);
-    rtl_add_insn(unit, RTLOP_SET_ALIAS, 0, new_fpscr, 0, ctx->alias.fpscr);
-    rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, label);
+    set_fpscr_exceptions(ctx, fpscr, FPSCR_VXSNAN);
+    rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, label_out);
 }
 
 /*-----------------------------------------------------------------------*/
