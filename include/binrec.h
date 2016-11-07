@@ -708,6 +708,8 @@ typedef struct binrec_setup_t {
  * This optimization is UNSAFE for obvious reasons, though it is believed
  * that most real-life PowerPC code does not make use of the FR bit.
  *
+ * This optimization is implicitly enabled by BINREC_OPT_G_PPC_NO_FPSCR_STATE.
+ *
  * This optimization cannot currently be disabled; the translator behaves
  * as if it was always set.
  */
@@ -724,12 +726,8 @@ typedef struct binrec_setup_t {
  * informtion requires additional manual checks on the operands to each
  * floating-point operation and can have a severe impact on performance.
  * Enabling this optimization allows the translator to skip these checks,
- * instead only setting the primary exception bit (VX) when an invalid
- * operation exception is reported by the host CPU.  (Since FPSCR[VX] is a
- * virtual bit hardwired to the logical OR of all VXFOO bits, this
- * optimization is implemented by unconditionally setting VXSNAN when the
- * host CPU reports an invalid operation exception, regardless of the true
- * cause of the exception.)
+ * treating any invalid-operation exception as VXSNAN whether or not any
+ * operand was in fact a signaling NaN.
  *
  * Instructions which directly manipulate FPSCR, such as mtfsf, are not
  * affected by this optimization and continue to behave normally.
@@ -765,6 +763,34 @@ typedef struct binrec_setup_t {
 #define BINREC_OPT_G_PPC_NATIVE_RECIPROCAL  (1<<3)
 
 /**
+ * BINREC_OPT_G_PPC_NO_FPSCR_STATE:  Do not write any state bits (exception
+ * bits, FR, FI, or FPRF) in FPSCR based on floating-point operation results.
+ *
+ * Enabling this optimization causes the translated code to ignore all
+ * host FPU exception conditions and skip setting FPRF to reflect the
+ * value type.  For guest code which does not check the FPSCR status bits,
+ * this results in significantly faster and smaller translated code with
+ * no effect on program behavior.
+ *
+ * The control mode bits are honored as usual, though only FPSCR[RN] has
+ * any effect on program behavior in this case; the exception enable bits
+ * are meaningless since exceptions are not detected, and nonzero FPSCR[NI]
+ * is not currently supported by the translator.
+ *
+ * Instructions which directly manipulate FPSCR, such as mtfsf, are not
+ * affected by this optimization and continue to behave normally, though
+ * if any of the FR/FI/FPRF bits are set by such an instruction, they
+ * will remain set even after other instructions which would normally
+ * overwrite them.
+ *
+ * This optimization is UNSAFE: code which relies on any of the FPSCR
+ * state bits will behave incorrectly if this optimization is enabled.
+ *
+ * This optimization is not currently implemented.
+ */
+#define BINREC_OPT_G_PPC_NO_FPSCR_STATE  (1<<4)
+
+/**
  * BINREC_OPT_G_PPC_TRIM_CR_STORES:  Analyze the data flow through each
  * CR bit and eliminate stores which are not visible outside the
  * translated code.
@@ -774,7 +800,7 @@ typedef struct binrec_setup_t {
  * in the processor state block.  System call and trap handlers are not
  * affected.
  */
-#define BINREC_OPT_G_PPC_TRIM_CR_STORES  (1<<4)
+#define BINREC_OPT_G_PPC_TRIM_CR_STORES  (1<<5)
 
 /*------------ Host-architecture-specific optimization flags ------------*/
 

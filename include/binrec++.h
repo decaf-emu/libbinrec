@@ -65,7 +65,10 @@ namespace Optimize {
 
     namespace GuestPPC {
         const unsigned int CONSTANT_GQRS = BINREC_OPT_G_PPC_CONSTANT_GQRS;
+        const unsigned int IGNORE_FPSCR_FR = BINREC_OPT_G_PPC_IGNORE_FPSCR_FR;
+        const unsigned int IGNORE_FPSCR_VXFOO = BINREC_OPT_G_PPC_IGNORE_FPSCR_VXFOO;
         const unsigned int NATIVE_RECIPROCAL = BINREC_OPT_G_PPC_NATIVE_RECIPROCAL;
+        const unsigned int NO_FPSCR_STATE = BINREC_OPT_G_PPC_NO_FPSCR_STATE;
         const unsigned int TRIM_CR_STORES = BINREC_OPT_G_PPC_TRIM_CR_STORES;
     }
 
