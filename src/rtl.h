@@ -261,6 +261,12 @@ typedef enum RTLOpcode {
                         //     opposite modes: FLOAT32/INT32, INT64/FLOAT64,
                         //     etc.]
     RTLOP_FCAST,        // dest = (typeof(dest))src1
+                        //    [does not quiet SNaNs or raise exceptions;
+                        //     note that a narrowing cast can change a
+                        //     signaling NaN into an infinity]
+    RTLOP_FCVT,         // dest = (typeof(dest))src1
+                        //    [arithmetic conversion, can raise exceptions;
+                        //     dest and src1 must be different types]
     RTLOP_FZCAST,       // dest = (typeof(dest))((unsigned)src1)
                         //    [src1 is of integer type]
     RTLOP_FSCAST,       // dest = (typeof(dest))((signed)src1)
@@ -307,6 +313,10 @@ typedef enum RTLOpcode {
     RTLOP_VEXTRACT,     // dest = src1[other]
     RTLOP_VINSERT,      // dest = src1; dest[other] = src2
     RTLOP_VFCAST,       // dest[*] = (typeof(dest[*]))src1[*]
+                        //    [does not quiet SNaNs or raise exceptions]
+    RTLOP_VFCVT,        // dest[*] = (typeof(dest[*]))src1[*]
+                        //    [arithmetic conversion, can raise exceptions;
+                        //     dest and src1 must be different types]
 
     /* Non-memory load operations.  If LOAD_ARG instructions are used,
      * they must be the first instructions in the unit, or the argument

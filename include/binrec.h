@@ -69,12 +69,12 @@ extern "C" {
  * check the state of FPSCR[FEX] or FPSCR[VX] should manually compute them
  * based on the relevant exception and mask bits.
  *
- * Translated code assume that the host's floating-point rounding mode is
+ * Translated code assumes that the host's floating-point rounding mode is
  * set based on FPSCR[RN] and all host floating-point exception flags are
  * clear on entry.  The code will maintain these invariants on all
  * outbound control transfers, so a client program which does not perform
- * any floating-point operations of its own only needs to set host
- * floating-point state once, before first calling translated code.
+ * any floating-point operations or modify FPSCR on its own only needs to
+ * set host floating-point state once, before first calling translated code.
  *
  * The overflow and underflow exception enable bits (OE and UE) in FPSCR
  * are ignored; floating-point operations are performed as if both
@@ -694,6 +694,28 @@ typedef struct binrec_setup_t {
 #define BINREC_OPT_G_PPC_CONSTANT_GQRS  (1<<0)
 
 /**
+ * BINREC_OPT_G_PPC_FAST_NANS:  Do not attempt to preserve the
+ * signaling/quiet state of floating-point NaN (not-a-number) values.
+ *
+ * The single-precision lfs and stfs instructions preserve the state of the
+ * "quiet" bit in a floating-point NaN (the high bit of the mantissa) when
+ * converting it to or from double precision, but the host instructions
+ * used to implement such a format conversion may treat it as an arithmetic
+ * operation which quiets any incoming signaling NaN, and detecting that
+ * such a change took place can require many more host instructions than
+ * the conversion itself.  If this optimization is enabled, the translator
+ * will use the fastest possible method to convert between single and
+ * double precision, ignoring the possibility of signaling NaNs.
+ *
+ * This optimization is UNSAFE: code which relies on being able to load or
+ * store a single-precision signaling NaN and preserve its signaling state
+ * will not behave correctly.
+ *
+ * This optimization is not currently implemented.
+ */
+#define BINREC_OPT_G_PPC_FAST_NANS  (1<<1)
+
+/**
  * BINREC_OPT_G_PPC_IGNORE_FPSCR_FR:  Do not set the FR bit of FPSCR after
  * floating-point operations.
  *
@@ -713,7 +735,7 @@ typedef struct binrec_setup_t {
  * This optimization cannot currently be disabled; the translator behaves
  * as if it was always set.
  */
-#define BINREC_OPT_G_PPC_IGNORE_FPSCR_FR  (1<<1)
+#define BINREC_OPT_G_PPC_IGNORE_FPSCR_FR  (1<<2)
 
 /**
  * BINREC_OPT_G_PPC_IGNORE_FPSCR_VXFOO:  Do not set FPSCR exception bits
@@ -735,7 +757,7 @@ typedef struct binrec_setup_t {
  * This optimization is UNSAFE for obvious reasons, though it is believed
  * that most real-life PowerPC code does not make use of the VXFOO bits.
  */
-#define BINREC_OPT_G_PPC_IGNORE_FPSCR_VXFOO  (1<<2)
+#define BINREC_OPT_G_PPC_IGNORE_FPSCR_VXFOO  (1<<3)
 
 /**
  * BINREC_OPT_G_PPC_NATIVE_RECIPROCAL:  Translate guest PowerPC
@@ -760,7 +782,7 @@ typedef struct binrec_setup_t {
  * This optimization cannot currently be disabled; the translator behaves
  * as if it was always set.
  */
-#define BINREC_OPT_G_PPC_NATIVE_RECIPROCAL  (1<<3)
+#define BINREC_OPT_G_PPC_NATIVE_RECIPROCAL  (1<<4)
 
 /**
  * BINREC_OPT_G_PPC_NO_FPSCR_STATE:  Do not write any state bits (exception
@@ -788,7 +810,7 @@ typedef struct binrec_setup_t {
  *
  * This optimization is not currently implemented.
  */
-#define BINREC_OPT_G_PPC_NO_FPSCR_STATE  (1<<4)
+#define BINREC_OPT_G_PPC_NO_FPSCR_STATE  (1<<5)
 
 /**
  * BINREC_OPT_G_PPC_TRIM_CR_STORES:  Analyze the data flow through each
@@ -800,7 +822,7 @@ typedef struct binrec_setup_t {
  * in the processor state block.  System call and trap handlers are not
  * affected.
  */
-#define BINREC_OPT_G_PPC_TRIM_CR_STORES  (1<<5)
+#define BINREC_OPT_G_PPC_TRIM_CR_STORES  (1<<6)
 
 /*------------ Host-architecture-specific optimization flags ------------*/
 

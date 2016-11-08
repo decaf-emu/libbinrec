@@ -302,6 +302,7 @@ static void rtl_describe_register(const RTLRegister *reg,
             [RTLOP_SGTSI  ] = ">",
             [RTLOP_BITCAST] = "bitcast",
             [RTLOP_FCAST  ] = "fcast",
+            [RTLOP_FCVT   ] = "fcvt",
             [RTLOP_FZCAST ] = "fzcast",
             [RTLOP_FSCAST ] = "fscast",
             [RTLOP_FROUNDI] = "froundi",
@@ -311,6 +312,7 @@ static void rtl_describe_register(const RTLRegister *reg,
             [RTLOP_FNABS  ] = "-abs",
             [RTLOP_FSQRT  ] = "sqrt",
             [RTLOP_VFCAST ] = "vfcast",
+            [RTLOP_VFCVT  ] = "vfcvt",
         };
         static const bool is_signed[RTLOP__LAST + 1] = {
             [RTLOP_DIVS ] = true,
@@ -344,6 +346,7 @@ static void rtl_describe_register(const RTLRegister *reg,
           case RTLOP_BSWAP:
           case RTLOP_BITCAST:
           case RTLOP_FCAST:
+          case RTLOP_FCVT:
           case RTLOP_FZCAST:
           case RTLOP_FSCAST:
           case RTLOP_FROUNDI:
@@ -353,6 +356,7 @@ static void rtl_describe_register(const RTLRegister *reg,
           case RTLOP_FNABS:
           case RTLOP_FSQRT:
           case RTLOP_VFCAST:
+          case RTLOP_VFCVT:
             snprintf(buf, bufsize, "%s(r%d)",
                      operators[reg->result.opcode], reg->result.src1);
             break;
@@ -560,6 +564,7 @@ static void rtl_decode_insn(const RTLUnit *unit, uint32_t index,
         [RTLOP_SGTSI     ] = "SGTSI",
         [RTLOP_BITCAST   ] = "BITCAST",
         [RTLOP_FCAST     ] = "FCAST",
+        [RTLOP_FCVT      ] = "FCVT",
         [RTLOP_FZCAST    ] = "FZCAST",
         [RTLOP_FSCAST    ] = "FSCAST",
         [RTLOP_FROUNDI   ] = "FROUNDI",
@@ -586,6 +591,7 @@ static void rtl_decode_insn(const RTLUnit *unit, uint32_t index,
         [RTLOP_VEXTRACT  ] = "VEXTRACT",
         [RTLOP_VINSERT   ] = "VINSERT",
         [RTLOP_VFCAST    ] = "VFCAST",
+        [RTLOP_VFCVT     ] = "VFCVT",
         [RTLOP_LOAD_IMM  ] = "LOAD_IMM",
         [RTLOP_LOAD_ARG  ] = "LOAD_ARG",
         [RTLOP_LOAD      ] = "LOAD",
@@ -687,6 +693,7 @@ static void rtl_decode_insn(const RTLUnit *unit, uint32_t index,
       case RTLOP_BSWAP:
       case RTLOP_BITCAST:
       case RTLOP_FCAST:
+      case RTLOP_FCVT:
       case RTLOP_FZCAST:
       case RTLOP_FSCAST:
       case RTLOP_FROUNDI:
@@ -697,6 +704,7 @@ static void rtl_decode_insn(const RTLUnit *unit, uint32_t index,
       case RTLOP_FSQRT:
       case RTLOP_VBROADCAST:
       case RTLOP_VFCAST:
+      case RTLOP_VFCVT:
         s += snprintf_assert(s, top - s, "%-10s r%d, r%d\n", name, dest, src1);
         APPEND_REG_DESC(src1);
         return;

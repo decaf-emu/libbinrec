@@ -744,7 +744,7 @@ static bool make_bitcast(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
 /*-----------------------------------------------------------------------*/
 
 /**
- * make_fcast:  Encode an FCAST instruction.
+ * make_fcast:  Encode an FCAST or FCVT instruction.
  */
 static bool make_fcast(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
                        int src2, uint64_t other)
@@ -762,6 +762,8 @@ static bool make_fcast(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
     OPERAND_ASSERT(unit->regs[src1].source != RTLREG_UNDEFINED);
     OPERAND_ASSERT(rtl_register_is_float(&unit->regs[dest]));
     OPERAND_ASSERT(rtl_register_is_float(&unit->regs[src1]));
+    OPERAND_ASSERT(insn->opcode != RTLOP_FCVT
+                   || unit->regs[src1].type != unit->regs[dest].type);
 #endif
 
     insn->dest = dest;
@@ -1328,7 +1330,7 @@ static bool make_vinsert(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
 /*-----------------------------------------------------------------------*/
 
 /**
- * make_vfcast:  Encode a VFCAST instruction.
+ * make_vfcast:  Encode a VFCAST or VFCVT instruction.
  */
 static bool make_vfcast(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
                         int src2, uint64_t other)
@@ -1350,6 +1352,8 @@ static bool make_vfcast(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
     ASSERT(rtl_type_is_float(rtl_vector_element_type(unit->regs[dest].type)));
     OPERAND_ASSERT(rtl_register_is_vector(&unit->regs[src1]));
     ASSERT(rtl_type_is_float(rtl_vector_element_type(unit->regs[src1].type)));
+    OPERAND_ASSERT(insn->opcode != RTLOP_VFCVT
+                   || unit->regs[src1].type != unit->regs[dest].type);
 #endif
 
     insn->dest = dest;
@@ -1983,6 +1987,7 @@ bool (* const makefunc_table[])(RTLUnit *, RTLInsn *, int, int, int,
     [RTLOP_SGTSI     ] = make_cmp_imm,
     [RTLOP_BITCAST   ] = make_bitcast,
     [RTLOP_FCAST     ] = make_fcast,
+    [RTLOP_FCVT      ] = make_fcast,
     [RTLOP_FZCAST    ] = make_ficast,
     [RTLOP_FSCAST    ] = make_ficast,
     [RTLOP_FROUNDI   ] = make_froundi,
@@ -2009,6 +2014,7 @@ bool (* const makefunc_table[])(RTLUnit *, RTLInsn *, int, int, int,
     [RTLOP_VEXTRACT  ] = make_vextract,
     [RTLOP_VINSERT   ] = make_vinsert,
     [RTLOP_VFCAST    ] = make_vfcast,
+    [RTLOP_VFCVT     ] = make_vfcast,
     [RTLOP_LOAD_IMM  ] = make_load_imm,
     [RTLOP_LOAD_ARG  ] = make_load_arg,
     [RTLOP_LOAD      ] = make_load,

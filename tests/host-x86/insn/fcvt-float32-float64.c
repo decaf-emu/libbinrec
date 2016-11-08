@@ -25,7 +25,8 @@ static int add_rtl(RTLUnit *unit)
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM,
                         reg1, 0, 0, UINT64_C(0x3FF0000000000000)));
     EXPECT(reg2 = rtl_alloc_register(unit, RTLTYPE_FLOAT32));
-    EXPECT(rtl_add_insn(unit, RTLOP_FCAST, reg2, reg1, 0, 0));
+    EXPECT(rtl_add_insn(unit, RTLOP_FCVT, reg2, reg1, 0, 0));
+    EXPECT(rtl_add_insn(unit, RTLOP_NOP, 0, reg1, 0, 0));
 
     return EXIT_SUCCESS;
 }
@@ -35,20 +36,8 @@ static const uint8_t expected_code[] = {
     0x48,0xB8,0x00,0x00,0x00,0x00,0x00, // mov $0x3FF0000000000000,%rax
       0x00,0xF0,0x3F,
     0x66,0x48,0x0F,0x6E,0xC8,           // movq %rax,%xmm1
-    0x0F,0xAE,0x1C,0x24,                // stmxcsr (%rsp)
-    0x8B,0x04,0x24,                     // mov (%rsp),%eax
-    0x83,0x24,0x24,0xFE,                // andl $-2,(%rsp)
-    0x0F,0xAE,0x14,0x24,                // ldmxcsr (%rsp)
-    0xF2,0x0F,0x5A,0xC9,                // cvtsd2ss %xmm1,%xmm1
-    0x0F,0xAE,0x1C,0x24,                // stmxcsr (%rsp)
-    0xF6,0x04,0x24,0x01,                // testb $1,(%rsp)
-    0x89,0x04,0x24,                     // mov %eax,(%rsp)
-    0x0F,0xAE,0x14,0x24,                // ldmxcsr (%rsp)
-    0x74,0x0C,                          // jz L0
-    0xB8,0xFF,0xFF,0xBF,0xFF,           // mov $0xFFBFFFFF,%eax
-    0x66,0x0F,0x6E,0xD0,                // movd %eax,%xmm2
-    0x0F,0x54,0xCA,                     // andps %xmm2,%xmm1
-    0x48,0x83,0xC4,0x08,                // L0: add $8,%rsp
+    0xF2,0x0F,0x5A,0xD1,                // cvtsd2ss %xmm1,%xmm2
+    0x48,0x83,0xC4,0x08,                // add $8,%rsp
     0xC3,                               // ret
 };
 

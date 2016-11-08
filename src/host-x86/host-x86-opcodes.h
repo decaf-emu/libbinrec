@@ -1134,6 +1134,21 @@ typedef enum X86CondCode {
 } X86CondCode;
 
 /**
+ * X86XMMCompare:  Constants for the immediate byte of a floating-point
+ * compare instruction (CMPPS, etc).
+ */
+typedef enum X86XMMCompare {
+    X86XMMCMP_EQ = 0,
+    X86XMMCMP_LT = 1,
+    X86XMMCMP_LE = 2,
+    X86XMMCMP_UNORD = 3,
+    X86XMMCMP_NEQ = 4,
+    X86XMMCMP_NLT = 5,
+    X86XMMCMP_NLE = 6,
+    X86XMMCMP_ORD = 7,
+} X86XMMCompare;
+
+/**
  * X86Mod:  Constants for the "mod" field of a ModR/M byte.
  */
 typedef enum X86Mod {

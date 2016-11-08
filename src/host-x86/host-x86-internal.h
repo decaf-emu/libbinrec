@@ -46,6 +46,10 @@
  *      - host_data_16 holds the optional index register, as for loads.
  *      - host_data_32 always holds the access offset (even if zero).
  *
+ * - For the FCAST and VFCAST instructions:
+ *      - host_data_16 holds a temporary XMM register (X86_XMM*) if the
+ *        source and destination types are not the same.
+ *
  * - For the SELECT instruction:
  *      - If host_data_16 is nonzero, it indicates that the comparands
  *        given in the condition register's result structure should be
@@ -138,6 +142,8 @@ enum {
     LC_FLOAT32_INV_SIGNBIT,  // ~(1<<31)
     LC_FLOAT64_SIGNBIT,      // 1<<63
     LC_FLOAT64_INV_SIGNBIT,  // ~(1<<63)
+    LC_V2_FLOAT32_QUIETBIT,  // {1<<22, 1<<22}
+    LC_V2_FLOAT64_QUIETBIT,  // {1<<51, 1<<51}
     NUM_LOCAL_CONSTANTS
 };
 

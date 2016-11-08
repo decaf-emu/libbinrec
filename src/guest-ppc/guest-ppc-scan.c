@@ -506,6 +506,10 @@ static void update_used_changed(GuestPPCContext *ctx, GuestPPCBlockInfo *block,
             ctx->fpr_is_ps |= 1 << insn_frD(insn);
             mark_fpscr_used(block);
             mark_fpscr_changed(block);
+            /* Normally FR/FI/FPRF will only be overwritten as a unit, but
+             * we have to preserve the old value of FPRF in case of an
+             * enabled invalid-operation exception. */
+            mark_fr_fi_fprf_used(block);
             mark_fr_fi_fprf_changed(block);
             if (insn_Rc(insn)) {
                 mark_crf_changed(block, 1);
@@ -533,6 +537,7 @@ static void update_used_changed(GuestPPCContext *ctx, GuestPPCBlockInfo *block,
             ctx->fpr_is_ps |= 1 << insn_frD(insn);
             mark_fpscr_used(block);
             mark_fpscr_changed(block);
+            mark_fr_fi_fprf_used(block);
             mark_fr_fi_fprf_changed(block);
             if (insn_Rc(insn)) {
                 mark_crf_changed(block, 1);
@@ -549,6 +554,7 @@ static void update_used_changed(GuestPPCContext *ctx, GuestPPCBlockInfo *block,
             ctx->fpr_is_ps |= 1 << insn_frD(insn);
             mark_fpscr_used(block);
             mark_fpscr_changed(block);
+            mark_fr_fi_fprf_used(block);
             mark_fr_fi_fprf_changed(block);
             if (insn_Rc(insn)) {
                 mark_crf_changed(block, 1);
@@ -572,6 +578,7 @@ static void update_used_changed(GuestPPCContext *ctx, GuestPPCBlockInfo *block,
             ctx->fpr_is_ps |= 1 << insn_frD(insn);
             mark_fpscr_used(block);
             mark_fpscr_changed(block);
+            mark_fr_fi_fprf_used(block);
             mark_fr_fi_fprf_changed(block);
             if (insn_Rc(insn)) {
                 mark_crf_changed(block, 1);
@@ -937,6 +944,7 @@ static void update_used_changed(GuestPPCContext *ctx, GuestPPCBlockInfo *block,
         mark_fpr_changed(block, insn_frD(insn), FPR_SINGLE);
         mark_fpscr_used(block);
         mark_fpscr_changed(block);
+        mark_fr_fi_fprf_used(block);
         mark_fr_fi_fprf_changed(block);
         if (insn_Rc(insn)) {
             mark_crf_changed(block, 1);
@@ -1011,6 +1019,7 @@ static void update_used_changed(GuestPPCContext *ctx, GuestPPCBlockInfo *block,
             mark_fpr_changed(block, insn_frD(insn), FPR_SINGLE);
             mark_fpscr_used(block);
             mark_fpscr_changed(block);
+            mark_fr_fi_fprf_used(block);
             mark_fr_fi_fprf_changed(block);
             if (insn_Rc(insn)) {
                 mark_crf_changed(block, 1);
@@ -1023,6 +1032,7 @@ static void update_used_changed(GuestPPCContext *ctx, GuestPPCBlockInfo *block,
             mark_fpr_changed(block, insn_frD(insn), FPR_DOUBLE);
             mark_fpscr_used(block);
             mark_fpscr_changed(block);
+            mark_fr_fi_fprf_used(block);
             mark_fr_fi_fprf_changed(block);
             if (insn_Rc(insn)) {
                 mark_crf_changed(block, 1);
@@ -1037,6 +1047,7 @@ static void update_used_changed(GuestPPCContext *ctx, GuestPPCBlockInfo *block,
             mark_fpr_changed(block, insn_frD(insn), FPR_DOUBLE);
             mark_fpscr_used(block);
             mark_fpscr_changed(block);
+            mark_fr_fi_fprf_used(block);
             mark_fr_fi_fprf_changed(block);
             if (insn_Rc(insn)) {
                 mark_crf_changed(block, 1);
@@ -1060,6 +1071,7 @@ static void update_used_changed(GuestPPCContext *ctx, GuestPPCBlockInfo *block,
             mark_fpr_changed(block, insn_frD(insn), FPR_DOUBLE);
             mark_fpscr_used(block);
             mark_fpscr_changed(block);
+            mark_fr_fi_fprf_used(block);
             mark_fr_fi_fprf_changed(block);
             if (insn_Rc(insn)) {
                 mark_crf_changed(block, 1);
@@ -1071,6 +1083,7 @@ static void update_used_changed(GuestPPCContext *ctx, GuestPPCBlockInfo *block,
             mark_fpr_changed(block, insn_frD(insn), FPR_DOUBLE);
             mark_fpscr_used(block);
             mark_fpscr_changed(block);
+            mark_fr_fi_fprf_used(block);
             mark_fr_fi_fprf_changed(block);
             if (insn_Rc(insn)) {
                 mark_crf_changed(block, 1);
@@ -1087,6 +1100,7 @@ static void update_used_changed(GuestPPCContext *ctx, GuestPPCBlockInfo *block,
             mark_fpr_changed(block, insn_frD(insn), FPR_DOUBLE);
             mark_fpscr_used(block);
             mark_fpscr_changed(block);
+            mark_fr_fi_fprf_used(block);
             mark_fr_fi_fprf_changed(block);
             if (insn_Rc(insn)) {
                 mark_crf_changed(block, 1);

@@ -20,24 +20,29 @@ static int add_rtl(RTLUnit *unit)
 {
     alloc_dummy_registers(unit, 1, RTLTYPE_FLOAT32);
 
-    int reg1, reg2, reg3;
+    int reg1, reg2, reg3, reg4;
     EXPECT(reg1 = rtl_alloc_register(unit, RTLTYPE_ADDRESS));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg1, 0, 0, 1));
     EXPECT(reg2 = rtl_alloc_register(unit, RTLTYPE_V2_FLOAT64));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD, reg2, reg1, 0, 0));
     EXPECT(reg3 = rtl_alloc_register(unit, RTLTYPE_V2_FLOAT32));
     EXPECT(rtl_add_insn(unit, RTLOP_VFCAST, reg3, reg2, 0, 0));
-    EXPECT(rtl_add_insn(unit, RTLOP_NOP, 0, reg2, 0, 0));
+    EXPECT(reg4 = rtl_alloc_register(unit, RTLTYPE_V2_FLOAT64));
+    EXPECT(rtl_add_insn(unit, RTLOP_VFCAST, reg4, reg3, 0, 0));
 
     return EXIT_SUCCESS;
 }
 
 static const uint8_t expected_code[] = {
     0x48,0x83,0xEC,0x08,                // sub $8,%rsp
-    0xEB,0x1A,                          // jmp 0x20
+    0xEB,0x2A,                          // jmp 0x30
     0x00,0x00,0x00,0x00,0x00,0x00,0x00, // (padding)
     0x00,0x00,0x00,                     // (padding)
 
+    0x00,0x00,0x40,0x00,                // (data)
+    0x00,0x00,0x40,0x00,                // (data)
+    0x00,0x00,0x00,0x00,                // (data)
+    0x00,0x00,0x00,0x00,                // (data)
     0x00,0x00,0x00,0x00,                // (data)
     0x00,0x00,0x08,0x00,                // (data)
     0x00,0x00,0x00,0x00,                // (data)
@@ -65,7 +70,27 @@ static const uint8_t expected_code[] = {
     0x66,0x0F,0x70,0xDB,0xD8,           // pshufd $0xD8,%xmm3,%xmm3
     0x0F,0xAE,0x14,0x24,                // ldmxcsr (%rsp)
     0x0F,0x57,0xD3,                     // xorps %xmm3,%xmm2
-    0x48,0x83,0xC4,0x08,                // L0: add $8,%rsp
+    0x0F,0xAE,0x1C,0x24,                // L0: stmxcsr (%rsp)
+    0x8B,0x04,0x24,                     // mov (%rsp),%eax
+    0x83,0x24,0x24,0xFE,                // andl $-2,(%rsp)
+    0x0F,0xAE,0x14,0x24,                // ldmxcsr (%rsp)
+    0x0F,0x5A,0xCA,                     // cvtps2pd %xmm2,%xmm1
+    0x0F,0xAE,0x1C,0x24,                // stmxcsr (%rsp)
+    0xF6,0x04,0x24,0x01,                // testb $1,(%rsp)
+    0x89,0x04,0x24,                     // mov %eax,(%rsp)
+    0x0F,0xAE,0x14,0x24,                // ldmxcsr (%rsp)
+    0x74,0x29,                          // jz L1
+    0x0F,0x57,0xC9,                     // xorps %xmm1,%xmm1
+    0x0F,0xC2,0xCA,0x03,                // cmpunordps %xmm2,%xmm1
+    0x0F,0x28,0xDA,                     // movaps %xmm2,%xmm3
+    0x0F,0x54,0x0D,0x55,0xFF,0xFF,0xFF, // andps -171(%rip),%xmm1
+    0x66,0x0F,0xDF,0xD9,                // pandn %xmm1,%xmm3
+    0x66,0x0F,0x70,0xDB,0xD8,           // pshufd $0xD8,%xmm3,%xmm3
+    0x0F,0x5A,0xCA,                     // cvtps2pd %xmm2,%xmm1
+    0x66,0x0F,0x73,0xF3,0x1D,           // psllq $29,%xmm3
+    0x0F,0xAE,0x14,0x24,                // ldmxcsr (%rsp)
+    0x0F,0x57,0xCB,                     // xorps %xmm3,%xmm1
+    0x48,0x83,0xC4,0x08,                // L1: add $8,%rsp
     0xC3,                               // ret
 };
 

@@ -894,6 +894,14 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
                 }
                 break;
 
+              case RTLOP_VFCAST:
+                /* If converting between different types, we use dest as a
+                 * temporary, so make sure not to overwrite src1. */
+                if (dest_reg->type != src1_reg->type && !src1_info->spilled) {
+                    avoid_regs |= 1u << src1_info->host_reg;
+                }
+                break;
+
               case RTLOP_ATOMIC_INC:
                 /* Avoid reusing src1 (if it's not spilled) since we need
                  * to write the second XADD operand (constant 1) to dest
@@ -1136,6 +1144,13 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
                         | 1u << src2_info->host_reg;
             break;
 
+          case RTLOP_FCAST:
+          case RTLOP_VFCAST:
+            /* Temporary GPR and XMM register needed if the source and
+             * destination are different types. */
+            need_temp = (src1_reg->type != dest_reg->type);
+            break;
+
           case RTLOP_FZCAST:
             /* Temporary needed if converting a 64-bit or spilled 32-bit
              * value. */
@@ -1240,6 +1255,15 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
             dest_info->host_temp = (uint8_t)temp_reg;
             dest_info->temp_allocated = true;
             ctx->block_regs_touched |= 1u << temp_reg;
+            if (insn->opcode == RTLOP_FCAST || insn->opcode == RTLOP_VFCAST) {
+                /* These need an additional XMM temporary. */
+                int temp_xmm = get_xmm(ctx, temp_avoid);
+                if (temp_xmm < 0) {
+                    temp_xmm = X86_XMM15;
+                }
+                insn->host_data_16 = temp_xmm;
+                ctx->block_regs_touched |= 1u << temp_xmm;
+            }
         }
 
         /* Mark additional touched registers for specific instructions. */
@@ -1665,6 +1689,15 @@ static void first_pass_for_block(HostX86Context *ctx, int block_index)
             break;
           }  // case RTLOP_{SLL,SRL,SRA,ROL,ROR}
 
+          case RTLOP_FCAST:
+            /* FCAST touches MXCSR if the types are different. */
+            if (unit->regs[insn->dest].type != unit->regs[insn->src1].type) {
+                if (ctx->stack_mxcsr < 0) {
+                    ctx->stack_mxcsr = allocate_frame_slot(ctx, RTLTYPE_INT32);
+                }
+            }
+            break;
+
           case RTLOP_FNEG:
           case RTLOP_FNABS:
             if (unit->regs[insn->dest].type == RTLTYPE_FLOAT64) {
@@ -1719,8 +1752,8 @@ static void first_pass_for_block(HostX86Context *ctx, int block_index)
           case RTLOP_FCLEAREXC:
           case RTLOP_FSETROUND:
             /* These instructions touch MXCSR, which requires a memory
-             * location rather than a register to access, so ensure that
-             * we have a frame slot allocated. */
+             * location rather than a register, so ensure that we have a
+             * frame slot allocated. */
             if (ctx->stack_mxcsr < 0) {
                 ctx->stack_mxcsr = allocate_frame_slot(ctx, RTLTYPE_INT32);
             }
@@ -1740,6 +1773,21 @@ static void first_pass_for_block(HostX86Context *ctx, int block_index)
                     if (src1_reg->death == src1_reg->birth) {
                         rtl_opt_kill_insn(unit, src1_reg->birth, true);
                     }
+                }
+            }
+            break;
+
+          case RTLOP_VFCAST:
+            /* VFCAST both touches MXCSR and needs a constant for fixing up
+             * SNaNs after conversion if the types are different. */
+            if (unit->regs[insn->dest].type != unit->regs[insn->src1].type) {
+                if (ctx->stack_mxcsr < 0) {
+                    ctx->stack_mxcsr = allocate_frame_slot(ctx, RTLTYPE_INT32);
+                }
+                if (unit->regs[insn->src1].type == RTLTYPE_V2_FLOAT64) {
+                    ctx->const_loc[LC_V2_FLOAT64_QUIETBIT] = 1;
+                } else {
+                    ctx->const_loc[LC_V2_FLOAT32_QUIETBIT] = 1;
                 }
             }
             break;

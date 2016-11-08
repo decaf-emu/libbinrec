@@ -582,17 +582,30 @@ static inline uint64_t fold_constant(RTLUnit * const unit,
         }
 
       case RTLOP_FCAST:
+      case RTLOP_FCVT:
         if (src1->type == RTLTYPE_FLOAT32) {
+            const uint32_t bits = float_to_bits(src1->value.f32);
             if (reg->type == RTLTYPE_FLOAT32) {
-                return float_to_bits(src1->value.f32);
+                return bits;
+            } else if (reg->result.opcode == RTLOP_FCAST
+                       && (bits>>23 & 0xFF) == 0xFF) {
+                return ((uint64_t)(bits & 0x80000000) << 32
+                        | UINT64_C(0x7FF0000000000000)
+                        | (uint64_t)(bits & 0x007FFFFF) << 29);
             } else {
                 return double_to_bits((double)src1->value.f32);
             }
         } else {
-            if (reg->type == RTLTYPE_FLOAT32) {
-                return float_to_bits((float)src1->value.f64);
+            const uint64_t bits = src1->value.i64;
+            if (reg->type == RTLTYPE_FLOAT64) {
+                return bits;
+            } else if (reg->result.opcode == RTLOP_FCAST
+                       && (bits>>52 & 0x7FF) == 0x7FF) {
+                return (((uint32_t)(bits >> 32) & 0x80000000)
+                        | 0x7F800000
+                        | ((uint32_t)(bits >> 29) & 0x007FFFFF));
             } else {
-                return src1->value.i64;
+                return float_to_bits((float)src1->value.f64);
             }
         }
 
@@ -800,6 +813,7 @@ static inline uint64_t fold_constant(RTLUnit * const unit,
       case RTLOP_VEXTRACT:
       case RTLOP_VINSERT:
       case RTLOP_VFCAST:
+      case RTLOP_VFCVT:
       case RTLOP_LOAD_IMM:
       case RTLOP_LOAD_ARG:
       case RTLOP_LOAD:
@@ -1022,6 +1036,7 @@ static inline bool convert_to_regimm(RTLUnit * const unit,
       case RTLOP_SGTSI:
       case RTLOP_BITCAST:
       case RTLOP_FCAST:
+      case RTLOP_FCVT:
       case RTLOP_FSCAST:
       case RTLOP_FZCAST:
       case RTLOP_FROUNDI:
@@ -1048,6 +1063,7 @@ static inline bool convert_to_regimm(RTLUnit * const unit,
       case RTLOP_VEXTRACT:
       case RTLOP_VINSERT:
       case RTLOP_VFCAST:
+      case RTLOP_VFCVT:
       case RTLOP_LOAD_IMM:
       case RTLOP_LOAD_ARG:
       case RTLOP_LOAD:

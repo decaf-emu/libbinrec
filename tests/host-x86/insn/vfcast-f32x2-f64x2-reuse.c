@@ -18,31 +18,22 @@ static const unsigned int host_opt = 0;
 
 static int add_rtl(RTLUnit *unit)
 {
-    int dummy_regs[14];
-    for (int i = 0; i < lenof(dummy_regs); i++) {
-        EXPECT(dummy_regs[i] = rtl_alloc_register(unit, RTLTYPE_FLOAT32));
-        EXPECT(rtl_add_insn(unit, RTLOP_NOP, dummy_regs[i], 0, 0, 0));
-    }
+    alloc_dummy_registers(unit, 1, RTLTYPE_FLOAT32);
 
-    int reg1, reg2, reg3, reg4;
+    int reg1, reg2, reg3;
     EXPECT(reg1 = rtl_alloc_register(unit, RTLTYPE_ADDRESS));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg1, 0, 0, 1));
     EXPECT(reg2 = rtl_alloc_register(unit, RTLTYPE_V2_FLOAT64));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD, reg2, reg1, 0, 0));
-    EXPECT(reg3 = rtl_alloc_register(unit, RTLTYPE_V2_FLOAT64));
-    EXPECT(rtl_add_insn(unit, RTLOP_LOAD, reg3, reg1, 0, 0));
-    EXPECT(reg4 = rtl_alloc_register(unit, RTLTYPE_V2_FLOAT32));
-    EXPECT(rtl_add_insn(unit, RTLOP_VFCAST, reg4, reg2, 0, 0));
-    for (int i = 0; i < lenof(dummy_regs); i++) {
-        EXPECT(rtl_add_insn(unit, RTLOP_NOP, 0, dummy_regs[i], 0, 0));
-    }
-    EXPECT(rtl_add_insn(unit, RTLOP_NOP, 0, reg2, 0, 0));
+    EXPECT(reg3 = rtl_alloc_register(unit, RTLTYPE_V2_FLOAT32));
+    /* reg3 should not reuse reg2. */
+    EXPECT(rtl_add_insn(unit, RTLOP_VFCAST, reg3, reg2, 0, 0));
 
     return EXIT_SUCCESS;
 }
 
 static const uint8_t expected_code[] = {
-    0x48,0x83,0xEC,0x28,                // sub $40,%rsp
+    0x48,0x83,0xEC,0x08,                // sub $8,%rsp
     0xEB,0x1A,                          // jmp 0x20
     0x00,0x00,0x00,0x00,0x00,0x00,0x00, // (padding)
     0x00,0x00,0x00,                     // (padding)
@@ -53,32 +44,28 @@ static const uint8_t expected_code[] = {
     0x00,0x00,0x08,0x00,                // (data)
 
     0xB8,0x01,0x00,0x00,0x00,           // mov $1,%eax
-    0x44,0x0F,0x28,0x30,                // movaps (%rax),%xmm14
-    0x44,0x0F,0x29,0x74,0x24,0x10,      // movaps %xmm14,16(%rsp)
-    0x44,0x0F,0x28,0x30,                // movaps (%rax),%xmm14
+    0x0F,0x28,0x08,                     // movaps (%rax),%xmm1
     0x0F,0xAE,0x1C,0x24,                // stmxcsr (%rsp)
     0x8B,0x04,0x24,                     // mov (%rsp),%eax
     0x83,0x24,0x24,0xFE,                // andl $-2,(%rsp)
     0x0F,0xAE,0x14,0x24,                // ldmxcsr (%rsp)
-    0x66,0x44,0x0F,0x5A,0x74,0x24,0x10, // cvtpd2ps 16(%rsp),%xmm14
+    0x66,0x0F,0x5A,0xD1,                // cvtpd2ps %xmm1,%xmm2
     0x0F,0xAE,0x1C,0x24,                // stmxcsr (%rsp)
     0xF6,0x04,0x24,0x01,                // testb $1,(%rsp)
     0x89,0x04,0x24,                     // mov %eax,(%rsp)
     0x0F,0xAE,0x14,0x24,                // ldmxcsr (%rsp)
-    0x74,0x3A,                          // jz L0
-    0x45,0x0F,0x57,0xF6,                // xorps %xmm14,%xmm14
-    0x66,0x44,0x0F,0xC2,0x74,0x24,0x10, // cmpunordpd 16(%rsp),%xmm14
-      0x03,
-    0x44,0x0F,0x28,0x7C,0x24,0x10,      // movaps 16(%rsp),%xmm15
-    0x44,0x0F,0x54,0x35,0x9C,0xFF,0xFF, // andps -100(%rip),%xmm14
-      0xFF,
-    0x66,0x45,0x0F,0xDF,0xFE,           // pandn %xmm14,%xmm15
-    0x66,0x41,0x0F,0x73,0xD7,0x1D,      // psrlq $29,%xmm15
-    0x66,0x44,0x0F,0x5A,0x74,0x24,0x10, // cvtpd2ps 16(%rsp),%xmm14
-    0x66,0x45,0x0F,0x70,0xFF,0xD8,      // pshufd $0xD8,%xmm15,%xmm15
+    0x74,0x2B,                          // jz L0
+    0x0F,0x57,0xD2,                     // xorps %xmm2,%xmm2
+    0x66,0x0F,0xC2,0xD1,0x03,           // cmpunordpd %xmm1,%xmm2
+    0x0F,0x28,0xD9,                     // movaps %xmm1,%xmm3
+    0x0F,0x54,0x15,0xB2,0xFF,0xFF,0xFF, // andps -78(%rip),%xmm2
+    0x66,0x0F,0xDF,0xDA,                // pandn %xmm2,%xmm3
+    0x66,0x0F,0x73,0xD3,0x1D,           // psrlq $29,%xmm3
+    0x66,0x0F,0x5A,0xD1,                // cvtpd2ps %xmm1,%xmm2
+    0x66,0x0F,0x70,0xDB,0xD8,           // pshufd $0xD8,%xmm3,%xmm3
     0x0F,0xAE,0x14,0x24,                // ldmxcsr (%rsp)
-    0x45,0x0F,0x57,0xF7,                // xorps %xmm15,%xmm14
-    0x48,0x83,0xC4,0x28,                // L0: add $40,%rsp
+    0x0F,0x57,0xD3,                     // xorps %xmm3,%xmm2
+    0x48,0x83,0xC4,0x08,                // L0: add $8,%rsp
     0xC3,                               // ret
 };
 
