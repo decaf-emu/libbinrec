@@ -91,92 +91,92 @@ static int get_block(GuestPPCContext *ctx, uint32_t address, bool create_new)
  */
 
 static inline void mark_gpr_used(GuestPPCBlockInfo *block, const int index) {
-    if (!(block->gpr_changed & (1 << index))) block->gpr_used |= 1 << index;
+    if (!(block->changed.gpr & (1 << index))) block->used.gpr |= 1 << index;
 }
 
 static inline void mark_gpr_changed(GuestPPCBlockInfo *block, const int index) {
-    block->gpr_changed |= 1 << index;
+    block->changed.gpr |= 1 << index;
 }
 
 static inline void mark_fpr_used(GuestPPCBlockInfo *block, const int index,
                                  int fpr_type) {
-    if (!(block->fpr_changed & (1 << index))) block->fpr_used |= 1 << index;
+    if (!(block->changed.fpr & (1 << index))) block->used.fpr |= 1 << index;
     if (!block->fpr_type_first[index]) block->fpr_type_first[index] = fpr_type;
     block->fpr_type_last[index] = fpr_type;
 }
 
 static inline void mark_fpr_changed(GuestPPCBlockInfo *block, const int index,
                                     int fpr_type) {
-    block->fpr_changed |= 1 << index;
+    block->changed.fpr |= 1 << index;
     if (!block->fpr_type_first[index]) block->fpr_type_first[index] = fpr_type;
     block->fpr_type_last[index] = fpr_type;
 }
 
 static inline void mark_crb_used(GuestPPCBlockInfo *block, const int index) {
-    if (!(block->crb_changed & (1 << index))) block->crb_used |= 1 << index;
+    if (!(block->changed.crb & (1 << index))) block->used.crb |= 1 << index;
 }
 
 static inline void mark_crf_used(GuestPPCBlockInfo *block, const int index) {
     const uint32_t mask = 0xF << (4*index);
-    if ((block->crb_changed & mask) != mask) {
-        block->crb_used |= 0xF << (4*index);
+    if ((block->changed.crb & mask) != mask) {
+        block->used.crb |= 0xF << (4*index);
     }
 }
 
 static inline void mark_cr_used(GuestPPCBlockInfo *block) {
-    if (!block->cr_changed) block->cr_used = 1;
+    if (!block->changed.cr) block->used.cr = 1;
 }
 
 static inline void mark_crb_changed(GuestPPCBlockInfo *block, const int index) {
-    block->crb_changed |= 1 << index;
+    block->changed.crb |= 1 << index;
 }
 
 static inline void mark_crf_changed(GuestPPCBlockInfo *block, const int index) {
-    block->crb_changed |= 0xF << (4*index);
+    block->changed.crb |= 0xF << (4*index);
 }
 
 static inline void mark_cr_changed(GuestPPCBlockInfo *block) {
-    block->cr_changed = 1;
+    block->changed.cr = 1;
 }
 
 static inline void mark_lr_used(GuestPPCBlockInfo *block) {
-    if (!block->lr_changed) block->lr_used = 1;
+    if (!block->changed.lr) block->used.lr = 1;
 }
 
 static inline void mark_lr_changed(GuestPPCBlockInfo *block) {
-    block->lr_changed = 1;
+    block->changed.lr = 1;
 }
 
 static inline void mark_ctr_used(GuestPPCBlockInfo *block) {
-    if (!block->ctr_changed) block->ctr_used = 1;
+    if (!block->changed.ctr) block->used.ctr = 1;
 }
 
 static inline void mark_ctr_changed(GuestPPCBlockInfo *block) {
-    block->ctr_changed = 1;
+    block->changed.ctr = 1;
 }
 
 static inline void mark_xer_used(GuestPPCBlockInfo *block) {
-    if (!block->xer_changed) block->xer_used = 1;
+    if (!block->changed.xer) block->used.xer = 1;
 }
 
 static inline void mark_xer_changed(GuestPPCBlockInfo *block) {
-    block->xer_changed = 1;
+    block->changed.xer = 1;
 }
 
 static inline void mark_fpscr_used(GuestPPCBlockInfo *block) {
-    if (!block->fpscr_changed) block->fpscr_used = 1;
+    if (!block->changed.fpscr) block->used.fpscr = 1;
 }
 
 static inline void mark_fpscr_changed(GuestPPCBlockInfo *block) {
-    block->fpscr_changed = 1;
+    block->changed.fpscr = 1;
 }
 
 static inline void mark_fr_fi_fprf_used(GuestPPCBlockInfo *block) {
-    if (!block->fr_fi_fprf_changed) block->fr_fi_fprf_used = 1;
+    if (!block->changed.fr_fi_fprf) block->used.fr_fi_fprf = 1;
 }
 
 static inline void mark_fr_fi_fprf_changed(GuestPPCBlockInfo *block) {
-    block->fr_fi_fprf_changed = 1;
+    block->changed.fr_fi_fprf = 1;
 }
 
 /*-----------------------------------------------------------------------*/
@@ -991,6 +991,8 @@ static void update_used_changed(GuestPPCContext *ctx, GuestPPCBlockInfo *block,
           case 0x07:  // mffs, mtfsf
             if (!(insn_XO_10(insn) == XO_MTFSF && insn_FM(insn) == 0xFF)) {
                 mark_fpscr_used(block);
+            }
+            if (!(insn_XO_10(insn) == XO_MTFSF && (insn_FM(insn) & 0x18) == 0x18)) {
                 mark_fr_fi_fprf_used(block);
             }
             if (insn_XO_10(insn) == XO_MFFS) {
@@ -1120,9 +1122,58 @@ static void update_used_changed(GuestPPCContext *ctx, GuestPPCBlockInfo *block,
 /*-----------------------------------------------------------------------*/
 
 /**
- * scan_cr_bits:  Set the given block's crb_changed_recursive field to the
- * set of CR bits which are written at least once on every control flow
- * path out of the unit.
+ * scan_branches:  Record the target block of each branch to generate a
+ * control flow graph for the unit.
+ *
+ * [Parameters]
+ *     ctx: Translation context.
+ */
+static void scan_branches(GuestPPCContext *ctx)
+{
+    const uint32_t *memory_base =
+        (const uint32_t *)ctx->handle->setup.guest_memory_base;
+
+    for (int i = 0; i < ctx->num_blocks; i++) {
+        GuestPPCBlockInfo *block = &ctx->blocks[i];
+        ASSERT(block->len > 0);
+        const uint32_t address = block->start + block->len - 4;
+        const uint32_t insn = bswap_be32(memory_base[address/4]);
+        if (insn_OPCD(insn) == OPCD_BC) {
+            if (block->is_conditional_branch) {
+                block->next_block =
+                    get_block(ctx, block->start + block->len, false);
+            }
+            const int32_t disp = insn_BD(insn);
+            uint32_t target;
+            if (insn_AA(insn)) {
+                target = (uint32_t)disp;
+            } else {
+                target = address + disp;
+            }
+            block->branch_block = get_block(ctx, target, false);
+        } else if (insn_OPCD(insn) == OPCD_B) {
+            const int32_t disp = insn_LI(insn);
+            uint32_t target;
+            if (insn_AA(insn)) {
+                target = (uint32_t)disp;
+            } else {
+                target = address + disp;
+            }
+            block->branch_block = get_block(ctx, target, false);
+        } else if (block->has_trap) {
+            /* Treat this as an unconditional branch to the next
+             * instruction, to simplify scan_used_changed() logic. */
+            block->branch_block =
+                get_block(ctx, block->start + block->len, false);
+        }
+    }
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
+ * scan_cr_bits:  Recursively scan the block and its successors to
+ * determine the set of CR bits changed on all paths out of the unit.
  *
  * [Parameters]
  *     ctx: Translation context.
@@ -1145,70 +1196,54 @@ static void scan_cr_bits(GuestPPCContext *ctx, uint8_t *visited,
     visited[block_index] = 1;
 
     /* Look up the control flow edges out of this block, and recursively
-     * scan them if they haven't been seen yet.  If either edge is to a
-     * block we're recursing from, implying that we've found a cycle in
-     * the flow graph, we simply drop it.  A full analysis would determine
-     * the set of bits written by the cycle as a whole and propagate that
-     * to all edges entering the cycle, but for our purposes it should be
-     * good enough (and is faster) to just stop recursing when we find a
-     * cycle; for typical cases in which we fall into the top of a loop,
-     * we'll still pick up the full set of changed bits. */
-    bool have_second_exit = false;
-    int exit0 = block->branch_block;
-    if (exit0 >= 0 && !visited[exit0]) {
-        scan_cr_bits(ctx, visited, exit0);
+     * scan them if they haven't been seen yet.  If any edge is to a block
+     * we're recursing from, implying that we've found a cycle in the flow
+     * graph, we treat it as an exit from the unit; this may prevent us
+     * from optimizing out some stores in loops, but it avoids the need to
+     * construct a dominator tree across the entire unit. */
+    if (block->branch_block >= 0 && !visited[block->branch_block]) {
+        scan_cr_bits(ctx, visited, block->branch_block);
     }
-    int exit1;
     if (block->is_conditional_branch) {
-        exit1 = block->next_block;
-        if (exit1 >= 0 && !visited[exit1]) {
-            scan_cr_bits(ctx, visited, exit1);
-        }
-        if (exit1 >= 0 && visited[exit1] == 1) {
-            /* The fall-through edge is a cycle.  In this case we can just
-             * treat the branch as an unconditional branch to the target. */
-            exit1 = -1;
-        } else if (exit0 >= 0 && visited[exit0] == 1) {
-            /* The branch target edge is a cycle.  Ignore it and use the
-             * fall-through edge for CR bit checking. */
-            exit0 = block->next_block;
-        } else {
-            /* Neither edge is a cycle, so we need to look at both edges.
-             * If either edge is terminal, we won't forward any CR bits
-             * through this block (even if the other edge is non-terminal). */
-            have_second_exit = true;
+        if (block->next_block >= 0 && !visited[block->next_block]) {
+            scan_cr_bits(ctx, visited, block->next_block);
         }
     }
 
-    /* Determine which CR bits are changed on all outgoing paths (modulo
-     * any cycle-entering edges we dropped). */
+    /* Determine which CR bits are changed on all outgoing paths.  This is
+     * normally the intersection of crb_changed_recursive on each successor
+     * block (treating terminal edges as having crb_changed_recursive = 0),
+     * but if the block contains a trap, we have to ensure flags are
+     * properly stored before calling the trap handler, so we can't pass
+     * any bits through from successor blocks.  (Effectively, we treat the
+     * trap as a conditional branch which exits the unit if taken.) */
     uint32_t successor_changed;
-    if (exit0 >= 0) {
-        successor_changed = ctx->blocks[exit0].crb_changed_recursive;
+    if (block->has_trap) {
+        successor_changed = 0;
+    } else if (block->branch_block >= 0 && visited[block->branch_block] == 2) {
+        successor_changed =
+            ctx->blocks[block->branch_block].crb_changed_recursive;
     } else {
         successor_changed = 0;
     }
-    if (have_second_exit) {
-        if (exit1 >= 0) {
-            successor_changed &= ctx->blocks[exit1].crb_changed_recursive;
+    if (successor_changed != 0 && block->is_conditional_branch) {
+        if (block->next_block >= 0 && visited[block->next_block] == 2) {
+            successor_changed &=
+                ctx->blocks[block->next_block].crb_changed_recursive;
         } else {
             successor_changed = 0;
         }
     }
 
-    /* If the block contains a trap, we have to ensure flags are properly
-     * stored before calling the trap handler, so we can't pass any bits
-     * through from successor blocks. */
-    if (block->has_trap) {
-        successor_changed = 0;
-    }
+    /* Record the final set of changed-and-not-used CR bits, which is
+     * the set of CR bits to which stores in predecessor units can be
+     * eliminated.  If the block contains an mfcr instruction, this is
+     * naturally the empty set. */
+    block->crb_changed_recursive = block->used.cr ? 0 :
+        (block->changed.crb | successor_changed) & ~block->used.crb;
 
-    /* Record the final set of changed CR bits. */
-    block->crb_changed_recursive =
-        (block->crb_changed | successor_changed) & ~block->crb_used;
-
-    /* Mark the current block as completely scanned so that parent blocks
-     * can pick up its full bit set. */
+    /* Mark the current block as completely scanned so that predecessor
+     * blocks can pick up its data. */
     visited[block_index] = 2;
 }
 
@@ -1396,41 +1431,6 @@ bool guest_ppc_scan(GuestPPCContext *ctx, uint32_t limit)
     /* If optimizing CR bits, traverse all blocks in control flow order to
      * find which CR bits don't need to be stored. */
     if (ctx->handle->guest_opt & BINREC_OPT_G_PPC_TRIM_CR_STORES) {
-        /* Fill in exit edges for each block to generate the control flow
-         * graph. */
-        for (int i = 0; i < ctx->num_blocks; i++) {
-            block = &ctx->blocks[i];
-            ASSERT(block->len > 0);
-            const uint32_t address = block->start + block->len - 4;
-            const uint32_t insn = bswap_be32(memory_base[address/4]);
-            if (insn_OPCD(insn) == OPCD_BC) {
-                block->next_block =
-                    get_block(ctx, block->start + block->len, false);
-                const int32_t disp = insn_BD(insn);
-                uint32_t target;
-                if (insn_AA(insn)) {
-                    target = (uint32_t)disp;
-                } else {
-                    target = address + disp;
-                }
-                block->branch_block = get_block(ctx, target, false);
-            } else if (insn_OPCD(insn) == OPCD_B) {
-                const int32_t disp = insn_LI(insn);
-                uint32_t target;
-                if (insn_AA(insn)) {
-                    target = (uint32_t)disp;
-                } else {
-                    target = address + disp;
-                }
-                block->branch_block = get_block(ctx, target, false);
-            } else if (block->has_trap) {
-                /* Treat this as an unconditional branch to the next
-                 * instruction, to simplify scan_cr_bits() logic. */
-                block->branch_block =
-                    get_block(ctx, block->start + block->len, false);
-            }
-        }
-
         uint8_t *visited = binrec_malloc(ctx->handle, ctx->num_blocks);
         if (UNLIKELY(!visited)){ 
             log_warning(ctx->handle, "No memory for block visited flags"
@@ -1438,8 +1438,10 @@ bool guest_ppc_scan(GuestPPCContext *ctx, uint32_t limit)
                         ctx->num_blocks);
         } else {
             memset(visited, 0, ctx->num_blocks);
+            scan_branches(ctx);
             scan_cr_bits(ctx, visited, 0);
             binrec_free(ctx->handle, visited);
+            ctx->trim_cr_stores = true;
         }
     }
 

@@ -274,6 +274,20 @@ enum {
     FPR_PAIRED,
 };
 
+/* Bitmasks indicating register sets.  Used for data flow analysis. */
+typedef struct GuestPPCRegSet {
+    uint32_t gpr;
+    uint32_t fpr;
+    uint32_t crb;
+    uint8_t
+        cr : 1,  // For instructions which access CR as a whole (mfcr/mtcr).
+        lr : 1,
+        ctr : 1,
+        xer : 1,
+        fpscr : 1,
+        fr_fi_fprf : 1;
+} GuestPPCRegSet;
+
 /* Scan data for a single basic block. */
 typedef struct GuestPPCBlockInfo {
     /* Start address and length (in bytes) of the block. */
@@ -288,30 +302,11 @@ typedef struct GuestPPCBlockInfo {
 
     /* Bitmasks of registers which are used (i.e., their values on block
      * entry are read) and changed by the block. */
-    uint32_t gpr_used;
-    uint32_t gpr_changed;
-    uint32_t fpr_used;
-    uint32_t fpr_changed;
-    uint32_t crb_used;
-    uint32_t crb_changed;
-    uint8_t
-        cr_used : 1,  // For insns which access CR as a whole (mfcr/mtcr).
-        lr_used : 1,
-        ctr_used : 1,
-        xer_used : 1,
-        fpscr_used : 1,
-        fr_fi_fprf_used : 1;
-    uint8_t
-        cr_changed : 1,
-        lr_changed : 1,
-        ctr_changed : 1,
-        xer_changed : 1,
-        fpscr_changed : 1,
-        fr_fi_fprf_changed : 1;
+    GuestPPCRegSet used;
+    GuestPPCRegSet changed;
 
-    /* Bitmask of CR bits which are set at least once on every code path
-     * from the beginning of this block to an exit from the unit.  Used
-     * with the TRIM_CR_STORES optimization. */
+    /* Bitmask of CR bits which are changed without being read on every
+     * code path out of the unit.  Used by the TRIM_CR_STORES optimization. */
     uint32_t crb_changed_recursive;
 
     /* Type of the first and last access to each FPR in the block (FPR_*). */
@@ -355,7 +350,7 @@ typedef struct GuestPPCBlockInfo {
  * used by the unit, but its value is not valid unless
  * GuestPPCContext.fr_fi_fprf_loaded is true.
  */
-typedef struct GuestPPCRegSet {
+typedef struct GuestPPCRegMap {
     uint16_t gpr[32];
     uint16_t fpr[32];
     uint16_t crb[32];
@@ -366,7 +361,7 @@ typedef struct GuestPPCRegSet {
     uint16_t fpscr;
     uint16_t fr_fi_fprf;
     uint16_t nia;
-} GuestPPCRegSet;
+} GuestPPCRegMap;
 
 /* Context block used to maintain translation state. */
 typedef struct GuestPPCContext {
@@ -374,6 +369,10 @@ typedef struct GuestPPCContext {
     binrec_t *handle;
     RTLUnit *unit;
     uint32_t start;
+
+    /* True if the TRIM_CR_STORES optimization is active.  (Even if the
+     * flag is enabled, the optimization may fail due to lack of memory.) */
+    bool trim_cr_stores;
 
     /* List of basic blocks found from scanning, sorted by address. */
     GuestPPCBlockInfo *blocks;
@@ -391,22 +390,17 @@ typedef struct GuestPPCContext {
     uint16_t membase_reg;
 
     /* Alias registers for guest CPU state. */
-    GuestPPCRegSet alias;
+    GuestPPCRegMap alias;
 
     /* Set of FPR registers which need vector (paired-single) aliases. */
     uint32_t fpr_is_ps;
-
     /* Set of CR bits which are modified by the unit.  These bits are
      * stored in the same order as the CR word, so that the MSB corresponds
      * to CR bit 0. */
     uint32_t crb_changed;
-    /* Set of CR bits which have been loaded into bit aliases, in the same
-     * bit order as crb_loaded. */
-    uint32_t crb_loaded;
     /* Set of CR bits which have live registers.  Bits are in natural order
      * (the LSB corresponds to CR bit 0), as with GuestPPCBlockInfo bitmaps. */
     uint32_t crb_dirty;
-
     /* Flag indicating whether FPSCR is written by any instruction in the
      * unit. */
     bool fpscr_changed;
@@ -414,7 +408,7 @@ typedef struct GuestPPCContext {
     bool fr_fi_fprf_loaded;
 
     /* RTL registers for each CPU register live in the current block. */
-    GuestPPCRegSet live;
+    GuestPPCRegMap live;
     /* Current type of each live FPR. */
     uint8_t fpr_type[32];
 

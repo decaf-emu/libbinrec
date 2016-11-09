@@ -258,7 +258,7 @@ static inline int get_crb(GuestPPCContext * const ctx, int index)
     } else {
         RTLUnit * const unit = ctx->unit;
         int reg;
-        if (ctx->crb_loaded & (0x80000000u >> index)) {
+        if (ctx->crb_changed & (0x80000000u >> index)) {
             ASSERT(ctx->alias.crb[index]);
             reg = rtl_alloc_register(unit, RTLTYPE_INT32);
             rtl_add_insn(unit, RTLOP_GET_ALIAS,
@@ -267,12 +267,6 @@ static inline int get_crb(GuestPPCContext * const ctx, int index)
             const int cr = get_cr(ctx);
             reg = rtl_alloc_register(unit, RTLTYPE_INT32);
             rtl_add_insn(unit, RTLOP_BFEXT, reg, cr, 0, (31-index) | (1<<8));
-            if (ctx->crb_changed & (0x80000000u >> index)) {
-                ASSERT(ctx->alias.crb[index]);
-                rtl_add_insn(unit, RTLOP_SET_ALIAS,
-                             0, reg, 0, ctx->alias.crb[index]);
-                ctx->crb_loaded |= 0x80000000u >> index;
-            }
         }
         ctx->live.crb[index] = reg;
         return reg;
@@ -369,8 +363,7 @@ static inline int test_crb(GuestPPCContext * const ctx, int index)
     } else {
         RTLUnit * const unit = ctx->unit;
         int reg;
-        if (ctx->crb_loaded & (0x80000000u >> index)) {
-            ASSERT(ctx->alias.crb[index]);
+        if (ctx->alias.crb[index]) {
             reg = rtl_alloc_register(unit, RTLTYPE_INT32);
             rtl_add_insn(unit, RTLOP_GET_ALIAS,
                          reg, 0, 0, ctx->alias.crb[index]);
@@ -429,7 +422,6 @@ static inline void set_crb(GuestPPCContext * const ctx, int index, int reg)
 {
     RTLUnit * const unit = ctx->unit;
     ASSERT(ctx->crb_changed & (0x80000000u >> index));
-    ctx->crb_loaded |= 0x80000000u >> index;
     if (ctx->last_set.crb[index] >= 0) {
         rtl_opt_kill_insn(unit, ctx->last_set.crb[index], false);
     }
@@ -748,11 +740,11 @@ static int merge_cr(GuestPPCContext *ctx, bool make_live)
 {
     RTLUnit * const unit = ctx->unit;
 
-    uint32_t crb_loaded = ctx->crb_loaded;
-    ASSERT(crb_loaded != 0);  // We won't be called if there's nothing to merge.
+    uint32_t crb_changed = ctx->crb_changed;
+    ASSERT(crb_changed != 0);  // We won't be called if nothing to merge.
 
     int cr;
-    if (crb_loaded == ~UINT32_C(0)) {
+    if (crb_changed == ~UINT32_C(0)) {
         cr = 0;
     } else {
         int old_cr;
@@ -765,12 +757,12 @@ static int merge_cr(GuestPPCContext *ctx, bool make_live)
             rtl_add_insn(unit, RTLOP_GET_ALIAS, old_cr, 0, 0, ctx->alias.cr);
         }
         cr = rtl_alloc_register(unit, RTLTYPE_INT32);
-        rtl_add_insn(unit, RTLOP_ANDI, cr, old_cr, 0, ~crb_loaded);
+        rtl_add_insn(unit, RTLOP_ANDI, cr, old_cr, 0, ~crb_changed);
     }
 
-    while (crb_loaded) {
-        const int bit = clz32(crb_loaded);
-        crb_loaded ^= 0x80000000u >> bit;
+    while (crb_changed) {
+        const int bit = clz32(crb_changed);
+        crb_changed ^= 0x80000000u >> bit;
         const int crbN = get_crb(ctx, bit);
         int shifted_crbN;
         if (bit == 31) {
@@ -1547,7 +1539,7 @@ static void translate_branch_label(
     uint32_t crb_store_next = 0;
     uint16_t crb_reg[32];
     RTLInsn crb_insn[32];  // Copy of the instruction that sets each value.
-    if (ctx->handle->guest_opt & BINREC_OPT_G_PPC_TRIM_CR_STORES) {
+    if (ctx->trim_cr_stores) {
         guest_ppc_trim_cr_stores(ctx, BO, BI, &crb_store_branch,
                                  &crb_store_next, crb_reg, crb_insn);
         /* If there are bits to store on the branch-taken path for a
@@ -3291,30 +3283,26 @@ static inline void translate_x1F(
         return;
 
       /* XO_5 = 0x10 */
-      case XO_MTCRF:
+      case XO_MTCRF: {
         if (insn_CRM(insn) == 0xFF) {
             set_cr(ctx, get_gpr(ctx, insn_rS(insn)));
-            for (int i = 0; i < 32; i++) {
-                if (ctx->last_set.crb[i] >= 0) {
-                    rtl_opt_kill_insn(unit, ctx->last_set.crb[i], false);
-                }
-            }
-            memset(ctx->last_set.crb, -1, sizeof(ctx->last_set.crb));
-            memset(ctx->live.crb, 0, sizeof(ctx->live.crb));
-            ctx->crb_loaded = 0;
-            ctx->crb_dirty = 0;
-        } else {
-            const int rS = get_gpr(ctx, insn_rS(insn));
-            for (int i = 0; i < 8; i++) {
-                if (insn_CRM(insn) & (0x80 >> i)) {
-                    int crb[4];
-                    for (int j = 0; j < 4; j++) {
-                        const int bit = i*4+j;
+        }
+        const int rS = get_gpr(ctx, insn_rS(insn));
+        for (int i = 0; i < 8; i++) {
+            if (insn_CRM(insn) & (0x80 >> i)) {
+                int crb[4];
+                for (int j = 0; j < 4; j++) {
+                    const int bit = i*4+j;
+                    if (ctx->alias.crb[bit]) {
                         crb[j] = rtl_alloc_register(unit, RTLTYPE_INT32);
                         rtl_add_insn(unit, RTLOP_BFEXT,
                                      crb[j], rS, 0, (31-bit) | (1<<8));
+                    } else {
+                        crb[j] = 0;
                     }
-                    for (int j = 0; j < 4; j++) {
+                }
+                for (int j = 0; j < 4; j++) {
+                    if (crb[j]) {
                         const int bit = i*4+j;
                         set_crb(ctx, bit, crb[j]);
                     }
@@ -3322,6 +3310,7 @@ static inline void translate_x1F(
             }
         }
         return;
+      }  // case XO_MTCRF
 
       /* XO_5 = 0x12 */
       case XO_MTMSR:
@@ -3407,7 +3396,6 @@ static inline void translate_x1F(
         /* Flush CR0.eq because of the conditional branches. */
         ctx->last_set.crb[2] = -1;
         ctx->live.crb[2] = 0;
-        ctx->crb_loaded |= 0x80000000u >> 2;
         ctx->crb_dirty |= 1u << 2;
         rtl_add_insn(unit, RTLOP_GOTO_IF_Z, 0, flag, 0, skip_label);
         rtl_add_insn(unit, RTLOP_STORE_I8, 0, psb_reg, zero,
@@ -4534,13 +4522,12 @@ void guest_ppc_flush_cr(GuestPPCContext *ctx, bool make_live)
 
     RTLUnit * const unit = ctx->unit;
 
-    if (ctx->crb_loaded) {
+    if (ctx->crb_changed) {
         const int cr = merge_cr(ctx, make_live);
         if (make_live) {
             set_cr(ctx, cr);
             memset(ctx->last_set.crb, -1, sizeof(ctx->last_set.crb));
             memset(ctx->live.crb, 0, sizeof(ctx->live.crb));
-            ctx->crb_loaded = 0;
             ctx->crb_dirty = 0;
         } else {
             rtl_add_insn(unit, RTLOP_SET_ALIAS, 0, cr, 0, ctx->alias.cr);

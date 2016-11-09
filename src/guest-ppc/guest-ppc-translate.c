@@ -61,51 +61,22 @@ static bool init_unit(GuestPPCContext *ctx)
 
     /* Check which guest CPU registers are referenced in the unit, to avoid
      * creating unnecessary RTL alias registers below. */
-    uint32_t gpr_used = 0;
-    uint32_t gpr_changed = 0;
-    uint32_t fpr_used = 0;
-    uint32_t fpr_changed = 0;
-    uint32_t crb_used = 0;
-    uint32_t crb_changed = 0;
-    bool cr_used = false;
-    bool lr_used = false;
-    bool ctr_used = false;
-    bool xer_used = false;
-    bool fpscr_used = false;
-    bool fr_fi_fprf_used = false;
-    bool cr_changed = false;
-    bool lr_changed = false;
-    bool ctr_changed = false;
-    bool xer_changed = false;
-    bool fpscr_changed = false;
-    bool fr_fi_fprf_changed = false;
+    GuestPPCRegSet used, changed;
+    memset(&used, 0, sizeof(used));
+    memset(&changed, 0, sizeof(changed));
     for (int i = 0; i < ctx->num_blocks; i++) {
-        gpr_used |= ctx->blocks[i].gpr_used;
-        gpr_changed |= ctx->blocks[i].gpr_changed;
-        fpr_used |= ctx->blocks[i].fpr_used;
-        fpr_changed |= ctx->blocks[i].fpr_changed;
-        crb_used |= ctx->blocks[i].crb_used;
-        crb_changed |= ctx->blocks[i].crb_changed;
-        cr_used |= ctx->blocks[i].cr_used;
-        cr_changed |= ctx->blocks[i].cr_changed;
-        lr_used |= ctx->blocks[i].lr_used;
-        lr_changed |= ctx->blocks[i].lr_changed;
-        ctr_used |= ctx->blocks[i].ctr_used;
-        ctr_changed |= ctx->blocks[i].ctr_changed;
-        xer_used |= ctx->blocks[i].xer_used;
-        xer_changed |= ctx->blocks[i].xer_changed;
-        fpscr_used |= ctx->blocks[i].fpscr_used;
-        fpscr_changed |= ctx->blocks[i].fpscr_changed;
-        fr_fi_fprf_used |= ctx->blocks[i].fr_fi_fprf_used;
-        fr_fi_fprf_changed |= ctx->blocks[i].fr_fi_fprf_changed;
+        for (int j = 0; j < (int)sizeof(used) / 4; j++) {
+            (&used.gpr)[j] |= (&ctx->blocks[i].used.gpr)[j];
+            (&changed.gpr)[j] |= (&ctx->blocks[i].changed.gpr)[j];
+        }
     }
-    ctx->crb_changed = bitrev32(crb_changed);
-    ctx->fpscr_changed = fpscr_changed;
+    ctx->crb_changed = bitrev32(changed.crb);
+    ctx->fpscr_changed = changed.fpscr;
 
     /* Allocate alias registers for all required guest registers. */
 
     for (int i = 0; i < 32; i++) {
-        if ((gpr_used | gpr_changed) & (1 << i)) {
+        if ((used.gpr | changed.gpr) & (1 << i)) {
             ctx->alias.gpr[i] = rtl_alloc_alias_register(unit, RTLTYPE_INT32);
             rtl_set_alias_storage(unit, ctx->alias.gpr[i], ctx->psb_reg,
                                   ctx->handle->setup.state_offset_gpr + i*4);
@@ -113,7 +84,7 @@ static bool init_unit(GuestPPCContext *ctx)
     }
 
     for (int i = 0; i < 32; i++) {
-        if ((fpr_used | fpr_changed) & (1 << i)) {
+        if ((used.fpr | changed.fpr) & (1 << i)) {
             if (ctx->fpr_is_ps & (1 << i)) {
                 ctx->alias.fpr[i] =
                     rtl_alloc_alias_register(unit, RTLTYPE_V2_FLOAT64);
@@ -126,53 +97,79 @@ static bool init_unit(GuestPPCContext *ctx)
         }
     }
 
-    for (int i = 0; i < 32; i++) {
-        /* Bits which aren't changed are re-extracted from CR as needed. */
-        if (crb_changed & (1 << i)) {
-            ctx->alias.crb[i] = rtl_alloc_alias_register(unit, RTLTYPE_INT32);
-        }
-    }
-
-    if (crb_used || crb_changed || cr_used || cr_changed) {
+    if (used.crb || changed.crb || used.cr || changed.cr) {
         ctx->alias.cr = rtl_alloc_alias_register(unit, RTLTYPE_INT32);
         rtl_set_alias_storage(unit, ctx->alias.cr, ctx->psb_reg,
                               ctx->handle->setup.state_offset_cr);
     }
 
-    if (lr_used || lr_changed) {
+    int cr = 0;
+    for (int i = 0; i < 32; i++) {
+        /* Bits which aren't changed are re-extracted from CR as needed. */
+        if (changed.crb & (1 << i)) {
+            ctx->alias.crb[i] = rtl_alloc_alias_register(unit, RTLTYPE_INT32);
+            /* Load the initial value of the bit, unless we know from
+             * data flow analysis that its value is not needed.  We have
+             * to do this here in case the bit is first loaded in a block
+             * which is only conditionally executed; in that case, if the
+             * block was skipped, the alias would remain uninitialized.
+             * If the value is not in fact needed (and the TRIM_CR_STORES
+             * optimization is not enabled), RTL data flow analysis should
+             * be able to eliminate this initialization. */
+            bool need_load;
+            if (ctx->trim_cr_stores) {
+                need_load = !(ctx->blocks[0].crb_changed_recursive & (1 << i));
+            } else {
+                need_load = true;
+            }
+            if (need_load) {
+                if (!cr) {
+                    cr = rtl_alloc_register(unit, RTLTYPE_INT32);
+                    rtl_add_insn(unit, RTLOP_GET_ALIAS,
+                                 cr, 0, 0, ctx->alias.cr);
+                }
+                const int crb = rtl_alloc_register(unit, RTLTYPE_INT32);
+                rtl_add_insn(unit, RTLOP_BFEXT, crb, cr, 0, (31-i) | (1<<8));
+                rtl_add_insn(unit, RTLOP_SET_ALIAS,
+                             0, crb, 0, ctx->alias.crb[i]);
+            }
+        }
+    }
+
+    if (used.lr || changed.lr) {
         ctx->alias.lr = rtl_alloc_alias_register(unit, RTLTYPE_INT32);
         rtl_set_alias_storage(unit, ctx->alias.lr, ctx->psb_reg,
                               ctx->handle->setup.state_offset_lr);
     }
 
-    if (ctr_used || ctr_changed) {
+    if (used.ctr || changed.ctr) {
         ctx->alias.ctr = rtl_alloc_alias_register(unit, RTLTYPE_INT32);
         rtl_set_alias_storage(unit, ctx->alias.ctr, ctx->psb_reg,
                               ctx->handle->setup.state_offset_ctr);
     }
 
-    if (xer_used || xer_changed) {
+    if (used.xer || changed.xer) {
         ctx->alias.xer = rtl_alloc_alias_register(unit, RTLTYPE_INT32);
         rtl_set_alias_storage(unit, ctx->alias.xer, ctx->psb_reg,
                               ctx->handle->setup.state_offset_xer);
     }
 
-    if (fpscr_used || fpscr_changed) {
+    if (used.fpscr || changed.fpscr) {
         ctx->alias.fpscr = rtl_alloc_alias_register(unit, RTLTYPE_INT32);
         rtl_set_alias_storage(unit, ctx->alias.fpscr, ctx->psb_reg,
                               ctx->handle->setup.state_offset_fpscr);
-        if (fr_fi_fprf_used || fr_fi_fprf_changed) {
+        if (used.fr_fi_fprf || changed.fr_fi_fprf) {
             ctx->alias.fr_fi_fprf =
                 rtl_alloc_alias_register(unit, RTLTYPE_INT32);
-            if (fr_fi_fprf_used) {
-                const int fpscr = rtl_alloc_register(unit, RTLTYPE_INT32);
-                rtl_add_insn(unit, RTLOP_GET_ALIAS,
-                             fpscr, 0, 0, ctx->alias.fpscr);
-                const int fff = rtl_alloc_register(unit, RTLTYPE_INT32);
-                rtl_add_insn(unit, RTLOP_BFEXT, fff, fpscr, 0, 12 | 7<<8);
-                rtl_add_insn(unit, RTLOP_SET_ALIAS,
-                             0, fff, 0, ctx->alias.fr_fi_fprf);
-            }
+            /* As with CR bit aliases, this initialization may not be
+             * necessary, but RTL data flow analysis should be able to
+             * eliminate it in such a case. */
+            const int fpscr = rtl_alloc_register(unit, RTLTYPE_INT32);
+            rtl_add_insn(unit, RTLOP_GET_ALIAS, fpscr, 0, 0, ctx->alias.fpscr);
+            const int fff = rtl_alloc_register(unit, RTLTYPE_INT32);
+            rtl_add_insn(unit, RTLOP_BFEXT, fff, fpscr, 0, 12 | 7<<8);
+            rtl_add_insn(unit, RTLOP_SET_ALIAS,
+                         0, fff, 0, ctx->alias.fr_fi_fprf);
         }
     }
 
