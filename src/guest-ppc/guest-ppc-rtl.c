@@ -1084,6 +1084,11 @@ static void set_fp_result(GuestPPCContext *ctx, int index, int result,
                           int frA, int frB, int frC, uint32_t vxfoo_snan,
                           uint32_t vxfoo_no_snan)
 {
+    if (ctx->handle->guest_opt & BINREC_OPT_G_PPC_IGNORE_FPSCR_VXFOO) {
+        vxfoo_snan = 0;
+        vxfoo_no_snan = 0;
+    }
+
     RTLUnit * const unit = ctx->unit;
 
     const int fpscr = get_fpscr(ctx);
@@ -1106,8 +1111,7 @@ static void set_fp_result(GuestPPCContext *ctx, int index, int result,
     rtl_add_insn(unit, RTLOP_GOTO_IF_Z, 0, invalid, 0, label_no_vx);
 
     int label_check_ve = 0;
-    if (vxfoo_no_snan && !(ctx->handle->guest_opt
-                           & BINREC_OPT_G_PPC_IGNORE_FPSCR_VXFOO)) {
+    if (vxfoo_no_snan) {
         const int label_snan = rtl_alloc_label(unit);
         check_snan(ctx, frA, label_snan);
         check_snan(ctx, frB, label_snan);
