@@ -710,8 +710,6 @@ typedef struct binrec_setup_t {
  * This optimization is UNSAFE: code which relies on being able to load or
  * store a single-precision signaling NaN and preserve its signaling state
  * will not behave correctly.
- *
- * This optimization is not currently implemented.
  */
 #define BINREC_OPT_G_PPC_FAST_NANS  (1<<1)
 
