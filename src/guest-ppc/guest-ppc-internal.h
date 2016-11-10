@@ -266,14 +266,6 @@ struct RTLInsn;
 /*********************** Internal data structures ************************/
 /*************************************************************************/
 
-/* Constants indicating the current data type stored in an FPR. */
-enum {
-    FPR_NONE = 0,
-    FPR_SINGLE,
-    FPR_DOUBLE,
-    FPR_PAIRED,
-};
-
 /* Bitmasks indicating register sets.  Used for data flow analysis. */
 typedef struct GuestPPCRegSet {
     uint32_t gpr;
@@ -304,14 +296,12 @@ typedef struct GuestPPCBlockInfo {
      * entry are read) and changed by the block. */
     GuestPPCRegSet used;
     GuestPPCRegSet changed;
+    /* Set of FPR registers used or changed in paired-single mode. */
+    uint32_t fpr_is_ps;
 
     /* Bitmask of CR bits which are changed without being read on every
      * code path out of the unit.  Used by the TRIM_CR_STORES optimization. */
     uint32_t crb_changed_recursive;
-
-    /* Type of the first and last access to each FPR in the block (FPR_*). */
-    uint8_t fpr_type_first[32];
-    uint8_t fpr_type_last[32];
 
     /* Does this block contain a trap instruction (tw/twi)? */
     bool has_trap;
@@ -394,6 +384,8 @@ typedef struct GuestPPCContext {
 
     /* Set of FPR registers which need vector (paired-single) aliases. */
     uint32_t fpr_is_ps;
+    /* Set of live FPR registers known to have non-SNaN values. */
+    uint32_t fpr_is_safe;
     /* Set of CR bits which are modified by the unit.  These bits are
      * stored in the same order as the CR word, so that the MSB corresponds
      * to CR bit 0. */

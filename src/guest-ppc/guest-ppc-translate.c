@@ -64,11 +64,13 @@ static bool init_unit(GuestPPCContext *ctx)
     GuestPPCRegSet used, changed;
     memset(&used, 0, sizeof(used));
     memset(&changed, 0, sizeof(changed));
+    ctx->fpr_is_ps = 0;
     for (int i = 0; i < ctx->num_blocks; i++) {
         for (int j = 0; j < (int)sizeof(used) / 4; j++) {
             (&used.gpr)[j] |= (&ctx->blocks[i].used.gpr)[j];
             (&changed.gpr)[j] |= (&ctx->blocks[i].changed.gpr)[j];
         }
+        ctx->fpr_is_ps |= ctx->blocks[i].fpr_is_ps;
     }
     ctx->crb_changed = bitrev32(changed.crb);
     ctx->fpscr_changed = changed.fpscr;

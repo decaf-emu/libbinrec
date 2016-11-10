@@ -87,7 +87,8 @@ static int get_block(GuestPPCContext *ctx, uint32_t address, bool create_new)
  * same register has not been set in the block (since if it has been set,
  * the value being read is that value, not the value on entry to the block).
  *
- * For FPR functions, fpr_type gives the register access type (FPR_*).
+ * For FPR functions, is_paired indicates whether the register is accessed
+ * in paired-single mode.
  */
 
 static inline void mark_gpr_used(GuestPPCBlockInfo *block, const int index) {
@@ -99,17 +100,15 @@ static inline void mark_gpr_changed(GuestPPCBlockInfo *block, const int index) {
 }
 
 static inline void mark_fpr_used(GuestPPCBlockInfo *block, const int index,
-                                 int fpr_type) {
+                                 bool is_paired) {
     if (!(block->changed.fpr & (1 << index))) block->used.fpr |= 1 << index;
-    if (!block->fpr_type_first[index]) block->fpr_type_first[index] = fpr_type;
-    block->fpr_type_last[index] = fpr_type;
+    if (is_paired) block->fpr_is_ps |= 1 << index;
 }
 
 static inline void mark_fpr_changed(GuestPPCBlockInfo *block, const int index,
-                                    int fpr_type) {
+                                    bool is_paired) {
     block->changed.fpr |= 1 << index;
-    if (!block->fpr_type_first[index]) block->fpr_type_first[index] = fpr_type;
-    block->fpr_type_last[index] = fpr_type;
+    if (is_paired) block->fpr_is_ps |= 1 << index;
 }
 
 static inline void mark_crb_used(GuestPPCBlockInfo *block, const int index) {
@@ -341,41 +340,39 @@ static void update_used_changed(GuestPPCContext *ctx, GuestPPCBlockInfo *block,
         if (insn_rA(insn)) {
             mark_gpr_used(block, insn_rA(insn));
         }
-        mark_fpr_changed(block, insn_frD(insn), FPR_SINGLE);
+        mark_fpr_changed(block, insn_frD(insn), false);
         break;
 
       case OPCD_LFD:
         if (insn_rA(insn)) {
             mark_gpr_used(block, insn_rA(insn));
         }
-        mark_fpr_changed(block, insn_frD(insn), FPR_DOUBLE);
+        mark_fpr_changed(block, insn_frD(insn), false);
         break;
 
       case OPCD_PSQ_L:
         if (insn_rA(insn)) {
             mark_gpr_used(block, insn_rA(insn));
         }
-        mark_fpr_changed(block, insn_frD(insn), FPR_PAIRED);
-        ctx->fpr_is_ps |= 1 << insn_frD(insn);
+        mark_fpr_changed(block, insn_frD(insn), true);
         break;
 
       case OPCD_LFSU:
         mark_gpr_used(block, insn_rA(insn));
         mark_gpr_changed(block, insn_rA(insn));
-        mark_fpr_changed(block, insn_frD(insn), FPR_SINGLE);
+        mark_fpr_changed(block, insn_frD(insn), false);
         break;
 
       case OPCD_LFDU:
         mark_gpr_used(block, insn_rA(insn));
         mark_gpr_changed(block, insn_rA(insn));
-        mark_fpr_changed(block, insn_frD(insn), FPR_DOUBLE);
+        mark_fpr_changed(block, insn_frD(insn), false);
         break;
 
       case OPCD_PSQ_LU:
         mark_gpr_used(block, insn_rA(insn));
         mark_gpr_changed(block, insn_rA(insn));
-        mark_fpr_changed(block, insn_frD(insn), FPR_PAIRED);
-        ctx->fpr_is_ps |= 1 << insn_frD(insn);
+        mark_fpr_changed(block, insn_frD(insn), true);
         break;
 
       case OPCD_STFS:
@@ -383,41 +380,39 @@ static void update_used_changed(GuestPPCContext *ctx, GuestPPCBlockInfo *block,
             mark_gpr_used(block, insn_rA(insn));
         }
         // FIXME: this shouldn't cause the ps0 value to get copied to ps1
-        mark_fpr_used(block, insn_frD(insn), FPR_SINGLE);
+        mark_fpr_used(block, insn_frD(insn), false);
         break;
 
       case OPCD_STFD:
         if (insn_rA(insn)) {
             mark_gpr_used(block, insn_rA(insn));
         }
-        mark_fpr_used(block, insn_frD(insn), FPR_DOUBLE);
+        mark_fpr_used(block, insn_frD(insn), false);
         break;
 
       case OPCD_PSQ_ST:
         if (insn_rA(insn)) {
             mark_gpr_used(block, insn_rA(insn));
         }
-        mark_fpr_used(block, insn_frD(insn), FPR_PAIRED);
-        ctx->fpr_is_ps |= 1 << insn_frD(insn);
+        mark_fpr_used(block, insn_frD(insn), true);
         break;
 
       case OPCD_STFSU:
         mark_gpr_used(block, insn_rA(insn));
-        mark_fpr_used(block, insn_frD(insn), FPR_SINGLE);
+        mark_fpr_used(block, insn_frD(insn), false);
         // FIXME: as above
         mark_gpr_changed(block, insn_rA(insn));
         break;
 
       case OPCD_STFDU:
         mark_gpr_used(block, insn_rA(insn));
-        mark_fpr_used(block, insn_frD(insn), FPR_DOUBLE);
+        mark_fpr_used(block, insn_frD(insn), false);
         mark_gpr_changed(block, insn_rA(insn));
         break;
 
       case OPCD_PSQ_STU:
         mark_gpr_used(block, insn_rA(insn));
-        mark_fpr_used(block, insn_frD(insn), FPR_PAIRED);
-        ctx->fpr_is_ps |= 1 << insn_frD(insn);
+        mark_fpr_used(block, insn_frD(insn), true);
         mark_gpr_changed(block, insn_rA(insn));
         break;
 
@@ -428,10 +423,8 @@ static void update_used_changed(GuestPPCContext *ctx, GuestPPCBlockInfo *block,
             mark_fpscr_changed(block);
             mark_fr_fi_fprf_used(block);
             mark_fr_fi_fprf_changed(block);
-            mark_fpr_used(block, insn_frA(insn), FPR_PAIRED);
-            ctx->fpr_is_ps |= 1 << insn_frA(insn);
-            mark_fpr_used(block, insn_frB(insn), FPR_PAIRED);
-            ctx->fpr_is_ps |= 1 << insn_frB(insn);
+            mark_fpr_used(block, insn_frA(insn), true);
+            mark_fpr_used(block, insn_frB(insn), true);
             mark_crf_used(block, insn_crfD(insn));  // FIXME: temp until these insns are implemented, to avoid uninitialized values in CR merging
             mark_crf_changed(block, insn_crfD(insn));
             break;
@@ -443,25 +436,21 @@ static void update_used_changed(GuestPPCContext *ctx, GuestPPCBlockInfo *block,
             if (insn_XO_10(insn) & 0x020) {
                 mark_gpr_changed(block, insn_rA(insn));
             }
-            mark_fpr_changed(block, insn_frD(insn), FPR_PAIRED);
-            ctx->fpr_is_ps |= 1 << insn_frD(insn);
+            mark_fpr_changed(block, insn_frD(insn), true);
             break;
           case XO_PSQ_STX:
             if (insn_rA(insn)) {
                 mark_gpr_used(block, insn_rA(insn));
             }
             mark_gpr_used(block, insn_rB(insn));
-            mark_fpr_used(block, insn_frD(insn), FPR_PAIRED);
-            ctx->fpr_is_ps |= 1 << insn_frD(insn);
+            mark_fpr_used(block, insn_frD(insn), true);
             if (insn_XO_10(insn) & 0x020) {
                 mark_gpr_changed(block, insn_rA(insn));
             }
             break;
           case XO_PS_MOVE:
-            mark_fpr_used(block, insn_frB(insn), FPR_PAIRED);
-            ctx->fpr_is_ps |= 1 << insn_frB(insn);
-            mark_fpr_changed(block, insn_frD(insn), FPR_PAIRED);
-            ctx->fpr_is_ps |= 1 << insn_frD(insn);
+            mark_fpr_used(block, insn_frB(insn), true);
+            mark_fpr_changed(block, insn_frD(insn), true);
             if (insn_Rc(insn)) {
                 mark_fpscr_used(block);
                 mark_crf_changed(block, 1);
@@ -474,15 +463,12 @@ static void update_used_changed(GuestPPCContext *ctx, GuestPPCBlockInfo *block,
                 /* This is the IBM-recommended way to switch a register
                  * from double to single precision without touching the
                  * value in ps1, so it doesn't require a paired-mode alias. */
-                mark_fpr_used(block, insn_frD(insn), FPR_SINGLE);
-                mark_fpr_changed(block, insn_frD(insn), FPR_SINGLE);
+                mark_fpr_used(block, insn_frD(insn), false);
+                mark_fpr_changed(block, insn_frD(insn), false);
             } else {
-                mark_fpr_used(block, insn_frA(insn), FPR_PAIRED);
-                ctx->fpr_is_ps |= 1 << insn_frA(insn);
-                mark_fpr_used(block, insn_frB(insn), FPR_PAIRED);
-                ctx->fpr_is_ps |= 1 << insn_frB(insn);
-                mark_fpr_changed(block, insn_frD(insn), FPR_PAIRED);
-                ctx->fpr_is_ps |= 1 << insn_frD(insn);
+                mark_fpr_used(block, insn_frA(insn), true);
+                mark_fpr_used(block, insn_frB(insn), true);
+                mark_fpr_changed(block, insn_frD(insn), true);
             }
             if (insn_Rc(insn)) {
                 mark_fpscr_used(block);
@@ -498,12 +484,9 @@ static void update_used_changed(GuestPPCContext *ctx, GuestPPCBlockInfo *block,
           case XO_PS_DIV:
           case XO_PS_SUB:
           case XO_PS_ADD:
-            mark_fpr_used(block, insn_frA(insn), FPR_PAIRED);
-            ctx->fpr_is_ps |= 1 << insn_frA(insn);
-            mark_fpr_used(block, insn_frB(insn), FPR_PAIRED);
-            ctx->fpr_is_ps |= 1 << insn_frB(insn);
-            mark_fpr_changed(block, insn_frD(insn), FPR_PAIRED);
-            ctx->fpr_is_ps |= 1 << insn_frD(insn);
+            mark_fpr_used(block, insn_frA(insn), true);
+            mark_fpr_used(block, insn_frB(insn), true);
+            mark_fpr_changed(block, insn_frD(insn), true);
             mark_fpscr_used(block);
             mark_fpscr_changed(block);
             /* Normally FR/FI/FPRF will only be overwritten as a unit, but
@@ -516,14 +499,10 @@ static void update_used_changed(GuestPPCContext *ctx, GuestPPCBlockInfo *block,
             }
             break;
           case XO_PS_SEL:
-            mark_fpr_used(block, insn_frA(insn), FPR_PAIRED);
-            ctx->fpr_is_ps |= 1 << insn_frA(insn);
-            mark_fpr_used(block, insn_frB(insn), FPR_PAIRED);
-            ctx->fpr_is_ps |= 1 << insn_frB(insn);
-            mark_fpr_used(block, insn_frC(insn), FPR_PAIRED);
-            ctx->fpr_is_ps |= 1 << insn_frC(insn);
-            mark_fpr_changed(block, insn_frD(insn), FPR_PAIRED);
-            ctx->fpr_is_ps |= 1 << insn_frD(insn);
+            mark_fpr_used(block, insn_frA(insn), true);
+            mark_fpr_used(block, insn_frB(insn), true);
+            mark_fpr_used(block, insn_frC(insn), true);
+            mark_fpr_changed(block, insn_frD(insn), true);
             if (insn_Rc(insn)) {
                 mark_fpscr_used(block);
                 mark_crf_changed(block, 1);
@@ -531,10 +510,8 @@ static void update_used_changed(GuestPPCContext *ctx, GuestPPCBlockInfo *block,
             break;
           case XO_PS_RES:
           case XO_PS_RSQRTE:
-            mark_fpr_used(block, insn_frB(insn), FPR_PAIRED);
-            ctx->fpr_is_ps |= 1 << insn_frB(insn);
-            mark_fpr_changed(block, insn_frD(insn), FPR_PAIRED);
-            ctx->fpr_is_ps |= 1 << insn_frD(insn);
+            mark_fpr_used(block, insn_frB(insn), true);
+            mark_fpr_changed(block, insn_frD(insn), true);
             mark_fpscr_used(block);
             mark_fpscr_changed(block);
             mark_fr_fi_fprf_used(block);
@@ -546,12 +523,9 @@ static void update_used_changed(GuestPPCContext *ctx, GuestPPCBlockInfo *block,
           case XO_PS_MULS0:
           case XO_PS_MULS1:
           case XO_PS_MUL:
-            mark_fpr_used(block, insn_frA(insn), FPR_PAIRED);
-            ctx->fpr_is_ps |= 1 << insn_frA(insn);
-            mark_fpr_used(block, insn_frC(insn), FPR_PAIRED);
-            ctx->fpr_is_ps |= 1 << insn_frC(insn);
-            mark_fpr_changed(block, insn_frD(insn), FPR_PAIRED);
-            ctx->fpr_is_ps |= 1 << insn_frD(insn);
+            mark_fpr_used(block, insn_frA(insn), true);
+            mark_fpr_used(block, insn_frC(insn), true);
+            mark_fpr_changed(block, insn_frD(insn), true);
             mark_fpscr_used(block);
             mark_fpscr_changed(block);
             mark_fr_fi_fprf_used(block);
@@ -568,14 +542,10 @@ static void update_used_changed(GuestPPCContext *ctx, GuestPPCBlockInfo *block,
           case XO_PS_MADD:
           case XO_PS_NMSUB:
           case XO_PS_NMADD:
-            mark_fpr_used(block, insn_frA(insn), FPR_PAIRED);
-            ctx->fpr_is_ps |= 1 << insn_frA(insn);
-            mark_fpr_used(block, insn_frB(insn), FPR_PAIRED);
-            ctx->fpr_is_ps |= 1 << insn_frB(insn);
-            mark_fpr_used(block, insn_frC(insn), FPR_PAIRED);
-            ctx->fpr_is_ps |= 1 << insn_frC(insn);
-            mark_fpr_changed(block, insn_frD(insn), FPR_PAIRED);
-            ctx->fpr_is_ps |= 1 << insn_frD(insn);
+            mark_fpr_used(block, insn_frA(insn), true);
+            mark_fpr_used(block, insn_frB(insn), true);
+            mark_fpr_used(block, insn_frC(insn), true);
+            mark_fpr_changed(block, insn_frD(insn), true);
             mark_fpscr_used(block);
             mark_fpscr_changed(block);
             mark_fr_fi_fprf_used(block);
@@ -852,7 +822,7 @@ static void update_used_changed(GuestPPCContext *ctx, GuestPPCBlockInfo *block,
             mark_gpr_used(block, insn_rB(insn));
             if (is_fp) {
                 const bool fp_type =
-                    (insn_XO_10(insn) & 0x040) ? FPR_DOUBLE : FPR_SINGLE;
+                    (insn_XO_10(insn) & 0x040) ? false : false;
                 if (is_store) {
                     mark_fpr_used(block, insn_frD(insn), fp_type);
                 } else {
@@ -916,32 +886,32 @@ static void update_used_changed(GuestPPCContext *ctx, GuestPPCBlockInfo *block,
           case XO_FDIVS:
           case XO_FSUBS:
           case XO_FADDS:
-            mark_fpr_used(block, insn_frA(insn), FPR_SINGLE);
-            mark_fpr_used(block, insn_frB(insn), FPR_SINGLE);
+            mark_fpr_used(block, insn_frA(insn), false);
+            mark_fpr_used(block, insn_frB(insn), false);
             break;
 
           case XO_FRES:
-            mark_fpr_used(block, insn_frB(insn), FPR_SINGLE);
+            mark_fpr_used(block, insn_frB(insn), false);
             break;
 
           case XO_FMULS:
-            mark_fpr_used(block, insn_frA(insn), FPR_SINGLE);
-            mark_fpr_used(block, insn_frC(insn), FPR_SINGLE);
+            mark_fpr_used(block, insn_frA(insn), false);
+            mark_fpr_used(block, insn_frC(insn), false);
             break;
 
           case XO_FMSUBS:
           case XO_FMADDS:
           case XO_FNMSUBS:
           case XO_FNMADDS:
-            mark_fpr_used(block, insn_frA(insn), FPR_SINGLE);
-            mark_fpr_used(block, insn_frB(insn), FPR_SINGLE);
-            mark_fpr_used(block, insn_frC(insn), FPR_SINGLE);
+            mark_fpr_used(block, insn_frA(insn), false);
+            mark_fpr_used(block, insn_frB(insn), false);
+            mark_fpr_used(block, insn_frC(insn), false);
             break;
 
           default:
             ASSERT(!"impossible");
         }
-        mark_fpr_changed(block, insn_frD(insn), FPR_SINGLE);
+        mark_fpr_changed(block, insn_frD(insn), false);
         mark_fpscr_used(block);
         mark_fpscr_changed(block);
         mark_fr_fi_fprf_used(block);
@@ -964,8 +934,8 @@ static void update_used_changed(GuestPPCContext *ctx, GuestPPCBlockInfo *block,
                     mark_fr_fi_fprf_changed(block);
                 }
             } else {  // fcmpu, fcmpo
-                mark_fpr_used(block, insn_frA(insn), FPR_DOUBLE);
-                mark_fpr_used(block, insn_frB(insn), FPR_DOUBLE);
+                mark_fpr_used(block, insn_frA(insn), false);
+                mark_fpr_used(block, insn_frB(insn), false);
                 mark_fpscr_changed(block);
                 mark_fr_fi_fprf_used(block);
                 mark_fr_fi_fprf_changed(block);
@@ -996,9 +966,9 @@ static void update_used_changed(GuestPPCContext *ctx, GuestPPCBlockInfo *block,
                 mark_fr_fi_fprf_used(block);
             }
             if (insn_XO_10(insn) == XO_MFFS) {
-                mark_fpr_changed(block, insn_frD(insn), FPR_DOUBLE);
+                mark_fpr_changed(block, insn_frD(insn), false);
             } else {
-                mark_fpr_used(block, insn_frB(insn), FPR_DOUBLE);
+                mark_fpr_used(block, insn_frB(insn), false);
                 mark_fpscr_changed(block);
                 mark_fr_fi_fprf_changed(block);
             }
@@ -1008,8 +978,8 @@ static void update_used_changed(GuestPPCContext *ctx, GuestPPCBlockInfo *block,
             break;
 
           case 0x08:  // fmr, etc.
-            mark_fpr_used(block, insn_frB(insn), FPR_DOUBLE);
-            mark_fpr_changed(block, insn_frD(insn), FPR_DOUBLE);
+            mark_fpr_used(block, insn_frB(insn), false);
+            mark_fpr_changed(block, insn_frD(insn), false);
             if (insn_Rc(insn)) {
                 mark_fpscr_used(block);
                 mark_crf_changed(block, 1);
@@ -1017,8 +987,8 @@ static void update_used_changed(GuestPPCContext *ctx, GuestPPCBlockInfo *block,
             break;
 
           case 0x0C:  // frsp
-            mark_fpr_used(block, insn_frB(insn), FPR_DOUBLE);
-            mark_fpr_changed(block, insn_frD(insn), FPR_SINGLE);
+            mark_fpr_used(block, insn_frB(insn), false);
+            mark_fpr_changed(block, insn_frD(insn), false);
             mark_fpscr_used(block);
             mark_fpscr_changed(block);
             mark_fr_fi_fprf_used(block);
@@ -1030,8 +1000,8 @@ static void update_used_changed(GuestPPCContext *ctx, GuestPPCBlockInfo *block,
 
           case 0x0E:  // fctiw
           case 0x0F:  // fctiwz
-            mark_fpr_used(block, insn_frB(insn), FPR_DOUBLE);
-            mark_fpr_changed(block, insn_frD(insn), FPR_DOUBLE);
+            mark_fpr_used(block, insn_frB(insn), false);
+            mark_fpr_changed(block, insn_frD(insn), false);
             mark_fpscr_used(block);
             mark_fpscr_changed(block);
             mark_fr_fi_fprf_used(block);
@@ -1044,9 +1014,9 @@ static void update_used_changed(GuestPPCContext *ctx, GuestPPCBlockInfo *block,
           case XO_FDIV:
           case XO_FSUB:
           case XO_FADD:
-            mark_fpr_used(block, insn_frA(insn), FPR_DOUBLE);
-            mark_fpr_used(block, insn_frB(insn), FPR_DOUBLE);
-            mark_fpr_changed(block, insn_frD(insn), FPR_DOUBLE);
+            mark_fpr_used(block, insn_frA(insn), false);
+            mark_fpr_used(block, insn_frB(insn), false);
+            mark_fpr_changed(block, insn_frD(insn), false);
             mark_fpscr_used(block);
             mark_fpscr_changed(block);
             mark_fr_fi_fprf_used(block);
@@ -1057,10 +1027,10 @@ static void update_used_changed(GuestPPCContext *ctx, GuestPPCBlockInfo *block,
             break;
 
           case XO_FSEL:
-            mark_fpr_used(block, insn_frA(insn), FPR_DOUBLE);
-            mark_fpr_used(block, insn_frB(insn), FPR_DOUBLE);
-            mark_fpr_used(block, insn_frC(insn), FPR_DOUBLE);
-            mark_fpr_changed(block, insn_frD(insn), FPR_DOUBLE);
+            mark_fpr_used(block, insn_frA(insn), false);
+            mark_fpr_used(block, insn_frB(insn), false);
+            mark_fpr_used(block, insn_frC(insn), false);
+            mark_fpr_changed(block, insn_frD(insn), false);
             if (insn_Rc(insn)) {
                 mark_fpscr_used(block);
                 mark_crf_changed(block, 1);
@@ -1068,9 +1038,9 @@ static void update_used_changed(GuestPPCContext *ctx, GuestPPCBlockInfo *block,
             break;
 
           case XO_FMUL:
-            mark_fpr_used(block, insn_frA(insn), FPR_DOUBLE);
-            mark_fpr_used(block, insn_frC(insn), FPR_DOUBLE);
-            mark_fpr_changed(block, insn_frD(insn), FPR_DOUBLE);
+            mark_fpr_used(block, insn_frA(insn), false);
+            mark_fpr_used(block, insn_frC(insn), false);
+            mark_fpr_changed(block, insn_frD(insn), false);
             mark_fpscr_used(block);
             mark_fpscr_changed(block);
             mark_fr_fi_fprf_used(block);
@@ -1081,8 +1051,8 @@ static void update_used_changed(GuestPPCContext *ctx, GuestPPCBlockInfo *block,
             break;
 
           case XO_FRSQRTE:
-            mark_fpr_used(block, insn_frB(insn), FPR_DOUBLE);
-            mark_fpr_changed(block, insn_frD(insn), FPR_DOUBLE);
+            mark_fpr_used(block, insn_frB(insn), false);
+            mark_fpr_changed(block, insn_frD(insn), false);
             mark_fpscr_used(block);
             mark_fpscr_changed(block);
             mark_fr_fi_fprf_used(block);
@@ -1096,10 +1066,10 @@ static void update_used_changed(GuestPPCContext *ctx, GuestPPCBlockInfo *block,
           case XO_FMADD:
           case XO_FNMSUB:
           case XO_FNMADD:
-            mark_fpr_used(block, insn_frA(insn), FPR_DOUBLE);
-            mark_fpr_used(block, insn_frB(insn), FPR_DOUBLE);
-            mark_fpr_used(block, insn_frC(insn), FPR_DOUBLE);
-            mark_fpr_changed(block, insn_frD(insn), FPR_DOUBLE);
+            mark_fpr_used(block, insn_frA(insn), false);
+            mark_fpr_used(block, insn_frB(insn), false);
+            mark_fpr_used(block, insn_frC(insn), false);
+            mark_fpr_changed(block, insn_frD(insn), false);
             mark_fpscr_used(block);
             mark_fpscr_changed(block);
             mark_fr_fi_fprf_used(block);

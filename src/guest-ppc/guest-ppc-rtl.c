@@ -76,11 +76,13 @@ static inline PURE_FUNCTION uint32_t get_insn_at(
  *     reg: RTL register containing FPR's value.
  *     old_type: Type of "reg".
  *     new_type: Type to convert value to.  Must be different from old_type.
+ *     snan_safe: True if the value is known not to be a signaling NaN.
  * [Return value]
  *     Index of RTL register containing converted value.
  */
 static inline int convert_fpr(GuestPPCContext *ctx, int index, int reg,
-                              RTLDataType old_type, RTLDataType new_type)
+                              RTLDataType old_type, RTLDataType new_type,
+                              bool snan_safe)
 {
     ASSERT(old_type != new_type);
     ASSERT(rtl_type_is_float(old_type)
@@ -95,7 +97,8 @@ static inline int convert_fpr(GuestPPCContext *ctx, int index, int reg,
     if (old_type == RTLTYPE_V2_FLOAT64) {
         if (new_type == RTLTYPE_V2_FLOAT32) {
             const int new_reg = rtl_alloc_register(unit, RTLTYPE_V2_FLOAT32);
-            rtl_add_insn(unit, RTLOP_VFCAST, new_reg, reg, 0, 0);
+            rtl_add_insn(unit, snan_safe ? RTLOP_VFCVT : RTLOP_VFCAST,
+                         new_reg, reg, 0, 0);
             return new_reg;
         } else {
             const int f64 = rtl_alloc_register(unit, RTLTYPE_FLOAT64);
@@ -105,7 +108,8 @@ static inline int convert_fpr(GuestPPCContext *ctx, int index, int reg,
             } else {
                 ASSERT(new_type == RTLTYPE_FLOAT32);
                 const int new_reg = rtl_alloc_register(unit, RTLTYPE_FLOAT32);
-                rtl_add_insn(unit, RTLOP_FCAST, new_reg, f64, 0, 0);
+                rtl_add_insn(unit, snan_safe ? RTLOP_FCVT : RTLOP_FCAST,
+                             new_reg, f64, 0, 0);
                 return new_reg;
             }
         }
@@ -117,7 +121,8 @@ static inline int convert_fpr(GuestPPCContext *ctx, int index, int reg,
             return new_reg;
         } else {
             const int f64x2 = rtl_alloc_register(unit, RTLTYPE_V2_FLOAT64);
-            rtl_add_insn(unit, RTLOP_VFCAST, f64x2, reg, 0, 0);
+            rtl_add_insn(unit, snan_safe ? RTLOP_VFCVT : RTLOP_VFCAST,
+                         f64x2, reg, 0, 0);
             if (new_type == RTLTYPE_V2_FLOAT64) {
                 return f64x2;
             } else {
@@ -135,7 +140,8 @@ static inline int convert_fpr(GuestPPCContext *ctx, int index, int reg,
     } else if (old_type == RTLTYPE_FLOAT64) {
         if (new_type == RTLTYPE_FLOAT32) {
             const int new_reg = rtl_alloc_register(unit, RTLTYPE_FLOAT32);
-            rtl_add_insn(unit, RTLOP_FCAST, new_reg, reg, 0, 0);
+            rtl_add_insn(unit, snan_safe ? RTLOP_FCVT : RTLOP_FCAST,
+                         new_reg, reg, 0, 0);
             return new_reg;
         } else {
             ASSERT(unit->aliases[ctx->alias.fpr[index]].type
@@ -151,7 +157,8 @@ static inline int convert_fpr(GuestPPCContext *ctx, int index, int reg,
                 ASSERT(new_type == RTLTYPE_V2_FLOAT32);
                 const int new_reg = rtl_alloc_register(unit,
                                                        RTLTYPE_V2_FLOAT32);
-                rtl_add_insn(unit, RTLOP_VFCAST, new_reg, f64x2, 0, 0);
+                rtl_add_insn(unit, snan_safe ? RTLOP_VFCVT : RTLOP_VFCAST,
+                             new_reg, f64x2, 0, 0);
                 return new_reg;
             }
         }
@@ -164,7 +171,8 @@ static inline int convert_fpr(GuestPPCContext *ctx, int index, int reg,
             return new_reg;
         } else {
             const int f64 = rtl_alloc_register(unit, RTLTYPE_FLOAT64);
-            rtl_add_insn(unit, RTLOP_FCAST, f64, reg, 0, 0);
+            rtl_add_insn(unit, snan_safe ? RTLOP_FCVT : RTLOP_FCAST,
+                         f64, reg, 0, 0);
             if (new_type == RTLTYPE_V2_FLOAT64) {
                 const int new_reg = rtl_alloc_register(unit,
                                                        RTLTYPE_V2_FLOAT64);
@@ -217,22 +225,24 @@ static inline int get_gpr(GuestPPCContext * const ctx, int index)
 static inline int get_fpr(GuestPPCContext * const ctx, int index,
                           RTLDataType type)
 {
+    RTLUnit * const unit = ctx->unit;
+
     int reg;
     RTLDataType current_type;
     if (ctx->live.fpr[index]) {
         reg = ctx->live.fpr[index];
-        current_type = ctx->fpr_type[index];
+        current_type = unit->regs[reg].type;
     } else {
         const RTLDataType base_type = (ctx->fpr_is_ps & (1 << index)
                                        ? RTLTYPE_V2_FLOAT64 : RTLTYPE_FLOAT64);
-        RTLUnit * const unit = ctx->unit;
         reg = rtl_alloc_register(unit, base_type);
         ASSERT(ctx->alias.fpr[index]);
         rtl_add_insn(unit, RTLOP_GET_ALIAS, reg, 0, 0, ctx->alias.fpr[index]);
         current_type = base_type;
     }
     if (type != current_type) {
-        reg = convert_fpr(ctx, index, reg, current_type, type);
+        const bool snan_safe = (ctx->fpr_is_safe & (1 << index)) != 0;
+        reg = convert_fpr(ctx, index, reg, current_type, type, snan_safe);
     }
     return reg;
 }
@@ -404,7 +414,6 @@ static inline void set_gpr(GuestPPCContext * const ctx, int index, int reg)
 static inline void set_fpr(GuestPPCContext * const ctx, int index, int reg)
 {
     ctx->live.fpr[index] = reg;
-    ctx->fpr_type[index] = ctx->unit->regs[reg].type;
 }
 
 static inline void set_cr(GuestPPCContext * const ctx, int reg)
@@ -687,11 +696,13 @@ static void flush_fpr(GuestPPCContext *ctx, int index)
 {
     int reg = ctx->live.fpr[index];
     if (reg) {
-        ASSERT(ctx->fpr_type[index] == ctx->unit->regs[reg].type);
         const RTLDataType base_type = (ctx->fpr_is_ps & (1 << index)
                                        ? RTLTYPE_V2_FLOAT64 : RTLTYPE_FLOAT64);
-        if (ctx->fpr_type[index] != base_type) {
-            reg = convert_fpr(ctx, index, reg, ctx->fpr_type[index], base_type);
+        const RTLDataType current_type = ctx->unit->regs[reg].type;
+        if (current_type != base_type) {
+            const bool snan_safe = (ctx->fpr_is_safe & (1 << index)) != 0;
+            reg = convert_fpr(ctx, index, reg, current_type, base_type,
+                              snan_safe);
         }
         rtl_add_insn(ctx->unit, RTLOP_SET_ALIAS,
                      0, reg, 0, ctx->alias.fpr[index]);
@@ -717,7 +728,7 @@ static void flush_live_regs(GuestPPCContext *ctx, bool clear)
     memset(&ctx->last_set, -1, sizeof(ctx->last_set));
     if (clear) {
         memset(&ctx->live, 0, sizeof(ctx->live));
-        memset(ctx->fpr_type, 0, sizeof(ctx->fpr_type));
+        ctx->fpr_is_safe = 0;
         ctx->crb_dirty = 0;
     }
 }
@@ -1080,7 +1091,7 @@ static void set_fp_result(GuestPPCContext *ctx, int index, int result,
     /* Similarly for the output register. */
     flush_fpr(ctx, index);
     ctx->live.fpr[index] = 0;
-    ctx->fpr_type[index] = 0;
+    ctx->fpr_is_safe &= ~(1 << index);
 
     const int fpstate = rtl_alloc_register(unit, RTLTYPE_FPSTATE);
     rtl_add_insn(unit, RTLOP_FGETSTATE, fpstate, 0, 0, 0);
@@ -1121,9 +1132,10 @@ static void set_fp_result(GuestPPCContext *ctx, int index, int result,
     rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, label_no_vx);
 
     set_fpr(ctx, index, result);
+    ctx->fpr_is_safe |= 1 << index;
     flush_fpr(ctx, index);
     ctx->live.fpr[index] = 0;
-    ctx->fpr_type[index] = 0;
+    ctx->fpr_is_safe &= ~(1 << index);
 
     const int fprf = gen_fprf(unit, result);
 
@@ -1974,8 +1986,15 @@ static void translate_load_store_fpr(
          * to single-precision because that would overwrite the register's
          * ps1 slot in the PSB. */
         int value;
-        if (is_single && ctx->fpr_type[insn_frD(insn)] != RTLTYPE_FLOAT32
-                      && ctx->fpr_type[insn_frD(insn)] != RTLTYPE_V2_FLOAT32) {
+        bool need_cast = false;
+        if (is_single && ctx->live.fpr[insn_frD(insn)]) {
+            const int reg = ctx->live.fpr[insn_frD(insn)];
+            if (reg && unit->regs[reg].type != RTLTYPE_FLOAT32
+                    && unit->regs[reg].type != RTLTYPE_V2_FLOAT32) {
+                need_cast = true;
+            }
+        }
+        if (need_cast) {
             const int f64 = get_fpr(ctx, insn_frD(insn), RTLTYPE_FLOAT64);
             value = rtl_alloc_register(unit, RTLTYPE_FLOAT32);
             rtl_add_insn(unit, RTLOP_FCAST, value, f64, 0, 0);
@@ -4464,7 +4483,7 @@ bool guest_ppc_translate_block(GuestPPCContext *ctx, int index)
     }
 
     memset(&ctx->live, 0, sizeof(ctx->live));
-    memset(ctx->fpr_type, 0, sizeof(ctx->fpr_type));
+    ctx->fpr_is_safe = 0;
     ctx->crb_dirty = 0;
     memset(&ctx->last_set, -1, sizeof(ctx->last_set));
 
