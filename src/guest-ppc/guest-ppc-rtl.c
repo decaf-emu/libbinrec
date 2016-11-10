@@ -1084,6 +1084,12 @@ static void set_fp_result(GuestPPCContext *ctx, int index, int result,
                           int frA, int frB, int frC, uint32_t vxfoo_snan,
                           uint32_t vxfoo_no_snan)
 {
+    if (ctx->handle->guest_opt & BINREC_OPT_G_PPC_NO_FPSCR_STATE) {
+        set_fpr(ctx, index, result);
+        ctx->fpr_is_safe |= 1 << index;
+        return;
+    }
+
     if (ctx->handle->guest_opt & BINREC_OPT_G_PPC_IGNORE_FPSCR_VXFOO) {
         vxfoo_snan = 0;
         vxfoo_no_snan = 0;

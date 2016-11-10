@@ -181,12 +181,58 @@ static inline void mark_fr_fi_fprf_changed(GuestPPCBlockInfo *block) {
 /*-----------------------------------------------------------------------*/
 
 /**
+ * fpscr_used_changed_unless_no_state:  Mark FPSCR and FR/FI/FPRF used and
+ * changed unless the NO_FPSCR_STATE optimization is enabled.
+ */
+static void fpscr_used_changed_unless_no_state(GuestPPCContext *ctx,
+                                               GuestPPCBlockInfo *block)
+{
+    if (!(ctx->handle->guest_opt & BINREC_OPT_G_PPC_NO_FPSCR_STATE)) {
+        mark_fpscr_used(block);
+        mark_fpscr_changed(block);
+        /* Instructions other than compares will normally overwrite
+         * FR/FI/FPRF as a unit, but we have to preserve the old value of
+         * FPRF in case of an enabled invalid-operation exception, so we
+         * need to mark it both used and changed for all instructions. */
+        mark_fr_fi_fprf_used(block);
+        mark_fr_fi_fprf_changed(block);
+    }
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
+ * check_fp_Rc:  Set appropriate used/changed flags for a floating-point
+ * instruction if the instruction's Rc bit is set.
+ */
+static void check_fp_Rc(GuestPPCContext *ctx, GuestPPCBlockInfo *block,
+                        uint32_t address, uint32_t insn)
+{
+    if (insn_Rc(insn)) {
+        if ((ctx->handle->guest_opt & BINREC_OPT_G_PPC_NO_FPSCR_STATE)
+         && !ctx->warned_useless_fp_Rc) {
+            log_warning(ctx->handle, "Found floating-point instruction with"
+                        " Rc=1 (%08X) at 0x%X but NO_FPSCR_STATE optimization"
+                        " is enabled; exceptions will not be detected (this"
+                        " warning is reported only once per translation unit)",
+                        insn, address);
+            ctx->warned_useless_fp_Rc = true;
+        }
+        mark_fpscr_used(block);
+        mark_crf_changed(block, 1);
+    }
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
  * update_used_changed:  Update the register used and changed data in the
  * given block based on the given instruction.  The instruction is assumed
  * to be valid.
  */
-static void update_used_changed(GuestPPCContext *ctx, GuestPPCBlockInfo *block,
-                                const uint32_t insn)
+static inline void update_used_changed(GuestPPCContext *ctx,
+                                       GuestPPCBlockInfo *block,
+                                       uint32_t address, uint32_t insn)
 {
     switch (insn_OPCD(insn)) {
       case OPCD_SC:
@@ -419,14 +465,11 @@ static void update_used_changed(GuestPPCContext *ctx, GuestPPCBlockInfo *block,
       case OPCD_x04:
         switch ((PPCExtendedOpcode04_750CL_5)insn_XO_5(insn)) {
           case XO_PS_CMP:
-            mark_fpscr_used(block);
-            mark_fpscr_changed(block);
-            mark_fr_fi_fprf_used(block);
-            mark_fr_fi_fprf_changed(block);
             mark_fpr_used(block, insn_frA(insn), true);
             mark_fpr_used(block, insn_frB(insn), true);
             mark_crf_used(block, insn_crfD(insn));  // FIXME: temp until these insns are implemented, to avoid uninitialized values in CR merging
             mark_crf_changed(block, insn_crfD(insn));
+            fpscr_used_changed_unless_no_state(ctx, block);
             break;
           case XO_PSQ_LX:
             if (insn_rA(insn)) {
@@ -451,10 +494,7 @@ static void update_used_changed(GuestPPCContext *ctx, GuestPPCBlockInfo *block,
           case XO_PS_MOVE:
             mark_fpr_used(block, insn_frB(insn), true);
             mark_fpr_changed(block, insn_frD(insn), true);
-            if (insn_Rc(insn)) {
-                mark_fpscr_used(block);
-                mark_crf_changed(block, 1);
-            }
+            check_fp_Rc(ctx, block, address, insn);
             break;
           case XO_PS_MERGE:
             if (insn_XO_10(insn) == XO_PS_MERGE10
@@ -470,10 +510,7 @@ static void update_used_changed(GuestPPCContext *ctx, GuestPPCBlockInfo *block,
                 mark_fpr_used(block, insn_frB(insn), true);
                 mark_fpr_changed(block, insn_frD(insn), true);
             }
-            if (insn_Rc(insn)) {
-                mark_fpscr_used(block);
-                mark_crf_changed(block, 1);
-            }
+            check_fp_Rc(ctx, block, address, insn);
             break;
           case XO_PS_MISC:  // dcbz_l
             if (insn_rA(insn) != 0) {
@@ -487,38 +524,22 @@ static void update_used_changed(GuestPPCContext *ctx, GuestPPCBlockInfo *block,
             mark_fpr_used(block, insn_frA(insn), true);
             mark_fpr_used(block, insn_frB(insn), true);
             mark_fpr_changed(block, insn_frD(insn), true);
-            mark_fpscr_used(block);
-            mark_fpscr_changed(block);
-            /* Normally FR/FI/FPRF will only be overwritten as a unit, but
-             * we have to preserve the old value of FPRF in case of an
-             * enabled invalid-operation exception. */
-            mark_fr_fi_fprf_used(block);
-            mark_fr_fi_fprf_changed(block);
-            if (insn_Rc(insn)) {
-                mark_crf_changed(block, 1);
-            }
+            fpscr_used_changed_unless_no_state(ctx, block);
+            check_fp_Rc(ctx, block, address, insn);
             break;
           case XO_PS_SEL:
             mark_fpr_used(block, insn_frA(insn), true);
             mark_fpr_used(block, insn_frB(insn), true);
             mark_fpr_used(block, insn_frC(insn), true);
             mark_fpr_changed(block, insn_frD(insn), true);
-            if (insn_Rc(insn)) {
-                mark_fpscr_used(block);
-                mark_crf_changed(block, 1);
-            }
+            check_fp_Rc(ctx, block, address, insn);
             break;
           case XO_PS_RES:
           case XO_PS_RSQRTE:
             mark_fpr_used(block, insn_frB(insn), true);
             mark_fpr_changed(block, insn_frD(insn), true);
-            mark_fpscr_used(block);
-            mark_fpscr_changed(block);
-            mark_fr_fi_fprf_used(block);
-            mark_fr_fi_fprf_changed(block);
-            if (insn_Rc(insn)) {
-                mark_crf_changed(block, 1);
-            }
+            fpscr_used_changed_unless_no_state(ctx, block);
+            check_fp_Rc(ctx, block, address, insn);
             break;
           case XO_PS_MULS0:
           case XO_PS_MULS1:
@@ -526,13 +547,8 @@ static void update_used_changed(GuestPPCContext *ctx, GuestPPCBlockInfo *block,
             mark_fpr_used(block, insn_frA(insn), true);
             mark_fpr_used(block, insn_frC(insn), true);
             mark_fpr_changed(block, insn_frD(insn), true);
-            mark_fpscr_used(block);
-            mark_fpscr_changed(block);
-            mark_fr_fi_fprf_used(block);
-            mark_fr_fi_fprf_changed(block);
-            if (insn_Rc(insn)) {
-                mark_crf_changed(block, 1);
-            }
+            fpscr_used_changed_unless_no_state(ctx, block);
+            check_fp_Rc(ctx, block, address, insn);
             break;
           case XO_PS_SUM0:
           case XO_PS_SUM1:
@@ -546,13 +562,8 @@ static void update_used_changed(GuestPPCContext *ctx, GuestPPCBlockInfo *block,
             mark_fpr_used(block, insn_frB(insn), true);
             mark_fpr_used(block, insn_frC(insn), true);
             mark_fpr_changed(block, insn_frD(insn), true);
-            mark_fpscr_used(block);
-            mark_fpscr_changed(block);
-            mark_fr_fi_fprf_used(block);
-            mark_fr_fi_fprf_changed(block);
-            if (insn_Rc(insn)) {
-                mark_crf_changed(block, 1);
-            }
+            fpscr_used_changed_unless_no_state(ctx, block);
+            check_fp_Rc(ctx, block, address, insn);
             break;
           default:
             ASSERT(!"impossible");
@@ -912,20 +923,15 @@ static void update_used_changed(GuestPPCContext *ctx, GuestPPCBlockInfo *block,
             ASSERT(!"impossible");
         }
         mark_fpr_changed(block, insn_frD(insn), false);
-        mark_fpscr_used(block);
-        mark_fpscr_changed(block);
-        mark_fr_fi_fprf_used(block);
-        mark_fr_fi_fprf_changed(block);
-        if (insn_Rc(insn)) {
-            mark_crf_changed(block, 1);
-        }
+        fpscr_used_changed_unless_no_state(ctx, block);
+        check_fp_Rc(ctx, block, address, insn);
         break;
 
       case OPCD_x3F:
         switch (insn_XO_5(insn)) {
           case 0x00:  // fcmpu, fcmpo, mcrfs
-            mark_fpscr_used(block);
             if (insn_XO_10(insn) == XO_MCRFS) {
+                mark_fpscr_used(block);
                 if (insn_crfS(insn) <= 3 || insn_crfS(insn) == 5) {
                     mark_fpscr_changed(block);
                 }
@@ -936,9 +942,7 @@ static void update_used_changed(GuestPPCContext *ctx, GuestPPCBlockInfo *block,
             } else {  // fcmpu, fcmpo
                 mark_fpr_used(block, insn_frA(insn), false);
                 mark_fpr_used(block, insn_frB(insn), false);
-                mark_fpscr_changed(block);
-                mark_fr_fi_fprf_used(block);
-                mark_fr_fi_fprf_changed(block);
+                fpscr_used_changed_unless_no_state(ctx, block);
             }
             mark_crf_changed(block, insn_crfD(insn));
             break;
@@ -953,9 +957,7 @@ static void update_used_changed(GuestPPCContext *ctx, GuestPPCBlockInfo *block,
                 mark_fr_fi_fprf_used(block);
                 mark_fr_fi_fprf_changed(block);
             }
-            if (insn_Rc(insn)) {
-                mark_crf_changed(block, 1);
-            }
+            check_fp_Rc(ctx, block, address, insn);
             break;
 
           case 0x07:  // mffs, mtfsf
@@ -972,43 +974,28 @@ static void update_used_changed(GuestPPCContext *ctx, GuestPPCBlockInfo *block,
                 mark_fpscr_changed(block);
                 mark_fr_fi_fprf_changed(block);
             }
-            if (insn_Rc(insn)) {
-                mark_crf_changed(block, 1);
-            }
+            check_fp_Rc(ctx, block, address, insn);
             break;
 
           case 0x08:  // fmr, etc.
             mark_fpr_used(block, insn_frB(insn), false);
             mark_fpr_changed(block, insn_frD(insn), false);
-            if (insn_Rc(insn)) {
-                mark_fpscr_used(block);
-                mark_crf_changed(block, 1);
-            }
+            check_fp_Rc(ctx, block, address, insn);
             break;
 
           case 0x0C:  // frsp
             mark_fpr_used(block, insn_frB(insn), false);
             mark_fpr_changed(block, insn_frD(insn), false);
-            mark_fpscr_used(block);
-            mark_fpscr_changed(block);
-            mark_fr_fi_fprf_used(block);
-            mark_fr_fi_fprf_changed(block);
-            if (insn_Rc(insn)) {
-                mark_crf_changed(block, 1);
-            }
+            fpscr_used_changed_unless_no_state(ctx, block);
+            check_fp_Rc(ctx, block, address, insn);
             break;
 
           case 0x0E:  // fctiw
           case 0x0F:  // fctiwz
             mark_fpr_used(block, insn_frB(insn), false);
             mark_fpr_changed(block, insn_frD(insn), false);
-            mark_fpscr_used(block);
-            mark_fpscr_changed(block);
-            mark_fr_fi_fprf_used(block);
-            mark_fr_fi_fprf_changed(block);
-            if (insn_Rc(insn)) {
-                mark_crf_changed(block, 1);
-            }
+            fpscr_used_changed_unless_no_state(ctx, block);
+            check_fp_Rc(ctx, block, address, insn);
             break;
 
           case XO_FDIV:
@@ -1017,13 +1004,8 @@ static void update_used_changed(GuestPPCContext *ctx, GuestPPCBlockInfo *block,
             mark_fpr_used(block, insn_frA(insn), false);
             mark_fpr_used(block, insn_frB(insn), false);
             mark_fpr_changed(block, insn_frD(insn), false);
-            mark_fpscr_used(block);
-            mark_fpscr_changed(block);
-            mark_fr_fi_fprf_used(block);
-            mark_fr_fi_fprf_changed(block);
-            if (insn_Rc(insn)) {
-                mark_crf_changed(block, 1);
-            }
+            fpscr_used_changed_unless_no_state(ctx, block);
+            check_fp_Rc(ctx, block, address, insn);
             break;
 
           case XO_FSEL:
@@ -1031,35 +1013,22 @@ static void update_used_changed(GuestPPCContext *ctx, GuestPPCBlockInfo *block,
             mark_fpr_used(block, insn_frB(insn), false);
             mark_fpr_used(block, insn_frC(insn), false);
             mark_fpr_changed(block, insn_frD(insn), false);
-            if (insn_Rc(insn)) {
-                mark_fpscr_used(block);
-                mark_crf_changed(block, 1);
-            }
+            check_fp_Rc(ctx, block, address, insn);
             break;
 
           case XO_FMUL:
             mark_fpr_used(block, insn_frA(insn), false);
             mark_fpr_used(block, insn_frC(insn), false);
             mark_fpr_changed(block, insn_frD(insn), false);
-            mark_fpscr_used(block);
-            mark_fpscr_changed(block);
-            mark_fr_fi_fprf_used(block);
-            mark_fr_fi_fprf_changed(block);
-            if (insn_Rc(insn)) {
-                mark_crf_changed(block, 1);
-            }
+            fpscr_used_changed_unless_no_state(ctx, block);
+            check_fp_Rc(ctx, block, address, insn);
             break;
 
           case XO_FRSQRTE:
             mark_fpr_used(block, insn_frB(insn), false);
             mark_fpr_changed(block, insn_frD(insn), false);
-            mark_fpscr_used(block);
-            mark_fpscr_changed(block);
-            mark_fr_fi_fprf_used(block);
-            mark_fr_fi_fprf_changed(block);
-            if (insn_Rc(insn)) {
-                mark_crf_changed(block, 1);
-            }
+            fpscr_used_changed_unless_no_state(ctx, block);
+            check_fp_Rc(ctx, block, address, insn);
             break;
 
           case XO_FMSUB:
@@ -1070,13 +1039,8 @@ static void update_used_changed(GuestPPCContext *ctx, GuestPPCBlockInfo *block,
             mark_fpr_used(block, insn_frB(insn), false);
             mark_fpr_used(block, insn_frC(insn), false);
             mark_fpr_changed(block, insn_frD(insn), false);
-            mark_fpscr_used(block);
-            mark_fpscr_changed(block);
-            mark_fr_fi_fprf_used(block);
-            mark_fr_fi_fprf_changed(block);
-            if (insn_Rc(insn)) {
-                mark_crf_changed(block, 1);
-            }
+            fpscr_used_changed_unless_no_state(ctx, block);
+            check_fp_Rc(ctx, block, address, insn);
             break;
 
           default:
@@ -1387,13 +1351,14 @@ bool guest_ppc_scan(GuestPPCContext *ctx, uint32_t limit)
     }
 
     /* Scan each block to find registers used and changed in the block. */
+    ctx->warned_useless_fp_Rc = false;
     for (int i = 0; i < ctx->num_blocks; i++) {
         block = &ctx->blocks[i];
         const uint32_t *block_base = &memory_base[block->start/4];
         for (uint32_t j = 0; j < block->len; j += 4) {
             const uint32_t insn = bswap_be32(block_base[j/4]);
             if (is_valid_insn(insn)) {
-                update_used_changed(ctx, block, insn);
+                update_used_changed(ctx, block, block->start + j, insn);
             }
         }
     }

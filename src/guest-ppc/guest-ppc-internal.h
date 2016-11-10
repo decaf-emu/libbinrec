@@ -421,6 +421,10 @@ typedef struct GuestPPCContext {
      * optimizing a pair of instructions as a unit, such as sc followed
      * by blr (which becomes a tail call to the system call handler). */
     bool skip_next_insn;
+
+    /* True if the warning about a floating-point instruction with Rc=1
+     * with FPSCR state disabled has been logged for this unit. */
+    bool warned_useless_fp_Rc;
 } GuestPPCContext;
 
 /*************************************************************************/

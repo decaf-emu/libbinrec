@@ -728,7 +728,8 @@ typedef struct binrec_setup_t {
  * This optimization is UNSAFE for obvious reasons, though it is believed
  * that most real-life PowerPC code does not make use of the FR bit.
  *
- * This optimization is implicitly enabled by BINREC_OPT_G_PPC_NO_FPSCR_STATE.
+ * This optimization has no effect if BINREC_OPT_G_PPC_NO_FPSCR_STATE is
+ * enabled.
  *
  * This optimization cannot currently be disabled; the translator behaves
  * as if it was always set.
@@ -743,7 +744,7 @@ typedef struct binrec_setup_t {
  * specific types of floating-point invalid operation exceptions, such as
  * subtraction of infinities (VXISI) or use of a signaling NaN (VXSNAN).
  * Detecting these cases on a host architecture which does not expose such
- * informtion requires additional manual checks on the operands to each
+ * information requires additional manual checks on the operands to each
  * floating-point operation and can have a severe impact on performance.
  * Enabling this optimization allows the translator to skip these checks,
  * treating any invalid-operation exception as VXSNAN whether or not any
@@ -754,6 +755,9 @@ typedef struct binrec_setup_t {
  *
  * This optimization is UNSAFE for obvious reasons, though it is believed
  * that most real-life PowerPC code does not make use of the VXFOO bits.
+ *
+ * This optimization has no effect if BINREC_OPT_G_PPC_NO_FPSCR_STATE is
+ * enabled.
  */
 #define BINREC_OPT_G_PPC_IGNORE_FPSCR_VXFOO  (1<<3)
 
@@ -800,13 +804,17 @@ typedef struct binrec_setup_t {
  * Instructions which directly manipulate FPSCR, such as mtfsf, are not
  * affected by this optimization and continue to behave normally, though
  * if any of the FR/FI/FPRF bits are set by such an instruction, they
- * will remain set even after other instructions which would normally
- * overwrite them.
+ * will remain set even after floating-point instructions which would
+ * normally overwrite them.
+ *
+ * Floating-point instructions with the Rc bit set will copy the high 4
+ * bits of FPSCR to the cr1 field of CR as usual, though the bit values
+ * will naturally not reflect the result of any floating-point operations.
+ * The library will log a warning (once per translation unit) if such an
+ * instruction is encountered when this optimization is enabled.
  *
  * This optimization is UNSAFE: code which relies on any of the FPSCR
  * state bits will behave incorrectly if this optimization is enabled.
- *
- * This optimization is not currently implemented.
  */
 #define BINREC_OPT_G_PPC_NO_FPSCR_STATE  (1<<5)
 
