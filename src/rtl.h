@@ -154,18 +154,18 @@ typedef enum RTLOpcode {
      * another (non-NOP) instruction results in undefined behavior. */
     RTLOP_NOP = 1,
 
-    /* Alias register operations */
+    /* Alias register operations. */
     RTLOP_SET_ALIAS,    // alias[other] = src1
                         //    [other is an alias register index]
     RTLOP_GET_ALIAS,    // dest = alias[other]
                         //    [other is an alias register index]
 
-    /* Non-computational operations */
+    /* Non-computational operations. */
     RTLOP_MOVE,         // dest = src1
     RTLOP_SELECT,       // dest = other ? src1 : src2
                         //    [other must be of integer type]
 
-    /* Integer operations */
+    /* Integer operations. */
     RTLOP_SCAST,        // dest = (typeof(dest))(signed)src1
     RTLOP_ZCAST,        // dest = (typeof(dest))(unsigned)src1
     RTLOP_SEXT8,        // dest = (int8_t)src1
@@ -219,8 +219,8 @@ typedef enum RTLOpcode {
     RTLOP_SGTS,         // dest = (signed)src1 > (signed)src2 ? 1 : 0
                         //    [dest may be any integer type]
 
-    /* Integer bitfield operations ("start" and "count" are encoded in the
-     * "other" parameter as: other = start | count<<8) */
+    /* Integer bitfield operations.  "start" and "count" are encoded in the
+     * "other" parameter as: other = start | count<<8 */
     RTLOP_BFEXT,        // dest = (src1 >> start) & ((1<<count) - 1)
     RTLOP_BFINS,        // dest = (src1 & ~(((1<<count) - 1) << start))
                         //      | ((src2 & ((1<<count) - 1)) << start)
@@ -255,33 +255,36 @@ typedef enum RTLOpcode {
     RTLOP_SGTSI,        // dest = (signed)src1 > IMMEDIATE(other) ? 1 : 0
                         //    [dest may be any integer type]
 
-    /* Floating-point operations */
+    /* Bit-copy operation between floating-point and integer types.
+     * dest and src1 must be of the same size and opposite types:
+     * FLOAT32/INT32, INT64/FLOAT64, etc. */
     RTLOP_BITCAST,      // bits(dest) = bits(src1)
-                        //    [dest and src1 must be of the same size and
-                        //     opposite modes: FLOAT32/INT32, INT64/FLOAT64,
-                        //     etc.]
-    RTLOP_FCAST,        // dest = (typeof(dest))src1
-                        //    [does not quiet SNaNs or raise exceptions;
-                        //     note that a narrowing cast can change a
-                        //     signaling NaN into an infinity]
+
+    /* Floating-point cast operations.  FCAST is a "pure" cast which
+     * preserves SNaNs and does not raise exceptions; FCVT is an
+     * arithmetic operations which quiets SNaNs and raises exceptions.
+     * Note that a narrowing FCAST may convert an SNaN to an infinity. */
+    RTLOP_FCAST,        // dest = raw_convert(typeof(dest), src1)
     RTLOP_FCVT,         // dest = (typeof(dest))src1
-                        //    [arithmetic conversion, can raise exceptions;
-                        //     dest and src1 must be different types]
+
+    /* Integer-to-FP cast operations. */
     RTLOP_FZCAST,       // dest = (typeof(dest))((unsigned)src1)
-                        //    [src1 is of integer type]
     RTLOP_FSCAST,       // dest = (typeof(dest))((signed)src1)
-                        //    [src1 is of integer type]
+
+    /* FP-to-integer cast operations.  FROUNDI uses the current rounding
+     * mode, while FTRUNCI rounds toward zero.  Negative overflow and
+     * NaNs always convert to the minimum signed integer value for the
+     * destination type; it is host-defined whether positive overflow
+     * converts to the minimum or maximum signed integer value. */
     RTLOP_FROUNDI,      // dest = (signed typeof(dest))round(src1)
-                        //    [uses current rounding mode; result on exception
-                        //     is host-defined]
     RTLOP_FTRUNCI,      // dest = (signed typeof(dest))trunc(src1)
-                        //    [result on exception is host-defined]
+
+    /* Floating-point sign bit manipulation instructions.  These do not
+     * raise floating-point exceptions and treat NaNs like other values. */
     RTLOP_FNEG,         // dest = -src1
-                        //    [flips sign bit, does not raise exceptions]
     RTLOP_FABS,         // dest = abs(src1)
-                        //    [clears sign bit, does not raise exceptions]
     RTLOP_FNABS,        // dest = -abs(src1)
-                        //    [sets sign bit, does not raise exceptions]
+
     RTLOP_FADD,         // dest = src1 + src2
     RTLOP_FSUB,         // dest = src1 - src2
     RTLOP_FMUL,         // dest = src1 * src2
@@ -306,7 +309,7 @@ typedef enum RTLOpcode {
     RTLOP_FSETROUND,    // set_rounding_mode(IMMEDIATE(other))
                         //    [other is one of RTLFROUND_*]
 
-    /* Vector manipulation */
+    /* Vector manipulation instructions. */
     RTLOP_VBUILD2,      // dest = {src1, src2}
                         //    [dest must be a 2-element vector of typeof(src1)]
     RTLOP_VBROADCAST,   // dest[*] = src1
@@ -360,7 +363,7 @@ typedef enum RTLOpcode {
     RTLOP_ATOMIC_INC,   // dest = (*src1)++
     RTLOP_CMPXCHG,      // dest = (*src1==src2 ? (*src1 = other, src2) : *src1)
 
-    /* Branch operations ("other" is a label number) */
+    /* Branch operations ("other" is a label number). */
     RTLOP_LABEL,        // LABEL(other):
     RTLOP_GOTO,         // goto LABEL(other)
     RTLOP_GOTO_IF_Z,    // if (src1 == 0) goto LABEL(other)
@@ -379,12 +382,12 @@ typedef enum RTLOpcode {
      * effect on the generated code. */
     RTLOP_CALL_TRANSPARENT,  // dest = (*src1)(src2, other)
 
-    /* Terminator for generated code (returns to caller; the return value
-     * is optional) */
+    /* Terminator for generated code (returns to caller).  The return value
+     * is optional. */
     RTLOP_RETURN,       // return src1
 
-    /* Explicit illegal instruction (will trigger an illegal-instruction
-     * exception if executed on the host) */
+    /* Explicit illegal instruction; will trigger an illegal-instruction
+     * exception if executed on the host. */
     RTLOP_ILLEGAL,
 
 } RTLOpcode;

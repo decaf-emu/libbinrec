@@ -1139,7 +1139,7 @@ static void set_fp_result(GuestPPCContext *ctx, int index, int result,
     const int fr_fi_cleared = rtl_alloc_register(unit, RTLTYPE_INT32);
     rtl_add_insn(unit, RTLOP_ANDI, fr_fi_cleared, fr_fi_fprf, 0, 0x1F);
     rtl_add_insn(unit, RTLOP_SET_ALIAS,
-                 0, fr_fi_fprf, 0, ctx->alias.fr_fi_fprf);
+                 0, fr_fi_cleared, 0, ctx->alias.fr_fi_fprf);
     const int label_out = rtl_alloc_label(unit);
     rtl_add_insn(unit, RTLOP_GOTO, 0, 0, 0, label_out);
 
@@ -1962,6 +1962,150 @@ static void translate_dcbz(GuestPPCContext *ctx, uint32_t insn)
     rtl_add_insn(unit, RTLOP_VBROADCAST, zero_128, zero_64, 0, 0);
     rtl_add_insn(unit, RTLOP_STORE, 0, host_address, zero_128, 0);
     rtl_add_insn(unit, RTLOP_STORE, 0, host_address, zero_128, 16);
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
+ * translate_fctiw:  Translate an fctiw or fctiwz instruction.
+ *
+ * [Parameters]
+ *     ctx: Translation context.
+ *     insn: Instruction word.
+ *     convert_op: RTL opcode for the conversion (FROUNDI or FTRUNCI).
+ */
+static void translate_fctiw(GuestPPCContext *ctx, uint32_t insn,
+                            RTLOpcode convert_op)
+{
+    RTLUnit * const unit = ctx->unit;
+
+    /* There's no need to convert from single to double precision if the
+     * register is currently in single precision; the result would be the
+     * same either way.  (We can also omit the overflow/underflow exception
+     * checks since those are never raised by fctiw[z].) */
+    RTLDataType source_type;
+    if (ctx->live.fpr[insn_frB(insn)]) {
+        source_type = unit->regs[ctx->live.fpr[insn_frB(insn)]].type;
+        if (rtl_type_is_vector(source_type)) {
+            source_type = rtl_vector_element_type(source_type);
+        }
+    } else {
+        source_type = RTLTYPE_FLOAT64;
+    }
+    const int frB = get_fpr(ctx, insn_frB(insn), source_type);
+
+    const int result32 = rtl_alloc_register(unit, RTLTYPE_INT32);
+    rtl_add_insn(unit, convert_op, result32, frB, 0, 0);
+    const int result64 = rtl_alloc_register(unit, RTLTYPE_INT64);
+    rtl_add_insn(unit, RTLOP_ZCAST, result64, result32, 0, 0);
+    const int result = rtl_alloc_register(unit, RTLTYPE_FLOAT64);
+    rtl_add_insn(unit, RTLOP_BITCAST, result, result64, 0, 0);
+
+    /* Local reimplementation of fp_set_result().  We can't use that
+     * function because we need to manually handle positive overflow. */
+    int fpscr = 0;
+    int label_out = 0;
+    if (!(ctx->handle->guest_opt & BINREC_OPT_G_PPC_NO_FPSCR_STATE)) {
+        fpscr = get_fpscr(ctx);
+        ctx->live.fpscr = 0;
+        ctx->last_set.fpscr = -1;
+        ctx->live.fr_fi_fprf = 0;
+        ctx->last_set.fr_fi_fprf = -1;
+        flush_fpr(ctx, insn_frD(insn));
+        ctx->live.fpr[insn_frD(insn)] = 0;
+        ctx->fpr_is_safe &= ~(1 << insn_frD(insn));
+    }
+
+    const int fpstate = rtl_alloc_register(unit, RTLTYPE_FPSTATE);
+    rtl_add_insn(unit, RTLOP_FGETSTATE, fpstate, 0, 0, 0);
+    const int invalid = rtl_alloc_register(unit, RTLTYPE_INT32);
+    rtl_add_insn(unit, RTLOP_FTESTEXC, invalid, fpstate, 0, RTLFEXC_INVALID);
+    const int label_no_vx = rtl_alloc_label(unit);
+    rtl_add_insn(unit, RTLOP_GOTO_IF_Z, 0, invalid, 0, label_no_vx);
+
+    if (!(ctx->handle->guest_opt & BINREC_OPT_G_PPC_NO_FPSCR_STATE)) {
+        int label_check_ve = 0;
+        if (!(ctx->handle->guest_opt & BINREC_OPT_G_PPC_IGNORE_FPSCR_VXFOO)) {
+            const int label_snan = rtl_alloc_label(unit);
+            check_snan(ctx, frB, label_snan);
+            set_fpscr_exceptions(ctx, fpscr, FPSCR_VXCVI);
+            label_check_ve = rtl_alloc_label(unit);
+            rtl_add_insn(unit, RTLOP_GOTO, 0, 0, 0, label_check_ve);
+            rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, label_snan);
+        }
+        set_fpscr_exceptions(ctx, fpscr, FPSCR_VXSNAN | FPSCR_VXCVI);
+        if (label_check_ve) {
+            rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, label_check_ve);
+        }
+
+        const int ve_test = rtl_alloc_register(unit, RTLTYPE_INT32);
+        rtl_add_insn(unit, RTLOP_ANDI, ve_test, fpscr, 0, FPSCR_VE);
+        /* fctiw[z]-specific logic: We need a separate label from no_vx
+         * for this test so we can perform positive saturation if the
+         * result is not suppressed. */
+        const int label_no_ve = rtl_alloc_label(unit);
+        rtl_add_insn(unit, RTLOP_GOTO_IF_Z, 0, ve_test, 0, label_no_ve);
+        const int fr_fi_fprf = rtl_alloc_register(unit, RTLTYPE_INT32);
+        rtl_add_insn(unit, RTLOP_GET_ALIAS,
+                     fr_fi_fprf, 0, 0, ctx->alias.fr_fi_fprf);
+        const int fr_fi_cleared = rtl_alloc_register(unit, RTLTYPE_INT32);
+        rtl_add_insn(unit, RTLOP_ANDI, fr_fi_cleared, fr_fi_fprf, 0, 0x1F);
+        rtl_add_insn(unit, RTLOP_SET_ALIAS,
+                     0, fr_fi_cleared, 0, ctx->alias.fr_fi_fprf);
+        label_out = rtl_alloc_label(unit);
+        rtl_add_insn(unit, RTLOP_GOTO, 0, 0, 0, label_out);
+        rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, label_no_ve);
+    }
+
+    /* fctiw[z]-specific logic: If the conversion resulted in positive
+     * overflow, which we can detect by an invalid-operation exception
+     * with a positive source value, we need to saturate the result to
+     * INT32_MAX. */
+    const int zero = rtl_alloc_register(unit, source_type);
+    rtl_add_insn(unit, RTLOP_LOAD_IMM, zero, 0, 0, 0);
+    const int is_positive = rtl_alloc_register(unit, RTLTYPE_INT32);
+    rtl_add_insn(unit, RTLOP_FCMP, is_positive, frB, zero, RTLFCMP_GT);
+    rtl_add_insn(unit, RTLOP_GOTO_IF_Z, 0, is_positive, 0, label_no_vx);
+    const int result_intmax = rtl_alloc_register(unit, RTLTYPE_FLOAT64);
+    rtl_add_insn(unit, RTLOP_LOAD_IMM, result_intmax, 0, 0, 0x7FFFFFFF);
+    set_fpr(ctx, insn_frD(insn), result_intmax);
+    /* We don't bother touching fpr_is_safe since no type conversion will
+     * be required during the flush. */
+    flush_fpr(ctx, insn_frD(insn));
+    ctx->live.fpr[insn_frD(insn)] = 0;
+    const int label_skip_set = rtl_alloc_label(unit);
+    rtl_add_insn(unit, RTLOP_GOTO, 0, 0, 0, label_skip_set);
+
+    rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, label_no_vx);
+    set_fpr(ctx, insn_frD(insn), result);
+    flush_fpr(ctx, insn_frD(insn));
+    ctx->live.fpr[insn_frD(insn)] = 0;
+
+    rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, label_skip_set);
+    if (!(ctx->handle->guest_opt & BINREC_OPT_G_PPC_NO_FPSCR_STATE)) {
+        const int fprf = gen_fprf(unit, result);
+        const int inexact = rtl_alloc_register(unit, RTLTYPE_INT32);
+        rtl_add_insn(unit, RTLOP_FTESTEXC,
+                     inexact, fpstate, 0, RTLFEXC_INEXACT);
+        const int shifted_fi = rtl_alloc_register(unit, RTLTYPE_INT32);
+        rtl_add_insn(unit, RTLOP_SLLI, shifted_fi, inexact, 0, 5);
+        const int fi_fprf = rtl_alloc_register(unit, RTLTYPE_INT32);
+        rtl_add_insn(unit, RTLOP_OR, fi_fprf, fprf, shifted_fi, 0);
+        rtl_add_insn(unit, RTLOP_SET_ALIAS,
+                     0, fi_fprf, 0, ctx->alias.fr_fi_fprf);
+        rtl_add_insn(unit, RTLOP_GOTO_IF_Z, 0, inexact, 0, label_out);
+        set_fpscr_exceptions(ctx, 0, FPSCR_XX);
+    }
+
+    if (label_out) {
+        rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, label_out);
+    }
+    /* FCLEAREXC comes last because the FCMP may raise exceptions as well. */
+    rtl_add_insn(unit, RTLOP_FCLEAREXC, 0, 0, 0, 0);
+
+    if (insn_Rc(insn)) {
+        update_cr1(ctx);
+    }
 }
 
 /*-----------------------------------------------------------------------*/
@@ -4072,6 +4216,14 @@ static inline void translate_x3F(
             }
             return;
           }  // case XO_FRSP
+
+          case XO_FCTIW:
+            translate_fctiw(ctx, insn, RTLOP_FROUNDI);
+            return;
+
+          case XO_FCTIWZ:
+            translate_fctiw(ctx, insn, RTLOP_FTRUNCI);
+            return;
 
           default: return;  // FIXME: not yet implemented
         }

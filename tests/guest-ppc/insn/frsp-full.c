@@ -43,7 +43,7 @@ static const char expected[] =
     "   21: GOTO_IF_Z  r14, L1\n"
     "   22: GET_ALIAS  r15, a5\n"
     "   23: ANDI       r16, r15, 31\n"
-    "   24: SET_ALIAS  a5, r15\n"
+    "   24: SET_ALIAS  a5, r16\n"
     "   25: GOTO       L3\n"
     "   26: LABEL      L1\n"
     "   27: FCVT       r17, r6\n"
