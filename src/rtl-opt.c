@@ -875,17 +875,20 @@ static inline bool convert_to_regimm(RTLUnit * const unit,
     RTLRegister * const src1_reg = &unit->regs[src1];
     RTLRegister * const src2_reg = &unit->regs[src2];
 
+    RTLDataType imm_type;
     uint64_t imm64;
     bool constant_is_src2;
     if (src1_reg->source == RTLREG_CONSTANT) {
+        imm_type = src1_reg->type;
         imm64 = reg_value_i64(src1_reg);
         constant_is_src2 = false;
     } else {
         ASSERT(src2_reg->source == RTLREG_CONSTANT);
+        imm_type = src2_reg->type;
         imm64 = reg_value_i64(src2_reg);
         constant_is_src2 = true;
     }
-    if (reg->type != RTLTYPE_INT32
+    if (imm_type != RTLTYPE_INT32
      && imm64 + UINT64_C(0x80000000) >= UINT64_C(0x100000000)) {
         return false;  // Doesn't fit in the immediate field.
     }
