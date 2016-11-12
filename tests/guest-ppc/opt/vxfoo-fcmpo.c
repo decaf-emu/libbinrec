@@ -14,6 +14,7 @@ static const uint8_t input[] = {
 };
 
 static const unsigned int guest_opt = BINREC_OPT_G_PPC_IGNORE_FPSCR_VXFOO;
+static const unsigned int common_opt = 0;
 
 static const bool expected_success = true;
 

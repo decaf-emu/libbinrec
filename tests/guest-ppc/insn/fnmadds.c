@@ -15,6 +15,7 @@ static const uint8_t input[] = {
 
 static const unsigned int guest_opt = BINREC_OPT_G_PPC_NO_FPSCR_STATE
                                     | BINREC_OPT_G_PPC_FAST_FMULS;
+static const unsigned int common_opt = BINREC_OPT_NATIVE_IEEE_NAN;
 
 static const bool expected_success = true;
 
@@ -27,9 +28,9 @@ static const char expected[] =
     "    4: GET_ALIAS  r5, a5\n"
     "    5: FMADD      r6, r3, r4, r5\n"
     "    6: LOAD_IMM   r7, 0.0\n"
-    "    7: FNEG       r8, r6\n"
-    "    8: FCMP       r9, r6, r7, UN\n"
-    "    9: SELECT     r10, r6, r8, r9\n"
+    "    7: FCMP       r8, r6, r7, UN\n"
+    "    8: FNEG       r9, r6\n"
+    "    9: SELECT     r10, r6, r9, r8\n"
     "   10: FCVT       r11, r10\n"
     "   11: FCVT       r12, r11\n"
     "   12: STORE      408(r1), r12\n"

@@ -1365,8 +1365,13 @@ static void set_fp_result(GuestPPCContext *ctx, int index, int result,
             const int label_vxidi = rtl_alloc_label(unit);
             rtl_add_insn(unit, RTLOP_GOTO_IF_NZ, 0, zero_test, 0, label_vxidi);
             set_fpscr_exceptions(ctx, fpscr, FPSCR_VXZDZ);
-            label_check_ve = rtl_alloc_label(unit);
-            rtl_add_insn(unit, RTLOP_GOTO, 0, 0, 0, label_check_ve);
+            if (ctx->handle->common_opt & BINREC_OPT_NATIVE_IEEE_NAN) {
+                label_check_ve_snan = rtl_alloc_label(unit);
+                rtl_add_insn(unit, RTLOP_GOTO, 0, 0, 0, label_check_ve_snan);
+            } else {
+                label_check_ve = rtl_alloc_label(unit);
+                rtl_add_insn(unit, RTLOP_GOTO, 0, 0, 0, label_check_ve);
+            }
             rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, label_vxidi);
             set_fpscr_exceptions(ctx, fpscr, FPSCR_VXIDI);
 
@@ -1416,8 +1421,13 @@ static void set_fp_result(GuestPPCContext *ctx, int index, int result,
                          0, frA_zero_test, 0, label_vxisi);
             rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, label_vximz);
             set_fpscr_exceptions(ctx, fpscr, FPSCR_VXIMZ);
-            label_check_ve = rtl_alloc_label(unit);
-            rtl_add_insn(unit, RTLOP_GOTO, 0, 0, 0, label_check_ve);
+            if (ctx->handle->common_opt & BINREC_OPT_NATIVE_IEEE_NAN) {
+                label_check_ve_snan = rtl_alloc_label(unit);
+                rtl_add_insn(unit, RTLOP_GOTO, 0, 0, 0, label_check_ve_snan);
+            } else {
+                label_check_ve = rtl_alloc_label(unit);
+                rtl_add_insn(unit, RTLOP_GOTO, 0, 0, 0, label_check_ve);
+            }
             rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, label_vxisi);
             set_fpscr_exceptions(ctx, fpscr, FPSCR_VXISI);
 
@@ -1427,36 +1437,45 @@ static void set_fp_result(GuestPPCContext *ctx, int index, int result,
             set_fpscr_exceptions(ctx, fpscr, vxfoo_no_snan);
         }
 
-        if (label_check_ve) {
-            rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, label_check_ve);
+        if (ctx->handle->common_opt & BINREC_OPT_NATIVE_IEEE_NAN) {
+            if (!label_check_ve_snan) {
+                label_check_ve_snan = rtl_alloc_label(unit);
+            }
+            rtl_add_insn(unit, RTLOP_GOTO, 0, 0, 0, label_check_ve_snan);
+        } else {
+            if (label_check_ve) {
+                rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, label_check_ve);
+            }
+            const int ve_test = rtl_alloc_register(unit, RTLTYPE_INT32);
+            rtl_add_insn(unit, RTLOP_ANDI, ve_test, fpscr, 0, FPSCR_VE);
+            int label_no_ve_default_nan = 0;
+            label_no_ve_default_nan = rtl_alloc_label(unit);
+            rtl_add_insn(unit, RTLOP_GOTO_IF_Z,
+                         0, ve_test, 0, label_no_ve_default_nan);
+            const int fr_fi_fprf = rtl_alloc_register(unit, RTLTYPE_INT32);
+            rtl_add_insn(unit, RTLOP_GET_ALIAS,
+                         fr_fi_fprf, 0, 0, ctx->alias.fr_fi_fprf);
+            const int fr_fi_cleared = rtl_alloc_register(unit, RTLTYPE_INT32);
+            rtl_add_insn(unit, RTLOP_ANDI, fr_fi_cleared, fr_fi_fprf, 0, 0x1F);
+            rtl_add_insn(unit, RTLOP_SET_ALIAS,
+                         0, fr_fi_cleared, 0, ctx->alias.fr_fi_fprf);
+            label_out = rtl_alloc_label(unit);
+            rtl_add_insn(unit, RTLOP_GOTO, 0, 0, 0, label_out);
+            rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, label_no_ve_default_nan);
+            const int default_nan = rtl_alloc_register(unit, RTLTYPE_FLOAT64);
+            rtl_add_insn(unit, RTLOP_LOAD_IMM,
+                         default_nan, 0, 0, UINT64_C(0x7FF8000000000000));
+            set_fpr(ctx, index, default_nan);
+            /* We don't bother touching fpr_is_safe since no type conversion
+             * will be required during the flush. */
+            flush_fpr(ctx, index);
+            const int default_nan_fprf =
+                rtl_alloc_register(unit, RTLTYPE_INT32);
+            rtl_add_insn(unit, RTLOP_LOAD_IMM, default_nan_fprf, 0, 0, 0x11);
+            rtl_add_insn(unit, RTLOP_SET_ALIAS,
+                         0, default_nan_fprf, 0, ctx->alias.fr_fi_fprf);
+            rtl_add_insn(unit, RTLOP_GOTO, 0, 0, 0, label_out);
         }
-        const int ve_test = rtl_alloc_register(unit, RTLTYPE_INT32);
-        rtl_add_insn(unit, RTLOP_ANDI, ve_test, fpscr, 0, FPSCR_VE);
-        const int label_no_ve_default_nan = rtl_alloc_label(unit);
-        rtl_add_insn(unit, RTLOP_GOTO_IF_Z,
-                     0, ve_test, 0, label_no_ve_default_nan);
-        const int fr_fi_fprf = rtl_alloc_register(unit, RTLTYPE_INT32);
-        rtl_add_insn(unit, RTLOP_GET_ALIAS,
-                     fr_fi_fprf, 0, 0, ctx->alias.fr_fi_fprf);
-        const int fr_fi_cleared = rtl_alloc_register(unit, RTLTYPE_INT32);
-        rtl_add_insn(unit, RTLOP_ANDI, fr_fi_cleared, fr_fi_fprf, 0, 0x1F);
-        rtl_add_insn(unit, RTLOP_SET_ALIAS,
-                     0, fr_fi_cleared, 0, ctx->alias.fr_fi_fprf);
-        label_out = rtl_alloc_label(unit);
-        rtl_add_insn(unit, RTLOP_GOTO, 0, 0, 0, label_out);
-        rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, label_no_ve_default_nan);
-        const int default_nan = rtl_alloc_register(unit, RTLTYPE_FLOAT64);
-        rtl_add_insn(unit, RTLOP_LOAD_IMM,
-                     default_nan, 0, 0, UINT64_C(0x7FF8000000000000));
-        set_fpr(ctx, index, default_nan);
-        /* We don't bother touching fpr_is_safe since no type conversion
-         * will be required during the flush. */
-        flush_fpr(ctx, index);
-        const int default_nan_fprf = rtl_alloc_register(unit, RTLTYPE_INT32);
-        rtl_add_insn(unit, RTLOP_LOAD_IMM, default_nan_fprf, 0, 0, 0x11);
-        rtl_add_insn(unit, RTLOP_SET_ALIAS,
-                     0, default_nan_fprf, 0, ctx->alias.fr_fi_fprf);
-        rtl_add_insn(unit, RTLOP_GOTO, 0, 0, 0, label_out);
 
         /* A fused multiply-add of the form inf*0+SNaN (or 0*inf-SNaN, etc.)
          * raises both VXIMZ and VXSNAN, so we need an extra check if frB
@@ -2507,14 +2526,100 @@ static void translate_fctiw(GuestPPCContext *ctx, uint32_t insn,
 /*-----------------------------------------------------------------------*/
 
 /**
- * translate_fp_arith:  Translate a floating-point arithmetic instruction.
+ * check_fp_underflow:  Check for, and raise if appropriate, an underflow
+ * exception on a floating-point result whose magnitude is the minimum
+ * normal value for its type.
+ *
+ * The PowerPC architecture defines underflow as "tiny before rounding",
+ * while x86 (at least) defines it as "tiny after rounding".  If we're not
+ * ignoring precise underflow behavior and the result is equal to the
+ * smallest (in magnitude) normal number, we may need to manually raise an
+ * underflow exception.  This function checks for this case and, if it
+ * applies, runs the operation a second time in round-toward-zero mode,
+ * which will raise an underflow exception regardless of whether the host
+ * detects underflow before or after rounding.
+ *
+ * [Parameters]
+ *     ctx: Translation context.
+ *     result: Result of the operation.
+ *     rtlop: RTL opcode to perform the operation.
+ *     src1, src2, src3: RTL instruction operands.
+ *     is_single: True if a single-precision (32-bit) operation, false if
+ *         a double-precision (64-bit) operation.
+ *     use_float32: True if the input operands (src1/src2/src3) are of
+ *         type FLOAT32, false if they are of type FLOAT64.
+ */
+static void check_fp_underflow(
+    GuestPPCContext *ctx, int result, RTLOpcode rtlop, int src1,
+    int src2, int src3, bool is_single, bool use_float32)
+{
+    if ((ctx->handle->common_opt & BINREC_OPT_NATIVE_IEEE_UNDERFLOW)
+     || (ctx->handle->guest_opt & BINREC_OPT_G_PPC_NO_FPSCR_STATE)) {
+        return;
+    }
+
+    RTLUnit * const unit = ctx->unit;
+
+    const int bits_type = is_single ? RTLTYPE_INT32 : RTLTYPE_INT64;
+    const int result_bits = rtl_alloc_register(unit, bits_type);
+    rtl_add_insn(unit, RTLOP_BITCAST, result_bits, result, 0, 0);
+    /* Ignore the sign bit by shifting it out. */
+    const int result_bits_x2 = rtl_alloc_register(unit, bits_type);
+    rtl_add_insn(unit, RTLOP_SLLI, result_bits_x2, result_bits, 0, 1);
+    const int min_normal_x2 = rtl_alloc_register(unit, bits_type);
+    if (is_single) {
+        rtl_add_insn(unit, RTLOP_LOAD_IMM, min_normal_x2, 0, 0, 0x00800000<<1);
+    } else {
+        rtl_add_insn(unit, RTLOP_LOAD_IMM,
+                     min_normal_x2, 0, 0, UINT64_C(0x0010000000000000)<<1);
+    }
+    const int is_min_normal = rtl_alloc_register(unit, RTLTYPE_INT32);
+    rtl_add_insn(unit, RTLOP_SEQ,
+                 is_min_normal, result_bits_x2, min_normal_x2, 0);
+    const int label_skip_tiny = rtl_alloc_label(unit);
+    rtl_add_insn(unit, RTLOP_GOTO_IF_Z, 0, is_min_normal, 0, label_skip_tiny);
+
+    /* Note that we don't actually need to save this result; we just need
+     * to execute the operations so that the underflow exception is raised
+     * if appropriate.  The floating-point side effect check will prevent
+     * these technically dead stores from being eliminated (unless
+     * BINREC_OPT_DSE_FP is enabled, in which case this entire check is
+     * meaningless). */
+    const int fpstate = rtl_alloc_register(unit, RTLTYPE_FPSTATE);
+    rtl_add_insn(unit, RTLOP_FGETSTATE, fpstate, 0, 0, 0);
+    const int fpstate_trunc = rtl_alloc_register(unit, RTLTYPE_FPSTATE);
+    rtl_add_insn(unit, RTLOP_FSETROUND,
+                 fpstate_trunc, fpstate, 0, RTLFROUND_TRUNC);
+    rtl_add_insn(unit, RTLOP_FSETSTATE, 0, fpstate_trunc, 0, 0);
+    const RTLDataType type = use_float32 ? RTLTYPE_FLOAT32 : RTLTYPE_FLOAT64;
+    const int dummy_result = rtl_alloc_register(unit, type);
+    rtl_add_insn(unit, rtlop, dummy_result, src1, src2, src3);
+    if (is_single && !use_float32) {
+        const int dummy_result32 = rtl_alloc_register(unit, RTLTYPE_FLOAT32);
+        rtl_add_insn(unit, RTLOP_FCVT, dummy_result32, dummy_result, 0, 0);
+    }
+    const int fpstate2 = rtl_alloc_register(unit, RTLTYPE_FPSTATE);
+    rtl_add_insn(unit, RTLOP_FGETSTATE, fpstate2, 0, 0, 0);
+    const int fpstate2_oldround = rtl_alloc_register(unit, RTLTYPE_FPSTATE);
+    rtl_add_insn(unit, RTLOP_FCOPYROUND,
+                 fpstate2_oldround, fpstate2, fpstate, 0);
+    rtl_add_insn(unit, RTLOP_FSETSTATE, 0, fpstate2_oldround, 0, 0);
+
+    rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, label_skip_tiny);
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
+ * translate_fp_arith:  Translate a two-operand floating-point arithmetic
+ * instruction.
  *
  * [Parameters]
  *     ctx: Translation context.
  *     insn: Instruction word.
  *     rtlop: RTL opcode to perform the operation.
- *     is_single: True if a single-precision (32-bit) operation, false if a
- *         double-precision (64-bit) operation.
+ *     is_single: True if a single-precision (32-bit) operation, false if
+ *         a double-precision (64-bit) operation.
  *     vxfoo_no_snan: FPSCR_VXFOO bitmask indicating which non-VXSNAN
  *         exception(s) can be raised by the instruction.
  */
@@ -2548,6 +2653,9 @@ static void translate_fp_arith(
         result = rtl_alloc_register(unit, RTLTYPE_FLOAT32);
         rtl_add_insn(unit, RTLOP_FCVT, result, result64, 0, 0);
     }
+
+    check_fp_underflow(ctx, result, rtlop, src1, src2, 0, is_single,
+                       use_float32);
 
     set_fp_result(ctx, insn_frD(insn), result, src1, src2, 0,
                   0, vxfoo_no_snan, rtlop == RTLOP_FDIV, true);
@@ -2594,17 +2702,73 @@ static void translate_fp_fma(
 
     int result = rtl_alloc_register(unit, type);
     rtl_add_insn(unit, rtlop, result, frA, frC, frB);
-    if (negate) {
-        const int pos_result = result;
+
+    /* We need to know if the result is a NaN for two cases: if negating
+     * the value (so we don't negate a NaN), and if the host-NaN-rules
+     * optimization (BINREC_OPT_NATIVE_IEEE_NAN) is disabled. */
+    int is_nan = 0;
+    if (negate || !(ctx->handle->common_opt & BINREC_OPT_NATIVE_IEEE_NAN)) {
         const int zero = rtl_alloc_register(unit, type);
         rtl_add_insn(unit, RTLOP_LOAD_IMM, zero, 0, 0, 0);
+        is_nan = rtl_alloc_register(unit, RTLTYPE_INT32);
+        rtl_add_insn(unit, RTLOP_FCMP, is_nan, result, zero, RTLFCMP_UN);
+    }
+
+    if (negate) {
+        const int pos_result = result;
         const int neg_result = rtl_alloc_register(unit, type);
         rtl_add_insn(unit, RTLOP_FNEG, neg_result, pos_result, 0, 0);
-        const int is_nan = rtl_alloc_register(unit, RTLTYPE_INT32);
-        rtl_add_insn(unit, RTLOP_FCMP, is_nan, pos_result, zero, RTLFCMP_UN);
         result = rtl_alloc_register(unit, type);
         rtl_add_insn(unit, RTLOP_SELECT,
                      result, pos_result, neg_result, is_nan);
+    }
+
+    /* If the result is a NaN copied from an input operand, we need to
+     * ensure that the proper input operand is selected (unless the
+     * NATIVE_IEEE_NAN optimization is enabled, in which case we don't
+     * care).  The RTL FMADD-group instructions are defined to choose in
+     * the order {src1, src2, src3}, which for us is {frA, frC, frB}, but
+     * PowerPC gives frB precedence over frC, so we have to manually load
+     * the frB NaN in that case. */
+    if (!(ctx->handle->common_opt & BINREC_OPT_NATIVE_IEEE_NAN)) {
+        /* We use a condition and SELECT instead of branches so we don't
+         * need to mess around with temporary aliases.  This creates a
+         * fairly long dependency chain even for the (much more common)
+         * case of not changing the result, but if NATIVE_IEEE_NAN is
+         * disabled then speed probably isn't important anyway. */
+        const int zero = rtl_alloc_register(unit, type);
+        rtl_add_insn(unit, RTLOP_LOAD_IMM, zero, 0, 0, 0);
+        const int frA_not_nan = rtl_alloc_register(unit, RTLTYPE_INT32);
+        rtl_add_insn(unit, RTLOP_FCMP, frA_not_nan, frA, zero, RTLFCMP_NUN);
+        const int frC_is_nan = rtl_alloc_register(unit, RTLTYPE_INT32);
+        rtl_add_insn(unit, RTLOP_FCMP, frC_is_nan, frC, zero, RTLFCMP_UN);
+        const int frB_is_nan = rtl_alloc_register(unit, RTLTYPE_INT32);
+        rtl_add_insn(unit, RTLOP_FCMP, frB_is_nan, frB, zero, RTLFCMP_UN);
+        const int temp = rtl_alloc_register(unit, RTLTYPE_INT32);
+        rtl_add_insn(unit, RTLOP_AND, temp, frA_not_nan, frC_is_nan, 0);
+        const int use_frB = rtl_alloc_register(unit, RTLTYPE_INT32);
+        rtl_add_insn(unit, RTLOP_AND, use_frB, temp, frB_is_nan, 0);
+
+        const RTLDataType bits_type =
+            use_float32 ? RTLTYPE_INT32 : RTLTYPE_INT64;
+        const int frB_bits = rtl_alloc_register(unit, bits_type);
+        rtl_add_insn(unit, RTLOP_BITCAST, frB_bits, frB, 0, 0);
+        const int quiet_bit = rtl_alloc_register(unit, bits_type);
+        if (bits_type == RTLTYPE_INT32) {
+            rtl_add_insn(unit, RTLOP_LOAD_IMM, quiet_bit, 0, 0, 0x00400000);
+        } else {
+            rtl_add_insn(unit, RTLOP_LOAD_IMM,
+                         quiet_bit, 0, 0, UINT64_C(0x0008000000000000));
+        }
+        const int quiet_frB_bits = rtl_alloc_register(unit, bits_type);
+        rtl_add_insn(unit, RTLOP_OR, quiet_frB_bits, frB_bits, quiet_bit, 0);
+        const int quiet_frB = rtl_alloc_register(unit, type);
+        rtl_add_insn(unit, RTLOP_BITCAST, quiet_frB, quiet_frB_bits, 0, 0);
+
+        const int orig_result = result;
+        result = rtl_alloc_register(unit, type);
+        rtl_add_insn(unit, RTLOP_SELECT,
+                     result, quiet_frB, orig_result, use_frB);
     }
 
     if (is_single && !use_float32) {
@@ -2613,66 +2777,12 @@ static void translate_fp_fma(
         rtl_add_insn(unit, RTLOP_FCVT, result, result64, 0, 0);
     }
 
-    /* The PowerPC architecture defines underflow as "tiny before rounding",
-     * while x86 (at least) defines it as "tiny after rounding".  If we're
-     * not ignoring precise underflow behavior and the result is equal to
-     * the smallest normal number, run the operation a second time in
-     * round-toward-zero mode, so the underflow flag is set if appropriate
-     * regardless of the host's underflow behavior. */
-    if (!(ctx->handle->common_opt & BINREC_OPT_NATIVE_IEEE_UNDERFLOW)
-     && !(ctx->handle->guest_opt & BINREC_OPT_G_PPC_NO_FPSCR_STATE)) {
-        const int bits_type = is_single ? RTLTYPE_INT32 : RTLTYPE_INT64;
-        const int result_bits = rtl_alloc_register(unit, bits_type);
-        rtl_add_insn(unit, RTLOP_BITCAST, result_bits, result, 0, 0);
-        /* Ignore the sign bit by shifting it out. */
-        const int result_bits_x2 = rtl_alloc_register(unit, bits_type);
-        rtl_add_insn(unit, RTLOP_SLLI, result_bits_x2, result_bits, 0, 1);
-        const int min_normal_x2 = rtl_alloc_register(unit, bits_type);
-        if (is_single) {
-            rtl_add_insn(unit, RTLOP_LOAD_IMM,
-                         min_normal_x2, 0, 0, 0x00800000<<1);
-        } else {
-            rtl_add_insn(unit, RTLOP_LOAD_IMM,
-                         min_normal_x2, 0, 0, UINT64_C(0x0010000000000000)<<1);
-        }
-        const int is_min_normal = rtl_alloc_register(unit, RTLTYPE_INT32);
-        rtl_add_insn(unit, RTLOP_SEQ,
-                     is_min_normal, result_bits_x2, min_normal_x2, 0);
-        const int label_skip_tiny = rtl_alloc_label(unit);
-        rtl_add_insn(unit, RTLOP_GOTO_IF_Z,
-                     0, is_min_normal, 0, label_skip_tiny);
-
-        /* Note that we don't actually need to save this result; we just
-         * need to execute the operations so that the underflow exception
-         * is raised if appropriate.  The floating-point side effect check
-         * will prevent these technically dead stores from being eliminated
-         * (unless BINREC_OPT_DSE_FP is enabled, in which case this entire
-         * check is meaningless). */
-        const int fpstate = rtl_alloc_register(unit, RTLTYPE_FPSTATE);
-        rtl_add_insn(unit, RTLOP_FGETSTATE, fpstate, 0, 0, 0);
-        const int fpstate_trunc = rtl_alloc_register(unit, RTLTYPE_FPSTATE);
-        rtl_add_insn(unit, RTLOP_FSETROUND,
-                     fpstate_trunc, fpstate, 0, RTLFROUND_TRUNC);
-        rtl_add_insn(unit, RTLOP_FSETSTATE, 0, fpstate_trunc, 0, 0);
-        const int dummy_result = rtl_alloc_register(unit, type);
-        rtl_add_insn(unit, rtlop, dummy_result, frA, frC, frB);
-        if (is_single && !use_float32) {
-            const int dummy_result32 =
-                rtl_alloc_register(unit, RTLTYPE_FLOAT32);
-            rtl_add_insn(unit, RTLOP_FCVT, dummy_result32, dummy_result, 0, 0);
-        }
-        const int fpstate2 = rtl_alloc_register(unit, RTLTYPE_FPSTATE);
-        rtl_add_insn(unit, RTLOP_FGETSTATE, fpstate2, 0, 0, 0);
-        const int fpstate2_oldround = rtl_alloc_register(unit, RTLTYPE_FPSTATE);
-        rtl_add_insn(unit, RTLOP_FCOPYROUND,
-                     fpstate2_oldround, fpstate2, fpstate, 0);
-        rtl_add_insn(unit, RTLOP_FSETSTATE, 0, fpstate2_oldround, 0, 0);
-
-        rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, label_skip_tiny);
-    }
+    check_fp_underflow(ctx, result, rtlop, frA, frC, frB, is_single,
+                       use_float32);
 
     set_fp_result(ctx, insn_frD(insn), result, frA, frB, frC,
                   0, FPSCR_VXIMZ | FPSCR_VXISI, false, true);
+
     if (insn_Rc(insn)) {
         update_cr1(ctx);
     }

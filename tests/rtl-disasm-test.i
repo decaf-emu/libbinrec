@@ -23,6 +23,9 @@
  * - static const uint8_t input[]
  *      Define this to an array containing the machine code to translate.
  *
+ * - static unsigned int common_opt
+ *      Define this to the set of common optimization flags to use.
+ *
  * - static unsigned int guest_opt
  *      Define this to the set of guest optimization flags to use.
  *
@@ -62,7 +65,7 @@ int main(void)
     binrec_t *handle;
     EXPECT(handle = binrec_create_handle(&final_setup));
 
-    binrec_set_optimization_flags(handle, 0, guest_opt, 0);
+    binrec_set_optimization_flags(handle, common_opt, guest_opt, 0);
     binrec_set_code_range(handle, 0, sizeof(input) - 1);
     #ifdef BRANCH_CALLBACK
         binrec_enable_branch_callback(handle, true);

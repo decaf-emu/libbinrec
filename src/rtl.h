@@ -286,6 +286,10 @@ typedef enum RTLOpcode {
     RTLOP_FABS,         // dest = abs(src1)
     RTLOP_FNABS,        // dest = -abs(src1)
 
+    /* Floating-point arithmetic instructions.  If multiple operands are
+     * NaNs, the returned NaN is the first of {src1, src2, src3}; but if
+     * the BINREC_OPT_NATIVE_IEEE_NAN optimization is enabled, any input
+     * NaN may be returned. */
     RTLOP_FADD,         // dest = src1 + src2
     RTLOP_FSUB,         // dest = src1 - src2
     RTLOP_FMUL,         // dest = src1 * src2

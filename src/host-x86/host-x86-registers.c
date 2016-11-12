@@ -1081,7 +1081,17 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
                     };
                     ASSERT(insn->opcode >= RTLOP__FIRST
                            && insn->opcode <= RTLOP__LAST);
-                    if (non_commutative[insn->opcode / 8] & (1u << (insn->opcode % 8))) {
+                    bool is_noncom = (non_commutative[insn->opcode / 8]
+                                      & (1u << (insn->opcode % 8))) != 0;
+                    if (!(ctx->handle->common_opt & BINREC_OPT_NATIVE_IEEE_NAN)
+                     && (insn->opcode == RTLOP_FADD
+                      || insn->opcode == RTLOP_FMUL)) {
+                        /* FADD and FMUL are commutative in a mathematical
+                         * sense, but we need to preserve operand order for
+                         * correct NaN output when both operands are NaNs. */
+                        is_noncom = true;
+                    }
+                    if (is_noncom) {
                         /* Make sure it's also not chosen by the regular
                          * allocator. */
                         avoid_regs |= 1u << src2_info->host_reg;

@@ -3,6 +3,10 @@
 # No copyright is claimed on this file.
 #
 # Update history:
+#    - 2016-11-13: Added tests for underflow exception behavior with
+#         two-operand floating-point instructions.
+#    - 2016-11-13: Added tests for NaN selection on floating-point
+#         instructions with multiple NaN operands.
 #    - 2016-11-12: Added a few more fmadd tests to verify that VXIMZ and
 #         VXISI exceptions are properly distinguished.
 #    - 2016-11-12: Added tests to verify that certain unused FPR fields in
@@ -5588,6 +5592,7 @@ get_load_address:
    .int 0xB3800000              #  40(%r30): 2.0f - (1.333...f * 1.5f)
    .int 0x00000001              #  44(%r30): minimum single-precision denormal
    .int 0x80000001              #  48(%r30): same, with sign bit set
+   .int 0x00FFFFFF              #  52(%r30): minimum single normal * 2 - 1ulp
    .balign 8
 3: .int 0x00000000,0x00000000   #   0(%r31): 0.0
    .int 0x3FF00000,0x00000000   #   8(%r31): 1.0
@@ -5606,8 +5611,8 @@ get_load_address:
    .int 0x41500000,0x20000000   # 112(%r31): 4194304.5
    .int 0x41500000,0x30000000   # 120(%r31): 4194304.75
    .int 0x41500000,0x40000000   # 128(%r31): 4194305.0
-   .int 0x36A00000,0x00000000   # 136(%r31): Single-precision minimum denormal
-   .int 0x36800000,0x00000000   # 144(%r31): Single-prec. minimum denormal / 4
+   .int 0x36A00000,0x00000000   # 136(%r31): minimum single-precision denormal
+   .int 0x36800000,0x00000000   # 144(%r31): minimum single-prec. denormal / 4
    .int 0x47EFFFFF,0xE0000000   # 152(%r31): HUGE_VALF (maximum normal float)
    .int 0x47EFFFFF,0xE8000000   # 160(%r31): HUGE_VALF + epsilon/4
    .int 0x7FF80000,0x00000000   # 168(%r31): QNaN from invalid operations
@@ -5619,8 +5624,8 @@ get_load_address:
    .int 0xC1E00000,0x00200000   # 216(%r31): (double) -(2^31+1)
    .int 0x43E00000,0x00000000   # 224(%r31): (double) 2^63
    .int 0xC3E00000,0x00000001   # 232(%r31): (double) -(2^63+2^11)
-   .int 0x00100000,0x00000000   # 240(%r31): Double-precision minimum normal
-   .int 0x00080000,0x00000000   # 248(%r31): Double-prec. minimum normal / 2
+   .int 0x00100000,0x00000000   # 240(%r31): minimum double-precision normal
+   .int 0x00080000,0x00000000   # 248(%r31): minimum double-prec. normal / 2
    .int 0x3FDFFE00,0x00000000   # 256(%r31): 0.5 * 4095/4096 (fres bound)
    .int 0x3FE00100,0x00000000   # 264(%r31): 0.5 * 4097/4096 (fres bound)
    .int 0x3FFFFE00,0x00000000   # 272(%r31): 2.0 * 4095/4096 (frsqrte bound)
@@ -5641,6 +5646,7 @@ get_load_address:
    .int 0x3FDFFF00,0x00000000   # 392(%r31): actual result of fres(2.0)
    .int 0x37F00010,0x00000000   # 400(%r31): actual result of fres(HUGE_VALF)
    .int 0x3FFFFE80,0x00000000   # 408(%r31): actual result of frsqrte(2.0)
+   .int 0x001FFFFF,0xFFFFFFFF   # 416(%r31): minimum double normal * 2 - 1ulp
 
    ########################################################################
    # 4.6.2 Floating-Point Load Instructions
@@ -8057,6 +8063,12 @@ get_load_address:
    fmr %f4,%f12
    bl add_fpscr_vxsnan
    bl check_fpu_nan
+   # Also test NaN selection order (should be frA -> frB -> frC).
+0: fadd %f3,%f10,%f11   # QNaN + SNaN
+   bl record
+   fmr %f4,%f10
+   bl add_fpscr_vxsnan
+   bl check_fpu_nan
 0: mtfsf 255,%f0        # SNaN + normal (exception enabled)
    mtfsb1 24
    fmr %f3,%f24
@@ -8248,6 +8260,11 @@ get_load_address:
 0: fsub %f3,%f1,%f11    # normal - SNaN
    bl record
    fmr %f4,%f12
+   bl add_fpscr_vxsnan
+   bl check_fpu_nan
+0: fsub %f3,%f10,%f11   # QNaN - SNaN
+   bl record
+   fmr %f4,%f10
    bl add_fpscr_vxsnan
    bl check_fpu_nan
 0: mtfsf 255,%f0        # SNaN - normal (exception enabled)
@@ -8454,6 +8471,11 @@ get_load_address:
 0: fmul %f3,%f1,%f11    # normal * SNaN
    bl record
    fmr %f4,%f12
+   bl add_fpscr_vxsnan
+   bl check_fpu_nan
+0: fmul %f3,%f10,%f11   # QNaN * SNaN
+   bl record
+   fmr %f4,%f10
    bl add_fpscr_vxsnan
    bl check_fpu_nan
 0: mtfsf 255,%f0        # SNaN * normal (exception enabled)
@@ -8918,6 +8940,11 @@ get_load_address:
    fmr %f4,%f12
    bl add_fpscr_vxsnan
    bl check_fpu_nan
+0: fdiv %f3,%f10,%f11   # QNaN / SNaN
+   bl record
+   fmr %f4,%f10
+   bl add_fpscr_vxsnan
+   bl check_fpu_nan
 0: mtfsf 255,%f0        # SNaN / normal (exception enabled)
    mtfsb1 24
    fmr %f3,%f24
@@ -9096,6 +9123,56 @@ get_load_address:
    bl add_fpscr_vxsnan
    bl check_fpu_nan
 
+   # Check detection of underflow conditions.  In the PowerPC architecture,
+   # the underflow exception detects tininess before rounding, so a result
+   # which rounds up to the minimum normal value should set UX=1.  Due to
+   # the nature of the operations, it's not possible to cause underflow on
+   # double-precision fadd and fsub, but we can trigger it with fadds and
+   # fsubs by taking advantage of the fact that the 750CL allows double-
+   # precision operands to single-precision instructions.
+
+0: lfs %f3,12(%r30)
+   lfd %f13,240(%r31)
+   fneg %f13,%f13
+   fadds %f3,%f3,%f13
+   bl record
+   lfs %f4,12(%r30)
+   bl add_fpscr_ux
+   bl check_fpu_pnorm_inex
+0: lfs %f3,12(%r30)
+   lfd %f13,240(%r31)
+   fsubs %f3,%f3,%f13
+   bl record
+   lfs %f4,12(%r30)
+   bl add_fpscr_ux
+   bl check_fpu_pnorm_inex
+0: lfd %f3,416(%r31)
+   lfd %f13,64(%r31)
+   fmul %f3,%f3,%f13
+   bl record
+   lfd %f4,240(%r31)
+   bl add_fpscr_ux
+   bl check_fpu_pnorm_inex
+0: lfs %f3,52(%r30)
+   lfd %f13,64(%r31)
+   fmuls %f3,%f3,%f13
+   bl record
+   lfs %f4,12(%r30)
+   bl add_fpscr_ux
+   bl check_fpu_pnorm_inex
+0: lfd %f3,416(%r31)
+   fdiv %f3,%f3,%f2
+   bl record
+   lfd %f4,240(%r31)
+   bl add_fpscr_ux
+   bl check_fpu_pnorm_inex
+0: lfs %f3,52(%r30)
+   fdivs %f3,%f3,%f2
+   bl record
+   lfs %f4,12(%r30)
+   bl add_fpscr_ux
+   bl check_fpu_pnorm_inex
+
    # This is a convenient place to check FPRF values for double-precision
    # denormals since we don't generate them anywhere else.
 
@@ -9227,6 +9304,27 @@ get_load_address:
    fmadd %f3,%f9,%f10,%f4
    bl record
    fmr %f4,%f10
+   bl check_fpu_nan
+0: fmadd %f3,%f10,%f11,%f0  # QNaN * SNaN + 0
+   bl record
+   fmr %f4,%f10
+   bl add_fpscr_vxsnan
+   bl check_fpu_nan
+0: fmadd %f3,%f10,%f0,%f11  # QNaN * 0 + SNaN
+   bl record
+   fmr %f4,%f10
+   bl add_fpscr_vxsnan
+   bl check_fpu_nan
+0: fmadd %f3,%f0,%f11,%f10  # 0 * SNaN + QNaN
+   bl record
+   fmr %f4,%f10             # The addend is frB, so it gets precedence.
+   bl add_fpscr_vxsnan
+   bl check_fpu_nan
+0: fneg %f3,%f12            # QNaN * SNaN + QNaN
+   fmadd %f3,%f10,%f11,%f3
+   bl record
+   fmr %f4,%f10
+   bl add_fpscr_vxsnan
    bl check_fpu_nan
 0: mtfsf 255,%f0            # SNaN * normal + normal (exception enabled)
    mtfsb1 24
@@ -9605,6 +9703,27 @@ get_load_address:
    bl record
    fmr %f4,%f10
    bl check_fpu_nan
+0: fmsub %f3,%f10,%f11,%f0  # QNaN * SNaN - 0
+   bl record
+   fmr %f4,%f10
+   bl add_fpscr_vxsnan
+   bl check_fpu_nan
+0: fmsub %f3,%f10,%f0,%f11  # QNaN * 0 - SNaN
+   bl record
+   fmr %f4,%f10
+   bl add_fpscr_vxsnan
+   bl check_fpu_nan
+0: fmsub %f3,%f0,%f11,%f10  # 0 * SNaN - QNaN
+   bl record
+   fmr %f4,%f10
+   bl add_fpscr_vxsnan
+   bl check_fpu_nan
+0: fneg %f3,%f12            # QNaN * SNaN - QNaN
+   fmsub %f3,%f10,%f11,%f3
+   bl record
+   fmr %f4,%f10
+   bl add_fpscr_vxsnan
+   bl check_fpu_nan
 0: mtfsf 255,%f0            # SNaN * normal - normal (exception enabled)
    mtfsb1 24
    fmr %f3,%f24
@@ -9942,6 +10061,27 @@ get_load_address:
    fnmadd %f3,%f9,%f10,%f4
    bl record
    fmr %f4,%f10
+   bl check_fpu_nan
+0: fnmadd %f3,%f10,%f11,%f0  # QNaN * SNaN + 0
+   bl record
+   fmr %f4,%f10
+   bl add_fpscr_vxsnan
+   bl check_fpu_nan
+0: fnmadd %f3,%f10,%f0,%f11  # QNaN * 0 + SNaN
+   bl record
+   fmr %f4,%f10
+   bl add_fpscr_vxsnan
+   bl check_fpu_nan
+0: fnmadd %f3,%f0,%f11,%f10  # 0 * SNaN + QNaN
+   bl record
+   fmr %f4,%f10
+   bl add_fpscr_vxsnan
+   bl check_fpu_nan
+0: fneg %f3,%f10            # QNaN * SNaN + QNaN
+   fnmadd %f3,%f10,%f11,%f3
+   bl record
+   fmr %f4,%f10
+   bl add_fpscr_vxsnan
    bl check_fpu_nan
 0: mtfsf 255,%f0            # SNaN * normal + normal (exception enabled)
    mtfsb1 24
@@ -10288,6 +10428,27 @@ get_load_address:
 0: fnmsub %f3,%f9,%f10,%f9  # +infinity * QNaN - infinity
    bl record
    fmr %f4,%f10
+   bl check_fpu_nan
+0: fnmsub %f3,%f10,%f11,%f0  # QNaN * SNaN - 0
+   bl record
+   fmr %f4,%f10
+   bl add_fpscr_vxsnan
+   bl check_fpu_nan
+0: fnmsub %f3,%f10,%f0,%f11  # QNaN * 0 - SNaN
+   bl record
+   fmr %f4,%f10
+   bl add_fpscr_vxsnan
+   bl check_fpu_nan
+0: fnmsub %f3,%f0,%f11,%f10  # 0 * SNaN - QNaN
+   bl record
+   fmr %f4,%f10
+   bl add_fpscr_vxsnan
+   bl check_fpu_nan
+0: fneg %f3,%f10            # QNaN * SNaN - QNaN
+   fnmsub %f3,%f10,%f11,%f3
+   bl record
+   fmr %f4,%f10
+   bl add_fpscr_vxsnan
    bl check_fpu_nan
 0: mtfsf 255,%f0            # SNaN * normal - normal (exception enabled)
    mtfsb1 24

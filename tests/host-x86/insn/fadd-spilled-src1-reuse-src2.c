@@ -18,18 +18,22 @@ static const unsigned int host_opt = 0;
 
 static int add_rtl(RTLUnit *unit)
 {
-    int dummy_regs[14];
+    int dummy_regs[13];
     for (int i = 0; i < lenof(dummy_regs); i++) {
         EXPECT(dummy_regs[i] = rtl_alloc_register(unit, RTLTYPE_FLOAT32));
         EXPECT(rtl_add_insn(unit, RTLOP_NOP, dummy_regs[i], 0, 0, 0));
     }
 
-    int reg1, reg2, reg3;
+    int reg1, reg2, spiller, reg3;
     EXPECT(reg1 = rtl_alloc_register(unit, RTLTYPE_FLOAT32));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg1, 0, 0, 0x3F800000));
     EXPECT(reg2 = rtl_alloc_register(unit, RTLTYPE_FLOAT32));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg2, 0, 0, 0x40000000));
+    EXPECT(spiller = rtl_alloc_register(unit, RTLTYPE_FLOAT32));
+    EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, spiller, 0, 0, 0x40400000));
     EXPECT(reg3 = rtl_alloc_register(unit, RTLTYPE_FLOAT32));
+    /* reg2 should not be reused even though it dies here, in order to
+     * preserve NaN selection order. */
     EXPECT(rtl_add_insn(unit, RTLOP_FADD, reg3, reg1, reg2, 0));
     for (int i = 0; i < lenof(dummy_regs); i++) {
         EXPECT(rtl_add_insn(unit, RTLOP_NOP, 0, dummy_regs[i], 0, 0));
@@ -42,11 +46,14 @@ static int add_rtl(RTLUnit *unit)
 static const uint8_t expected_code[] = {
     0x48,0x83,0xEC,0x08,                // sub $8,%rsp
     0xB8,0x00,0x00,0x80,0x3F,           // mov $0x3F800000,%eax
-    0x66,0x44,0x0F,0x6E,0xF0,           // movd %eax,%xmm14
-    0xF3,0x44,0x0F,0x11,0x34,0x24,      // movss %xmm14,(%rsp)
+    0x66,0x44,0x0F,0x6E,0xE8,           // movd %eax,%xmm13
     0xB8,0x00,0x00,0x00,0x40,           // mov $0x40000000,%eax
     0x66,0x44,0x0F,0x6E,0xF0,           // movd %eax,%xmm14
-    0xF3,0x44,0x0F,0x58,0x34,0x24,      // addss (%rsp),%xmm14
+    0xF3,0x44,0x0F,0x11,0x2C,0x24,      // movss %xmm13,(%rsp)
+    0xB8,0x00,0x00,0x40,0x40,           // mov $0x40400000,%eax
+    0x66,0x44,0x0F,0x6E,0xE8,           // movd %eax,%xmm13
+    0xF3,0x44,0x0F,0x10,0x2C,0x24,      // movss (%rsp),%xmm13
+    0xF3,0x45,0x0F,0x58,0xEE,           // addss %xmm14,%xmm13
     0x48,0x83,0xC4,0x08,                // add $8,%rsp
     0xC3,                               // ret
 };
