@@ -253,7 +253,7 @@ static void rtl_describe_register(const RTLRegister *reg,
 
       case RTLREG_RESULT:
       case RTLREG_RESULT_NOFOLD: {
-        static const char * const operators[] = {
+        static const char * const operators[RTLOP__LAST + 1] = {
             [RTLOP_SCAST  ] = "scast",
             [RTLOP_ZCAST  ] = "zcast",
             [RTLOP_SEXT8  ] = "sext8",
@@ -311,6 +311,7 @@ static void rtl_describe_register(const RTLRegister *reg,
             [RTLOP_FABS   ] = "abs",
             [RTLOP_FNABS  ] = "-abs",
             [RTLOP_FSQRT  ] = "sqrt",
+            [RTLOP_FCLEAREXC] = "fclearexc",
             [RTLOP_VFCAST ] = "vfcast",
             [RTLOP_VFCVT  ] = "vfcvt",
         };
@@ -355,6 +356,7 @@ static void rtl_describe_register(const RTLRegister *reg,
           case RTLOP_FABS:
           case RTLOP_FNABS:
           case RTLOP_FSQRT:
+          case RTLOP_FCLEAREXC:
           case RTLOP_VFCAST:
           case RTLOP_VFCVT:
             snprintf(buf, bufsize, "%s(r%d)",
@@ -448,6 +450,14 @@ static void rtl_describe_register(const RTLRegister *reg,
           case RTLOP_FTESTEXC:
             snprintf(buf, bufsize, "ftestexc(r%d, %s)",
                      reg->result.src1, fexc_name(reg->result.src_imm));
+            break;
+          case RTLOP_FSETROUND:
+            snprintf(buf, bufsize, "fsetround(r%d, %s)",
+                     reg->result.src1, fround_name(reg->result.src_imm));
+            break;
+          case RTLOP_FCOPYROUND:
+            snprintf(buf, bufsize, "fcopyround(r%d, r%d)",
+                     reg->result.src1, reg->result.src2);
             break;
           case RTLOP_VBUILD2:
             snprintf(buf, bufsize, "{r%d, r%d}",
@@ -583,9 +593,11 @@ static void rtl_decode_insn(const RTLUnit *unit, uint32_t index,
         [RTLOP_FNMADD    ] = "FNMADD",
         [RTLOP_FNMSUB    ] = "FNMSUB",
         [RTLOP_FGETSTATE ] = "FGETSTATE",
+        [RTLOP_FSETSTATE ] = "FSETSTATE",
         [RTLOP_FTESTEXC  ] = "FTESTEXC",
         [RTLOP_FCLEAREXC ] = "FCLEAREXC",
         [RTLOP_FSETROUND ] = "FSETROUND",
+        [RTLOP_FCOPYROUND] = "FCOPYROUND",
         [RTLOP_VBUILD2   ] = "VBUILD2",
         [RTLOP_VBROADCAST] = "VBROADCAST",
         [RTLOP_VEXTRACT  ] = "VEXTRACT",
@@ -640,7 +652,6 @@ static void rtl_decode_insn(const RTLUnit *unit, uint32_t index,
 
     switch ((RTLOpcode)insn->opcode) {
 
-      case RTLOP_FCLEAREXC:
       case RTLOP_ILLEGAL:
         s += snprintf_assert(s, top - s, "%s\n", name);
         return;
@@ -702,6 +713,7 @@ static void rtl_decode_insn(const RTLUnit *unit, uint32_t index,
       case RTLOP_FABS:
       case RTLOP_FNABS:
       case RTLOP_FSQRT:
+      case RTLOP_FCLEAREXC:
       case RTLOP_VBROADCAST:
       case RTLOP_VFCAST:
       case RTLOP_VFCVT:
@@ -747,6 +759,7 @@ static void rtl_decode_insn(const RTLUnit *unit, uint32_t index,
       case RTLOP_FSUB:
       case RTLOP_FMUL:
       case RTLOP_FDIV:
+      case RTLOP_FCOPYROUND:
       case RTLOP_VBUILD2:
         s += snprintf_assert(s, top - s, "%-10s r%d, r%d, r%d\n",
                              name, dest, src1, src2);
@@ -802,6 +815,11 @@ static void rtl_decode_insn(const RTLUnit *unit, uint32_t index,
         s += snprintf_assert(s, top - s, "%-10s r%d\n", name, dest);
         return;
 
+      case RTLOP_FSETSTATE:
+        s += snprintf_assert(s, top - s, "%-10s r%d\n", name, src1);
+        APPEND_REG_DESC(src1);
+        return;
+
       case RTLOP_FTESTEXC:
         s += snprintf_assert(s, top - s, "%-10s r%d, r%d, %s\n",
                              name, dest, src1, fexc_name(insn->src_imm));
@@ -809,8 +827,9 @@ static void rtl_decode_insn(const RTLUnit *unit, uint32_t index,
         return;
 
       case RTLOP_FSETROUND:
-        s += snprintf_assert(s, top - s, "%-10s %s\n", name,
-                             fround_name(insn->src_imm));
+        s += snprintf_assert(s, top - s, "%-10s r%d, r%d, %s\n",
+                             name, dest, src1, fround_name(insn->src_imm));
+        APPEND_REG_DESC(src1);
         return;
 
       case RTLOP_VEXTRACT:

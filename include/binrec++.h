@@ -61,7 +61,7 @@ namespace Optimize {
     const unsigned int FOLD_FP_CONSTANTS = BINREC_OPT_FOLD_FP_CONSTANTS;
     const unsigned int NATIVE_CALLS = BINREC_OPT_NATIVE_CALLS;
     const unsigned int NATIVE_IEEE_NAN = BINREC_OPT_NATIVE_IEEE_NAN;
-    const unsigned int NATIVE_IEEE_TINY = BINREC_OPT_NATIVE_IEEE_TINY;
+    const unsigned int NATIVE_IEEE_UNDERFLOW = BINREC_OPT_NATIVE_IEEE_UNDERFLOW;
     const unsigned int STACK_FRAMES = BINREC_OPT_STACK_FRAMES;
 
     namespace GuestPPC {

@@ -26,10 +26,18 @@ int main(void)
     RTLUnit *unit;
     EXPECT(unit = rtl_create_unit(handle));
 
-    EXPECT_FALSE(rtl_add_insn(unit, RTLOP_FSETROUND, 0, 0, 0, 4));
+    int reg1, reg2;
+    EXPECT(reg1 = rtl_alloc_register(unit, RTLTYPE_FPSTATE));
+    EXPECT(reg2 = rtl_alloc_register(unit, RTLTYPE_FPSTATE));
+
+    EXPECT(rtl_add_insn(unit, RTLOP_FGETSTATE, reg1, 0, 0, 0));
+    EXPECT_EQ(unit->num_insns, 1);
+    EXPECT_FALSE(unit->error);
+
+    EXPECT_FALSE(rtl_add_insn(unit, RTLOP_FSETROUND, reg2, reg1, 0, 4));
     EXPECT_ICE("Operand constraint violated:"
                " other <= RTLFROUND_CEIL");
-    EXPECT_EQ(unit->num_insns, 0);
+    EXPECT_EQ(unit->num_insns, 1);
     EXPECT(unit->error);
     unit->error = false;
 

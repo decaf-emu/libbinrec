@@ -686,7 +686,7 @@ static inline void append_move(CodeBuffer *code, RTLDataType type,
 static inline void append_move_gpr(CodeBuffer *code, RTLDataType type,
                                    X86Register host_dest, X86Register host_src)
 {
-    ASSERT(rtl_type_is_int(type));
+    ASSERT(rtl_type_is_int(type) || type == RTLTYPE_FPSTATE);
     append_insn_ModRM_reg(code, int_type_is_64(type), X86OP_MOV_Gv_Ev,
                           host_dest, host_src);
 }
@@ -750,7 +750,7 @@ static inline void append_load_gpr(
     CodeBuffer *code, RTLDataType type, X86Register host_dest,
     X86Register host_base, int32_t offset)
 {
-    ASSERT(rtl_type_is_int(type));
+    ASSERT(rtl_type_is_int(type) || type == RTLTYPE_FPSTATE);
     append_insn_ModRM_mem(code, int_type_is_64(type), X86OP_MOV_Gv_Ev,
                           host_dest, host_base, -1, offset);
 }
@@ -4140,6 +4140,20 @@ static bool translate_block(HostX86Context *ctx, int block_index)
                 X86_SP, -1, ctx->stack_mxcsr);
             break;
 
+          case RTLOP_FSETSTATE:
+            if (is_spilled(ctx, insn_index, src1)) {
+                append_insn_ModRM_mem(
+                    &code, false, X86OP_MISC_0FAE, X86OP_MISC0FAE_LDMXCSR,
+                    X86_SP, -1, ctx->regs[src1].spill_offset);
+            } else {
+                append_store(&code, RTLTYPE_INT32, ctx->regs[src1].host_reg,
+                             X86_SP, -1, ctx->stack_mxcsr);
+                append_insn_ModRM_mem(
+                    &code, false, X86OP_MISC_0FAE, X86OP_MISC0FAE_LDMXCSR,
+                    X86_SP, -1, ctx->stack_mxcsr);
+            }
+            break;
+
           case RTLOP_FTESTEXC: {
             const X86Register host_dest = ctx->regs[dest].host_reg;
             const X86Register host_src1 = ctx->regs[src1].host_reg;
@@ -4190,39 +4204,63 @@ static bool translate_block(HostX86Context *ctx, int block_index)
             break;
           }  // case RTLOP_FTESTEXC
 
-          case RTLOP_FCLEAREXC:
-            append_insn_ModRM_mem(
-                &code, false, X86OP_MISC_0FAE, X86OP_MISC0FAE_STMXCSR,
-                X86_SP, -1, ctx->stack_mxcsr);
-            append_insn_ModRM_mem(
-                &code, false, X86OP_IMM_Ev_Ib, X86OP_IMM_AND,
-                X86_SP, -1, ctx->stack_mxcsr);
-            append_imm8(&code, 0xC0);
-            append_insn_ModRM_mem(
-                &code, false, X86OP_MISC_0FAE, X86OP_MISC0FAE_LDMXCSR,
-                X86_SP, -1, ctx->stack_mxcsr);
+          case RTLOP_FCLEAREXC: {
+            const X86Register host_dest = ctx->regs[dest].host_reg;
+            append_move_or_load_gpr(&code, ctx, unit, insn_index,
+                                    host_dest, src1);
+            append_insn_ModRM_reg(&code, false, X86OP_IMM_Ev_Ib,
+                                  X86OP_IMM_AND, host_dest);
+            append_imm8(&code, -64);
             break;
+          }  // case RTLOP_FCLEAREXC
 
-          case RTLOP_FSETROUND:
-            append_insn_ModRM_mem(
-                &code, false, X86OP_MISC_0FAE, X86OP_MISC0FAE_STMXCSR,
-                X86_SP, -1, ctx->stack_mxcsr);
-            append_insn_ModRM_mem(
-                &code, false, X86OP_IMM_Ev_Iz, X86OP_IMM_AND,
-                X86_SP, -1, ctx->stack_mxcsr);
+          case RTLOP_FSETROUND: {
+            const X86Register host_dest = ctx->regs[dest].host_reg;
+            append_move_or_load_gpr(&code, ctx, unit, insn_index,
+                                    host_dest, src1);
+            append_insn_ModRM_reg(&code, false, X86OP_IMM_Ev_Iz,
+                                  X86OP_IMM_AND, host_dest);
             append_imm32(&code, 0x9FFF);
             if (insn->src_imm != RTLFROUND_NEAREST) {
-                append_insn_ModRM_mem(
-                    &code, false, X86OP_IMM_Ev_Iz, X86OP_IMM_OR,
-                    X86_SP, -1, ctx->stack_mxcsr);
+                append_insn_ModRM_reg(&code, false, X86OP_IMM_Ev_Iz,
+                                      X86OP_IMM_OR, host_dest);
                 append_imm32(
                     &code,
                     ((const uint8_t[]){0,3,1,2})[insn->src_imm & 3] << 13);
             }
-            append_insn_ModRM_mem(
-                &code, false, X86OP_MISC_0FAE, X86OP_MISC0FAE_LDMXCSR,
-                X86_SP, -1, ctx->stack_mxcsr);
             break;
+          }  // case RTLOP_FSETROUND
+
+          case RTLOP_FCOPYROUND: {
+            const X86Register host_dest = ctx->regs[dest].host_reg;
+            ASSERT(ctx->regs[dest].temp_allocated);
+            const X86Register host_temp = ctx->regs[dest].host_temp;
+            if (!is_spilled(ctx, insn_index, src2)
+             && host_dest == ctx->regs[src2].host_reg) {
+                append_insn_ModRM_reg(&code, false, X86OP_IMM_Ev_Iz,
+                                      X86OP_IMM_AND, host_dest);
+                append_imm32(&code, 0x6000);
+                append_move_or_load_gpr(&code, ctx, unit, insn_index,
+                                        host_temp, src1);
+                append_insn_ModRM_reg(&code, false, X86OP_IMM_Ev_Iz,
+                                      X86OP_IMM_AND, host_temp);
+                append_imm32(&code, 0x9FFF);
+            } else {
+                append_move_or_load_gpr(&code, ctx, unit, insn_index,
+                                        host_dest, src1);
+                append_insn_ModRM_reg(&code, false, X86OP_IMM_Ev_Iz,
+                                      X86OP_IMM_AND, host_dest);
+                append_imm32(&code, 0x9FFF);
+                append_move_or_load_gpr(&code, ctx, unit, insn_index,
+                                        host_temp, src2);
+                append_insn_ModRM_reg(&code, false, X86OP_IMM_Ev_Iz,
+                                      X86OP_IMM_AND, host_temp);
+                append_imm32(&code, 0x6000);
+            }
+            append_insn_ModRM_reg(&code, false, X86OP_OR_Gv_Ev,
+                                  host_dest, host_temp);
+            break;
+          }  // case RTLOP_FCOPYROUND
 
           case RTLOP_VBUILD2: {
             const X86Register host_dest = ctx->regs[dest].host_reg;

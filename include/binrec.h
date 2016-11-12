@@ -476,9 +476,9 @@ typedef struct binrec_setup_t {
  *
  * - Specification-safe: optimizations which may change the behavior of
  *   the generated code, but only within limits prescribed by the relevant
- *   specification.  For example, the NATIVE_IEEE_TINY optimization may
- *   change the results of certain floating-point operations relative to
- *   the results returned by guest code running on its native hardware,
+ *   specification.  For example, the NATIVE_IEEE_UNDERFLOW optimization
+ *   may change the results of certain floating-point operations relative
+ *   to the results returned by guest code running on its native hardware,
  *   but the IEEE floating-point specification allows either of two
  *   behaviors, so with respect to that specification, the optimized code
  *   is no less correct than the original.  As long as the guest code was
@@ -642,33 +642,33 @@ typedef struct binrec_setup_t {
 #define BINREC_OPT_NATIVE_IEEE_NAN  (1<<9)
 
 /**
- * BINREC_OPT_NATIVE_IEEE_TINY:  Use the host's definition of "tiny" for
- * IEEE floating-point arithmetic, even when that differs from the guest
- * definition.
+ * BINREC_OPT_NATIVE_IEEE_UNDERFLOW:  Use the host's definition of
+ * underflow for IEEE floating-point arithmetic, even when that differs
+ * from the guest definition.
  *
  * When translating between architectures which use different definitions
- * of "tiny" (IEEE allows two different behaviors: tiny before rounding
+ * of underflow (IEEE allows two different behaviors: tiny before rounding
  * and tiny after rounding), this optimization allows floating-point
  * operations to be translated directly to their equivalent host
- * instructions, at the cost of slightly different results for operations
- * with a result which is treated as "tiny" on one architecture and not
- * the other.  If this optimization is disabled, floating-point operations
- * must check explicitly for a "tiny" result, which can require several
- * additional host instructions per guest instruction.
+ * instructions, at the cost of different exception states for operations
+ * with a result which is treated as underflowing on one architecture and
+ * not the other.  If this optimization is disabled, floating-point
+ * operations must check explicitly for underflow, which can require
+ * several additional host instructions per guest instruction.
  *
  * If the host and guest use the same "tiny" rules, floating-point
  * operations can always be translated directly to native instructions
  * (at least with regard to tininess), and this flag has no effect on
  * translation.
  *
+ * Enabling the BINREC_OPT_DSE and BINREC_OPT_DSE_FP optimizations will
+ * typically have the effect of enabling this optimization as well.
+ *
  * This optimization is specification-safe: as long as guest code follows
  * the IEEE 754 specifications, it will behave correctly under this
  * optimization.
- *
- * This optimization cannot currently be disabled; the translator always
- * behaves as if it was set.
  */
-#define BINREC_OPT_NATIVE_IEEE_TINY  (1<<10)
+#define BINREC_OPT_NATIVE_IEEE_UNDERFLOW  (1<<10)
 
 /**
  * BINREC_OPT_STACK_FRAMES:  Assume that a given function's stack frame is
@@ -903,6 +903,8 @@ typedef struct binrec_setup_t {
  * will naturally not reflect the result of any floating-point operations.
  * The library will log a warning (once per translation unit) if such an
  * instruction is encountered when this optimization is enabled.
+ *
+ * This optimization implicitly enables BINREC_OPT_NATIVE_IEEE_UNDERFLOW.
  *
  * This optimization is UNSAFE: code which relies on any of the FPSCR
  * state bits will behave incorrectly if this optimization is enabled.

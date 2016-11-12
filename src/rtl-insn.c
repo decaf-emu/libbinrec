@@ -1089,6 +1089,34 @@ static bool make_fgetstate(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
 /*-----------------------------------------------------------------------*/
 
 /**
+ * make_fsetstate:  Encode an FSETSTATE instruction.
+ */
+static bool make_fsetstate(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
+                           int src2, uint64_t other)
+{
+    ASSERT(unit != NULL);
+    ASSERT(unit->regs != NULL);
+    ASSERT(insn != NULL);
+    ASSERT(src1 >= 0 && src1 < unit->next_reg);
+
+#ifdef ENABLE_OPERAND_SANITY_CHECKS
+    OPERAND_ASSERT(src1 != 0);
+    OPERAND_ASSERT(unit->regs[src1].source != RTLREG_UNDEFINED);
+    OPERAND_ASSERT(unit->regs[src1].type == RTLTYPE_FPSTATE);
+#endif
+
+    insn->src1 = src1;
+
+    RTLRegister * const src1reg = &unit->regs[src1];
+    const int insn_index = unit->num_insns;
+    rtl_mark_live(unit, insn_index, src1reg, src1);
+
+    return true;
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
  * make_ftestexc:  Encode an FTESTEXC instruction.
  */
 static bool make_ftestexc(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
@@ -1131,6 +1159,45 @@ static bool make_ftestexc(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
 /*-----------------------------------------------------------------------*/
 
 /**
+ * make_fclearexc:  Encode an FCLEAREXC instruction.
+ */
+static bool make_fclearexc(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
+                           int src2, uint64_t other)
+{
+    ASSERT(unit != NULL);
+    ASSERT(unit->regs != NULL);
+    ASSERT(insn != NULL);
+    ASSERT(dest >= 0 && dest < unit->next_reg);
+    ASSERT(src1 >= 0 && src1 < unit->next_reg);
+
+#ifdef ENABLE_OPERAND_SANITY_CHECKS
+    OPERAND_ASSERT(dest != 0);
+    OPERAND_ASSERT(src1 != 0);
+    OPERAND_ASSERT(unit->regs[dest].source == RTLREG_UNDEFINED);
+    OPERAND_ASSERT(unit->regs[src1].source != RTLREG_UNDEFINED);
+    OPERAND_ASSERT(unit->regs[dest].type == RTLTYPE_FPSTATE);
+    OPERAND_ASSERT(unit->regs[src1].type == RTLTYPE_FPSTATE);
+#endif
+
+    insn->dest = dest;
+    insn->src1 = src1;
+
+    RTLRegister * const destreg = &unit->regs[dest];
+    RTLRegister * const src1reg = &unit->regs[src1];
+    const int insn_index = unit->num_insns;
+    destreg->source = RTLREG_RESULT_NOFOLD;
+    destreg->result.opcode = insn->opcode;
+    destreg->result.is_imm = 0;
+    destreg->result.src1 = src1;
+    rtl_mark_live(unit, insn_index, destreg, dest);
+    rtl_mark_live(unit, insn_index, src1reg, src1);
+
+    return true;
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
  * make_fsetround:  Encode an FSETROUND instruction.
  */
 static bool make_fsetround(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
@@ -1139,12 +1206,80 @@ static bool make_fsetround(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
     ASSERT(unit != NULL);
     ASSERT(unit->regs != NULL);
     ASSERT(insn != NULL);
+    ASSERT(dest >= 0 && dest < unit->next_reg);
+    ASSERT(src1 >= 0 && src1 < unit->next_reg);
 
 #ifdef ENABLE_OPERAND_SANITY_CHECKS
+    OPERAND_ASSERT(dest != 0);
+    OPERAND_ASSERT(src1 != 0);
+    OPERAND_ASSERT(unit->regs[dest].source == RTLREG_UNDEFINED);
+    OPERAND_ASSERT(unit->regs[src1].source != RTLREG_UNDEFINED);
+    OPERAND_ASSERT(unit->regs[dest].type == RTLTYPE_FPSTATE);
+    OPERAND_ASSERT(unit->regs[src1].type == RTLTYPE_FPSTATE);
     OPERAND_ASSERT(other <= RTLFROUND_CEIL);
 #endif
 
+    insn->dest = dest;
+    insn->src1 = src1;
     insn->src_imm = other;
+
+    RTLRegister * const destreg = &unit->regs[dest];
+    RTLRegister * const src1reg = &unit->regs[src1];
+    const int insn_index = unit->num_insns;
+    destreg->source = RTLREG_RESULT_NOFOLD;
+    destreg->result.opcode = insn->opcode;
+    destreg->result.is_imm = 1;
+    destreg->result.src1 = src1;
+    destreg->result.src_imm = other;
+    rtl_mark_live(unit, insn_index, destreg, dest);
+    rtl_mark_live(unit, insn_index, src1reg, src1);
+
+    return true;
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
+ * make_fcopyround:  Encode an FCOPYROUND instruction.
+ */
+static bool make_fcopyround(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
+                            int src2, uint64_t other)
+{
+    ASSERT(unit != NULL);
+    ASSERT(unit->regs != NULL);
+    ASSERT(insn != NULL);
+    ASSERT(dest >= 0 && dest < unit->next_reg);
+    ASSERT(src1 >= 0 && src1 < unit->next_reg);
+    ASSERT(src2 >= 0 && src2 < unit->next_reg);
+
+#ifdef ENABLE_OPERAND_SANITY_CHECKS
+    OPERAND_ASSERT(dest != 0);
+    OPERAND_ASSERT(src1 != 0);
+    OPERAND_ASSERT(src2 != 0);
+    OPERAND_ASSERT(unit->regs[dest].source == RTLREG_UNDEFINED);
+    OPERAND_ASSERT(unit->regs[src1].source != RTLREG_UNDEFINED);
+    OPERAND_ASSERT(unit->regs[src2].source != RTLREG_UNDEFINED);
+    OPERAND_ASSERT(unit->regs[dest].type == RTLTYPE_FPSTATE);
+    OPERAND_ASSERT(unit->regs[src1].type == RTLTYPE_FPSTATE);
+    OPERAND_ASSERT(unit->regs[src2].type == RTLTYPE_FPSTATE);
+#endif
+
+    insn->dest = dest;
+    insn->src1 = src1;
+    insn->src2 = src2;
+
+    RTLRegister * const destreg = &unit->regs[dest];
+    RTLRegister * const src1reg = &unit->regs[src1];
+    RTLRegister * const src2reg = &unit->regs[src2];
+    const int insn_index = unit->num_insns;
+    destreg->source = RTLREG_RESULT_NOFOLD;
+    destreg->result.opcode = insn->opcode;
+    destreg->result.is_imm = 0;
+    destreg->result.src1 = src1;
+    destreg->result.src2 = src2;
+    rtl_mark_live(unit, insn_index, destreg, dest);
+    rtl_mark_live(unit, insn_index, src1reg, src1);
+    rtl_mark_live(unit, insn_index, src2reg, src2);
 
     return true;
 }
@@ -2007,9 +2142,11 @@ bool (* const makefunc_table[])(RTLUnit *, RTLInsn *, int, int, int,
     [RTLOP_FNMADD    ] = make_fpu_3op,
     [RTLOP_FNMSUB    ] = make_fpu_3op,
     [RTLOP_FGETSTATE ] = make_fgetstate,
+    [RTLOP_FSETSTATE ] = make_fsetstate,
     [RTLOP_FTESTEXC  ] = make_ftestexc,
-    [RTLOP_FCLEAREXC ] = make_0op,
+    [RTLOP_FCLEAREXC ] = make_fclearexc,
     [RTLOP_FSETROUND ] = make_fsetround,
+    [RTLOP_FCOPYROUND] = make_fcopyround,
     [RTLOP_VBUILD2   ] = make_vbuild2,
     [RTLOP_VBROADCAST] = make_vbroadcast,
     [RTLOP_VEXTRACT  ] = make_vextract,

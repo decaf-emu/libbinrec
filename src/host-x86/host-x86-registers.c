@@ -1062,7 +1062,9 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
                     static const uint8_t non_commutative[RTLOP__LAST/8 + 1] = {
                         /* Note that opcodes will need to be shifted around
                          * if their numeric values are changed such that
-                         * they move to different bytes. */
+                         * they move to different bytes.  The compiler
+                         * should normally warn in this case ("shift count
+                         * is negative" or "large constant truncated"). */
                         0,
                         1<<(RTLOP_SUB-8),
                         0,
@@ -1074,7 +1076,8 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
                         0,
                         1<<(RTLOP_FSUB-56),
                         1<<(RTLOP_FDIV-64),
-                        1<<(RTLOP_VBUILD2-72) | 1<<(RTLOP_VINSERT-72),
+                        1<<(RTLOP_VBUILD2-72),
+                        1<<(RTLOP_VINSERT-80),
                     };
                     ASSERT(insn->opcode >= RTLOP__FIRST
                            && insn->opcode <= RTLOP__LAST);
@@ -1219,6 +1222,11 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
             /* Temporary needed if the first operand is spilled. */
             need_temp = src1_info->spilled;
             temp_is_fpr = true;
+            break;
+
+          case RTLOP_FCOPYROUND:
+            /* Temporary needed for bitfield merging. */
+            need_temp = true;
             break;
 
           case RTLOP_VBUILD2:

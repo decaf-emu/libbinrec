@@ -24,7 +24,7 @@ int main(void)
     RTLUnit *unit;
     EXPECT(unit = rtl_create_unit(handle));
 
-    int reg1, reg2, reg3, reg4, reg5, reg6, reg7, reg8;
+    int reg1, reg2, reg3, reg4, reg5, reg6, reg7, reg8, reg9;
     EXPECT(reg1 = rtl_alloc_register(unit, RTLTYPE_INT32));
     EXPECT(reg2 = rtl_alloc_register(unit, RTLTYPE_FLOAT32));
     EXPECT(reg3 = rtl_alloc_register(unit, RTLTYPE_INT32));
@@ -33,6 +33,7 @@ int main(void)
     EXPECT(reg6 = rtl_alloc_register(unit, RTLTYPE_INT32));
     EXPECT(reg7 = rtl_alloc_register(unit, RTLTYPE_FPSTATE));
     EXPECT(reg8 = rtl_alloc_register(unit, RTLTYPE_INT32));
+    EXPECT(reg9 = rtl_alloc_register(unit, RTLTYPE_FPSTATE));
 
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg1, 0, 0, 10));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg2, 0, 0, 0x40000000));
@@ -43,7 +44,7 @@ int main(void)
     EXPECT(rtl_add_insn(unit, RTLOP_FCMP, reg6, reg2, reg2, RTLFCMP_EQ));
     EXPECT(rtl_add_insn(unit, RTLOP_FGETSTATE, reg7, 0, 0, 0));
     EXPECT(rtl_add_insn(unit, RTLOP_FTESTEXC, reg8, reg7, 0, RTLFEXC_INVALID));
-    EXPECT(rtl_add_insn(unit, RTLOP_FSETROUND, 0, 0, 0, RTLFROUND_CEIL));
+    EXPECT(rtl_add_insn(unit, RTLOP_FSETROUND, reg9, reg7, 0, RTLFROUND_CEIL));
     /* Set invalid opcodes and register sources.  These cases will never
      * be encountered in ordinary usage; this test is just to exercise the
      * default cases in various switch blocks. */
@@ -74,7 +75,8 @@ int main(void)
                  "    7: FGETSTATE  r7\n"
                  "    8: FTESTEXC   r8, r7, ???\n"
                  "           r7: fgetstate()\n"
-                 "    9: FSETROUND  ???\n"
+                 "    9: FSETROUND  r9, r7, ???\n"
+                 "           r7: fgetstate()\n"
                  "\n"
                  "Block 0: <none> --> [0,9] --> <none>\n");
 

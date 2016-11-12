@@ -113,8 +113,9 @@
  * type with an RTLOP_ZCAST or RTLOP_SCAST instruction.
  *
  * RTLTYPE_FPSTATE is a special type reserved for holding the result of an
- * FGETSTATE instruction.  This type can only be used with the FGETSTATE
- * and FTESTEXC instructions, and cannot be converted to any other type.
+ * FGETSTATE instruction.  This type can only be used with the FGETSTATE,
+ * FSETSTATE, and FTESTEXC instructions, and it cannot be converted to any
+ * other type.
  */
 typedef enum RTLDataType {
     /* Zero is invalid. */
@@ -298,16 +299,20 @@ typedef enum RTLOpcode {
     RTLOP_FNMADD,       // dest = fma(-src1, src2, src3)
     RTLOP_FNMSUB,       // dest = fma(-src1, src2, -src3)
 
-    /* Floating-point state manipulation.  The state operand (dest for
-     * FGETSTATE, src1 for FTESTEXC) must be of type FPSTATE. */
+    /* Floating-point state manipulation.  State operands must be of type
+     * FPSTATE. */
     RTLOP_FGETSTATE,    // dest = fpstate()
+                        //    [reads current host floating-point state]
+    RTLOP_FSETSTATE,    // set_fpstate(src1)
+                        //    [sets host floating-point state to src1]
     RTLOP_FTESTEXC,     // dest = fpstate_has_exception(src1, IMMEDIATE(other))
                         //    [other is one of RTLFEXC_*; dest must be of
                         //     integer type and receives 1 or 0]
-    RTLOP_FCLEAREXC,    // clear_fp_exceptions()
-                        //    [no operands; clears all pending exceptions]
-    RTLOP_FSETROUND,    // set_rounding_mode(IMMEDIATE(other))
+    RTLOP_FCLEAREXC,    // dest = fpstate_clear_exceptions(src1)
+    RTLOP_FSETROUND,    // dest = fpstate_set_round(src1, IMMEDIATE(other))
                         //    [other is one of RTLFROUND_*]
+    RTLOP_FCOPYROUND,   // dest = fpstate_copy_round(src1, src2)
+                        //    [copies rounding mode from src2 into src1]
 
     /* Vector manipulation instructions. */
     RTLOP_VBUILD2,      // dest = {src1, src2}

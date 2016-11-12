@@ -24,18 +24,37 @@ int main(void)
     RTLUnit *unit;
     EXPECT(unit = rtl_create_unit(handle));
 
-    EXPECT(rtl_add_insn(unit, RTLOP_FCLEAREXC, 0, 0, 0, 0));
-    EXPECT_EQ(unit->num_insns, 1);
-    EXPECT_EQ(unit->insns[0].opcode, RTLOP_FCLEAREXC);
+    int reg1, reg2, reg3;
+    EXPECT(reg1 = rtl_alloc_register(unit, RTLTYPE_FPSTATE));
+    EXPECT(reg2 = rtl_alloc_register(unit, RTLTYPE_FPSTATE));
+    EXPECT(reg3 = rtl_alloc_register(unit, RTLTYPE_FPSTATE));
+
+    EXPECT(rtl_add_insn(unit, RTLOP_FGETSTATE, reg1, 0, 0, 0));
+    EXPECT(rtl_add_insn(unit, RTLOP_FCLEAREXC, reg2, reg1, 0, 0));
+    EXPECT_EQ(unit->num_insns, 2);
+    EXPECT_EQ(unit->insns[1].opcode, RTLOP_FCLEAREXC);
+    EXPECT_EQ(unit->insns[1].dest, reg2);
+    EXPECT_EQ(unit->insns[1].src1, reg1);
+    EXPECT_EQ(unit->regs[reg1].birth, 0);
+    EXPECT_EQ(unit->regs[reg1].death, 1);
+    EXPECT_EQ(unit->regs[reg2].birth, 1);
+    EXPECT_EQ(unit->regs[reg2].death, 1);
     EXPECT(unit->have_block);
+    EXPECT_FALSE(unit->error);
+
+    EXPECT(rtl_add_insn(unit, RTLOP_MOVE, reg3, reg2, 0, 0));
     EXPECT_FALSE(unit->error);
 
     EXPECT(rtl_finalize_unit(unit));
 
     const char *disassembly =
-        "    0: FCLEAREXC\n"
+        "    0: FGETSTATE  r1\n"
+        "    1: FCLEAREXC  r2, r1\n"
+        "           r1: fgetstate()\n"
+        "    2: MOVE       r3, r2\n"
+        "           r2: fclearexc(r1)\n"
         "\n"
-        "Block 0: <none> --> [0,0] --> <none>\n"
+        "Block 0: <none> --> [0,2] --> <none>\n"
         ;
     EXPECT_STREQ(rtl_disassemble_unit(unit, true), disassembly);
 

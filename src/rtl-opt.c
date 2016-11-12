@@ -805,9 +805,11 @@ static inline uint64_t fold_constant(RTLUnit * const unit,
       case RTLOP_GET_ALIAS:
       case RTLOP_SELECT:  // Reduced to MOVE if foldable.
       case RTLOP_FGETSTATE:
+      case RTLOP_FSETSTATE:
       case RTLOP_FTESTEXC:
       case RTLOP_FCLEAREXC:
       case RTLOP_FSETROUND:
+      case RTLOP_FCOPYROUND:
       case RTLOP_VBUILD2:
       case RTLOP_VBROADCAST:
       case RTLOP_VEXTRACT:
@@ -1058,9 +1060,11 @@ static inline bool convert_to_regimm(RTLUnit * const unit,
       case RTLOP_FNMADD:
       case RTLOP_FNMSUB:
       case RTLOP_FGETSTATE:
+      case RTLOP_FSETSTATE:
       case RTLOP_FTESTEXC:
       case RTLOP_FCLEAREXC:
       case RTLOP_FSETROUND:
+      case RTLOP_FCOPYROUND:
       case RTLOP_VBUILD2:
       case RTLOP_VBROADCAST:
       case RTLOP_VEXTRACT:
