@@ -4209,6 +4209,23 @@ static inline void translate_x3F(
             translate_fp_arith(ctx, insn, RTLOP_FMUL, false, FPSCR_VXIMZ);
             return;
 
+          case XO_FRSQRTE: {
+            const int frB = get_fpr(ctx, insn_frB(insn), RTLTYPE_FLOAT64);
+            const int sqrt_frB = rtl_alloc_register(unit, RTLTYPE_FLOAT64);
+            rtl_add_insn(unit, RTLOP_FSQRT, sqrt_frB, frB, 0, 0);
+            const int one = rtl_alloc_register(unit, RTLTYPE_FLOAT64);
+            rtl_add_insn(unit, RTLOP_LOAD_IMM,
+                         one, 0, 0, UINT64_C(0x3FF0000000000000));
+            const int result = rtl_alloc_register(unit, RTLTYPE_FLOAT64);
+            rtl_add_insn(unit, RTLOP_FDIV, result, one, sqrt_frB, 0);
+            set_fp_result(ctx, insn_frD(insn), result, 0, sqrt_frB, 0,
+                          0, FPSCR_VXSQRT, true, false);
+            if (insn_Rc(insn)) {
+                update_cr1(ctx);
+            }
+            return;
+          }  // case XO_FRSQRTE
+
           default: return;  // FIXME: not yet implemented
         }
 
