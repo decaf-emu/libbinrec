@@ -112,13 +112,16 @@ More generally, libbinrec is designed to translate between architectures
 rather than hardware implementations; thus, as a rule, input code which
 triggers behavior undefined in the architecture specification may behave
 differently when translated by libbinrec than when run on a physical CPU
-implementing the guest architecture.  For example, the PowerPC divide
-instructions specify that the contents of the destination register are
-undefined after divison by zero; libbinrec deliberately skips updating
-the register state in this case, so the value eventually stored back to
-the processor state block will depend on the structure of the translated
-code.  This likely differs from the behavior of an actual PowerPC CPU,
-but libbinrec does not attempt to match that behavior.
+implementing the guest architecture.  For example, the PowerPC integer
+divide instructions specify that the contents of the destination
+register are undefined after divison by zero; libbinrec deliberately
+skips updating the register state in this case, so the value eventually
+stored back to the processor state block will depend on the structure of
+the translated code.  This likely differs from the behavior of an actual
+PowerPC CPU, but libbinrec does not attempt to match that behavior.
+(There are a few exceptions to this rule, such as frC rounding for
+PowerPC floating-point multiply operations; see the guest-specific
+documentation for details.)
 
 libbinrec is intended as a pure program translator rather than a
 full-fledged architecture emulator, and consequently it does not support

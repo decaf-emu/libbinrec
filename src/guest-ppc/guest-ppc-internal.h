@@ -381,6 +381,10 @@ typedef struct GuestPPCContext {
 
     /* Alias registers for guest CPU state. */
     GuestPPCRegMap alias;
+    /* Alias registers for single-precision multiply rounding (see
+     * round_for_multiply() in guest-ppc-rtl.c). */
+    uint16_t alias_mulround_frA;
+    uint16_t alias_mulround_frC;
 
     /* Set of FPR registers which need vector (paired-single) aliases. */
     uint32_t fpr_is_ps;

@@ -3,6 +3,17 @@
 # No copyright is claimed on this file.
 #
 # Update history:
+#    - 2016-11-12: Added tests to verify that certain unused FPR fields in
+#         floating-point instructions are ignored.  See notes at "fadd
+#         (nonzero frC)" for details.
+#    - 2016-11-11: Added more tests for frC rounding behavior with
+#         single-precision multiply operations.
+#    - 2016-11-11: Added tests to verify that double-precision multiply
+#         operations do not round the frC mantissa to 24 bits.
+#    - 2016-11-11: Fixed an fmadd test which could fail to detect
+#         FPSCR[XX,FI] not being set on an inexact operation.
+#    - 2016-11-11: Changed register usage in a few tests to avoid having
+#         multiple tests with the same instruction word.
 #    - 2016-11-03: Fixed an incorrect comment.
 #    - 2016-10-14: Fixed cases in which mtcrf and mcrxr tests could leave
 #         blank failure records.
@@ -7960,6 +7971,12 @@ get_load_address:
    bl add_fpscr_vxsnan
    bl check_fpu_pnorm
 
+   # frsp (nonzero frA -- see notes at fadd)
+0: .int 0xFC6BC018  # frsp %f3,%f24,frA=%f11
+   bl record
+   fmr %f4,%f24
+   bl check_fpu_pnorm
+
    # frsp.
    # We assume frsp and frsp. share the same implementation and just check
    # that CR1 is updated properly (and likewise in tests below).
@@ -8080,6 +8097,18 @@ get_load_address:
    bl add_fpscr_vxsnan
    bl check_fpu_pnorm
 
+   # fadd (nonzero frC)
+   # The PowerPC spec requires frC to be zero, but the 750CL just ignores
+   # the frC field.  Likewise for the unused fields in the other 1- and
+   # 2-operand floating-point instructions, though frC must be zero for
+   # frsp and fctiw[z], suggesting that the processor reads the full
+   # 10-bit XO field for OPCD 0x3F with XO bit 0x10 clear.  We use a SNaN
+   # in the ignored fields to verify that the operand is in fact ignored.
+   .int 0xFC61C2EA      # fadd %f3,%f1,%f24,frC=%f11
+   bl record
+   fmr %f4,%f30
+   bl check_fpu_pnorm
+
    # fadd.
 0: fadd. %f3,%f1,%f11   # normal + SNaN
    bl record
@@ -8166,6 +8195,12 @@ get_load_address:
    fmr %f4,%f2
    bl check_fpu_pnorm
    mtfsfi 7,0
+
+   # fadds (nonzero frC)
+   .int 0xEC61CAEA      # fadds %f3,%f1,%f25,frC=%f11
+   bl record
+   fmr %f4,%f30
+   bl check_fpu_pnorm_inex
 
    # fadds.
 0: fadds. %f3,%f1,%f11  # normal + SNaN
@@ -8255,6 +8290,12 @@ get_load_address:
    bl add_fpscr_vxsnan
    bl check_fpu_pnorm
 
+   # fsub (nonzero frC)
+   .int 0xFC7E0AE8      # fsub %f3,%f30,%f1,frC=%f11
+   bl record
+   fmr %f4,%f24
+   bl check_fpu_pnorm
+
    # fsub.
 0: fsub. %f3,%f1,%f11   # normal - SNaN
    bl record
@@ -8335,6 +8376,13 @@ get_load_address:
    fmr %f4,%f2
    bl check_fpu_pnorm
    mtfsfi 7,0
+
+   # fsubs (nonzero frC)
+0: lfd %f13,56(%r31)
+   .int 0xEC7B6AE8      # fsubs %f3,%f27,%f13,frC=%f11
+   bl record
+   fmr %f4,%f24
+   bl check_fpu_pnorm_inex
 
    # fsubs.
 0: fsubs. %f3,%f1,%f11  # normal - SNaN
@@ -8426,6 +8474,24 @@ get_load_address:
    bl add_fpscr_vximz
    bl check_fpu_noresult
    mtfsb0 24
+   # frC rounding (see under fmuls below) should not occur for
+   # double-precision operations.
+0: mtfsfi 7,1           # 1.5 * 1.333...4 (round down)
+   lwz %r3,288(%r31)
+   stw %r3,0(%r4)
+   lwz %r3,292(%r31)
+   addi %r3,%r3,1
+   stw %r3,4(%r4)
+   lfd %f3,0(%r4)
+   lfd %f13,296(%r31)
+   fmul %f3,%f13,%f3
+   bl record
+   lis %r3,0x4000
+   stw %r3,8(%r4)
+   stw %r0,12(%r4)
+   lfd %f4,8(%r4)
+   bl check_fpu_pnorm_inex
+   mtfsfi 7,0
 
    # fmul (FPSCR[FX] handling)
 0: fmul %f4,%f1,%f11
@@ -8445,6 +8511,12 @@ get_load_address:
    fmr %f3,%f4
    fmr %f4,%f24
    bl add_fpscr_vxsnan
+   bl check_fpu_pnorm
+
+   # fmul (nonzero frB)
+0: .int 0xFC625F32      # fmul %f3,%f2,%f28,frB=%f11
+   bl record
+   fmr %f4,%f24
    bl check_fpu_pnorm
 
    # fmul.
@@ -8641,6 +8713,19 @@ get_load_address:
    stw %r0,4(%r4)
    lfd %f4,0(%r4)
    bl check_fpu_pnorm
+   # This test will fail if the implementation shifts out the sign bit of
+   # frA when avoiding round-to-infinity of frC.  (It will also fail if
+   # the previous test failed.)
+0: lfd %f4,376(%r31)    # -minimum_denormal * HUGE_VAL
+   fneg %f4,%f4
+   lfd %f13,320(%r31)
+   fmuls %f3,%f4,%f13
+   bl record
+   lis %r3,0xBCD0
+   stw %r3,0(%r4)
+   stw %r0,4(%r4)
+   lfd %f4,0(%r4)
+   bl check_fpu_nnorm
    # This test will fail if the implementation sets FPSCR[FI] or FPSCR[XX]
    # based on the result of rounding frC.
 0: lfd %f3,384(%r31)    # 1 * (1.0f - 0.25ulp)
@@ -8661,9 +8746,9 @@ get_load_address:
    stw %r3,12(%r4)
    lfd %f3,0(%r4)
    lfd %f4,8(%r4)
-   fmuls %f13,%f3,%f4
+   fmuls %f4,%f3,%f4
    bl record
-   fmr %f3,%f13
+   fmr %f3,%f4
    lis %r3,0x3E60
    stw %r3,16(%r4)
    stw %r0,20(%r4)
@@ -8678,11 +8763,11 @@ get_load_address:
    lis %r3,0x1FF
    ori %r3,%r3,0xFFFF
    stw %r3,12(%r4)
-   lfd %f3,0(%r4)
-   lfd %f4,8(%r4)
-   fmuls %f13,%f3,%f4
+   lfd %f4,0(%r4)
+   lfd %f3,8(%r4)
+   fmuls %f4,%f4,%f3
    bl record
-   fmr %f3,%f13
+   fmr %f3,%f4
    lis %r3,0x3E4F
    ori %r3,%r3,0xFFFF
    stw %r3,16(%r4)
@@ -8690,6 +8775,27 @@ get_load_address:
    stw %r3,20(%r4)
    lfd %f4,16(%r4)
    bl check_fpu_pnorm_inex
+   mtfsfi 7,0
+   # This test will fail if normalizing frC shifts the sign bit out.
+0: mtfsfi 7,1           # 2^1023 * -(2^-1048 - 1ulp)
+   lis %r3,0x7FE0
+   stw %r3,0(%r4)
+   stw %r0,4(%r4)
+   lis %r3,0x8000
+   stw %r3,8(%r4)
+   lis %r3,0x3FF
+   ori %r3,%r3,0xFFFF
+   stw %r3,12(%r4)
+   lfd %f3,0(%r4)
+   lfd %f4,8(%r4)
+   fmuls %f13,%f3,%f4
+   bl record
+   fmr %f3,%f13
+   lis %r3,0xBE60
+   stw %r3,16(%r4)
+   stw %r0,20(%r4)
+   lfd %f4,16(%r4)
+   bl check_fpu_nnorm
    mtfsfi 7,0
    # This test will fail if the implementation fails to raise an inexact
    # or underflow exception when normalization of a second-operand denormal
@@ -8746,6 +8852,12 @@ get_load_address:
    stw %r3,4(%r4)
    lfd %f4,0(%r4)
    bl check_fpu_nan
+
+   # fmuls (nonzero frB)
+0: .int 0xEC625F72      # fmuls %f3,%f2,%f29,frB=%f11
+   bl record
+   fmr %f4,%f24
+   bl check_fpu_pnorm_inex
 
    # fmuls.
 0: fmuls. %f3,%f1,%f11  # normal * SNaN
@@ -8866,6 +8978,12 @@ get_load_address:
    bl add_fpscr_vxsnan
    bl check_fpu_pnorm
 
+   # fdiv (nonzero frC)
+0: .int 0xFC7812E4      # fdiv %f3,%f24,%f2,frC=%f11
+   bl record
+   fmr %f4,%f28
+   bl check_fpu_pnorm
+
    # fdiv.
 0: fdiv. %f3,%f1,%f11   # normal / SNaN
    bl record
@@ -8923,8 +9041,8 @@ get_load_address:
    lfd %f4,328(%r31)
    bl check_fpu_pnorm
 0: lfd %f4,336(%r31)    # 2^128 / 0.5
-   lfd %f13,64(%r31)
-   fdivs %f3,%f4,%f13
+   lfd %f3,64(%r31)
+   fdivs %f3,%f4,%f3
    bl record
    fmr %f4,%f9
    bl add_fpscr_ox
@@ -8934,11 +9052,11 @@ get_load_address:
    stw %r3,0(%r4)
    lis %r3,0xB800
    stw %r3,4(%r4)
-   lfd %f3,0(%r4)
+   lfd %f13,0(%r4)
    lis %r3,0x3FA0
    stw %r3,8(%r4)
    lfs %f4,8(%r4)
-   fdivs %f3,%f3,%f4
+   fdivs %f3,%f13,%f4
    bl record
    lis %r3,0x3FAA
    ori %r3,%r3,0xAAAB
@@ -8946,11 +9064,17 @@ get_load_address:
    lfs %f4,12(%r4)
    bl check_fpu_pnorm
 0: lfd %f4,0(%r4)       # 1.666666716337204 / 1.3333333730697632 = 1.25 (exact)
-   lfs %f3,12(%r4)
-   fdivs %f3,%f4,%f3
+   lfs %f13,12(%r4)
+   fdivs %f3,%f4,%f13
    bl record
    lfs %f4,8(%r4)
    bl check_fpu_pnorm
+
+   # fdivs (nonzero frC)
+0: .int 0xEC7912E4      # fdivs %f3,%f25,%f2,frC=%f11
+   bl record
+   fmr %f4,%f28
+   bl check_fpu_pnorm_inex
 
    # fdivs.
 0: fdivs. %f3,%f1,%f11  # normal / SNaN
@@ -9121,8 +9245,10 @@ get_load_address:
    lfd %f13,296(%r31)
    fmadd %f3,%f3,%f13,%f0   # Should truncate to (2.0 - 1ulp).
    bl record
+   lfd %f4,304(%r31)
+   bl check_fpu_pnorm_inex
    lfd %f4,312(%r31)
-   fadd %f3,%f3,%r4         # Should not change the result.
+   fadd %f3,%f3,%r4         # Adding 1ulp to the result should not change it.
    lfd %f4,304(%r31)
    bl check_fpu_pnorm_inex
    mtfsfi 7,0
@@ -9131,6 +9257,15 @@ get_load_address:
    lfd %f13,296(%r31)
    lfd %f4,312(%r31)
    fmadd %f3,%f3,%f13,%f4   # Should be exactly 2.0.
+   bl record
+   fmr %f4,%f2
+   bl check_fpu_pnorm
+   mtfsfi 7,0
+0: mtfsfi 7,1               # 1.5 * 1.333... + 1ulp (round toward zero)
+   lfd %f3,288(%r31)
+   lfd %f13,296(%r31)
+   lfd %f4,312(%r31)
+   fmadd %f3,%f13,%f3,%f4   # Should be exactly 2.0 (no frC rounding).
    bl record
    fmr %f4,%f2
    bl check_fpu_pnorm
@@ -10551,6 +10686,12 @@ get_load_address:
    bl add_fpscr_vxcvi
    bl check_fctiw
 
+   # fctiw (nonzero frA)
+0: .int 0xFC6B001C  # fctiw %f3,%f0,frA=%f11
+   bl record
+   li %r7,0
+   bl check_fctiw
+
    # fctiw.
 0: fctiw. %f3,%f11  # SNaN
    bl record
@@ -10601,6 +10742,12 @@ get_load_address:
    bl record
    mr %r7,%r26
    bl check_fctiw_inex
+
+   # fctiwz (nonzero frA)
+0: .int 0xFC6B001E  # fctiwz %f3,%f0,frA=%f11
+   bl record
+   li %r7,0
+   bl check_fctiw
 
    # fctiwz.
 0: fctiwz. %f3,%f11
@@ -10787,6 +10934,12 @@ get_load_address:
    bl add_fpscr_vxsnan
    bl check_fpu_pnorm
 
+   # fres (nonzero frA and frC)
+0: .int 0xEC6B12F0      # fres %f3,%f2,frA=%f11,frC=%f11
+   bl record
+   lfd %f4,392(%r31)
+   bl check_fpu_pnorm
+
    # fres.
 0: fres. %f3,%f11       # SNaN
    bl record
@@ -10912,6 +11065,12 @@ get_load_address:
    fmr %f3,%f4
    lfd %f4,408(%r31)
    bl add_fpscr_vxsnan
+   bl check_fpu_pnorm
+
+   # frsqrte (nonzero frA and frC)
+0: .int 0xFC6BEAF4      # frsqrte %f3,%f29,frA=%f11,frC=%f11
+   bl record
+   lfd %f4,408(%r31)
    bl check_fpu_pnorm
 
    # frsqrte.
@@ -15605,6 +15764,24 @@ get_load_address:
    lfd %f4,0(%r4)
    fmr %f5,%f0
    bl check_ps_pnorm
+   # This test will fail if the implementation shifts out the sign bit of
+   # frA when avoiding round-to-infinity of frC.  (It will also fail if
+   # the previous test failed.)
+0: lfd_ps %f13,320(%r31),%f0  # -minimum_denormal * HUGE_VAL
+   lwz %r3,376(%r31)
+   xoris %r3,%r3,0x8000
+   stw %r3,0(%r4)
+   lwz %r3,380(%r31)
+   stw %r3,4(%r4)
+   lfd_ps %f4,0(%r4),%f0
+   ps_mul %f3,%f4,%f13
+   bl record
+   lis %r3,0xBCD0
+   stw %r3,0(%r4)
+   stw %r0,4(%r4)
+   lfd %f4,0(%r4)
+   fmr %f5,%f0
+   bl check_ps_nnorm
    # This test will fail if the implementation sets FPSCR[FI] or FPSCR[XX]
    # based on the result of rounding frC.
 0: lfd_ps %f3,384(%r31),%f0  # 1 * (1.0f - 0.25ulp)
@@ -15654,6 +15831,27 @@ get_load_address:
    lfd %f4,16(%r4)
    fmr %f5,%f0
    bl check_ps_pnorm_inex
+   mtfsfi 7,0
+   # This test will fail if normalizing frC shifts the sign bit out.
+0: mtfsfi 7,1           # 2^1023 * (2^-1048 - 1ulp)
+   lis %r3,0x7FE0
+   stw %r3,0(%r4)
+   stw %r0,4(%r4)
+   lis %r3,0x8000
+   stw %r3,8(%r4)
+   lis %r3,0x3FF
+   ori %r3,%r3,0xFFFF
+   stw %r3,12(%r4)
+   lfd_ps %f13,0(%r4),%f0
+   lfd_ps %f15,8(%r4),%f0
+   ps_mul %f3,%f13,%f15
+   bl record
+   lis %r3,0xBE60
+   stw %r3,16(%r4)
+   stw %r0,20(%r4)
+   lfd %f4,16(%r4)
+   fmr %f5,%f0
+   bl check_ps_nnorm
    mtfsfi 7,0
    # This test will fail if the implementation fails to raise an inexact
    # or underflow exception when normalization of a second-operand denormal

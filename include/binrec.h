@@ -83,6 +83,14 @@ extern "C" {
  * The "non-IEEE" (NI) flag in FPSCR is ignored; floating-point operations
  * will always be performed in full precision.
  *
+ * libbinrec implements the implementation-specific behavior of 32-bit
+ * PowerPC processors (at least the 750CL) that single-precision
+ * floating-point instructions accept double-precision operands, including
+ * the quirk that a double-precision frC operand to a single-precision
+ * multiply or multiply-add instruction is rounded to 24 bits (this latter
+ * behavior can be suppressed with the BINREC_OPT_G_FAST_FMULS optimization
+ * flag).
+ *
  * The conditional load/store instructions (lwarx and stwcx.) rely on
  * hardware support for their behavior.  Since such hardware support is
  * not necessarily available in the host environment, and since a correct
@@ -694,6 +702,43 @@ typedef struct binrec_setup_t {
 #define BINREC_OPT_G_PPC_CONSTANT_GQRS  (1<<0)
 
 /**
+ * BINREC_OPT_G_PPC_FAST_FMULS:  Do not attempt to round the second
+ * multiplicand (frC) to a single-precision multiply or multiply-add
+ * instruction.
+ *
+ * According to the PowerPC architecture specification, the result of
+ * using non-single-precision values with single-precision instructions is
+ * undefined.  Real 32-bit PowerPC chips (at least the 750CL) just perform
+ * the operation in double precision and round the result to single
+ * precision -- with one exception: the second operand (frC) to a multiply
+ * operation has its mantissa rounded to 24 bits before the multiplication
+ * is performed.  libbinrec implements this rounding on an frC operand
+ * which is not known to already be in single-precision format; since the
+ * library does not perform the deep analysis required to carry knowledge
+ * of data format across branches (such as in loops), rounding may have to
+ * be performed frequently even in guest code which properly converts all
+ * values to single precision before using single-precision insturctions.
+ * This rounding is fairly expensive because of the various edge cases
+ * that need to be handled.
+ *
+ * If this optimization is enabled, libbinrec will assume that the frC
+ * operand to an fmuls, fmadds, fmsubs, fnmadds, or fnmsubs instruction is
+ * representable in single precision even if it is not known to be in
+ * single-precision format, and will skip the rounding step.
+ *
+ * In the more general case of double-precision operands used with
+ * single-precision instructions, libbinrec always performs the operation
+ * in double precision, since it will generally be no slower (and often
+ * faster) to round the result after the operation than to round all input
+ * operands beforehand.
+ *
+ * This optimization is specification-safe: as long as guest code follows
+ * the PowerPC specifications, it will behave correctly under this
+ * optimization.
+ */
+#define BINREC_OPT_G_PPC_FAST_FMULS  (1<<1)
+
+/**
  * BINREC_OPT_G_PPC_FAST_NANS:  Do not attempt to preserve the
  * signaling/quiet state of floating-point NaN (not-a-number) values.
  *
@@ -711,7 +756,7 @@ typedef struct binrec_setup_t {
  * store a single-precision signaling NaN and preserve its signaling state
  * will not behave correctly.
  */
-#define BINREC_OPT_G_PPC_FAST_NANS  (1<<1)
+#define BINREC_OPT_G_PPC_FAST_NANS  (1<<2)
 
 /**
  * BINREC_OPT_G_PPC_IGNORE_FPSCR_FR:  Do not set the FR bit of FPSCR after
@@ -734,7 +779,7 @@ typedef struct binrec_setup_t {
  * This optimization cannot currently be disabled; the translator behaves
  * as if it was always set.
  */
-#define BINREC_OPT_G_PPC_IGNORE_FPSCR_FR  (1<<2)
+#define BINREC_OPT_G_PPC_IGNORE_FPSCR_FR  (1<<3)
 
 /**
  * BINREC_OPT_G_PPC_IGNORE_FPSCR_VXFOO:  Do not set FPSCR exception bits
@@ -759,7 +804,7 @@ typedef struct binrec_setup_t {
  * This optimization has no effect if BINREC_OPT_G_PPC_NO_FPSCR_STATE is
  * enabled.
  */
-#define BINREC_OPT_G_PPC_IGNORE_FPSCR_VXFOO  (1<<3)
+#define BINREC_OPT_G_PPC_IGNORE_FPSCR_VXFOO  (1<<4)
 
 /**
  * BINREC_OPT_G_PPC_NATIVE_RECIPROCAL:  Translate guest PowerPC
@@ -784,7 +829,7 @@ typedef struct binrec_setup_t {
  * This optimization cannot currently be disabled; the translator behaves
  * as if it was always set.
  */
-#define BINREC_OPT_G_PPC_NATIVE_RECIPROCAL  (1<<4)
+#define BINREC_OPT_G_PPC_NATIVE_RECIPROCAL  (1<<5)
 
 /**
  * BINREC_OPT_G_PPC_NO_FPSCR_STATE:  Do not write any state bits (exception
@@ -816,7 +861,7 @@ typedef struct binrec_setup_t {
  * This optimization is UNSAFE: code which relies on any of the FPSCR
  * state bits will behave incorrectly if this optimization is enabled.
  */
-#define BINREC_OPT_G_PPC_NO_FPSCR_STATE  (1<<5)
+#define BINREC_OPT_G_PPC_NO_FPSCR_STATE  (1<<6)
 
 /**
  * BINREC_OPT_G_PPC_TRIM_CR_STORES:  Analyze the data flow through each
@@ -828,7 +873,7 @@ typedef struct binrec_setup_t {
  * in the processor state block.  System call and trap handlers are not
  * affected.
  */
-#define BINREC_OPT_G_PPC_TRIM_CR_STORES  (1<<6)
+#define BINREC_OPT_G_PPC_TRIM_CR_STORES  (1<<7)
 
 /*------------ Host-architecture-specific optimization flags ------------*/
 
