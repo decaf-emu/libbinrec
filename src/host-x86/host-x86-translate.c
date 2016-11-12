@@ -106,9 +106,9 @@ static inline void append_opcode(CodeBuffer *code, X86Opcode opcode)
 /*-----------------------------------------------------------------------*/
 
 /**
- * append_rex_opcode:  Append an x86 opcode with REX prefix to the current
- * code stream.  The code buffer is assumed to have enough space for the
- * instruction.
+ * append_rex_opcode:  Append an x86 opcode with a REX prefix to the
+ * current code stream.  The code buffer is assumed to have enough space
+ * for the instruction.
  *
  * [Parameters]
  *     handle: Translation handle.
@@ -174,6 +174,46 @@ static inline void maybe_append_empty_rex(
      && host_other1 <= X86_DI && host_other2 <= X86_DI) {
         append_opcode(code, X86OP_REX);
     }
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
+ * append_vex_opcode:  Append an x86 opcode with a VEX prefix to the
+ * current code stream.  The code buffer is assumed to have enough space
+ * for the instruction.
+ *
+ * [Parameters]
+ *     handle: Translation handle.
+ *     opcode: Opcode to append.
+ *     vex_W: True to set the W field of the VEX prefix.
+ *     vex_L: True to set the L field of the VEX prefix.
+ *     vex_R: True to set the R field of the VEX prefix (to 0).
+ *     vex_X: True to set the X field of the VEX prefix (to 0).
+ *     vex_B: True to set the B field of the VEX prefix (to 0).
+ *     vex_vvvv: Register number for the vvvv field of the VEX prefix,
+ *         _not_ complemented.  Pass 0 (not 15) if the field is not used.
+ */
+static inline void append_vex_opcode(
+    CodeBuffer *code, X86Opcode opcode, bool vex_W, bool vex_L, bool vex_R,
+    bool vex_X, bool vex_B, int vex_vvvv)
+{
+    ASSERT(opcode > 0xFF);
+
+    uint8_t *ptr = code->buffer + code->len;
+
+    /* Currently we only use this function with instructions using the
+     * 0F 38 escape bytes, so we always use the 3-byte VEX prefix.  For
+     * plain 0F opcodes, we could potentially use the 2-byte VEX format
+     * instead. */
+    ASSERT(opcode >= 0x660F3800 && opcode <= 0x660F38FF);
+
+    ASSERT(code->len + 4 <= code->buffer_size);
+    code->len += 4;
+    *ptr++ = X86OP_VEX3;
+    *ptr++ = ((vex_R<<7 | vex_X<<6 | vex_B<<5) ^ 0xE0) | 0x02;
+    *ptr++ = vex_W<<7 | (~vex_vvvv & 15) << 3 | vex_L<<2 | 0x01;
+    *ptr++ = opcode & 0xFF;
 }
 
 /*-----------------------------------------------------------------------*/
@@ -486,6 +526,110 @@ static inline void append_insn_ModRM_riprel(
     const long disp = offset - (code->len + 4);
     ASSERT((uint64_t)disp + 0x80000000u < UINT64_C(0x100000000));
     append_imm32(code, disp);
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
+ * append_vex_insn_ModRM_reg:  Append a VEX-format instruction, encoding a
+ * register EA.
+ *
+ * [Parameters]
+ *     code: Output code buffer.
+ *     vex_W: True to set VEX.W on the instruction, false otherwise.
+ *     vex_L: True to set VEX.L on the instruction, false otherwise.
+ *     opcode: Instruction opcode.
+ *     reg1: Register or sub-opcode for ModR/M reg field.
+ *     reg2: Register for ModR/M r/m field.
+ *     reg3: Register for VEX vvvv field, or 0 if no third register.
+ */
+static inline void append_vex_insn_ModRM_reg(
+    CodeBuffer *code, bool vex_W, bool vex_L, X86Opcode opcode, int reg1,
+    X86Register reg2, X86Register reg3)
+{
+    append_vex_opcode(code, opcode, vex_W, vex_L, (reg1 & 8) != 0, false,
+                      (reg2 & 8) != 0, reg3 & 15);
+    append_ModRM(code, X86MOD_REG, reg1 & 7, reg2 & 7);
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
+ * append_vex_insn_ModRM_mem:  Append a VEX-format instruction, encoding a
+ * memory EA.
+ *
+ * [Parameters]
+ *     code: Output code buffer.
+ *     vex_W: True to set VEX.W on the instruction, false otherwise.
+ *     vex_L: True to set VEX.L on the instruction, false otherwise.
+ *     opcode: Instruction opcode.
+ *     reg1: Register or sub-opcode for ModR/M reg field.
+ *     base: Base register for memory address.
+ *     index: Index register for memory address, or -1 to omit the index.
+ *         Must not be X86_SP.
+ *     offset: Constant offset for memory address.
+ *     reg3: Register for VEX vvvv field, or 0 if no third register.
+ */
+static inline void append_vex_insn_ModRM_mem(
+    CodeBuffer *code, bool vex_W, bool vex_L, X86Opcode opcode, int reg1,
+    X86Register base, int index, int32_t offset, X86Register reg3)
+{
+    /* Currently, we only call this with stack references, so many of
+     * these checks are meaningless. */
+    const bool vex_R = (reg1 & 8) != 0;
+    ASSERT(index < 0);
+    const bool vex_X = false;  // index >= 0 && (index & 8) != 0
+    ASSERT(base == X86_SP);
+    const bool vex_B = false;  // (base & 8) != 0
+
+    append_vex_opcode(code, opcode, vex_W, vex_L, vex_R, vex_X, vex_B,
+                      reg3 & 15);
+
+    X86Mod mod;
+    if (offset == 0) {
+        mod = X86MOD_DISP0;
+    } else if ((uint32_t)offset + 128 < 256) {  // [-128,+127]
+        mod = X86MOD_DISP8;
+    } else {
+        mod = X86MOD_DISP32;
+    }
+    append_ModRM_SIB(code, mod, reg1 & 7, 0, X86SIB_NOINDEX, X86_SP);
+    if (mod == X86MOD_DISP8) {
+        append_imm8(code, (uint8_t)offset);
+    } else if (mod == X86MOD_DISP32) {
+        append_imm32(code, (uint32_t)offset);
+    }
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
+ * append_vex_insn_ModRM_ctx:  Append a VEX-format instruction, encoding
+ * an EA appropriate to the given source RTL register.
+ *
+ * [Parameters]
+ *     code: Output code buffer.
+ *     vex_W: True to set VEX.W on the instruction, false otherwise.
+ *     vex_L: True to set VEX.L on the instruction, false otherwise.
+ *     opcode: Instruction opcode.
+ *     reg1: Register or sub-opcode for ModR/M reg field.
+ *     ctx: Translation context.
+ *     insn_index: Index of current instruction in ctx->unit->insns[].
+ *     rtl_reg2: RTL register index from which to set ModR/M r/m field.
+ *     reg3: Register for VEX vvvv field, or 0 if no third register.
+ */
+static inline void append_vex_insn_ModRM_ctx(
+    CodeBuffer *code, bool vex_W, bool vex_L, X86Opcode opcode, int reg1,
+    HostX86Context *ctx, int insn_index, int rtl_reg2, X86Register reg3)
+{
+    if (is_spilled(ctx, insn_index, rtl_reg2)) {
+        append_vex_insn_ModRM_mem(code, vex_W, vex_L, opcode, reg1,
+                                  X86_SP, -1, ctx->regs[rtl_reg2].spill_offset,
+                                  reg3);
+    } else {
+        append_vex_insn_ModRM_reg(code, vex_W, vex_L, opcode, reg1,
+                                  ctx->regs[rtl_reg2].host_reg, reg3);
+    }
 }
 
 /*-----------------------------------------------------------------------*/
@@ -2284,6 +2428,137 @@ static bool translate_fcast(HostX86Context *ctx, int insn_index)
 /*-----------------------------------------------------------------------*/
 
 /**
+ * translate_fma:  Translate a fused multiply-add instruction.
+ *
+ * [Parameters]
+ *     code: Output code buffer.
+ *     ctx: Translation context.
+ *     insn_index: Index of instruction in ctx->unit->insns[].
+ *     fma_base_opcode: Base opcode (one of VF*132SS) when using the FMA
+ *         instruction set extension.
+ *     sub: True if the operation is FMSUB or FNMSUB.
+ *     negate: True if the operation is FNMADD or FNMSUB.
+ */
+static void translate_fma(CodeBuffer *code, HostX86Context *ctx,
+                          int insn_index, X86Opcode fma_base_opcode,
+                          bool sub, bool negate)
+{
+    ASSERT(code);
+    ASSERT(ctx);
+    ASSERT(ctx->handle);
+    ASSERT(ctx->unit);
+    ASSERT(insn_index >= 0);
+    ASSERT((uint32_t)insn_index < ctx->unit->num_insns);
+
+    const RTLUnit * const unit = ctx->unit;
+    const RTLInsn * const insn = &unit->insns[insn_index];
+    const int dest = insn->dest;
+    const int src1 = insn->src1;
+    const int src2 = insn->src2;
+    const int src3 = insn->src3;
+    const X86Register host_dest = ctx->regs[dest].host_reg;
+    const RTLDataType type = unit->regs[dest].type;
+    const bool is64 = (type == RTLTYPE_FLOAT64);
+
+    if (ctx->handle->setup.host_features & BINREC_FEATURE_X86_FMA) {
+
+        const X86Register host_src1 = ctx->regs[src1].host_reg;
+        const X86Register host_src3 = ctx->regs[src3].host_reg;
+        ASSERT(ctx->regs[dest].temp_allocated);
+        const X86Register host_temp = ctx->regs[dest].host_temp;
+        const bool spilled1 = is_spilled(ctx, insn_index, src1);
+        const bool spilled3 = is_spilled(ctx, insn_index, src3);
+
+        /* Final opcode for the operation. */
+        X86Opcode opcode;
+        /* RTL register copied/loaded to the destination XMM register. */
+        int dest_reg;
+        /* RTL register used as the effective address operand. */
+        int ea_reg;
+        /* X86Register which is encoded in the VEX.vvvv field. */
+        X86Register vex_vvvv;
+        /* True if src1 needs to be reloaded to host_temp. */
+        bool reload_src1 = false;
+
+        /* Choose the opcode variant, assign RTL registers to XMM operands,
+         * and record which registers need to be reloaded. */
+        if (spilled3) {
+            /* src3 is spilled, so use variant 213 which adds from the
+             * effective address operand. */
+            opcode = fma_base_opcode + (X86OP_VFMADD213SS - X86OP_VFMADD132SS);
+            dest_reg = src2;
+            ea_reg = src3;
+            if (spilled1) {
+                reload_src1 = true;
+                vex_vvvv = host_temp;
+            } else {
+                vex_vvvv = host_src1;
+            }
+        } else if (host_dest == host_src3) {
+            /* dest overlaps src3, so use variant 231 which overwrites
+             * the addend. */
+            opcode = fma_base_opcode + (X86OP_VFMADD231SS - X86OP_VFMADD132SS);
+            dest_reg = src3;
+            ea_reg = src2;
+            if (spilled1) {
+                reload_src1 = true;
+                vex_vvvv = host_temp;
+            } else {
+                vex_vvvv = host_src1;
+            }
+        } else {
+            /* For all other cases, we can use variant 132. */
+            opcode = fma_base_opcode;
+            dest_reg = src1;
+            ea_reg = src2;
+            vex_vvvv = host_src3;
+        }
+
+        /* Reload registers as needed. */
+        append_move_or_load(code, ctx, unit, insn_index, host_dest, dest_reg);
+        if (reload_src1) {
+            append_load(code, type, host_temp,
+                        X86_SP, -1, ctx->regs[src1].spill_offset);
+        }
+
+        /* Perform the actual operation. */
+        append_vex_insn_ModRM_ctx(code, is64, false, opcode, host_dest,
+                                  ctx, insn_index, ea_reg, vex_vvvv);
+
+    } else {
+        /* Without the FMA extension, we just do separate multiply/add
+         * operations and eat the precision loss.  Yum. */
+
+        const X86Register host_src2 = ctx->regs[src2].host_reg;
+        const X86Opcode mul_opcode = is64 ? X86OP_MULSD : X86OP_MULSS;
+        const X86Opcode add_opcode = sub ? (is64 ? X86OP_SUBSD : X86OP_SUBSS)
+                                         : (is64 ? X86OP_ADDSD : X86OP_ADDSS);
+
+        if (host_dest == host_src2 && !is_spilled(ctx, insn_index, src2)) {
+            append_insn_ModRM_ctx(code, false, mul_opcode, host_dest,
+                                  ctx, insn_index, src1);
+        } else {
+            append_move_or_load(code, ctx, unit, insn_index, host_dest, src1);
+            append_insn_ModRM_ctx(code, false, mul_opcode, host_dest,
+                                  ctx, insn_index, src2);
+        }
+
+        if (negate) {
+            const int lc_id = is64 ? LC_FLOAT64_SIGNBIT : LC_FLOAT32_SIGNBIT;
+            const long lc_offset = ctx->const_loc[lc_id];
+            ASSERT(lc_offset);
+            append_insn_ModRM_riprel(code, X86OP_XORPS, host_dest, lc_offset);
+        }
+
+        append_insn_ModRM_ctx(code, false, add_opcode, host_dest,
+                              ctx, insn_index, insn->src3);
+
+    }
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
  * translate_fzcast:  Translate an FZCAST instruction.
  *
  * [Parameters]
@@ -3837,41 +4112,24 @@ static bool translate_block(HostX86Context *ctx, int block_index)
           }  // case RTLOP_FCMP
 
           case RTLOP_FMADD:
-          case RTLOP_FMSUB:
-          case RTLOP_FNMADD:
-          case RTLOP_FNMSUB: {
-            // FIXME: implement FMA version
-            /* Without the FMA extension, we just do separate multiply/add
-             * operations and eat the precision loss.  Yum. */
-            const X86Register host_dest = ctx->regs[dest].host_reg;
-            const X86Register host_src2 = ctx->regs[src2].host_reg;
-            const bool is64 = (unit->regs[dest].type == RTLTYPE_FLOAT64);
-            const X86Opcode mul_opcode = (is64 ? X86OP_MULSD : X86OP_MULSS);
-            const X86Opcode add_opcode =
-                (insn->opcode == RTLOP_FMADD || insn->opcode == RTLOP_FNMADD
-                 ? (is64 ? X86OP_ADDSD : X86OP_ADDSS)
-                 : (is64 ? X86OP_SUBSD : X86OP_SUBSS));
-            if (host_dest == host_src2 && !is_spilled(ctx, insn_index, src2)) {
-                append_insn_ModRM_ctx(&code, false, mul_opcode, host_dest,
-                                      ctx, insn_index, src1);
-            } else {
-                append_move_or_load(&code, ctx, unit, insn_index,
-                                    host_dest, src1);
-                append_insn_ModRM_ctx(&code, false, mul_opcode, host_dest,
-                                      ctx, insn_index, src2);
-            }
-            append_insn_ModRM_ctx(&code, false, add_opcode, host_dest,
-                                  ctx, insn_index, insn->src3);
-            if (insn->opcode == RTLOP_FNMADD || insn->opcode == RTLOP_FNMSUB) {
-                const int lc_id =
-                    (is64 ? LC_FLOAT64_SIGNBIT : LC_FLOAT32_SIGNBIT);
-                const long lc_offset = ctx->const_loc[lc_id];
-                ASSERT(lc_offset);
-                append_insn_ModRM_riprel(&code, X86OP_XORPS, host_dest,
-                                         lc_offset);
-            }
+            translate_fma(&code, ctx, insn_index,
+                          X86OP_VFMADD132SS, false, false);
             break;
-          }  // case RTLOP_FMADD, RTLOP_FMSUB, RTLOP_FNMADD, RTLOP_FNMSUB
+
+          case RTLOP_FMSUB:
+            translate_fma(&code, ctx, insn_index,
+                          X86OP_VFMSUB132SS, true, false);
+            break;
+
+          case RTLOP_FNMADD:
+            translate_fma(&code, ctx, insn_index,
+                          X86OP_VFNMADD132SS, false, true);
+            break;
+
+          case RTLOP_FNMSUB:
+            translate_fma(&code, ctx, insn_index,
+                          X86OP_VFNMSUB132SS, true, true);
+            break;
 
           case RTLOP_FGETSTATE:
             append_insn_ModRM_mem(

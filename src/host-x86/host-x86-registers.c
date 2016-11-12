@@ -887,6 +887,60 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
                  * optimization. */
                 break;
 
+              case RTLOP_FMADD:
+              case RTLOP_FMSUB:
+              case RTLOP_FNMADD:
+              case RTLOP_FNMSUB:
+                if (ctx->handle->setup.host_features & BINREC_FEATURE_X86_FMA) {
+                    /* If using FMA instructions, the overwritten operand
+                     * depends on the specific instruction variant chosen,
+                     * so avoid clobbering any other operands.  This logic
+                     * needs to be kept in sync with translate_fma() in
+                     * host-x86-translate.c.  Note that we can't reverse
+                     * the order of the multiplicands because we need to
+                     * preserve NaN reporting order. */
+                    const bool spilled1 = ctx->regs[src1].spilled;
+                    const bool spilled2 = ctx->regs[src2].spilled;
+                    const bool spilled3 = ctx->regs[insn->src3].spilled;
+                    const X86Register host_src3 =
+                        ctx->regs[insn->src3].host_reg;
+                    if (spilled3) {
+                        /* 213 variant. */
+                        if (!spilled2 && !ctx->reg_map[src2_info->host_reg]) {
+                            ASSERT(!(avoid_regs & (1u << src2_info->host_reg)));
+                            host_allocated = true;
+                            dest_info->host_reg = src2_info->host_reg;
+                            assign_register(ctx, dest, src2_info->host_reg);
+                        } else if (!spilled1) {
+                            avoid_regs |= 1u << src1_info->host_reg;
+                        }
+                    } else if (!ctx->reg_map[host_src3]) {
+                        /* 231 variant. */
+                        ASSERT(!(avoid_regs & (1u << host_src3)));
+                        host_allocated = true;
+                        dest_info->host_reg = host_src3;
+                        assign_register(ctx, dest, host_src3);
+                    } else {
+                        /* 132 variant. */
+                        if (!spilled1 && !ctx->reg_map[src1_info->host_reg]) {
+                            ASSERT(!(avoid_regs & (1u << src1_info->host_reg)));
+                            host_allocated = true;
+                            dest_info->host_reg = src1_info->host_reg;
+                            assign_register(ctx, dest, src1_info->host_reg);
+                        } else if (!spilled2) {
+                            avoid_regs |= 1u << src2_info->host_reg;
+                        }
+                    }
+                } else {
+                    /* For non-FMA, avoid src3 since we'd have to exchange
+                     * it with src1 or src2 and there's no XMM equivalent
+                     * to XCHG. */
+                    if (!ctx->regs[insn->src3].spilled) {
+                        avoid_regs |= 1u << ctx->regs[insn->src3].host_reg;
+                    }
+                }
+                break;
+
               case RTLOP_FTESTEXC:
                 /* As for SEQ, etc. */
                 if (!src1_info->spilled) {
@@ -1053,17 +1107,6 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
                 /* rCX is used for the shift count. */
                 avoid_regs |= 1u << X86_CX;
                 break;
-              case RTLOP_FMADD:
-              case RTLOP_FMSUB:
-              case RTLOP_FNMADD:
-              case RTLOP_FNMSUB:
-                // FIXME: non-FMA only
-                /* Avoid src3 since we'd have to exchange it with src1 or
-                 * src2 and there's no XMM equivalent to XCHG. */
-                if (!ctx->regs[insn->src3].spilled) {
-                    avoid_regs |= 1u << ctx->regs[insn->src3].host_reg;
-                }
-                break;
             }
             dest_info->host_reg = allocate_register(
                 ctx, insn_index, dest, dest_reg, avoid_regs, soft_avoid);
@@ -1155,6 +1198,21 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
             /* Temporary needed if converting a 64-bit or spilled 32-bit
              * value. */
             need_temp = (int_type_is_64(src1_reg->type) || src1_info->spilled);
+            break;
+
+          case RTLOP_FMADD:
+          case RTLOP_FMSUB:
+          case RTLOP_FNMADD:
+          case RTLOP_FNMSUB:
+            if (ctx->handle->setup.host_features & BINREC_FEATURE_X86_FMA) {
+                /* Temporary used in various spill cases.  Deciding whether
+                 * a temporary is actually needed is non-trivial, so just
+                 * unconditionally allocate it. */
+                need_temp = true;
+                temp_is_fpr = true;
+            } else {
+                need_temp = false;
+            }
             break;
 
           case RTLOP_FCMP:
@@ -1735,11 +1793,12 @@ static void first_pass_for_block(HostX86Context *ctx, int block_index)
 
           case RTLOP_FNMADD:
           case RTLOP_FNMSUB:
-            // FIXME: only if no FMA extension
-            if (unit->regs[insn->dest].type == RTLTYPE_FLOAT64) {
-                ctx->const_loc[LC_FLOAT64_SIGNBIT] = 1;
-            } else {
-                ctx->const_loc[LC_FLOAT32_SIGNBIT] = 1;
+            if (!(ctx->handle->setup.host_features & BINREC_FEATURE_X86_FMA)) {
+                if (unit->regs[insn->dest].type == RTLTYPE_FLOAT64) {
+                    ctx->const_loc[LC_FLOAT64_SIGNBIT] = 1;
+                } else {
+                    ctx->const_loc[LC_FLOAT32_SIGNBIT] = 1;
+                }
             }
             break;
 

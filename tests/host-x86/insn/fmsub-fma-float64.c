@@ -13,6 +13,7 @@
 
 static const binrec_setup_t setup = {
     .host = BINREC_ARCH_X86_64_SYSV,
+    .host_features = BINREC_FEATURE_X86_FMA,
 };
 static const unsigned int host_opt = 0;
 
@@ -31,7 +32,7 @@ static int add_rtl(RTLUnit *unit)
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM,
                         reg3, 0, 0, UINT64_C(0x4008000000000000)));
     EXPECT(reg4 = rtl_alloc_register(unit, RTLTYPE_FLOAT64));
-    EXPECT(rtl_add_insn(unit, RTLOP_FNMSUB, reg4, reg1, reg2, reg3));
+    EXPECT(rtl_add_insn(unit, RTLOP_FMSUB, reg4, reg1, reg2, reg3));
     EXPECT(rtl_add_insn(unit, RTLOP_NOP, 0, reg1, reg2, 0));
     EXPECT(rtl_add_insn(unit, RTLOP_NOP, 0, reg3, 0, 0));
 
@@ -40,15 +41,6 @@ static int add_rtl(RTLUnit *unit)
 
 static const uint8_t expected_code[] = {
     0x48,0x83,0xEC,0x08,                // sub $8,%rsp
-    0xEB,0x1A,                          // jmp 0x20
-    0x00,0x00,0x00,0x00,0x00,0x00,0x00, // (padding)
-    0x00,0x00,0x00,                     // (padding)
-
-    0x00,0x00,0x00,0x00,                // (data)
-    0x00,0x00,0x00,0x80,                // (data)
-    0x00,0x00,0x00,0x00,                // (data)
-    0x00,0x00,0x00,0x00,                // (data)
-
     0x48,0xB8,0x00,0x00,0x00,0x00,0x00, // mov $0x3FF0000000000000,%rax
       0x00,0xF0,0x3F,
     0x66,0x48,0x0F,0x6E,0xC8,           // movq %rax,%xmm1
@@ -59,9 +51,7 @@ static const uint8_t expected_code[] = {
       0x00,0x08,0x40,
     0x66,0x48,0x0F,0x6E,0xD8,           // movq %rax,%xmm3
     0x0F,0x28,0xE1,                     // movaps %xmm1,%xmm4
-    0xF2,0x0F,0x59,0xE2,                // mulsd %xmm2,%xmm4
-    0x0F,0x57,0x25,0xB5,0xFF,0xFF,0xFF, // xorps -75(%rip),%xmm4
-    0xF2,0x0F,0x5C,0xE3,                // subsd %xmm3,%xmm4
+    0xC4,0xE2,0xE1,0x9B,0xE2,           // vfmsub132sd %xmm2,%xmm3,%xmm4
     0x48,0x83,0xC4,0x08,                // add $8,%rsp
     0xC3,                               // ret
 };

@@ -613,7 +613,8 @@ static bool make_cmp_imm(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
 #ifdef ENABLE_OPERAND_SANITY_CHECKS
     OPERAND_ASSERT(dest != 0);
     OPERAND_ASSERT(src1 != 0);
-    OPERAND_ASSERT(other + UINT64_C(0x80000000) < UINT64_C(0x100000000));
+    OPERAND_ASSERT(unit->regs[dest].type == RTLTYPE_INT32
+                   || other + UINT64_C(0x80000000) < UINT64_C(0x100000000));
     OPERAND_ASSERT(unit->regs[dest].source == RTLREG_UNDEFINED);
     OPERAND_ASSERT(unit->regs[src1].source != RTLREG_UNDEFINED);
     OPERAND_ASSERT(rtl_register_is_int(&unit->regs[dest]));
@@ -622,7 +623,7 @@ static bool make_cmp_imm(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
 
     insn->dest = dest;
     insn->src1 = src1;
-    insn->src_imm = other;
+    insn->src_imm = (int32_t)other;
 
     RTLRegister * const destreg = &unit->regs[dest];
     RTLRegister * const src1reg = &unit->regs[src1];

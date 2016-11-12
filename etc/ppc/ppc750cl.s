@@ -3,6 +3,8 @@
 # No copyright is claimed on this file.
 #
 # Update history:
+#    - 2016-11-12: Added a few more fmadd tests to verify that VXIMZ and
+#         VXISI exceptions are properly distinguished.
 #    - 2016-11-12: Added tests to verify that certain unused FPR fields in
 #         floating-point instructions are ignored.  See notes at "fadd
 #         (nonzero frC)" for details.
@@ -9181,6 +9183,24 @@ get_load_address:
    bl record
    lfd %f4,168(%r31)
    bl add_fpscr_vximz
+   bl check_fpu_nan
+0: fneg %f4,%f9             # +infinity * +normal + -infinity
+   fmadd %f3,%f9,%f1,%f4
+   bl record
+   lfd %f4,168(%r31)
+   bl add_fpscr_vxisi
+   bl check_fpu_nan
+0: fneg %f4,%f9             # 0 * +infinity + -infinity
+   fmadd %f3,%f0,%f9,%f4
+   bl record
+   lfd %f4,168(%r31)
+   bl add_fpscr_vximz
+   bl check_fpu_nan
+0: fneg %f4,%f9             # +normal * +infinity + -infinity
+   fmadd %f3,%f1,%f9,%f4
+   bl record
+   lfd %f4,168(%r31)
+   bl add_fpscr_vxisi
    bl check_fpu_nan
 0: fneg %f13,%f9            # 0 * -infinity + SNaN
    fmadd %f3,%f0,%f13,%f11

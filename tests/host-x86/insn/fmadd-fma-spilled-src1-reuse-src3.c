@@ -13,49 +13,54 @@
 
 static const binrec_setup_t setup = {
     .host = BINREC_ARCH_X86_64_SYSV,
+    .host_features = BINREC_FEATURE_X86_FMA,
 };
 static const unsigned int host_opt = 0;
 
 static int add_rtl(RTLUnit *unit)
 {
-    alloc_dummy_registers(unit, 1, RTLTYPE_FLOAT32);
+    int dummy_regs[12];
+    for (int i = 0; i < lenof(dummy_regs); i++) {
+        EXPECT(dummy_regs[i] = rtl_alloc_register(unit, RTLTYPE_FLOAT32));
+        EXPECT(rtl_add_insn(unit, RTLOP_NOP, dummy_regs[i], 0, 0, 0));
+    }
 
-    int reg1, reg2, reg3, reg4;
+    int reg1, reg2, reg3, spiller, reg4;
     EXPECT(reg1 = rtl_alloc_register(unit, RTLTYPE_FLOAT32));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg1, 0, 0, 0x3F800000));
     EXPECT(reg2 = rtl_alloc_register(unit, RTLTYPE_FLOAT32));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg2, 0, 0, 0x40000000));
     EXPECT(reg3 = rtl_alloc_register(unit, RTLTYPE_FLOAT32));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg3, 0, 0, 0x40400000));
+    EXPECT(spiller = rtl_alloc_register(unit, RTLTYPE_FLOAT32));
+    EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, spiller, 0, 0, 0x40800000));
     EXPECT(reg4 = rtl_alloc_register(unit, RTLTYPE_FLOAT32));
-    EXPECT(rtl_add_insn(unit, RTLOP_FNMADD, reg4, reg1, reg2, reg3));
-    EXPECT(rtl_add_insn(unit, RTLOP_NOP, 0, reg1, reg2, 0));
-    EXPECT(rtl_add_insn(unit, RTLOP_NOP, 0, reg3, 0, 0));
+    EXPECT(rtl_add_insn(unit, RTLOP_FMADD, reg4, reg1, reg2, reg3));
+    /* Keep the spiller live so reg1 is reloaded into a different register
+     * and we can verify that it's using the correct register. */
+    EXPECT(rtl_add_insn(unit, RTLOP_NOP, 0, spiller, 0, 0));
+    for (int i = 0; i < lenof(dummy_regs); i++) {
+        EXPECT(rtl_add_insn(unit, RTLOP_NOP, 0, dummy_regs[i], 0, 0));
+    }
+    EXPECT(rtl_add_insn(unit, RTLOP_NOP, 0, reg2, 0, 0));
+    EXPECT(rtl_add_insn(unit, RTLOP_NOP, 0, reg1, 0, 0));
 
     return EXIT_SUCCESS;
 }
 
 static const uint8_t expected_code[] = {
     0x48,0x83,0xEC,0x08,                // sub $8,%rsp
-    0xEB,0x1A,                          // jmp 0x20
-    0x00,0x00,0x00,0x00,0x00,0x00,0x00, // (padding)
-    0x00,0x00,0x00,                     // (padding)
-
-    0x00,0x00,0x00,0x80,                // (data)
-    0x00,0x00,0x00,0x00,                // (data)
-    0x00,0x00,0x00,0x00,                // (data)
-    0x00,0x00,0x00,0x00,                // (data)
-
     0xB8,0x00,0x00,0x80,0x3F,           // mov $0x3F800000,%eax
-    0x66,0x0F,0x6E,0xC8,                // movd %eax,%xmm1
+    0x66,0x44,0x0F,0x6E,0xE0,           // movd %eax,%xmm12
     0xB8,0x00,0x00,0x00,0x40,           // mov $0x40000000,%eax
-    0x66,0x0F,0x6E,0xD0,                // movd %eax,%xmm2
+    0x66,0x44,0x0F,0x6E,0xE8,           // movd %eax,%xmm13
     0xB8,0x00,0x00,0x40,0x40,           // mov $0x40400000,%eax
-    0x66,0x0F,0x6E,0xD8,                // movd %eax,%xmm3
-    0x0F,0x28,0xE1,                     // movaps %xmm1,%xmm4
-    0xF3,0x0F,0x59,0xE2,                // mulss %xmm2,%xmm4
-    0x0F,0x57,0x25,0xC7,0xFF,0xFF,0xFF, // xorps -57(%rip),%xmm4
-    0xF3,0x0F,0x58,0xE3,                // addss %xmm3,%xmm4
+    0x66,0x44,0x0F,0x6E,0xF0,           // movd %eax,%xmm14
+    0xF3,0x44,0x0F,0x11,0x24,0x24,      // movss %xmm12,(%rsp)
+    0xB8,0x00,0x00,0x80,0x40,           // mov $0x40800000,%eax
+    0x66,0x44,0x0F,0x6E,0xE0,           // movd %eax,%xmm12
+    0xF3,0x44,0x0F,0x10,0x3C,0x24,      // movss (%rsp),%xmm15
+    0xC4,0x42,0x01,0xB9,0xF5,           // vfmadd231ss %xmm13,%xmm15,%xmm14
     0x48,0x83,0xC4,0x08,                // add $8,%rsp
     0xC3,                               // ret
 };

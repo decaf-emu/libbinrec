@@ -295,8 +295,8 @@ typedef enum RTLOpcode {
                         //     immediate comparison type (RTLFCMP_*)]
     RTLOP_FMADD,        // dest = fma(src1, src2, src3)
     RTLOP_FMSUB,        // dest = fma(src1, src2, -src3)
-    RTLOP_FNMADD,       // dest = -fma(src1, src2, src3)
-    RTLOP_FNMSUB,       // dest = -fma(src1, src2, -src3)
+    RTLOP_FNMADD,       // dest = fma(-src1, src2, src3)
+    RTLOP_FNMSUB,       // dest = fma(-src1, src2, -src3)
 
     /* Floating-point state manipulation.  The state operand (dest for
      * FGETSTATE, src1 for FTESTEXC) must be of type FPSTATE. */

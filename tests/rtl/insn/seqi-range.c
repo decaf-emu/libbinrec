@@ -24,13 +24,12 @@ int main(void)
     RTLUnit *unit;
     EXPECT(unit = rtl_create_unit(handle));
 
-    int reg1, reg2, reg3, reg4, reg5, reg6;
-    EXPECT(reg1 = rtl_alloc_register(unit, RTLTYPE_INT32));
-    EXPECT(reg2 = rtl_alloc_register(unit, RTLTYPE_INT32));
-    EXPECT(reg3 = rtl_alloc_register(unit, RTLTYPE_INT32));
-    EXPECT(reg4 = rtl_alloc_register(unit, RTLTYPE_INT32));
-    EXPECT(reg5 = rtl_alloc_register(unit, RTLTYPE_INT32));
-    EXPECT(reg6 = rtl_alloc_register(unit, RTLTYPE_INT32));
+    int reg1, reg2, reg3, reg4, reg5;
+    EXPECT(reg1 = rtl_alloc_register(unit, RTLTYPE_INT64));
+    EXPECT(reg2 = rtl_alloc_register(unit, RTLTYPE_INT64));
+    EXPECT(reg3 = rtl_alloc_register(unit, RTLTYPE_INT64));
+    EXPECT(reg4 = rtl_alloc_register(unit, RTLTYPE_INT64));
+    EXPECT(reg5 = rtl_alloc_register(unit, RTLTYPE_INT64));
 
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg1, 0, 0, 10));
     EXPECT(rtl_add_insn(unit, RTLOP_SEQI, reg2, reg1, 0, (int32_t)-0x80000000));
@@ -49,20 +48,52 @@ int main(void)
     EXPECT(unit->have_block);
     EXPECT_FALSE(unit->error);
 
+    /* 32-bit operations should ignore the high bits of the immediate. */
+    int reg6, reg7, reg8, reg9, reg10;
+    EXPECT(reg6 = rtl_alloc_register(unit, RTLTYPE_INT32));
+    EXPECT(reg7 = rtl_alloc_register(unit, RTLTYPE_INT32));
+    EXPECT(reg8 = rtl_alloc_register(unit, RTLTYPE_INT32));
+    EXPECT(reg9 = rtl_alloc_register(unit, RTLTYPE_INT32));
+    EXPECT(reg10 = rtl_alloc_register(unit, RTLTYPE_INT32));
+
+    EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg6, 0, 0, 60));
+    EXPECT(rtl_add_insn(unit, RTLOP_SEQI,
+                        reg7, reg6, 0, UINT64_C(0x1234567800000001)));
+    EXPECT(rtl_add_insn(unit, RTLOP_SEQI,
+                        reg8, reg6, 0, UINT64_C(0x12345678FFFFFFFF)));
+    EXPECT(rtl_add_insn(unit, RTLOP_MOVE, reg9, reg7, 0, 0));
+    EXPECT(rtl_add_insn(unit, RTLOP_MOVE, reg10, reg8, 0, 0));
+    EXPECT_EQ(unit->num_insns, 10);
+    EXPECT_EQ(unit->insns[6].opcode, RTLOP_SEQI);
+    EXPECT_EQ(unit->insns[6].dest, reg7);
+    EXPECT_EQ(unit->insns[6].src1, reg6);
+    EXPECT_EQ(unit->insns[6].src_imm, 1);
+    EXPECT_EQ(unit->insns[7].opcode, RTLOP_SEQI);
+    EXPECT_EQ(unit->insns[7].dest, reg8);
+    EXPECT_EQ(unit->insns[7].src1, reg6);
+    EXPECT_EQ(unit->insns[7].src_imm, UINT64_C(-1));
+    EXPECT(unit->have_block);
+    EXPECT_FALSE(unit->error);
+
 #ifdef ENABLE_OPERAND_SANITY_CHECKS
-    EXPECT_FALSE(rtl_add_insn(unit, RTLOP_SEQI, reg6, reg1, 0,
+    int reg11;
+    EXPECT(reg11 = rtl_alloc_register(unit, RTLTYPE_INT64));
+
+    EXPECT_FALSE(rtl_add_insn(unit, RTLOP_SEQI, reg11, reg1, 0,
                               UINT64_C(-0x80000001)));
     EXPECT_ICE("Operand constraint violated:"
+               " unit->regs[dest].type == RTLTYPE_INT32 ||"
                " other + UINT64_C(0x80000000) < UINT64_C(0x100000000)");
-    EXPECT_EQ(unit->num_insns, 5);
+    EXPECT_EQ(unit->num_insns, 10);
     EXPECT(unit->error);
     unit->error = false;
 
-    EXPECT_FALSE(rtl_add_insn(unit, RTLOP_SEQI, reg6, reg1, 0,
+    EXPECT_FALSE(rtl_add_insn(unit, RTLOP_SEQI, reg11, reg1, 0,
                               UINT64_C(0x80000000)));
     EXPECT_ICE("Operand constraint violated:"
+               " unit->regs[dest].type == RTLTYPE_INT32 ||"
                " other + UINT64_C(0x80000000) < UINT64_C(0x100000000)");
-    EXPECT_EQ(unit->num_insns, 5);
+    EXPECT_EQ(unit->num_insns, 10);
     EXPECT(unit->error);
     unit->error = false;
 #endif
@@ -79,8 +110,17 @@ int main(void)
         "           r2: r1 == -2147483648\n"
         "    4: MOVE       r5, r3\n"
         "           r3: r1 == 2147483647\n"
+        "    5: LOAD_IMM   r6, 60\n"
+        "    6: SEQI       r7, r6, 1\n"
+        "           r6: 60\n"
+        "    7: SEQI       r8, r6, -1\n"
+        "           r6: 60\n"
+        "    8: MOVE       r9, r7\n"
+        "           r7: r6 == 1\n"
+        "    9: MOVE       r10, r8\n"
+        "           r8: r6 == -1\n"
         "\n"
-        "Block 0: <none> --> [0,4] --> <none>\n"
+        "Block 0: <none> --> [0,9] --> <none>\n"
         ;
     EXPECT_STREQ(rtl_disassemble_unit(unit, true), disassembly);
 
