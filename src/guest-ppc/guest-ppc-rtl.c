@@ -408,7 +408,7 @@ static inline void set_gpr(GuestPPCContext * const ctx, int index, int reg)
 {
     RTLUnit * const unit = ctx->unit;
     if (ctx->last_set.gpr[index] >= 0) {
-        rtl_opt_kill_insn(unit, ctx->last_set.gpr[index], false);
+        rtl_opt_kill_insn(unit, ctx->last_set.gpr[index], false, false);
     }
     ctx->last_set.gpr[index] = unit->num_insns;
     rtl_add_insn(unit, RTLOP_SET_ALIAS, 0, reg, 0, ctx->alias.gpr[index]);
@@ -424,7 +424,7 @@ static inline void set_cr(GuestPPCContext * const ctx, int reg)
 {
     RTLUnit * const unit = ctx->unit;
     if (ctx->last_set.cr >= 0) {
-        rtl_opt_kill_insn(unit, ctx->last_set.cr, false);
+        rtl_opt_kill_insn(unit, ctx->last_set.cr, false, false);
     }
     ctx->last_set.cr = unit->num_insns;
     rtl_add_insn(unit, RTLOP_SET_ALIAS, 0, reg, 0, ctx->alias.cr);
@@ -436,7 +436,7 @@ static inline void set_crb(GuestPPCContext * const ctx, int index, int reg)
     RTLUnit * const unit = ctx->unit;
     ASSERT(ctx->crb_changed & (0x80000000u >> index));
     if (ctx->last_set.crb[index] >= 0) {
-        rtl_opt_kill_insn(unit, ctx->last_set.crb[index], false);
+        rtl_opt_kill_insn(unit, ctx->last_set.crb[index], false, false);
     }
     ctx->last_set.crb[index] = unit->num_insns;
     rtl_add_insn(unit, RTLOP_SET_ALIAS, 0, reg, 0, ctx->alias.crb[index]);
@@ -448,7 +448,7 @@ static inline void set_lr(GuestPPCContext * const ctx, int reg)
 {
     RTLUnit * const unit = ctx->unit;
     if (ctx->last_set.lr >= 0) {
-        rtl_opt_kill_insn(unit, ctx->last_set.lr, false);
+        rtl_opt_kill_insn(unit, ctx->last_set.lr, false, false);
     }
     ctx->last_set.lr = unit->num_insns;
     rtl_add_insn(unit, RTLOP_SET_ALIAS, 0, reg, 0, ctx->alias.lr);
@@ -459,7 +459,7 @@ static inline void set_ctr(GuestPPCContext * const ctx, int reg)
 {
     RTLUnit * const unit = ctx->unit;
     if (ctx->last_set.ctr >= 0) {
-        rtl_opt_kill_insn(unit, ctx->last_set.ctr, false);
+        rtl_opt_kill_insn(unit, ctx->last_set.ctr, false, false);
     }
     ctx->last_set.ctr = unit->num_insns;
     rtl_add_insn(unit, RTLOP_SET_ALIAS, 0, reg, 0, ctx->alias.ctr);
@@ -470,7 +470,7 @@ static inline void set_xer(GuestPPCContext * const ctx, int reg)
 {
     RTLUnit * const unit = ctx->unit;
     if (ctx->last_set.xer >= 0) {
-        rtl_opt_kill_insn(unit, ctx->last_set.xer, false);
+        rtl_opt_kill_insn(unit, ctx->last_set.xer, false, false);
     }
     ctx->last_set.xer = unit->num_insns;
     rtl_add_insn(unit, RTLOP_SET_ALIAS, 0, reg, 0, ctx->alias.xer);
@@ -481,7 +481,7 @@ static inline void set_fpscr(GuestPPCContext * const ctx, int reg)
 {
     RTLUnit * const unit = ctx->unit;
     if (ctx->last_set.fpscr >= 0) {
-        rtl_opt_kill_insn(unit, ctx->last_set.fpscr, false);
+        rtl_opt_kill_insn(unit, ctx->last_set.fpscr, false, false);
     }
     ctx->last_set.fpscr = unit->num_insns;
     rtl_add_insn(unit, RTLOP_SET_ALIAS, 0, reg, 0, ctx->alias.fpscr);
@@ -492,7 +492,7 @@ static inline void set_fr_fi_fprf(GuestPPCContext * const ctx, int reg)
 {
     RTLUnit * const unit = ctx->unit;
     if (ctx->last_set.fr_fi_fprf >= 0) {
-        rtl_opt_kill_insn(unit, ctx->last_set.fr_fi_fprf, false);
+        rtl_opt_kill_insn(unit, ctx->last_set.fr_fi_fprf, false, false);
     }
     ctx->last_set.fr_fi_fprf = unit->num_insns;
     rtl_add_insn(unit, RTLOP_SET_ALIAS, 0, reg, 0, ctx->alias.fr_fi_fprf);

@@ -1830,7 +1830,10 @@ static void first_pass_for_block(HostX86Context *ctx, int block_index)
                     src1_reg->death =
                         rtl_opt_prev_reg_use(unit, src1, insn_index);
                     if (src1_reg->death == src1_reg->birth) {
-                        rtl_opt_kill_insn(unit, src1_reg->birth, true);
+                        const bool ignore_fexc =
+                            (ctx->handle->common_opt & BINREC_OPT_DSE_FP) != 0;
+                        rtl_opt_kill_insn(unit, src1_reg->birth, ignore_fexc,
+                                          true);
                     }
                 }
             }

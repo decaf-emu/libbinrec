@@ -56,6 +56,7 @@ namespace Optimize {
     const unsigned int DECONDITION = BINREC_OPT_DECONDITION;
     const unsigned int DEEP_DATA_FLOW = BINREC_OPT_DEEP_DATA_FLOW;
     const unsigned int DSE = BINREC_OPT_DSE;
+    const unsigned int DSE_FP = BINREC_OPT_DSE_FP;
     const unsigned int FOLD_CONSTANTS = BINREC_OPT_FOLD_CONSTANTS;
     const unsigned int FOLD_FP_CONSTANTS = BINREC_OPT_FOLD_FP_CONSTANTS;
     const unsigned int NATIVE_CALLS = BINREC_OPT_NATIVE_CALLS;

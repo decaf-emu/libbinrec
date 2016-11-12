@@ -1479,8 +1479,8 @@ bool rtl_optimize_unit(RTLUnit *unit, unsigned int flags)
 
     /* Perform optimizations in the proper order. */
     if (flags & BINREC_OPT_FOLD_CONSTANTS) {
-        const bool fold_fp = (flags & BINREC_OPT_FOLD_FP_CONSTANTS) != 0;
-        rtl_opt_fold_constants(unit, fold_fp);
+        rtl_opt_fold_constants(unit,
+                               (flags & BINREC_OPT_FOLD_FP_CONSTANTS) != 0);
     }
     if (flags & BINREC_OPT_DECONDITION) {
         rtl_opt_decondition(unit);
@@ -1489,12 +1489,13 @@ bool rtl_optimize_unit(RTLUnit *unit, unsigned int flags)
         rtl_opt_alias_data_flow(unit);
     }
     if (flags & BINREC_OPT_DSE) {
-        rtl_opt_drop_dead_stores(unit);
+        rtl_opt_drop_dead_stores(unit, (flags & BINREC_OPT_DSE_FP) != 0);
     }
     if (flags & BINREC_OPT_BASIC) {
         rtl_opt_thread_branches(unit);
         rtl_opt_drop_dead_blocks(unit);
-        rtl_opt_drop_dead_branches(unit, (flags & BINREC_OPT_DSE) != 0);
+        rtl_opt_drop_dead_branches(unit, (flags & BINREC_OPT_DSE_FP) != 0,
+                                   (flags & BINREC_OPT_DSE) != 0);
     }
 
     /* Free the "seen" flag buffer before returning. */

@@ -51,9 +51,11 @@ static PURE_FUNCTION bool is_reg_killable(
  * [Parameters]
  *     ctx: Translation context.
  *     reg_index: Register to eliminate.
+ *     ignore_fexc: True to ignore possible floating-point exceptions.
  *     dse: True to recursively eliminate dead registers.
  */
-static void kill_reg(HostX86Context * const ctx, const int reg_index, bool dse)
+static void kill_reg(HostX86Context * const ctx, const int reg_index,
+                     bool ignore_fexc, bool dse)
 {
     RTLUnit * const unit = ctx->unit;
     RTLRegister * const reg = &unit->regs[reg_index];
@@ -64,7 +66,7 @@ static void kill_reg(HostX86Context * const ctx, const int reg_index, bool dse)
     ASSERT(!ctx->regs[reg_index].host_allocated);
 
     reg->death = reg->birth;
-    rtl_opt_kill_insn(unit, reg->birth, dse);
+    rtl_opt_kill_insn(unit, reg->birth, ignore_fexc, dse);
 }
 
 /*-----------------------------------------------------------------------*/
@@ -95,7 +97,7 @@ static int maybe_eliminate_zcast(
         if (is_reg_killable(unit, reg_index, insn_index)) {
             /* Don't kill recursively because we want to keep the source
              * operand. */
-            kill_reg(ctx, reg_index, false);
+            kill_reg(ctx, reg_index, false, false);
             return zcast_src;
         }
     }
@@ -178,6 +180,18 @@ static int forward_condition(HostX86Context *ctx, int insn_index, int cond)
     if (!is_reg_killable(unit, cond, insn_index)) {
         return -1;
     }
+    const RTLInsn * const cond_insn = &unit->insns[cond_reg->birth];
+    if (cond_insn->opcode == RTLOP_FCMP) {
+        /* FCMP could raise exceptions, but it's trivially safe to kill if
+         * it's the immediately preceding instruction (since we're still
+         * going to execute the compare, just at the branch point instead
+         * of the original FCMP location), so allow killing an immediately
+         * preceding FCMP even if DSE_FP isn't enabled. */
+        if (!(ctx->handle->common_opt & BINREC_OPT_DSE_FP)
+         && insn_index != cond_reg->birth + 1) {
+            return -1;
+        }
+    }
 
     const bool invert = (insn->opcode == RTLOP_GOTO_IF_Z);
     const int jump_condition = get_compare_condition(cond_reg, invert);
@@ -204,7 +218,7 @@ static int forward_condition(HostX86Context *ctx, int insn_index, int cond)
         }
     }
 
-    kill_reg(ctx, cond, false);
+    kill_reg(ctx, cond, true, false);
 
     insn->host_data_16 = 0x8000
                        | (cond_reg->result.fcmp & RTLFCMP_ORDERED ? 0x20 : 0)
@@ -280,7 +294,7 @@ void host_x86_optimize_address(HostX86Context *ctx, int insn_index)
 
     /* Eliminate the addition instruction and its output. */
     const int add_insn_index = src1_reg->birth;
-    kill_reg(ctx, src1, false);
+    kill_reg(ctx, src1, false, false);
 
     /* If either operand is the output of a ZCAST instruction (and is not
      * used elsewhere), replace it with the ZCAST input and eliminate the
@@ -434,7 +448,7 @@ void host_x86_optimize_immediate_store(HostX86Context *ctx, int insn_index)
         return;  // The constant won't fit in a single instruction.
     }
 
-    kill_reg(ctx, src2, false);
+    kill_reg(ctx, src2, false, false);
     ASSERT(!src2_reg->live);
     src2_reg->type = type;
     src2_reg->value.i64 = value;

@@ -26,7 +26,7 @@ static int add_rtl(RTLUnit *unit)
     EXPECT(rtl_add_insn(unit, RTLOP_CALL, reg4, reg1, reg2, reg3));
 
     EXPECT_EQ(unit->num_insns, 4);
-    rtl_opt_kill_insn(unit, 3, false);
+    rtl_opt_kill_insn(unit, 3, true, false);
     EXPECT_FALSE(unit->regs[reg4].live);
     EXPECT_EQ(unit->regs[reg1].death, 0);
     EXPECT_EQ(unit->regs[reg2].death, 1);

@@ -507,11 +507,14 @@ extern PURE_FUNCTION int rtl_opt_prev_reg_use(
  * [Parameters]
  *     unit: RTL unit.
  *     insn_index: Index of instruction to kill.
+ *     ignore_fexc: True to kill the instruction even if it could raise a
+ *         floating-point exception; false to not kill such an instruction.
  *     dse: True to recursively kill stores which become dead; false to
  *         leave them alone.
  */
 #define rtl_opt_kill_insn INTERNAL(rtl_opt_kill_insn)
-extern void rtl_opt_kill_insn(RTLUnit *unit, int insn_index, bool dse);
+extern void rtl_opt_kill_insn(RTLUnit *unit, int insn_index, bool ignore_fexc,
+                              bool dse);
 
 /**
  * rtl_opt_alias_data_flow:  Analyze data flow through aliases in the given
@@ -565,11 +568,13 @@ extern void rtl_opt_drop_dead_blocks(RTLUnit *unit);
  *
  * [Parameters]
  *     unit: RTL unit.
+ *     ignore_fexc: Passed to rtl_opt_kill_insn() when eliminating dead stores.
  *     dse: True to eliminate dead stores resulting from dropped branches,
  *         false to leave dead stores alone.
  */
 #define rtl_opt_drop_dead_branches INTERNAL(rtl_opt_drop_dead_branches)
-extern void rtl_opt_drop_dead_branches(RTLUnit *unit, bool dse);
+extern void rtl_opt_drop_dead_branches(RTLUnit *unit, bool ignore_fexc,
+                                       bool dse);
 
 /**
  * rtl_opt_drop_dead_stores:  Search an RTL unit for instructions that
@@ -578,9 +583,11 @@ extern void rtl_opt_drop_dead_branches(RTLUnit *unit, bool dse);
  *
  * [Parameters]
  *     unit: RTL unit.
+ *     ignore_fexc: True to eliminate instructions which could raise
+ *         floating-point exceptions; false to leave them alone.
  */
 #define rtl_opt_drop_dead_stores INTERNAL(rtl_opt_drop_dead_stores)
-extern void rtl_opt_drop_dead_stores(RTLUnit *unit);
+extern void rtl_opt_drop_dead_stores(RTLUnit *unit, bool ignore_fexc);
 
 /**
  * rtl_opt_fold_constants:  Perform constant folding on the given RTL unit,

@@ -1454,8 +1454,10 @@ static bool is_alias_store_visible(RTLUnit * const unit, AliasRef **alias_info,
  * [Parameters]
  *     unit: RTL unit.
  *     reg: Register to possibly kill store for.
+ *     ignore_fexc: True to ignore floating-point exception side effects.
  */
-static void maybe_kill_store(RTLUnit * const unit, RTLRegister * const reg)
+static void maybe_kill_store(RTLUnit * const unit, RTLRegister * const reg,
+                             bool ignore_fexc)
 {
     ASSERT(unit);
     ASSERT(reg);
@@ -1464,7 +1466,8 @@ static void maybe_kill_store(RTLUnit * const unit, RTLRegister * const reg)
     const int insn_index = reg->birth;
     RTLInsn * const insn = &unit->insns[insn_index];
 
-    /* Don't drop instructions with side effects! */
+    /* Don't drop instructions with side effects!  Floating-point exceptions
+     * are checked for in rtl_opt_kill_insn(). */
     if (insn->opcode == RTLOP_ATOMIC_INC || insn->opcode == RTLOP_CMPXCHG
      || insn->opcode == RTLOP_CALL || insn->opcode == RTLOP_CALL_TRANSPARENT) {
         return;
@@ -1474,7 +1477,7 @@ static void maybe_kill_store(RTLUnit * const unit, RTLRegister * const reg)
     log_info(unit->handle, "Dropping dead store to r%d at %d",
              insn->dest, insn_index);
 #endif
-    rtl_opt_kill_insn(unit, reg->birth, true);
+    rtl_opt_kill_insn(unit, reg->birth, ignore_fexc, true);
 }
 
 /*-----------------------------------------------------------------------*/
@@ -1582,9 +1585,23 @@ int rtl_opt_prev_reg_use(const RTLUnit *unit, int reg_index, int insn_index)
 
 /*-----------------------------------------------------------------------*/
 
-void rtl_opt_kill_insn(RTLUnit *unit, int insn_index, bool dse)
+void rtl_opt_kill_insn(RTLUnit *unit, int insn_index, bool ignore_fexc,
+                       bool dse)
 {
     RTLInsn * const insn = &unit->insns[insn_index];
+
+    if (!ignore_fexc) {
+        if ((insn->opcode >= RTLOP_FCVT && insn->opcode <= RTLOP_FTRUNCI)
+         || (insn->opcode >= RTLOP_FADD && insn->opcode <= RTLOP_FNMSUB)
+         || (insn->opcode == RTLOP_VFCVT)) {
+#ifdef RTL_DEBUG_OPTIMIZE
+            log_info(unit->handle, "Not killing instruction %d for FP"
+                     " exception safety", insn_index);
+#endif
+            return;
+        }
+    }
+
     /* Make sure to update alias base live ranges as well! */
     const int src1 = (insn->opcode == RTLOP_GET_ALIAS
                       ? unit->aliases[insn->alias].base : insn->src1);
@@ -1616,17 +1633,17 @@ void rtl_opt_kill_insn(RTLUnit *unit, int insn_index, bool dse)
     ASSERT(src3 == 0 || src2 != 0);
     if (src3 && unit->regs[src3].death == insn_index) {
         if (rollback_reg_death(unit, src3) && dse) {
-            rtl_opt_kill_insn(unit, unit->regs[src3].birth, dse);
+            rtl_opt_kill_insn(unit, unit->regs[src3].birth, ignore_fexc, dse);
         }
     }
     if (src2 && unit->regs[src2].death == insn_index) {
         if (rollback_reg_death(unit, src2) && dse) {
-            rtl_opt_kill_insn(unit, unit->regs[src2].birth, dse);
+            rtl_opt_kill_insn(unit, unit->regs[src2].birth, ignore_fexc, dse);
         }
     }
     if (src1 && unit->regs[src1].death == insn_index) {
         if (rollback_reg_death(unit, src1) && dse) {
-            rtl_opt_kill_insn(unit, unit->regs[src1].birth, dse);
+            rtl_opt_kill_insn(unit, unit->regs[src1].birth, ignore_fexc, dse);
         }
     }
 }
@@ -1679,7 +1696,7 @@ void rtl_opt_alias_data_flow(RTLUnit *unit)
             switch (insn->opcode) {
               case RTLOP_SET_ALIAS:
                 if (alias_ref->has_set && !alias_ref->set_used) {
-                    rtl_opt_kill_insn(unit, alias_ref->set_insn, false);
+                    rtl_opt_kill_insn(unit, alias_ref->set_insn, false, false);
                 }
                 alias_ref->has_set = true;
                 alias_ref->set_used = false;
@@ -1729,7 +1746,7 @@ void rtl_opt_alias_data_flow(RTLUnit *unit)
                        sizeof(*unit->block_seen) * unit->num_blocks);
                 if (!is_alias_store_visible(unit, alias_info, alias,
                                             block_index)) {
-                    rtl_opt_kill_insn(unit, alias_ref->set_insn, false);
+                    rtl_opt_kill_insn(unit, alias_ref->set_insn, false, false);
                 }
             }
         }
@@ -1860,7 +1877,7 @@ void rtl_opt_drop_dead_blocks(RTLUnit *unit)
                     log_warning(unit->handle, "Initialization of r%d at %d"
                                 " is unreachable", insn->dest, j);
                 } else {
-                    rtl_opt_kill_insn(unit, j, false);
+                    rtl_opt_kill_insn(unit, j, true, false);
                 }
             }
         }
@@ -1871,7 +1888,7 @@ void rtl_opt_drop_dead_blocks(RTLUnit *unit)
 
 /*-----------------------------------------------------------------------*/
 
-void rtl_opt_drop_dead_branches(RTLUnit *unit, bool dse)
+void rtl_opt_drop_dead_branches(RTLUnit *unit, bool ignore_fexc, bool dse)
 {
     ASSERT(unit);
     ASSERT(unit->insns);
@@ -1892,7 +1909,7 @@ void rtl_opt_drop_dead_branches(RTLUnit *unit, bool dse)
                 log_info(unit->handle, "Dropping branch at %d to next"
                          " insn", block->last_insn);
 #endif
-                rtl_opt_kill_insn(unit, block->last_insn, dse);
+                rtl_opt_kill_insn(unit, block->last_insn, ignore_fexc, dse);
             }
         }
     }
@@ -1900,12 +1917,12 @@ void rtl_opt_drop_dead_branches(RTLUnit *unit, bool dse)
 
 /*-----------------------------------------------------------------------*/
 
-void rtl_opt_drop_dead_stores(RTLUnit *unit)
+void rtl_opt_drop_dead_stores(RTLUnit *unit, bool ignore_fexc)
 {
     for (int reg_index = 1; reg_index < unit->next_reg; reg_index++) {
         RTLRegister *reg = &unit->regs[reg_index];
         if (reg->death == reg->birth) {
-            maybe_kill_store(unit, reg);
+            maybe_kill_store(unit, reg, ignore_fexc);
         }
     }
 }

@@ -72,7 +72,7 @@ static bool kill_alias_store(
     RTLUnit * const unit = ctx->unit;
 
     const int reg = unit->insns[insn_index].src1;
-    rtl_opt_kill_insn(unit, insn_index, false);
+    rtl_opt_kill_insn(unit, insn_index, false, false);
 
     const int birth = unit->regs[reg].birth;
     if (set_insn_ret) {
@@ -80,7 +80,7 @@ static bool kill_alias_store(
     }
 
     if (kill_value && is_reg_killable(unit, reg, insn_index)) {
-        rtl_opt_kill_insn(unit, birth, false);
+        rtl_opt_kill_insn(unit, birth, false, false);
         return true;
     } else {
         return false;
