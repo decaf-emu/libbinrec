@@ -11,6 +11,7 @@
 #define BINREC_GUEST_PPC_INTERNAL_H
 
 #include "src/common.h"
+#include "src/endian.h"
 #include "src/rtl.h"
 
 struct RTLInsn;
@@ -432,7 +433,7 @@ typedef struct GuestPPCContext {
 } GuestPPCContext;
 
 /*************************************************************************/
-/********************** Internal interface routines **********************/
+/******************** Internal function declarations *********************/
 /*************************************************************************/
 
 /*-------- Optimization routines (guest-ppc-optimize.c) --------*/
@@ -532,6 +533,25 @@ extern bool guest_ppc_scan(GuestPPCContext *ctx, uint32_t limit);
  */
 #define guest_ppc_get_epilogue_label INTERNAL(guest_ppc_get_epilogue_label)
 extern int guest_ppc_get_epilogue_label(GuestPPCContext *ctx);
+
+/**
+ * guest_ppc_get_insn_at:  Return the instruction word at the given address,
+ * or zero if the given address is outside the given block.  The address is
+ * assumed to be properly aligned.
+ */
+static inline PURE_FUNCTION uint32_t guest_ppc_get_insn_at(
+    GuestPPCContext * const ctx, GuestPPCBlockInfo * const block,
+    const uint32_t address)
+{
+    ASSERT((address & 3) == 0);
+    if (address - block->start < block->len) {
+        const uint32_t *memory_base =
+            (const uint32_t *)ctx->handle->setup.guest_memory_base;
+        return bswap_be32(memory_base[address/4]);
+    } else {
+        return 0;
+    }
+}
 
 /*************************************************************************/
 /*************************************************************************/

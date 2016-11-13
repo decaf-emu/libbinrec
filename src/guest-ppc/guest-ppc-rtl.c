@@ -46,27 +46,6 @@ static inline int rtl_imm64(RTLUnit * const unit, uint32_t value)
 /*-----------------------------------------------------------------------*/
 
 /**
- * get_insn_at:  Return the instruction word at the given address, or zero
- * if the given address is outside the current block.  The address is
- * assumed to be properly aligned.
- */
-static inline PURE_FUNCTION uint32_t get_insn_at(
-    GuestPPCContext * const ctx, GuestPPCBlockInfo * const block,
-    const uint32_t address)
-{
-    ASSERT((address & 3) == 0);
-    if (address - block->start < block->len) {
-        const uint32_t *memory_base =
-            (const uint32_t *)ctx->handle->setup.guest_memory_base;
-        return bswap_be32(memory_base[address/4]);
-    } else {
-        return 0;
-    }
-}
-
-/*-----------------------------------------------------------------------*/
-
-/**
  * convert_fpr:  Convert a floating-point value from one type to another,
  * and return an RTL register containing the converted value.
  *
@@ -4185,10 +4164,27 @@ static inline void translate_x1F(
         return;
 
       /* XO_5 = 0x13 */
-      case XO_MFCR:
-        guest_ppc_flush_cr(ctx, true);
-        set_gpr(ctx, insn_rD(insn), get_cr(ctx));
+      case XO_MFCR: {
+        /* Optimize an mfcr+rlwinm pair which extracts a single bit from CR.
+         * We can only trivially skip the mfcr if the rlwinm reads and
+         * writes the same register. */
+        const uint32_t next_insn =
+            guest_ppc_get_insn_at(ctx, block, address+4);
+        const uint32_t extract_bit_insn = 
+            OPCD_RLWINM<<26 | insn_rD(insn)<<21 | 31<<6 | 31<<1;
+        const uint32_t extract_bit_same_reg_insn = 
+            extract_bit_insn | insn_rD(insn)<<16;
+        if ((next_insn & 0xFFFF07FE) != extract_bit_same_reg_insn) {
+            guest_ppc_flush_cr(ctx, true);
+            set_gpr(ctx, insn_rD(insn), get_cr(ctx));
+        }
+        if ((next_insn & 0xFFE007FE) == extract_bit_insn) {
+            const int bit_index = (insn_SH(next_insn) - 1) & 31;
+            set_gpr(ctx, insn_rA(next_insn), get_crb(ctx, bit_index));
+            ctx->skip_next_insn = true;
+        }
         return;
+      }  // case XO_MFCR
       case XO_MFTB:
       case XO_MFSPR:
         translate_move_spr(ctx, address, insn, false);
@@ -4429,7 +4425,7 @@ static inline void translate_x1F(
       /* XO_5 = 0x1A */
       case XO_CNTLZW:
         if (!insn_Rc(insn)
-         && ((get_insn_at(ctx, block, address+4) & 0xFFE0FFFE)
+         && ((guest_ppc_get_insn_at(ctx, block, address+4) & 0xFFE0FFFE)
              == (OPCD_RLWINM<<26 | insn_rA(insn)<<21 | 27<<11 | 5<<6 | 31<<1)))
         {
             /* "cntlzw temp,rX; srwi rY,temp,5" is a common PowerPC idiom
@@ -4438,7 +4434,8 @@ static inline void translate_x1F(
              * different from the output registers, we leave the cntlzw in
              * place in case its result happens to also be used elsewhere;
              * dead store elimination will remove it if not. */
-            const uint32_t next_insn = get_insn_at(ctx, block, address+4);
+            const uint32_t next_insn =
+                guest_ppc_get_insn_at(ctx, block, address+4);
             const int cntlzw_rS = insn_rS(insn);
             const int rlwinm_rA = insn_rA(next_insn);
             const int value = get_gpr(ctx, cntlzw_rS);

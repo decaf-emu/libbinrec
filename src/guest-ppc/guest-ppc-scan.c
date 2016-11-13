@@ -230,9 +230,9 @@ static void check_fp_Rc(GuestPPCContext *ctx, GuestPPCBlockInfo *block,
  * given block based on the given instruction.  The instruction is assumed
  * to be valid.
  */
-static inline void update_used_changed(GuestPPCContext *ctx,
-                                       GuestPPCBlockInfo *block,
-                                       uint32_t address, uint32_t insn)
+static inline void update_used_changed(
+    GuestPPCContext *ctx, GuestPPCBlockInfo *block, uint32_t address,
+    uint32_t insn)
 {
     switch (insn_OPCD(insn)) {
       case OPCD_SC:
@@ -317,16 +317,31 @@ static inline void update_used_changed(GuestPPCContext *ctx,
         break;
 
       case OPCD_RLWIMI:
-        mark_gpr_used(block, insn_rA(insn));
-        /* fall through */
-      case OPCD_RLWINM:
         mark_gpr_used(block, insn_rS(insn));
+        mark_gpr_used(block, insn_rA(insn));
         mark_gpr_changed(block, insn_rA(insn));
         if (insn_Rc(insn)) {
             mark_xer_used(block);
             mark_crf_changed(block, 0);
         }
         break;
+
+      case OPCD_RLWINM: {
+        /* Optimize an mfcr+rlwinm pair which extracts a single bit from CR. */
+        const uint32_t prev_insn =
+            guest_ppc_get_insn_at(ctx, block, address-4);
+        if (prev_insn == (OPCD_x1F<<26 | insn_rS(insn)<<21 | XO_MFCR<<1)) {
+            mark_crb_used(block, (insn_SH(insn) - 1) & 31);
+        } else {
+            mark_gpr_used(block, insn_rS(insn));
+        }
+        mark_gpr_changed(block, insn_rA(insn));
+        if (insn_Rc(insn)) {
+            mark_xer_used(block);
+            mark_crf_changed(block, 0);
+        }
+        break;
+      }  // case OPCD_RLWINM
 
       case OPCD_LWZU:
       case OPCD_LBZU:
@@ -696,7 +711,17 @@ static inline void update_used_changed(GuestPPCContext *ctx,
                 mark_gpr_used(block, insn_rS(insn));
             } else {
                 if (insn_XO_10(insn) == XO_MFCR) {
-                    mark_cr_used(block);
+                    /* Optimize an mfcr+rlwinm pair which extracts a single
+                     * bit from CR.  We can only trivially skip the mfcr if
+                     * the rlwinm reads and writes the same register. */
+                    const uint32_t next_insn =
+                        guest_ppc_get_insn_at(ctx, block, address+4);
+                    const uint32_t extract_bit_same_reg_insn = 
+                        OPCD_RLWINM<<26 | insn_rD(insn)<<21 | insn_rD(insn)<<16
+                        | 31<<6 | 31<<1;
+                    if ((next_insn & 0xFFFF07FE) != extract_bit_same_reg_insn) {
+                        mark_cr_used(block);
+                    }
                 } else if (insn_XO_10(insn) == XO_MFSRIN) {
                     mark_gpr_used(block, insn_rB(insn));
                 }
