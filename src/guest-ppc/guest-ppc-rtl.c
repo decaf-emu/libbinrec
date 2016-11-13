@@ -4545,6 +4545,32 @@ static inline void translate_x3F(
             translate_fp_arith(ctx, insn, RTLOP_FADD, false, FPSCR_VXISI);
             return;
 
+          case XO_FSEL: {
+            /* fsel does not raise any exceptions, so make sure we don't
+             * affect host exception state with FCMP. */
+            const int fpstate = rtl_alloc_register(unit, RTLTYPE_FPSTATE);
+            rtl_add_insn(unit, RTLOP_FGETSTATE, fpstate, 0, 0, 0);
+            /* There's no need to convert frA to float64 if it's currently
+             * float32, since all we do is test its value. */
+            const RTLDataType frA_type =
+                get_fpr_scalar_type(ctx, insn_frA(insn));
+            const int frA = get_fpr(ctx, insn_frA(insn), frA_type);
+            const int zero = rtl_alloc_register(unit, frA_type);
+            rtl_add_insn(unit, RTLOP_LOAD_IMM, zero, 0, 0, 0);
+            const int frC = get_fpr(ctx, insn_frC(insn), RTLTYPE_FLOAT64);
+            const int frB = get_fpr(ctx, insn_frB(insn), RTLTYPE_FLOAT64);
+            const int test = rtl_alloc_register(unit, RTLTYPE_INT32);
+            rtl_add_insn(unit, RTLOP_FCMP, test, frA, zero, RTLFCMP_GE);
+            const int result = rtl_alloc_register(unit, RTLTYPE_FLOAT64);
+            rtl_add_insn(unit, RTLOP_SELECT, result, frC, frB, test);
+            set_fpr(ctx, insn_frD(insn), result);
+            rtl_add_insn(unit, RTLOP_FSETSTATE, 0, fpstate, 0, 0);
+            if (insn_Rc(insn)) {
+                update_cr1(ctx);
+            }
+            return;
+          }  // case XO_FSEL
+
           case XO_FMUL:
             translate_fp_arith(ctx, insn, RTLOP_FMUL, false, FPSCR_VXIMZ);
             return;
@@ -4595,8 +4621,6 @@ static inline void translate_x3F(
                 translate_fp_fma(ctx, insn, RTLOP_FMADD, false, true);
             }
             return;
-
-          default: return;  // FIXME: not yet implemented
         }
 
         ASSERT(!"Missing 0x3F_5 extended opcode handler");
@@ -5368,9 +5392,9 @@ static inline void translate_insn(
             return;
 
           case XO_FRES: {
+            const int frB = get_fpr(ctx, insn_frB(insn), RTLTYPE_FLOAT32);
             const int one = rtl_alloc_register(unit, RTLTYPE_FLOAT32);
             rtl_add_insn(unit, RTLOP_LOAD_IMM, one, 0, 0, 0x3F800000);
-            const int frB = get_fpr(ctx, insn_frB(insn), RTLTYPE_FLOAT32);
             const int result = rtl_alloc_register(unit, RTLTYPE_FLOAT32);
             rtl_add_insn(unit, RTLOP_FDIV, result, one, frB, 0);
             set_fp_result(ctx, insn_frD(insn), result, 0, frB, 0, 0, 0, true,
@@ -5408,8 +5432,6 @@ static inline void translate_insn(
                 translate_fp_fma(ctx, insn, RTLOP_FMADD, true, true);
             }
             return;
-
-          default: return;  // FIXME: not yet implemented
         }
         ASSERT(!"Missing 0x3B extended opcode handler");
 

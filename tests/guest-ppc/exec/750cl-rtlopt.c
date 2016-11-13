@@ -49,7 +49,7 @@ int main(void)
     }
 
     int exitcode = EXIT_SUCCESS;
-    const int expected_errors = 559;
+    const int expected_errors = 552;
     const int result = state.gpr[3];
     if (result < 0) {
         exitcode = EXIT_FAILURE;
