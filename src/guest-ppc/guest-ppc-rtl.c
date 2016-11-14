@@ -3282,37 +3282,23 @@ static void translate_frsqrte_lookup(GuestPPCContext *ctx, int frB,
 
     rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, label_not_zero);
     rtl_add_insn(unit, RTLOP_GOTO_IF_NZ, 0, sign, 0, label_vxsqrt);
-    const int alias_mant64 = rtl_alloc_alias_register(unit, RTLTYPE_INT64);
-    rtl_add_insn(unit, RTLOP_SET_ALIAS, 0, exp0_mantissa, 0, alias_mant64);
-    const int norm_test_mask = rtl_alloc_register(unit, RTLTYPE_INT64);
-    rtl_add_insn(unit, RTLOP_LOAD_IMM, norm_test_mask, 0, 0, UINT64_C(1)<<52);
-
-    const int label_norm_loop = rtl_alloc_label(unit);
-    rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, label_norm_loop);
-    const int norm_mant_in = rtl_alloc_register(unit, RTLTYPE_INT64);
-    rtl_add_insn(unit, RTLOP_GET_ALIAS, norm_mant_in, 0, 0, alias_mant64);
-    const int norm_mant_out = rtl_alloc_register(unit, RTLTYPE_INT64);
-    rtl_add_insn(unit, RTLOP_SLLI, norm_mant_out, norm_mant_in, 0, 1);
-    rtl_add_insn(unit, RTLOP_SET_ALIAS, 0, norm_mant_out, 0, alias_mant64);
-    const int norm_test = rtl_alloc_register(unit, RTLTYPE_INT64);
-    rtl_add_insn(unit, RTLOP_AND, norm_test, norm_mant_out, norm_test_mask, 0);
-    const int label_norm_done = rtl_alloc_label(unit);
-    rtl_add_insn(unit, RTLOP_GOTO_IF_NZ, 0, norm_test, 0, label_norm_done);
-    const int norm_exp_in = rtl_alloc_register(unit, RTLTYPE_INT32);
-    rtl_add_insn(unit, RTLOP_GET_ALIAS, norm_exp_in, 0, 0, alias_exp);
-    const int norm_exp_out = rtl_alloc_register(unit, RTLTYPE_INT32);
-    rtl_add_insn(unit, RTLOP_ADDI, norm_exp_out, norm_exp_in, 0, -1);
-    rtl_add_insn(unit, RTLOP_SET_ALIAS, 0, norm_exp_out, 0, alias_exp);
-    rtl_add_insn(unit, RTLOP_GOTO, 0, 0, 0, label_norm_loop);
-
-    rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, label_norm_done);
-    const int norm_mant_done = rtl_alloc_register(unit, RTLTYPE_INT64);
-    rtl_add_insn(unit, RTLOP_GET_ALIAS, norm_mant_done, 0, 0, alias_mant64);
-    const int norm_mant_hi64 = rtl_alloc_register(unit, RTLTYPE_INT64);
+    const int norm_mant_clz = rtl_alloc_register(unit, RTLTYPE_INT32);
+    rtl_add_insn(unit, RTLOP_CLZ, norm_mant_clz, exp0_mantissa, 0, 0);
+    const int norm_mant_shift = rtl_alloc_register(unit, RTLTYPE_INT32);
+    rtl_add_insn(unit, RTLOP_ADDI, norm_mant_shift, norm_mant_clz, 0, -11);
+    const int norm_neg_exp = rtl_alloc_register(unit, RTLTYPE_INT32);
+    rtl_add_insn(unit, RTLOP_ADDI, norm_neg_exp, norm_mant_clz, 0, -12);
+    const int norm_shifted_mant64 = rtl_alloc_register(unit, RTLTYPE_INT64);
+    rtl_add_insn(unit, RTLOP_SLL,
+                 norm_shifted_mant64, exp0_mantissa, norm_mant_shift, 0);
+    const int norm_exp = rtl_alloc_register(unit, RTLTYPE_INT32);
+    rtl_add_insn(unit, RTLOP_NEG, norm_exp, norm_neg_exp, 0, 0);
+    rtl_add_insn(unit, RTLOP_SET_ALIAS, 0, norm_exp, 0, alias_exp);
+    const int norm_mant64_hi = rtl_alloc_register(unit, RTLTYPE_INT64);
     rtl_add_insn(unit, RTLOP_BFEXT,
-                 norm_mant_hi64, norm_mant_done, 0, 32 | 20<<8);
+                 norm_mant64_hi, norm_shifted_mant64, 0, 32 | 20<<8);
     const int norm_mant_hi = rtl_alloc_register(unit, RTLTYPE_INT32);
-    rtl_add_insn(unit, RTLOP_ZCAST, norm_mant_hi, norm_mant_hi64, 0, 0);
+    rtl_add_insn(unit, RTLOP_ZCAST, norm_mant_hi, norm_mant64_hi, 0, 0);
     rtl_add_insn(unit, RTLOP_SET_ALIAS, 0, norm_mant_hi, 0, alias_mant_hi);
 
     /* Calculate the new exponent and mantissa. */
