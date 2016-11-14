@@ -36,6 +36,8 @@ typedef struct PPCState {
     void (*sc_handler)(struct PPCState *);
     void (*trap_handler)(struct PPCState *);
     int (*branch_callback)(struct PPCState *, uint32_t branch_address);
+    const uint16_t *fres_lut;
+    const uint16_t *frsqrte_lut;
 } PPCState;
 
 /*-----------------------------------------------------------------------*/

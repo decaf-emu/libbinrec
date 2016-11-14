@@ -52,7 +52,7 @@ int main(void)
     EXPECT_STREQ(log, "");
 
     int exitcode = EXIT_SUCCESS;
-    const int expected_errors = 552;
+    const int expected_errors = 536;
     const int result = state.gpr[3];
     if (result < 0) {
         exitcode = EXIT_FAILURE;
@@ -62,14 +62,7 @@ int main(void)
         printf("Wrong number of errors returned (expected %d, got %d)\n",
                expected_errors, result);
         printf("Error log follows:\n");
-        const uint32_t *error_log =
-            (const uint32_t *)((uintptr_t)memory + PPC750CL_ERROR_LOG_ADDRESS);
-        for (int i = 0; i < result; i++, error_log += 8) {
-            printf("    %08X %08X  %08X %08X  %08X %08X\n",
-                   bswap_be32(error_log[0]), bswap_be32(error_log[1]),
-                   bswap_be32(error_log[2]), bswap_be32(error_log[3]),
-                   bswap_be32(error_log[4]), bswap_be32(error_log[5]));
-        }
+        print_750cl_errors(result, memory);
     }
     // FIXME: eventually record all expected errors to make sure they match
 

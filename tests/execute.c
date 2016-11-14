@@ -215,6 +215,8 @@ bool call_guest_code(
     setup.state_offset_sc_handler = offsetof(PPCState,sc_handler);
     setup.state_offset_trap_handler = offsetof(PPCState,trap_handler);
     setup.state_offset_branch_callback = offsetof(PPCState,branch_callback);
+    setup.state_offset_fres_lut = offsetof(PPCState,fres_lut);
+    setup.state_offset_frsqrte_lut = offsetof(PPCState,frsqrte_lut);
     setup.log = log;
 
     binrec_t *handle;

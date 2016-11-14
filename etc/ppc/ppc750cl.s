@@ -3,6 +3,11 @@
 # No copyright is claimed on this file.
 #
 # Update history:
+#    - 2016-11-13: Rewrote fres and frsqrte tests to only check that the
+#         instruction output is within the specification-mandated bounds,
+#         and added separate tests (enabled by TEST_RECIPROCAL_TABLES) to
+#         check for exact results.  TEST_RECIPROCAL_TABLES is disabled by
+#         default.
 #    - 2016-11-13: Added tests for underflow exception behavior with
 #         two-operand floating-point instructions.
 #    - 2016-11-13: Added tests for NaN selection on floating-point
@@ -88,7 +93,7 @@
 #    Word 0: Failing instruction word
 #    Word 1: Address of failing instruction word
 #    Words 2-5: Auxiliary data (see below)
-#    Words 6-7: Unused
+#    Words 6-7: Unused (except for frsqrte reciprocal table tests)
 # Instructions have been coded so that generally, the operands uniquely
 # identify the failing instruction, but in some cases (such as rounding
 # mode tests with frsp) there are multiple copies of the same instruction
@@ -151,6 +156,12 @@ TEST_SC = 1
 # resume execution at the next instruction.
 .ifndef TEST_TRAP
 TEST_TRAP = 1
+.endif
+
+# TEST_RECIPROCAL_TABLES:  Set this to 1 to test for the precise outputs
+# of the fres and frsqrte instructions.
+.ifndef TEST_RECIPROCAL_TABLES
+TEST_RECIPROCAL_TABLES = 0
 .endif
 
 # TEST_PAIRED_SINGLE:  Set this to 1 to test the paired-single floating
@@ -5593,6 +5604,8 @@ get_load_address:
    .int 0x00000001              #  44(%r30): minimum single-precision denormal
    .int 0x80000001              #  48(%r30): same, with sign bit set
    .int 0x00FFFFFF              #  52(%r30): minimum single normal * 2 - 1ulp
+   .int 0x001FFE00              #  56(%r30): 1/HUGE_VALF*4095/4096 (fres bound)
+   .int 0x00200200              #  60(%r30): 1/HUGE_VALF*4097/4096 (fres bound)
    .balign 8
 3: .int 0x00000000,0x00000000   #   0(%r31): 0.0
    .int 0x3FF00000,0x00000000   #   8(%r31): 1.0
@@ -5643,10 +5656,7 @@ get_load_address:
    .int 0x3FF00000,0x00000001   # 368(%r31): 1.0 + 1ulp
    .int 0x00000000,0x00000001   # 376(%r31): minimum double-precision denormal
    .int 0x3FEFFFFF,0xF8000000   # 384(%r31): (double)(1.0f - 0.25ulp)
-   .int 0x3FDFFF00,0x00000000   # 392(%r31): actual result of fres(2.0)
-   .int 0x37F00010,0x00000000   # 400(%r31): actual result of fres(HUGE_VALF)
-   .int 0x3FFFFE80,0x00000000   # 408(%r31): actual result of frsqrte(2.0)
-   .int 0x001FFFFF,0xFFFFFFFF   # 416(%r31): minimum double normal * 2 - 1ulp
+   .int 0x001FFFFF,0xFFFFFFFF   # 392(%r31): minimum double normal * 2 - 1ulp
 
    ########################################################################
    # 4.6.2 Floating-Point Load Instructions
@@ -9146,7 +9156,7 @@ get_load_address:
    lfs %f4,12(%r30)
    bl add_fpscr_ux
    bl check_fpu_pnorm_inex
-0: lfd %f3,416(%r31)
+0: lfd %f3,392(%r31)
    lfd %f13,64(%r31)
    fmul %f3,%f3,%f13
    bl record
@@ -9160,7 +9170,7 @@ get_load_address:
    lfs %f4,12(%r30)
    bl add_fpscr_ux
    bl check_fpu_pnorm_inex
-0: lfd %f3,416(%r31)
+0: lfd %f3,392(%r31)
    fdiv %f3,%f3,%f2
    bl record
    lfd %f4,240(%r31)
@@ -11001,16 +11011,20 @@ get_load_address:
    # fres
 0: fres %f3,%f2         # +normal
    bl record
-   # Check for the actual value returned by the 750CL.
-   lfd %f4,392(%r31)
-   bl check_fpu_pnorm
+   # The 750CL documentation says that the result is "correct within
+   # one part in 4096", so check that it falls within the proper bounds.
+   lfd %f4,256(%r31)
+   lfd %f5,264(%r31)
+   bl check_fpu_estimate_pnorm
 0: fneg %f3,%f2         # -normal
    fres %f4,%f3
    bl record
    fmr %f3,%f4
-   lfd %f4,392(%r31)
+   lfd %f4,264(%r31)
    fneg %f4,%f4
-   bl check_fpu_nnorm
+   lfd %f5,256(%r31)
+   fneg %f5,%f5
+   bl check_fpu_estimate_nnorm
 0: lfs %f13,44(%r30)    # +tiny
    fres %f3,%f13
    bl record
@@ -11031,20 +11045,21 @@ get_load_address:
 0: lfd %f14,152(%r31)   # +huge
    fres %f3,%f14
    bl record
-   lfd %f4,400(%r31)
+   lfs %f4,56(%r30)
+   lfs %f5,60(%r30)
    bl add_fpscr_ux
-   oris %r0,%r0,2
-   bl check_fpu_pdenorm
+   bl check_fpu_estimate_pdenorm
 0: lfd %f14,152(%r31)   # -huge
    fneg %f14,%f14
    fres %f4,%f14
    bl record
    fmr %f3,%f4
-   lfd %f4,400(%r31)
+   lfs %f4,60(%r30)
    fneg %f4,%f4
+   lfs %f5,56(%r30)
+   fneg %f5,%f5
    bl add_fpscr_ux
-   oris %r0,%r0,2
-   bl check_fpu_ndenorm
+   bl check_fpu_estimate_ndenorm
 0: fres %f3,%f26        # +infinity
    bl record
    fmr %f4,%f0
@@ -11111,15 +11126,17 @@ get_load_address:
    fres %f4,%f2
    bl record
    fmr %f3,%f4
-   lfd %f4,392(%r31)
+   lfd %f4,256(%r31)
+   lfd %f5,264(%r31)
    bl add_fpscr_vxsnan
-   bl check_fpu_pnorm
+   bl check_fpu_estimate_pnorm
 
    # fres (nonzero frA and frC)
 0: .int 0xEC6B12F0      # fres %f3,%f2,frA=%f11,frC=%f11
    bl record
-   lfd %f4,392(%r31)
-   bl check_fpu_pnorm
+   lfd %f4,256(%r31)
+   lfd %f5,264(%r31)
+   bl check_fpu_estimate_pnorm
 
    # fres.
 0: fres. %f3,%f11       # SNaN
@@ -11160,12 +11177,230 @@ get_load_address:
    bl check_fpu_noresult
    mtfsb0 24
 
+.if TEST_RECIPROCAL_TABLES
+
+   # fres (precise output: basic tests)
+0: bl 1f
+1: mflr %r3
+   addi %r14,%r3,2f-1b
+   addi %r15,%r3,0f-1b
+   b 0f
+   # 12 bytes per entry: input, output, expected FPSCR
+2: .int 0x40000000,0x3EFFF800,0x00004000
+   .int 0xC0000000,0xBEFFF800,0x00008000
+   .int 0x7F7FFFFF,0x00200020,0x88034000
+   .int 0xFF7FFFFF,0x80200020,0x88038000
+   .int 0x00000001,0x7F7FFFFF,0x90024000
+   .int 0x80000001,0xFF7FFFFF,0x90028000
+   .int 0x001FFFFF,0x7F7FFFFF,0x90024000
+   .int 0x801FFFFF,0xFF7FFFFF,0x90028000
+   .int 0x00200000,0x7F7FF800,0x00004000
+   .int 0x80200000,0xFF7FF800,0x00008000
+0: lfs %f3,0(%r14)
+   mtfsf 255,%f0
+   fres %f5,%f3
+   bl record
+   mffs %f4
+   stfd %f4,0(%r4)
+   stfs %f5,0(%r4)
+   lwz %r3,0(%r4)
+   lwz %r7,4(%r14)
+   lwz %r8,4(%r4)
+   lwz %r9,8(%r14)
+   cmpw %r3,%r7
+   bne 1f
+   cmpw %r8,%r9
+   beq 2f
+1: stw %r3,8(%r6)
+   stw %r7,12(%r6)
+   stw %r8,16(%r6)
+   lwz %r3,0(%r14)
+   stw %r3,20(%r6)
+   addi %r6,%r6,32
+2: addi %r14,%r14,12
+   cmpw %r14,%r15
+   blt 0b
+
+   # fres (precise output: all base and delta values)
+0: lis %r14,0x4000
+   lis %r15,0x4080
+   lis %r12,0x0001
+0: stw %r14,0(%r4)
+   lfs %f3,0(%r4)
+   bl calc_fres
+   stfs %f4,4(%r4)
+   mr %r11,%r3
+   mtfsf 255,%f0
+   fmr %f4,%f3
+   fres %f5,%f4
+   bl record
+   lwz %r7,4(%r4)
+   stfs %f5,8(%r4)
+   lwz %r3,8(%r4)
+   cmpw %r3,%r7
+   mffs %f4
+   stfd %f4,8(%r4)
+   lwz %r7,12(%r4)
+   bne 1f
+   cmpw %r7,%r11
+   beq 2f
+1: stw %r3,8(%r6)
+   lwz %r3,4(%r4)
+   stw %r3,12(%r6)
+   stw %r7,16(%r6)
+   lwz %r3,0(%r4)
+   stw %r3,20(%r6)
+   addi %r6,%r6,32
+2: add %r14,%r14,%r12
+   cmpw %r14,%r15
+   blt 0b
+
+   # fres (precise output: input precision and FI)
+0: lis %r14,0x4000
+   ori %r15,%r14,0x200
+   li %r12,1
+0: stw %r14,0(%r4)
+   lfs %f3,0(%r4)
+   bl calc_fres
+   stfs %f4,4(%r4)
+   mr %r11,%r3
+   mtfsf 255,%f0
+   fmr %f5,%f3
+   fres %f5,%f5
+   bl record
+   lwz %r7,4(%r4)
+   stfs %f5,8(%r4)
+   lwz %r3,8(%r4)
+   cmpw %r3,%r7
+   mffs %f4
+   stfd %f4,8(%r4)
+   lwz %r7,12(%r4)
+   bne 1f
+   cmpw %r7,%r11
+   beq 2f
+1: stw %r3,8(%r6)
+   lwz %r3,4(%r4)
+   stw %r3,12(%r6)
+   stw %r7,16(%r6)
+   lwz %r3,0(%r4)
+   stw %r3,20(%r6)
+   addi %r6,%r6,32
+2: add %r14,%r14,%r12
+   cmpw %r14,%r15
+   blt 0b
+
+   # fres (precise output: denormal inputs)
+0: lis %r14,0x0010
+   lis %r15,0x00A0
+   lis %r12,0x10
+0: stw %r14,0(%r4)
+   lfs %f3,0(%r4)
+   bl calc_fres
+   stfs %f4,4(%r4)
+   mr %r11,%r3
+   mtfsf 255,%f0
+   fmr %f13,%f3
+   fres %f5,%f13
+   bl record
+   lwz %r7,4(%r4)
+   stfs %f5,8(%r4)
+   lwz %r3,8(%r4)
+   cmpw %r3,%r7
+   mffs %f4
+   stfd %f4,8(%r4)
+   lwz %r7,12(%r4)
+   bne 1f
+   cmpw %r7,%r11
+   beq 2f
+1: stw %r3,8(%r6)
+   lwz %r3,4(%r4)
+   stw %r3,12(%r6)
+   stw %r7,16(%r6)
+   lwz %r3,0(%r4)
+   stw %r3,20(%r6)
+   addi %r6,%r6,32
+2: add %r14,%r14,%r12
+   cmpw %r14,%r15
+   blt 0b
+
+   # fres (precise output: input precision for denormals)
+0: lis %r14,0x003F
+   ori %r14,%r14,0xFE00
+   lis %r15,0x0040
+   ori %r15,%r15,0x0200
+   li %r12,0x20
+0: stw %r14,0(%r4)
+   lfs %f3,0(%r4)
+   bl calc_fres
+   stfs %f4,4(%r4)
+   mr %r11,%r3
+   mtfsf 255,%f0
+   fmr %f14,%f3
+   fres %f5,%f14
+   bl record
+   lwz %r7,4(%r4)
+   stfs %f5,8(%r4)
+   lwz %r3,8(%r4)
+   cmpw %r3,%r7
+   mffs %f4
+   stfd %f4,8(%r4)
+   lwz %r7,12(%r4)
+   bne 1f
+   cmpw %r7,%r11
+   beq 2f
+1: stw %r3,8(%r6)
+   lwz %r3,4(%r4)
+   stw %r3,12(%r6)
+   stw %r7,16(%r6)
+   lwz %r3,0(%r4)
+   stw %r3,20(%r6)
+   addi %r6,%r6,32
+2: add %r14,%r14,%r12
+   cmpw %r14,%r15
+   blt 0b
+
+   # fres (precise output: denormal outputs)
+0: lis %r14,0x7E00
+   lis %r15,0x7F80
+   lis %r12,0x10
+0: stw %r14,0(%r4)
+   lfs %f3,0(%r4)
+   bl calc_fres
+   stfs %f4,4(%r4)
+   mr %r11,%r3
+   mtfsf 255,%f0
+   fmr %f15,%f3
+   fres %f5,%f15
+   bl record
+   lwz %r7,4(%r4)
+   stfs %f5,8(%r4)
+   lwz %r3,8(%r4)
+   cmpw %r3,%r7
+   mffs %f4
+   stfd %f4,8(%r4)
+   lwz %r7,12(%r4)
+   bne 1f
+   cmpw %r7,%r11
+   beq 2f
+1: stw %r3,8(%r6)
+   lwz %r3,4(%r4)
+   stw %r3,12(%r6)
+   stw %r7,16(%r6)
+   lwz %r3,0(%r4)
+   stw %r3,20(%r6)
+   addi %r6,%r6,32
+2: add %r14,%r14,%r12
+   cmpw %r14,%r15
+   blt 0b
+
+.endif  # TEST_RECIPROCAL_TABLES
+
    # frsqrte
 0: frsqrte %f3,%f29     # +normal
    bl record
-   # As with fres, we check for the actual value returned by the 750CL.
-   lfd %f4,408(%r31)
-   bl check_fpu_pnorm
+   lfd %f4,272(%r31)
+   lfd %f5,280(%r31)
+   bl check_fpu_estimate_pnorm
 0: frsqrte %f3,%f26     # +infinity
    bl record
    fmr %f4,%f0
@@ -11244,15 +11479,17 @@ get_load_address:
    frsqrte %f4,%f29
    bl record
    fmr %f3,%f4
-   lfd %f4,408(%r31)
+   lfd %f4,272(%r31)
+   lfd %f5,280(%r31)
    bl add_fpscr_vxsnan
-   bl check_fpu_pnorm
+   bl check_fpu_estimate_pnorm
 
    # frsqrte (nonzero frA and frC)
 0: .int 0xFC6BEAF4      # frsqrte %f3,%f29,frA=%f11,frC=%f11
    bl record
-   lfd %f4,408(%r31)
-   bl check_fpu_pnorm
+   lfd %f4,272(%r31)
+   lfd %f5,280(%r31)
+   bl check_fpu_estimate_pnorm
 
    # frsqrte.
 0: frsqrte. %f3,%f11    # SNaN
@@ -11292,6 +11529,222 @@ get_load_address:
    bl add_fpscr_vxsnan
    bl check_fpu_noresult
    mtfsb0 24
+
+.if TEST_RECIPROCAL_TABLES
+
+   # On failure, these tests store the expected (double-precision) output
+   # value in words 6 and 7 of the failure record.  Word 5 receives the
+   # high 32 bits of the input value, except for the denormal input
+   # precision tests which store the low 32 bits (since the high 32 bits
+   # are always zero in that case).
+
+   # frsqrte (precise output: basic tests)
+0: bl 1f
+1: mflr %r3
+   addi %r14,%r3,2f-1b
+   addi %r15,%r3,0f-1b
+   b 0f
+   # 24 bytes per entry: input, output, expected FPSCR, padding
+2: .int 0x40000000,0x00000000, 0x3FE69FA0,0x00000000, 0x00004000, 0
+   .int 0x40100000,0x00000000, 0x3FDFFE80,0x00000000, 0x00004000, 0
+   .int 0x7FEFFFFF,0xFFFFFFFF, 0x1FF00008,0x2C000000, 0x00004000, 0
+   .int 0x00000000,0x00000001, 0x617FFE80,0x00000000, 0x00004000, 0
+0: lfd %f3,0(%r14)
+   mtfsf 255,%f0
+   frsqrte %f5,%f3
+   bl record
+   mffs %f4
+   stfd %f4,0(%r4)
+   stfd %f5,8(%r4)
+   lwz %r3,8(%r4)
+   lwz %r7,8(%r14)
+   lwz %r8,12(%r4)
+   lwz %r9,12(%r14)
+   lwz %r10,4(%r4)
+   lwz %r11,16(%r14)
+   cmpw %r3,%r7
+   bne 1f
+   cmpw %r8,%r9
+   bne 1f
+   cmpw %r10,%r11
+   beq 2f
+1: stw %r3,8(%r6)
+   stw %r8,12(%r6)
+   stw %r10,16(%r6)
+   lwz %r3,0(%r14)
+   stw %r3,20(%r6)
+   stw %r7,24(%r6)
+   stw %r9,28(%r6)
+   addi %r6,%r6,32
+2: addi %r14,%r14,24
+   cmpw %r14,%r15
+   blt 0b
+
+   # frsqrte (precise output: all base and delta values)
+0: lis %r14,0x4010
+   lis %r15,0x4030
+   li %r12,0x4000
+0: stw %r14,0(%r4)
+   stw %r0,4(%r4)
+   lfd %f3,0(%r4)
+   bl calc_frsqrte
+   stfd %f4,8(%r4)
+   mr %r11,%r3
+   mtfsf 255,%f0
+   fmr %f4,%f3
+   frsqrte %f5,%f4
+   bl record
+   stfd %f5,16(%r4)
+   lwz %r3,16(%r4)
+   lwz %r7,8(%r4)
+   lwz %r8,20(%r4)
+   lwz %r9,12(%r4)
+   mffs %f4
+   stfd %f4,24(%r4)
+   lwz %r10,28(%r4)
+   cmpw %r3,%r7
+   bne 1f
+   cmpw %r8,%r9
+   bne 1f
+   cmpw %r10,%r11
+   beq 2f
+1: stw %r3,8(%r6)
+   stw %r8,12(%r6)
+   stw %r10,16(%r6)
+   lwz %r3,0(%r4)
+   stw %r3,20(%r6)
+   stw %r7,24(%r6)
+   stw %r9,28(%r6)
+   addi %r6,%r6,32
+2: add %r14,%r14,%r12
+   cmpw %r14,%r15
+   blt 0b
+
+   # frsqrte (precise output: input precision)
+0: lis %r14,0x401F
+   ori %r14,%r14,0xF000
+   lis %r15,0x4020
+   ori %r14,%r14,0x1000
+   li %r12,0x10
+0: stw %r14,0(%r4)
+   stw %r0,4(%r4)
+   lfd %f3,0(%r4)
+   bl calc_frsqrte
+   stfd %f4,8(%r4)
+   mr %r11,%r3
+   mtfsf 255,%f0
+   fmr %f5,%f3
+   frsqrte %f5,%f5
+   bl record
+   stfd %f5,16(%r4)
+   lwz %r3,16(%r4)
+   lwz %r7,8(%r4)
+   lwz %r8,20(%r4)
+   lwz %r9,12(%r4)
+   mffs %f4
+   stfd %f4,24(%r4)
+   lwz %r10,28(%r4)
+   cmpw %r3,%r7
+   bne 1f
+   cmpw %r8,%r9
+   bne 1f
+   cmpw %r10,%r11
+   beq 2f
+1: stw %r3,8(%r6)
+   stw %r8,12(%r6)
+   stw %r10,16(%r6)
+   lwz %r3,0(%r4)
+   stw %r3,20(%r6)
+   stw %r7,24(%r6)
+   stw %r9,28(%r6)
+   addi %r6,%r6,32
+2: add %r14,%r14,%r12
+   cmpw %r14,%r15
+   blt 0b
+
+   # frsqrte (precise output: denormal inputs)
+0: lis %r14,0x0010
+   lis %r15,0x00A0
+   lis %r12,0x10
+0: stw %r14,0(%r4)
+   stw %r0,4(%r4)
+   lfd %f3,0(%r4)
+   bl calc_frsqrte
+   stfd %f4,8(%r4)
+   mr %r11,%r3
+   mtfsf 255,%f0
+   fmr %f13,%f3
+   frsqrte %f5,%f13
+   bl record
+   stfd %f5,16(%r4)
+   lwz %r3,16(%r4)
+   lwz %r7,8(%r4)
+   lwz %r8,20(%r4)
+   lwz %r9,12(%r4)
+   mffs %f4
+   stfd %f4,24(%r4)
+   lwz %r10,28(%r4)
+   cmpw %r3,%r7
+   bne 1f
+   cmpw %r8,%r9
+   bne 1f
+   cmpw %r10,%r11
+   beq 2f
+1: stw %r3,8(%r6)
+   stw %r8,12(%r6)
+   stw %r10,16(%r6)
+   lwz %r3,0(%r4)
+   stw %r3,20(%r6)
+   stw %r7,24(%r6)
+   stw %r9,28(%r6)
+   addi %r6,%r6,32
+2: add %r14,%r14,%r12
+   cmpw %r14,%r15
+   blt 0b
+
+   # frsqrte (precise output: input precision for denormals)
+0: lis %r14,0x001F
+   ori %r14,%r14,0xFE00
+   lis %r15,0x0020
+   ori %r15,%r15,0x0200
+   li %r12,0x10
+0: stw %r0,0(%r4)
+   stw %r14,4(%r4)
+   lfd %f3,0(%r4)
+   bl calc_frsqrte
+   stfd %f4,8(%r4)
+   mr %r11,%r3
+   mtfsf 255,%f0
+   fmr %f14,%f3
+   frsqrte %f5,%f14
+   bl record
+   stfd %f5,16(%r4)
+   lwz %r3,16(%r4)
+   lwz %r7,8(%r4)
+   lwz %r8,20(%r4)
+   lwz %r9,12(%r4)
+   mffs %f4
+   stfd %f4,24(%r4)
+   lwz %r10,28(%r4)
+   cmpw %r3,%r7
+   bne 1f
+   cmpw %r8,%r9
+   bne 1f
+   cmpw %r10,%r11
+   beq 2f
+1: stw %r3,8(%r6)
+   stw %r8,12(%r6)
+   stw %r10,16(%r6)
+   lwz %r3,4(%r4)
+   stw %r3,20(%r6)
+   stw %r7,24(%r6)
+   stw %r9,28(%r6)
+   addi %r6,%r6,32
+2: add %r14,%r14,%r12
+   cmpw %r14,%r15
+   blt 0b
+
+.endif  # TEST_RECIPROCAL_TABLES
 
    ########################################################################
    # 5.2.2 (Optional) Floating-Point Select Instruction
@@ -18292,23 +18745,27 @@ get_load_address:
    # ps_res
 0: ps_res %f3,%f2       # +normal
    bl record
-   lfd %f4,392(%r31)
-   fmr %f5,%r4
-   bl check_ps_pnorm
+   lfd %f4,256(%r31)
+   fmr %f5,%f4
+   lfd %f6,264(%r31)
+   fmr %f7,%f6
+   bl check_ps_estimate_pnorm
 0: ps_neg %f3,%f2       # -normal
    ps_res %f4,%f3
    bl record
    ps_mr %f3,%f4
-   lfd %f4,392(%r31)
+   lfd %f4,264(%r31)
    fneg %f4,%f4
-   fmr %f5,%r4
-   bl check_ps_nnorm
+   fmr %f5,%f4
+   lfd %f6,256(%r31)
+   fneg %f6,%f6
+   fmr %f7,%f6
+   bl check_ps_estimate_nnorm
 0: lfs %f13,44(%r30)    # +tiny
    ps_res %f3,%f13
    bl record
    lfd %f4,152(%r31)
    bl add_fpscr_ox
-   # The 750CL sets FPSCR[FI] but not FPSCR[XX] on inexact results.
    oris %r0,%r0,2
    fmr %f5,%r4
    bl check_ps_pnorm
@@ -18327,22 +18784,25 @@ get_load_address:
    lfs %f14,0(%r4)
    ps_res %f3,%f14
    bl record
-   lfd %f4,400(%r31)
+   lfs %f4,56(%r30)
+   fmr %f5,%f4
+   lfs %f6,60(%r30)
+   fmr %f7,%f6
    bl add_fpscr_ux
-   oris %r0,%r0,2
-   fmr %f5,%r4
-   bl check_ps_pdenorm
+   bl check_ps_estimate_pdenorm
 0: lfs %f14,0(%r4)      # -huge
    ps_neg %f14,%f14
    ps_res %f4,%f14
    bl record
    ps_mr %f3,%f4
-   lfd %f4,400(%r31)
+   lfs %f4,60(%r30)
    fneg %f4,%f4
+   fmr %f5,%f4
+   lfs %f6,56(%r30)
+   fneg %f6,%f6
+   fmr %f7,%f6
    bl add_fpscr_ux
-   oris %r0,%r0,2
-   fmr %f5,%r4
-   bl check_ps_ndenorm
+   bl check_ps_estimate_ndenorm
 0: ps_res %f3,%f26      # +infinity
    bl record
    fmr %f4,%f0
@@ -18418,12 +18878,12 @@ get_load_address:
    ps_mr %f15,%f2
    ps_res %f3,%f15
    bl record
-   lfd %f4,392(%r31)
-   stfs %f4,0(%r4)
-   lfs %f4,0(%r4)
+   lfd %f4,256(%r31)
    fmr %f5,%f4
+   lfd %f6,264(%r31)
+   fmr %f7,%f6
    bl add_fpscr_vxsnan
-   bl check_ps_pnorm
+   bl check_ps_estimate_pnorm
 
    # ps_res.
 0: ps_res. %f3,%f11     # SNaN
@@ -18469,11 +18929,11 @@ get_load_address:
    # ps_rsqrte
 0: ps_rsqrte %f3,%f29   # +normal
    bl record
-   lfd %f4,408(%r31)
-   stfs %f4,0(%r4)
-   lfs %f4,0(%r4)
+   lfd %f4,272(%r31)
    fmr %f5,%f4
-   bl check_ps_pnorm
+   lfd %f6,280(%r31)
+   fmr %f7,%f6
+   bl check_ps_estimate_pnorm
 0: ps_rsqrte %f3,%f26   # +infinity
    bl record
    fmr %f4,%f0
@@ -18562,12 +19022,12 @@ get_load_address:
    ps_mr %f15,%f29
    ps_rsqrte %f3,%f15
    bl record
-   lfd %f4,408(%r31)
-   stfs %f4,0(%r4)
-   lfs %f4,0(%r4)
-   bl add_fpscr_vxsnan
+   lfd %f4,272(%r31)
    fmr %f5,%f4
-   bl check_ps_pnorm
+   lfd %f6,280(%r31)
+   fmr %f7,%f6
+   bl add_fpscr_vxsnan
+   bl check_ps_estimate_pnorm
 
    # ps_rsqrte.
 0: ps_rsqrte. %f3,%f11    # SNaN
@@ -19798,6 +20258,106 @@ check_fpu_noresult_nofprf:  # For exception-enabled fctiw
 
    ########################################################################
    # Subroutines to validate the result and CR/FPSCR changes from a
+   # floating-point estimation instruction (fres or frsqrte).  Equivalent
+   # to the check_fpu_* routines, but these allow a range of error for the
+   # result and ignore FPSCR[XX] and FPSCR[FI] when checking the state of
+   # FPSCR.
+   # On entry:
+   #     F3 = result of instruction
+   #     F4 = lower bound of expected result (inclusive)
+   #     F5 = upper bound of expected result (inclusive)
+   #     R0 = expected value of FPSCR exceptions (from add_fpscr_*)
+   #     CR[24:31] = 0
+   # On return:
+   #     R0 = 0
+   #     R8 = destroyed
+   #     R9 = destroyed
+   #     FPSCR = all exceptions cleared
+   #     CR = 0
+   #     0x7000..0x700F(%r4) = destroyed
+   ########################################################################
+
+check_fpu_estimate_pnorm:  # Positive normal number
+   # XX and FI are undefined for estimation instructions.
+   mtfsb0 6
+   mtfsb0 14
+   ori %r0,%r0,0x4000
+   mflr %r9
+   bl check_fpscr
+   mtlr %r9
+   bne 1f
+   fcmpu cr0,%f3,%f4
+   fcmpu cr1,%f3,%f5
+   crnor 2,0,5
+   beq 0f
+1: stfd %f3,8(%r6)
+   stw %r8,16(%r6)
+   addi %r6,%r6,32
+0: li %r0,0
+   mtcr %r0
+   blr
+
+check_fpu_estimate_nnorm:  # Negative normal number
+   mtfsb0 6
+   mtfsb0 14
+   ori %r0,%r0,0x8000
+   mflr %r9
+   bl check_fpscr
+   mtlr %r9
+   bne 1f
+   fcmpu cr0,%f3,%f4
+   fcmpu cr1,%f3,%f5
+   crnor 2,0,5
+   beq 0f
+1: stfd %f3,8(%r6)
+   stw %r8,16(%r6)
+   addi %r6,%r6,32
+0: li %r0,0
+   mtcr %r0
+   blr
+
+check_fpu_estimate_pdenorm:  # Positive denormalized number
+   mtfsb0 6
+   mtfsb0 14
+   oris %r0,%r0,0x0001
+   ori %r0,%r0,0x4000
+   mflr %r9
+   bl check_fpscr
+   mtlr %r9
+   bne 1f
+   fcmpu cr0,%f3,%f4
+   fcmpu cr1,%f3,%f5
+   crnor 2,0,5
+   beq 0f
+1: stfd %f3,8(%r6)
+   stw %r8,16(%r6)
+   addi %r6,%r6,32
+0: li %r0,0
+   mtcr %r0
+   blr
+
+check_fpu_estimate_ndenorm:  # Negative denormalized number
+   mtfsb0 6
+   mtfsb0 14
+   oris %r0,%r0,0x0001
+   ori %r0,%r0,0x8000
+   mflr %r9
+   bl check_fpscr
+   mtlr %r9
+   bne 1f
+   fcmpu cr0,%f3,%f4
+   fcmpu cr1,%f3,%f5
+   crnor 2,0,5
+   beq 0f
+1: stfd %f3,8(%r6)
+   stw %r8,16(%r6)
+   addi %r6,%r6,32
+0: li %r0,0
+   mtcr %r0
+   blr
+
+   ########################################################################
+   # Subroutines to validate the result and CR/FPSCR changes from a
    # floating-point convert-to-integer instruction.  Equivalent to the
    # check_fpu_* routines, except that FPRF is not checked and the
    # expected value is received in an integer register.
@@ -19976,7 +20536,6 @@ check_fpscr:
    #     F5 = expected result for slot 1
    # On return:
    #     F4 = destroyed
-   #     F5 = destroyed
    #     CR0 = result of comparison (EQ if both values matched)
    ########################################################################
 
@@ -20387,3 +20946,384 @@ check_ps_noresult:  # No result (aborted by exception)
 0: li %r0,0
    mtcr %r0
    blr
+
+   ########################################################################
+   # Subroutine to check the two values of an FPR in paired-single format.
+   # The values stored in F4 through F7 should be rounded or truncated, if
+   # necessary, before calling this subroutine.
+   # On entry:
+   #     F3 = result of instruction (will be treated as paired-single)
+   #     F4 = lower bound of expected ps0 result (inclusive)
+   #     F5 = lower bound of expected ps1 result (inclusive)
+   #     F6 = upper bound of expected ps0 result (inclusive)
+   #     F7 = upper bound of expected ps1 result (inclusive)
+   # On return:
+   #     F4 = destroyed
+   #     CR0 = result of comparison (EQ if both values matched)
+   #     CR1 = destroyed
+   ########################################################################
+
+check_ps_estimate:
+   ps_cmpu0 cr0,%f3,%f4
+   ps_cmpu0 cr1,%f3,%f6
+   crnor 2,0,5
+   ps_merge11 %f4,%f3,%f3
+   stfd %f3,8(%r6)
+   stfs %f4,16(%r6)
+   bne 1f
+   ps_cmpu0 cr0,%f4,%f5
+   ps_cmpu0 cr1,%f4,%f7
+   crnor 2,0,5
+   beq 0f
+1: addi %r6,%r6,32
+0: blr
+
+   ########################################################################
+   # Paired-single equivalents of the check_fpu_estimate_* subroutines.
+   # On entry:
+   #     F3 = result of instruction
+   #     F4 = lower bound of expected ps0 result (inclusive)
+   #     F5 = lower bound of expected ps1 result (inclusive)
+   #     F6 = upper bound of expected ps0 result (inclusive)
+   #     F7 = upper bound of expected ps1 result (inclusive)
+   #     R0 = expected value of FPSCR exceptions (from add_fpscr_*)
+   #     CR[24:31] = 0
+   # On return:
+   #     R0 = 0
+   #     R8 = destroyed
+   #     R9 = destroyed
+   #     FPSCR = all exceptions cleared
+   #     CR = 0
+   #     0x7000..0x700F(%r4) = destroyed
+   ########################################################################
+
+check_ps_estimate_pnorm:  # Positive normal number
+   mtfsb0 6
+   mtfsb0 14
+   ori %r0,%r0,0x4000
+   mflr %r9
+   bl check_fpscr
+   mtlr %r9
+   mcrf 7,0
+   stw %r8,20(%r6)
+   addi %r8,%r6,32
+   mflr %r9
+   bl check_ps_estimate
+   mtlr %r9
+   bne 0f
+   beq cr7,0f
+1: mr %r6,%r8
+0: li %r0,0
+   mtcr %r0
+   blr
+
+check_ps_estimate_nnorm:  # Negative normal number
+   mtfsb0 6
+   mtfsb0 14
+   ori %r0,%r0,0x8000
+   mflr %r9
+   bl check_fpscr
+   mtlr %r9
+   mcrf 7,0
+   stw %r8,20(%r6)
+   addi %r8,%r6,32
+   mflr %r9
+   bl check_ps_estimate
+   mtlr %r9
+   bne 0f
+   beq cr7,0f
+1: mr %r6,%r8
+0: li %r0,0
+   mtcr %r0
+   blr
+
+check_ps_estimate_pdenorm:  # Positive denormalized number
+   mtfsb0 6
+   mtfsb0 14
+   oris %r0,%r0,0x0001
+   ori %r0,%r0,0x4000
+   mflr %r9
+   bl check_fpscr
+   mtlr %r9
+   mcrf 7,0
+   stw %r8,20(%r6)
+   addi %r8,%r6,32
+   mflr %r9
+   bl check_ps_estimate
+   mtlr %r9
+   bne 0f
+   beq cr7,0f
+1: mr %r6,%r8
+0: li %r0,0
+   mtcr %r0
+   blr
+
+check_ps_estimate_ndenorm:  # Negative denormalized number
+   mtfsb0 6
+   mtfsb0 14
+   oris %r0,%r0,0x0001
+   ori %r0,%r0,0x8000
+   mflr %r9
+   bl check_fpscr
+   mtlr %r9
+   mcrf 7,0
+   stw %r8,20(%r6)
+   addi %r8,%r6,32
+   mflr %r9
+   bl check_ps_estimate
+   mtlr %r9
+   bne 0f
+   beq cr7,0f
+1: mr %r6,%r8
+0: li %r0,0
+   mtcr %r0
+   blr
+
+.if TEST_RECIPROCAL_TABLES
+
+   ########################################################################
+   # Software implementation of the fres instruction.
+   # On entry:
+   #     F1 = 1.0
+   #     F3 = fres instruction input
+   # On return:
+   #     F4 = expected output
+   #     F5 = destroyed
+   #     R3 = expected FPSCR[OX,UX,FI,FPRF]
+   #     R7 = destroyed
+   #     R8 = destroyed
+   #     R9 = destroyed
+   #     R10 = destroyed
+   #     R11 = destroyed
+   #     CR0 = destroyed
+   #     0x7000..0x7007(%r4) = destroyed
+   ########################################################################
+
+calc_fres:
+   mflr %r9
+   bl 1f
+1: mflr %r3
+   mtlr %r9
+   addi %r11,%r3,2f-1b
+   b 0f
+   # Base and delta values for each of 32 mantissa intervals.
+2: .short 0x3FFC,0x3E1, 0x3C1C,0x3A7, 0x3875,0x371, 0x3504,0x340
+   .short 0x31C4,0x313, 0x2EB1,0x2EA, 0x2BC8,0x2C4, 0x2904,0x2A0
+   .short 0x2664,0x27F, 0x23E5,0x261, 0x2184,0x245, 0x1F40,0x22A
+   .short 0x1D16,0x212, 0x1B04,0x1FB, 0x190A,0x1E5, 0x1725,0x1D1
+   .short 0x1554,0x1BE, 0x1396,0x1AC, 0x11EB,0x19B, 0x104F,0x18B
+   .short 0x0EC4,0x17C, 0x0D48,0x16E, 0x0BD7,0x15B, 0x0A7C,0x15B
+   .short 0x0922,0x143, 0x07DF,0x143, 0x069C,0x12D, 0x056F,0x12D
+   .short 0x0442,0x11A, 0x0328,0x11A, 0x020E,0x108, 0x0106,0x106
+
+   # Extract the sign bit, exponent, and mantissa, and check for special cases.
+0: stfs %f3,0x7000(%r4)
+   lwz %r3,0x7000(%r4)
+   andis. %r10,%r3,0x8000
+   rlwinm %r9,%r3,9,24,31
+   clrlwi %r8,%r3,9
+   cmpwi %r9,255
+   beq 8f
+   cmpwi %r9,0
+   beq 7f
+
+   # Calculate the new exponent and mantissa.
+1: li %r3,253
+   subf %r9,%r9,%r3
+   rlwinm %r3,%r8,16,25,29  # Lookup table index * 4
+   add %r11,%r11,%r3
+   lhz %r3,2(%r11)
+   rlwinm %r7,%r8,24,22,31
+   mullw %r8,%r3,%r7
+   lhz %r3,0(%r11)
+   slwi %r3,%r3,10
+   subf %r8,%r8,%r3
+   andi. %r11,%r8,1  # FPSCR[FI] output bit
+   srwi %r8,%r8,1
+
+   # Denormalize the result if the exponent is not positive.  This will
+   # take at most two steps.
+   cmpwi cr1,%r9,0
+   bgt cr1,2f
+   li %r9,0
+   oris %r8,%r8,0x80
+   andi. %r3,%r8,1
+   srwi %r8,%r8,1
+   or %r11,%r11,%r3
+   beq cr1,2f
+   andi. %r3,%r8,1
+   srwi %r8,%r8,1
+   or %r11,%r11,%r3
+
+   # Build and return the final value and FPSCR.
+2: or %r7,%r10,%r8
+   rlwimi %r7,%r9,23,1,8
+   slwi %r3,%r11,17
+   # Set FPSCR[FX,UX] if tiny (R9=0) and inexact (R11!=0).
+   cmpwi %r9,0
+   bne 9f
+   cmpwi %r11,0
+   beq 9f
+   oris %r3,%r3,0x8800
+   b 9f
+
+   # Handle exponent 0 (zero/denormal).
+7: lis %r3,0x20  # Nonzero mantissa < 0x200000 is an overflow condition.
+   cmpw %r8,%r3
+   bge 3f
+   lis %r7,0x7F80  # Return appropriately signed infinity or HUGE_VAL.
+   li %r3,0
+   cmpwi %r8,0
+   beq 2f
+   addi %r7,%r7,-1
+   lis %r3,0x9002
+2: or %r7,%r7,%r10
+   b 9f
+3: slwi %r8,%r8,1  # Normalize (requires either 1 or 2 shifts).
+   andis. %r3,%r8,0x80
+   bne 4f
+   slwi %r8,%r8,1
+   addi %r9,%r9,-1
+4: clrlwi %r8,%r8,9  # Clear the high (implied) bit of the mantissa.
+   b 1b              # Continue with normal processing.
+
+   # Handle exponent 255 (inf/NaN).
+8: cmpwi %r8,0
+   bne 1f
+   mr %r7,%r10  # Return appropriately signed zero.
+   b 9f
+1: ori %r7,%r3,0x0040  # Return quieted NaN.
+   b 9f
+
+   # Return the final value (currently in R7) and FPSCR (calculating FPRF
+   # by multiplying the output value by 1.0).
+9: stw %r7,0x7000(%r4)
+   lfs %f4,0x7000(%r4)
+   fmuls %f5,%f4,%f1
+   mffs %f5
+   stfd %f5,0x7000(%r4)
+   lwz %r7,0x7004(%r4)
+   rlwinm %r7,%r7,0,15,19
+   or %r3,%r3,%r7
+   blr
+
+   ########################################################################
+   # Software implementation of the frsqrte instruction.
+   # On entry:
+   #     F1 = 1.0
+   #     F3 = frsqrte instruction input
+   # On return:
+   #     F4 = expected output
+   #     F5 = destroyed
+   #     R3 = expected FPSCR[FPRF]
+   #     R7 = destroyed
+   #     R8 = destroyed
+   #     R9 = destroyed
+   #     R10 = destroyed
+   #     R11 = destroyed
+   #     CR0 = destroyed
+   #     XER[CA] = destroyed
+   #     0x7000..0x7007(%r4) = destroyed
+   ########################################################################
+
+calc_frsqrte:
+   mflr %r9
+   bl 1f
+1: mflr %r3
+   mtlr %r9
+   addi %r11,%r3,2f-1b
+   b 0f
+   # Base and delta values for each of 32 mantissa intervals.
+2: .short 0x7FF4,0x7A4, 0x7852,0x700, 0x7154,0x670, 0x6AE4,0x5F2
+   .short 0x64F2,0x584, 0x5F6E,0x524, 0x5A4C,0x4CC, 0x5580,0x47E
+   .short 0x5102,0x43A, 0x4CCA,0x3FA, 0x48D0,0x3C2, 0x450E,0x38E
+   .short 0x4182,0x35E, 0x3E24,0x332, 0x3AF2,0x30A, 0x37E8,0x2E6
+   .short 0x34FD,0x568, 0x2F97,0x4F3, 0x2AA5,0x48D, 0x2618,0x435
+   .short 0x21E4,0x3E7, 0x1DFE,0x3A2, 0x1A5C,0x365, 0x16F8,0x32E
+   .short 0x13CA,0x2FC, 0x10CE,0x2D0, 0x0DFE,0x2A8, 0x0B57,0x283
+   .short 0x08D4,0x261, 0x0673,0x243, 0x0431,0x226, 0x020B,0x20B
+
+   # Extract the sign bit, exponent, and mantissa (high bits), and check for
+   # special cases.
+0: stfd %f3,0x7000(%r4)
+   lwz %r3,0x7000(%r4)
+   andis. %r10,%r3,0x8000
+   rlwinm %r9,%r3,12,21,31
+   clrlwi %r8,%r3,12
+   cmpwi %r9,255
+   beq 8f
+   cmpwi %r9,0
+   beq 7f
+   cmpwi %r10,0
+   beq 1f
+   # Negative values are always NaN.
+   lis %r7,0x7FF8
+   li %r8,0
+   b 9f
+
+   # Calculate the new exponent and mantissa.
+1: rlwinm %r3,%r8,18,26,29  # Lookup table index * 4
+   andi. %r7,%r9,1
+   bne 2f
+   ori %r3,%r3,64
+2: li %r7,3068
+   subf %r9,%r9,%r7
+   srwi %r9,%r9,1
+   add %r11,%r11,%r3
+   lhz %r3,2(%r11)
+   rlwinm %r7,%r8,27,21,31
+   mullw %r8,%r3,%r7
+   lhz %r3,0(%r11)
+   slwi %r3,%r3,11
+   subf %r8,%r8,%r3
+
+   # Build and return the final value and FPSCR.
+2: srwi %r7,%r8,6
+   slwi %r8,%r8,26
+   or %r7,%r7,%r10
+   rlwimi %r7,%r9,20,1,11
+   b 9f
+
+   # Handle exponent 0 (zero/denormal).
+7: cmpwi %r8,0
+   lwz %r7,0x7004(%r4)
+   bne 2f
+   cmpwi %r7,0
+   bne 2f
+   oris %r7,%r10,0x7FF0  # Return appropriately signed infinity.
+   li %r8,0
+   b 9f
+2: addc %r7,%r7,%r7  # Normalize.
+   adde %r8,%r8,%r8
+   andis. %r3,%r8,0x10
+   bne 3f
+   addi %r9,%r9,-1
+   b 2b
+3: clrlwi %r8,%r8,12  # Clear the high (implied) bit of the mantissa.
+   b 1b               # Continue with normal processing.
+
+   # Handle exponent 255 (inf/NaN).
+8: cmpwi %r8,0
+   bne 2f
+   andis. %r7,%r10,0x8000
+   beq 1f
+   lis %r7,0x7F80  # Negative infinity turns into a NaN.
+1: li %r8,0
+   b 9f
+2: oris %r7,%r3,0x0008  # Return quieted NaN.
+   lwz %r8,0x7004(%r4)
+   b 9f
+
+   # Return the final value (currently in R7/R8) and FPRF (calculated by
+   # multiplying the output value by 1.0).
+9: stw %r7,0x7000(%r4)
+   stw %r8,0x7004(%r4)
+   lfd %f4,0x7000(%r4)
+   fmul %f5,%f4,%f1
+   mffs %f5
+   stfd %f5,0x7000(%r4)
+   lwz %r3,0x7004(%r4)
+   rlwinm %r3,%r3,0,15,19
+   blr
+
+.endif  # TEST_RECIPROCAL_TABLES

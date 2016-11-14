@@ -14,6 +14,8 @@
  * state block.
  */
 
+#include "tests/ppc-lut.h"
+
 /*************************************************************************/
 /*************************** PowerPC test code ***************************/
 /*************************************************************************/
@@ -61,7 +63,7 @@ static void trap_handler(PPCState *state)
 }
 
 /*************************************************************************/
-/*********************** State block setup routine ***********************/
+/************************* Test helper functions *************************/
 /*************************************************************************/
 
 /**
@@ -89,11 +91,40 @@ static void *setup_750cl(PPCState *state)
     state->timebase_handler = timebase_handler;
     state->sc_handler = sc_handler;
     state->trap_handler = trap_handler;
+    state->fres_lut = ppc_fres_lut;
+    state->frsqrte_lut = ppc_frsqrte_lut;
     state->gpr[4] = PPC750CL_SCRATCH_ADDRESS;
     state->gpr[5] = PPC750CL_ERROR_LOG_ADDRESS;
     state->fpr[1][0] = 1.0;
 
     return memory;
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
+ * print_750cl_errors:  Print the error log from the 750CL test routine.
+ *
+ * [Parameters]
+ *     count: Number of failure records returned from the test routine.
+ *     memory: Pointer to guest memory region.
+ */
+static void print_750cl_errors(int count, void *memory)
+{
+    const uint32_t *error_log =
+        (const uint32_t *)((uintptr_t)memory + PPC750CL_ERROR_LOG_ADDRESS);
+    for (int i = 0; i < count; i++, error_log += 8) {
+        const uint32_t insn = bswap_be32(error_log[0]);
+        const uint32_t address = bswap_be32(error_log[1]);
+        printf("    %08X %08X  %08X %08X  %08X %08X", insn, address,
+               bswap_be32(error_log[2]), bswap_be32(error_log[3]),
+               bswap_be32(error_log[4]), bswap_be32(error_log[5]));
+        if ((insn & 0xFC00003E) == 0xFC000034) {  // frsqrte
+            printf("  %08X %08X",
+                   bswap_be32(error_log[6]), bswap_be32(error_log[7]));
+        }
+        printf("\n");
+    }
 }
 
 /*************************************************************************/

@@ -495,7 +495,8 @@ TEST_UTILITY_OBJECTS = \
     tests/common.o \
     tests/execute.o \
     tests/log-capture.o \
-    tests/mem-wrappers.o
+    tests/mem-wrappers.o \
+    tests/ppc-lut.o
 
 TEST_LIB = tests/libtest.a
 

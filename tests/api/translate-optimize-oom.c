@@ -38,6 +38,8 @@ int main(void)
     setup.state_offset_timebase_handler = offsetof(PPCState,timebase_handler);
     setup.state_offset_sc_handler = offsetof(PPCState,sc_handler);
     setup.state_offset_trap_handler = offsetof(PPCState,trap_handler);
+    setup.state_offset_fres_lut = offsetof(PPCState,fres_lut);
+    setup.state_offset_frsqrte_lut = offsetof(PPCState,frsqrte_lut);
     setup.malloc = mem_wrap_malloc;
     setup.realloc = mem_wrap_realloc;
     setup.free = mem_wrap_free;

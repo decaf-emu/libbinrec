@@ -13,7 +13,8 @@ static const uint8_t input[] = {
     0xEC,0x20,0x10,0x30,  // fres f1,f2
 };
 
-static const unsigned int guest_opt = BINREC_OPT_G_PPC_NO_FPSCR_STATE;
+static const unsigned int guest_opt = BINREC_OPT_G_PPC_NO_FPSCR_STATE
+                                    | BINREC_OPT_G_PPC_NATIVE_RECIPROCAL;
 static const unsigned int common_opt = 0;
 
 static const bool expected_success = true;

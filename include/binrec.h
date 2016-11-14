@@ -78,7 +78,10 @@ extern "C" {
  *
  * The overflow and underflow exception enable bits (OE and UE) in FPSCR
  * are ignored; floating-point operations are performed as if both
- * exceptions are masked (FPSCR[OE]=0 and FPSCR[UE]=0).
+ * exceptions are masked (FPSCR[OE]=0 and FPSCR[UE]=0).  However,
+ * FPSCR[FEX] will still reflect the state of the OE and UE bits actually
+ * stored in FPSCR, so (for example) an Rc=1 instruction that generates an
+ * overflow exception with FPSCR[OE]=1 will set cr1.FEX to 1.
  *
  * The "non-IEEE" (NI) flag in FPSCR is ignored; floating-point operations
  * will always be performed in full precision.
@@ -351,6 +354,11 @@ typedef struct binrec_setup_t {
      * binrec_enable_branch_callback()).  Signature:
      * int branch_callback(void *state, uint32_t branch_address) */
     int state_offset_branch_callback;
+    /* Pointers to lookup tables (of type uint16_t[64]) for the fres and
+     * frsqrte instructions.  See the BINREC_OPT_G_PPC_NATIVE_RECIPROCAL
+     * optimization flag documentation for details. */
+    int state_offset_fres_lut;
+    int state_offset_frsqrte_lut;
 
     /**
      * userdata:  Opaque pointer which is passed to all callback functions
@@ -839,7 +847,8 @@ typedef struct binrec_setup_t {
  * floating-point operation and can have a severe impact on performance.
  * Enabling this optimization allows the translator to skip these checks,
  * treating any invalid-operation exception as VXSNAN whether or not any
- * operand was in fact a signaling NaN.
+ * operand was in fact a signaling NaN.  (Other VXFOO exception bits are
+ * still set in cases where doing so does not affect performance.)
  *
  * Instructions which directly manipulate FPSCR, such as mtfsf, are not
  * affected by this optimization and continue to behave normally.
@@ -869,11 +878,41 @@ typedef struct binrec_setup_t {
  * satisfy the PowerPC architecture constraints.
  *
  * If this optimization is disabled, the translator will attempt to match
- * the precise behavior of the guest architecture, at the cost of several
- * additional host instructions per affected guest instruction.
+ * the precise behavior of the guest architecture by using lookup tables
+ * referenced by pointers in the processor state block (see the
+ * state_offset_fres_lut and state_offset_frsqrte_lut fields in
+ * binrec_setup_t).  The translated code will crash if it executes an fres
+ * or frsqrte instruction, this optimization is not enabled, and the
+ * appropriate pointer in the state block is not set.
  *
- * This optimization cannot currently be disabled; the translator always
- * behaves as if it was set.
+ * The tables for the 750CL processor are as follows:
+ *
+ * fres: 0x3FFC,0x3E1, 0x3C1C,0x3A7, 0x3875,0x371, 0x3504,0x340,
+ *       0x31C4,0x313, 0x2EB1,0x2EA, 0x2BC8,0x2C4, 0x2904,0x2A0,
+ *       0x2664,0x27F, 0x23E5,0x261, 0x2184,0x245, 0x1F40,0x22A,
+ *       0x1D16,0x212, 0x1B04,0x1FB, 0x190A,0x1E5, 0x1725,0x1D1,
+ *       0x1554,0x1BE, 0x1396,0x1AC, 0x11EB,0x19B, 0x104F,0x18B,
+ *       0x0EC4,0x17C, 0x0D48,0x16E, 0x0BD7,0x15B, 0x0A7C,0x15B,
+ *       0x0922,0x143, 0x07DF,0x143, 0x069C,0x12D, 0x056F,0x12D,
+ *       0x0442,0x11A, 0x0328,0x11A, 0x020E,0x108, 0x0106,0x106
+ *
+ * frsqrte: 0x7FF4,0x7A4, 0x7852,0x700, 0x7154,0x670, 0x6AE4,0x5F2,
+ *          0x64F2,0x584, 0x5F6E,0x524, 0x5A4C,0x4CC, 0x5580,0x47E,
+ *          0x5102,0x43A, 0x4CCA,0x3FA, 0x48D0,0x3C2, 0x450E,0x38E,
+ *          0x4182,0x35E, 0x3E24,0x332, 0x3AF2,0x30A, 0x37E8,0x2E6,
+ *          0x34FD,0x568, 0x2F97,0x4F3, 0x2AA5,0x48D, 0x2618,0x435,
+ *          0x21E4,0x3E7, 0x1DFE,0x3A2, 0x1A5C,0x365, 0x16F8,0x32E,
+ *          0x13CA,0x2FC, 0x10CE,0x2D0, 0x0DFE,0x2A8, 0x0B57,0x283,
+ *          0x08D4,0x261, 0x0673,0x243, 0x0431,0x226, 0x020B,0x20B
+ *
+ * Depending on the performance details of the host CPU and the types of
+ * input values used by the guest code, enabling this optimization may
+ * actually result in slower code (particularly for frsqrte), though it
+ * will always reduce code size.
+ *
+ * This optimization is specification-safe: as long as guest code follows
+ * the PowerPC architecture specification, it will behave correctly under
+ * this optimization.
  */
 #define BINREC_OPT_G_PPC_NATIVE_RECIPROCAL  (1<<6)
 
