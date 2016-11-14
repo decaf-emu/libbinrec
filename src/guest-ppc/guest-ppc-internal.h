@@ -391,6 +391,8 @@ typedef struct GuestPPCContext {
     uint32_t fpr_is_ps;
     /* Set of live FPR registers known to have non-SNaN values. */
     uint32_t fpr_is_safe;
+    /* Same, for paired-single slot 1. */
+    uint32_t ps1_is_safe;
     /* Set of CR bits which are modified by the unit.  These bits are
      * stored in the same order as the CR word, so that the MSB corresponds
      * to CR bit 0. */

@@ -224,7 +224,11 @@ static inline int get_fpr(GuestPPCContext * const ctx, int index,
         current_type = base_type;
     }
     if (type != current_type) {
-        const bool snan_safe = (ctx->fpr_is_safe & (1 << index)) != 0;
+        uint32_t safe_set = ctx->fpr_is_safe;
+        if (rtl_type_is_vector(type)) {
+            safe_set &= ctx->ps1_is_safe;
+        }
+        const bool snan_safe = (safe_set & (1 << index)) != 0;
         reg = convert_fpr(ctx, index, reg, current_type, type, snan_safe);
     }
     return reg;
@@ -334,6 +338,42 @@ static inline int get_fr_fi_fprf(GuestPPCContext * const ctx)
         ctx->live.fr_fi_fprf = reg;
         return reg;
     }
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
+ * get_ps1:  Return the FLOAT32 value in the second paired-single slot of
+ * a floating-point register.
+ *
+ * [Parameters]
+ *     ctx: Translation context.
+ *     index: CR bit index.
+ * [Return value]
+ *     RTL register index.
+ */
+static inline int get_ps1(GuestPPCContext * const ctx, int index)
+{
+    RTLUnit * const unit = ctx->unit;
+
+    if (ctx->live.fpr[index]) {
+        RTLDataType type = unit->regs[ctx->live.fpr[index]].type;
+        if (type == RTLTYPE_FLOAT32) {
+            return ctx->live.fpr[index];
+        } else if (type == RTLTYPE_V2_FLOAT32) {
+            const int reg = rtl_alloc_register(unit, RTLTYPE_FLOAT32);
+            rtl_add_insn(unit, RTLOP_VEXTRACT,
+                         reg, ctx->live.fpr[index], 0, 1);
+            return reg;
+        }
+    }
+
+    const int pair = get_fpr(ctx, index, RTLTYPE_V2_FLOAT64);
+    const int reg64 = rtl_alloc_register(unit, RTLTYPE_FLOAT64);
+    rtl_add_insn(unit, RTLOP_VEXTRACT, reg64, pair, 0, 1);
+    const int reg = rtl_alloc_register(unit, RTLTYPE_FLOAT32);
+    rtl_add_insn(unit, RTLOP_FCAST, reg, reg64, 0, 0);
+    return reg;
 }
 
 /*-----------------------------------------------------------------------*/
@@ -704,7 +744,11 @@ static void flush_fpr(GuestPPCContext *ctx, int index, bool clear_live)
                                        ? RTLTYPE_V2_FLOAT64 : RTLTYPE_FLOAT64);
         const RTLDataType current_type = ctx->unit->regs[reg].type;
         if (current_type != base_type) {
-            const bool snan_safe = (ctx->fpr_is_safe & (1 << index)) != 0;
+            uint32_t safe_set = ctx->fpr_is_safe;
+            if (rtl_type_is_vector(current_type)) {
+                safe_set &= ctx->ps1_is_safe;
+            }
+            const bool snan_safe = (safe_set & (1 << index)) != 0;
             reg = convert_fpr(ctx, index, reg, current_type, base_type,
                               snan_safe);
         }
@@ -713,6 +757,7 @@ static void flush_fpr(GuestPPCContext *ctx, int index, bool clear_live)
         if (clear_live) {
             ctx->live.fpr[index] = 0;
             ctx->fpr_is_safe &= ~(1 << index);
+            ctx->ps1_is_safe &= ~(1 << index);
         }
     }
 }
@@ -728,6 +773,9 @@ static void set_fpr_and_flush(GuestPPCContext *ctx, int index, int reg)
 {
     set_fpr(ctx, index, reg);
     ctx->fpr_is_safe |= 1 << index;
+    if (ctx->unit->regs[reg].type != RTLTYPE_FLOAT64) {
+        ctx->ps1_is_safe |= 1 << index;
+    }
     flush_fpr(ctx, index, true);
 }
 
@@ -751,6 +799,7 @@ static void flush_live_regs(GuestPPCContext *ctx, bool clear)
     if (clear) {
         memset(&ctx->live, 0, sizeof(ctx->live));
         ctx->fpr_is_safe = 0;
+        ctx->ps1_is_safe = 0;
         ctx->crb_dirty = 0;
     }
 }
@@ -1294,6 +1343,9 @@ static void set_fp_result(GuestPPCContext *ctx, int index, int result,
     if (ctx->handle->guest_opt & BINREC_OPT_G_PPC_NO_FPSCR_STATE) {
         set_fpr(ctx, index, result);
         ctx->fpr_is_safe |= 1 << index;
+        if (ctx->unit->regs[result].type != RTLTYPE_FLOAT64) {
+            ctx->ps1_is_safe |= 1 << index;
+        }
         return;
     }
 
@@ -2256,15 +2308,23 @@ static void translate_compare(
  *     insn: Instruction word.
  *     ordered: True for an ordered comparison (invalid exception on QNaN),
  *         false for an unordered comparison.
+ *     ps_index: Paired-single slot index to compare (0 or 1).
  */
 static void translate_compare_fp(
-    GuestPPCContext *ctx, uint32_t insn, bool ordered)
+    GuestPPCContext *ctx, uint32_t insn, bool ordered, int ps_index)
 {
     RTLUnit * const unit = ctx->unit;
 
     const int obit = ordered ? RTLFCMP_ORDERED : 0;
-    const int frA = get_fpr(ctx, insn_frA(insn), RTLTYPE_FLOAT64);
-    const int frB = get_fpr(ctx, insn_frB(insn), RTLTYPE_FLOAT64);
+
+    int frA, frB;
+    if (ps_index == 1) {
+        frA = get_ps1(ctx, insn_frA(insn));
+        frB = get_ps1(ctx, insn_frB(insn));
+    } else {
+        frA = get_fpr(ctx, insn_frA(insn), RTLTYPE_FLOAT64);
+        frB = get_fpr(ctx, insn_frB(insn), RTLTYPE_FLOAT64);
+    }
 
     const int lt = rtl_alloc_register(unit, RTLTYPE_INT32);
     rtl_add_insn(unit, RTLOP_FCMP, lt, frA, frB, obit | RTLFCMP_LT);
@@ -2280,59 +2340,63 @@ static void translate_compare_fp(
     set_crb(ctx, insn_crfD(insn)*4+2, eq);
     set_crb(ctx, insn_crfD(insn)*4+3, un);
 
-    const int fr_fi_fprf = get_fr_fi_fprf(ctx);
-    const int masked = rtl_alloc_register(unit, RTLTYPE_INT32);
-    rtl_add_insn(unit, RTLOP_ANDI, masked, fr_fi_fprf, 0, 0x70);
-    const int shifted_lt = rtl_alloc_register(unit, RTLTYPE_INT32);
-    rtl_add_insn(unit, RTLOP_SLLI, shifted_lt, lt, 0, 3);
-    const int shifted_gt = rtl_alloc_register(unit, RTLTYPE_INT32);
-    rtl_add_insn(unit, RTLOP_SLLI, shifted_gt, gt, 0, 2);
-    const int shifted_eq = rtl_alloc_register(unit, RTLTYPE_INT32);
-    rtl_add_insn(unit, RTLOP_SLLI, shifted_eq, eq, 0, 1);
-    const int lt_gt = rtl_alloc_register(unit, RTLTYPE_INT32);
-    rtl_add_insn(unit, RTLOP_OR, lt_gt, shifted_lt, shifted_gt, 0);
-    const int eq_un = rtl_alloc_register(unit, RTLTYPE_INT32);
-    rtl_add_insn(unit, RTLOP_OR, eq_un, shifted_eq, un, 0);
-    const int fpcc = rtl_alloc_register(unit, RTLTYPE_INT32);
-    rtl_add_insn(unit, RTLOP_OR, fpcc, lt_gt, eq_un, 0);
-    const int merged = rtl_alloc_register(unit, RTLTYPE_INT32);
-    rtl_add_insn(unit, RTLOP_OR, merged, masked, fpcc, 0);
-    set_fr_fi_fprf(ctx, merged);
+    if (!(ctx->handle->guest_opt & BINREC_OPT_G_PPC_NO_FPSCR_STATE)) {
+        const int fr_fi_fprf = get_fr_fi_fprf(ctx);
+        const int masked = rtl_alloc_register(unit, RTLTYPE_INT32);
+        rtl_add_insn(unit, RTLOP_ANDI, masked, fr_fi_fprf, 0, 0x70);
+        const int shifted_lt = rtl_alloc_register(unit, RTLTYPE_INT32);
+        rtl_add_insn(unit, RTLOP_SLLI, shifted_lt, lt, 0, 3);
+        const int shifted_gt = rtl_alloc_register(unit, RTLTYPE_INT32);
+        rtl_add_insn(unit, RTLOP_SLLI, shifted_gt, gt, 0, 2);
+        const int shifted_eq = rtl_alloc_register(unit, RTLTYPE_INT32);
+        rtl_add_insn(unit, RTLOP_SLLI, shifted_eq, eq, 0, 1);
+        const int lt_gt = rtl_alloc_register(unit, RTLTYPE_INT32);
+        rtl_add_insn(unit, RTLOP_OR, lt_gt, shifted_lt, shifted_gt, 0);
+        const int eq_un = rtl_alloc_register(unit, RTLTYPE_INT32);
+        rtl_add_insn(unit, RTLOP_OR, eq_un, shifted_eq, un, 0);
+        const int fpcc = rtl_alloc_register(unit, RTLTYPE_INT32);
+        rtl_add_insn(unit, RTLOP_OR, fpcc, lt_gt, eq_un, 0);
+        const int merged = rtl_alloc_register(unit, RTLTYPE_INT32);
+        rtl_add_insn(unit, RTLOP_OR, merged, masked, fpcc, 0);
+        set_fr_fi_fprf(ctx, merged);
 
-    const int fpstate = rtl_alloc_register(unit, RTLTYPE_FPSTATE);
-    rtl_add_insn(unit, RTLOP_FGETSTATE, fpstate, 0, 0, 0);
-    const int invalid = rtl_alloc_register(unit, RTLTYPE_INT32);
-    rtl_add_insn(unit, RTLOP_FTESTEXC, invalid, fpstate, 0, RTLFEXC_INVALID);
-    const int label_out = rtl_alloc_label(unit);
-    rtl_add_insn(unit, RTLOP_GOTO_IF_Z, 0, invalid, 0, label_out);
-    const int clearexc = rtl_alloc_register(unit, RTLTYPE_FPSTATE);
-    rtl_add_insn(unit, RTLOP_FCLEAREXC, clearexc, fpstate, 0, 0);
-    rtl_add_insn(unit, RTLOP_FSETSTATE, 0, clearexc, 0, 0);
-    const int fpscr = get_fpscr(ctx);
-    /* FPSCR is changed conditionally, so we can't save it. */
-    ctx->live.fpscr = 0;
-    ctx->last_set.fpscr = -1;
-    if (ordered && !(ctx->handle->guest_opt
-                     & BINREC_OPT_G_PPC_IGNORE_FPSCR_VXFOO)) {
-        /* If neither value is an SNaN, this is a VXVC exception from
-         * ordered comparison of a QNaN. */
-        const int label_snan = rtl_alloc_label(unit);
-        check_snan(ctx, frA, label_snan);
-        check_snan(ctx, frB, label_snan);
-        set_fpscr_exceptions(ctx, fpscr, FPSCR_VXVC);
-        rtl_add_insn(unit, RTLOP_GOTO, 0, 0, 0, label_out);
-        rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, label_snan);
-        /* If this is a VXSNAN exception, we only set VXVC if VE is clear. */
-        const int label_no_vxvc = rtl_alloc_label(unit);
-        const int ve_test = rtl_alloc_register(unit, RTLTYPE_INT32);
-        rtl_add_insn(unit, RTLOP_ANDI, ve_test, fpscr, 0, FPSCR_VE);
-        rtl_add_insn(unit, RTLOP_GOTO_IF_NZ, 0, ve_test, 0, label_no_vxvc);
-        set_fpscr_exceptions(ctx, fpscr, FPSCR_VXSNAN | FPSCR_VXVC);
-        rtl_add_insn(unit, RTLOP_GOTO, 0, 0, 0, label_out);
-        rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, label_no_vxvc);
+        const int fpstate = rtl_alloc_register(unit, RTLTYPE_FPSTATE);
+        rtl_add_insn(unit, RTLOP_FGETSTATE, fpstate, 0, 0, 0);
+        const int invalid = rtl_alloc_register(unit, RTLTYPE_INT32);
+        rtl_add_insn(unit, RTLOP_FTESTEXC,
+                     invalid, fpstate, 0, RTLFEXC_INVALID);
+        const int label_out = rtl_alloc_label(unit);
+        rtl_add_insn(unit, RTLOP_GOTO_IF_Z, 0, invalid, 0, label_out);
+        const int clearexc = rtl_alloc_register(unit, RTLTYPE_FPSTATE);
+        rtl_add_insn(unit, RTLOP_FCLEAREXC, clearexc, fpstate, 0, 0);
+        rtl_add_insn(unit, RTLOP_FSETSTATE, 0, clearexc, 0, 0);
+        const int fpscr = get_fpscr(ctx);
+        /* FPSCR is changed conditionally, so we can't save it. */
+        ctx->live.fpscr = 0;
+        ctx->last_set.fpscr = -1;
+        if (ordered && !(ctx->handle->guest_opt
+                         & BINREC_OPT_G_PPC_IGNORE_FPSCR_VXFOO)) {
+            /* If neither value is an SNaN, this is a VXVC exception from
+             * ordered comparison of a QNaN. */
+            const int label_snan = rtl_alloc_label(unit);
+            check_snan(ctx, frA, label_snan);
+            check_snan(ctx, frB, label_snan);
+            set_fpscr_exceptions(ctx, fpscr, FPSCR_VXVC);
+            rtl_add_insn(unit, RTLOP_GOTO, 0, 0, 0, label_out);
+            rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, label_snan);
+            /* If this is a VXSNAN exception, we only set VXVC if VE is
+             * clear. */
+            const int label_no_vxvc = rtl_alloc_label(unit);
+            const int ve_test = rtl_alloc_register(unit, RTLTYPE_INT32);
+            rtl_add_insn(unit, RTLOP_ANDI, ve_test, fpscr, 0, FPSCR_VE);
+            rtl_add_insn(unit, RTLOP_GOTO_IF_NZ, 0, ve_test, 0, label_no_vxvc);
+            set_fpscr_exceptions(ctx, fpscr, FPSCR_VXSNAN | FPSCR_VXVC);
+            rtl_add_insn(unit, RTLOP_GOTO, 0, 0, 0, label_out);
+            rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, label_no_vxvc);
+        }
+        set_fpscr_exceptions(ctx, fpscr, FPSCR_VXSNAN);
+        rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, label_out);
     }
-    set_fpscr_exceptions(ctx, fpscr, FPSCR_VXSNAN);
-    rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, label_out);
 }
 
 /*-----------------------------------------------------------------------*/
@@ -3894,27 +3958,39 @@ static void translate_logic_reg(
 /*-----------------------------------------------------------------------*/
 
 /**
- * translate_move_fpr:  Translate an fmr/fneg/fabs/fnabs instruction.
+ * translate_move_fpr:  Translate an fmr/fneg/fabs/fnabs or
+ * ps_mr/ps_neg/ps_abs/ps_nabs instruction.
  *
  * [Parameters]
  *     ctx: Translation context.
  *     insn: Instruction word.
  *     opcode: RTL opcode for the operation.
+ *     is_paired: True if a paired-single operation, false if not.
  */
 static void translate_move_fpr(
-    GuestPPCContext *ctx, uint32_t insn, RTLOpcode opcode)
+    GuestPPCContext *ctx, uint32_t insn, RTLOpcode opcode, bool is_paired)
 {
-    const int frB = get_fpr(ctx, insn_frB(insn), RTLTYPE_FLOAT64);
+    const RTLDataType type = is_paired ? RTLTYPE_V2_FLOAT32 : RTLTYPE_FLOAT64;
+    const int frB = get_fpr(ctx, insn_frB(insn), type);
     if (opcode == RTLOP_MOVE) {
         set_fpr(ctx, insn_frD(insn), frB);
     } else {
         RTLUnit * const unit = ctx->unit;
-        const int result = rtl_alloc_register(unit, RTLTYPE_FLOAT64);
+        const int result = rtl_alloc_register(unit, type);
         rtl_add_insn(unit, opcode, result, frB, 0, 0);
         set_fpr(ctx, insn_frD(insn), result);
     }
     if (ctx->fpr_is_safe & (1 << insn_frB(insn))) {
         ctx->fpr_is_safe |= 1 << insn_frD(insn);
+    } else {
+        ctx->fpr_is_safe &= ~(1 << insn_frD(insn));
+    }
+    if (is_paired) {
+        if (ctx->ps1_is_safe & (1 << insn_frB(insn))) {
+            ctx->ps1_is_safe |= 1 << insn_frD(insn);
+        } else {
+            ctx->ps1_is_safe &= ~(1 << insn_frD(insn));
+        }
     }
 
     if (insn_Rc(insn)) {
@@ -4147,6 +4223,75 @@ static void translate_muldiv_reg(
 
     if (insn_Rc(insn)) {
         update_cr0(ctx, result);
+    }
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
+ * translate_ps_merge:  Translate a ps_merge* instruction.
+ *
+ * [Parameters]
+ *     ctx: Translation context.
+ *     insn: Instruction word.
+ *     frA_index: Paired-single slot index for frA (copied to frD[ps0]).
+ *     frB_index: Paired-single slot index for frB (copied to frD[ps1]).
+ */
+static void translate_ps_merge(GuestPPCContext *ctx, uint32_t insn,
+                               int frA_index, int frB_index)
+{
+    RTLUnit * const unit = ctx->unit;
+
+    int frA;
+    if (frA_index == 0) {
+        frA = get_fpr(ctx, insn_frA(insn), RTLTYPE_FLOAT32);
+    } else {
+        frA = get_ps1(ctx, insn_frA(insn));
+    }
+
+    int frB;
+    if (frB_index == 0) {
+        if (get_fpr_scalar_type(ctx, insn_frB(insn)) == RTLTYPE_FLOAT32) {
+            frB = get_fpr(ctx, insn_frB(insn), RTLTYPE_FLOAT32);
+        } else {
+            /* When moving a double-precision value into the ps1 slot,
+             * the value is always truncated rather than being rounded
+             * based on FPSCR[RN]. */
+            const int frB_64 = get_fpr(ctx, insn_frB(insn), RTLTYPE_FLOAT64);
+            const int fpstate = rtl_alloc_register(unit, RTLTYPE_FPSTATE);
+            rtl_add_insn(unit, RTLOP_FGETSTATE, fpstate, 0, 0, 0);
+            const int fpstate_trunc =
+                rtl_alloc_register(unit, RTLTYPE_FPSTATE);
+            rtl_add_insn(unit, RTLOP_FSETROUND,
+                         fpstate_trunc, fpstate, 0, RTLFROUND_TRUNC);
+            rtl_add_insn(unit, RTLOP_FSETSTATE, 0, fpstate_trunc, 0, 0);
+            frB = rtl_alloc_register(unit, RTLTYPE_FLOAT32);
+            const bool snan_safe =
+                (ctx->fpr_is_safe & (1 << insn_frB(insn))) != 0;
+            rtl_add_insn(unit, snan_safe ? RTLOP_FCVT : RTLOP_FCAST,
+                         frB, frB_64, 0, 0);
+            rtl_add_insn(unit, RTLOP_FSETSTATE, 0, fpstate, 0, 0);
+        }
+    } else {
+        frB = get_ps1(ctx, insn_frB(insn));
+    }
+
+    const int frD = rtl_alloc_register(unit, RTLTYPE_V2_FLOAT32);
+    rtl_add_insn(unit, RTLOP_VBUILD2, frD, frA, frB, 0);
+    set_fpr(ctx, insn_frD(insn), frD);
+    if ((frA_index ? ctx->ps1_is_safe : ctx->fpr_is_safe) & (1 << insn_frA(insn))) {
+        ctx->fpr_is_safe |= 1 << insn_frD(insn);
+    } else {
+        ctx->fpr_is_safe &= ~(1 << insn_frD(insn));
+    }
+    if ((frB_index ? ctx->ps1_is_safe : ctx->fpr_is_safe) & (1 << insn_frB(insn))) {
+        ctx->ps1_is_safe |= 1 << insn_frD(insn);
+    } else {
+        ctx->ps1_is_safe &= ~(1 << insn_frD(insn));
+    }
+
+    if (insn_Rc(insn)) {
+        update_cr1(ctx);
     }
 }
 
@@ -5211,11 +5356,11 @@ static inline void translate_x3F(
 
         switch ((PPCExtendedOpcode3F_10)insn_XO_10(insn)) {
           case XO_FCMPU:
-            translate_compare_fp(ctx, insn, false);
+            translate_compare_fp(ctx, insn, false, 0);
             return;
 
           case XO_FCMPO:
-            translate_compare_fp(ctx, insn, true);
+            translate_compare_fp(ctx, insn, true, 0);
             return;
 
           case XO_MCRFS: {
@@ -5544,19 +5689,19 @@ static inline void translate_x3F(
           }  // case XO_MTFSF
 
           case XO_FNEG:
-            translate_move_fpr(ctx, insn, RTLOP_FNEG);
+            translate_move_fpr(ctx, insn, RTLOP_FNEG, false);
             return;
 
           case XO_FMR:
-            translate_move_fpr(ctx, insn, RTLOP_MOVE);
+            translate_move_fpr(ctx, insn, RTLOP_MOVE, false);
             return;
 
           case XO_FNABS:
-            translate_move_fpr(ctx, insn, RTLOP_FNABS);
+            translate_move_fpr(ctx, insn, RTLOP_FNABS, false);
             return;
 
           case XO_FABS:
-            translate_move_fpr(ctx, insn, RTLOP_FABS);
+            translate_move_fpr(ctx, insn, RTLOP_FABS, false);
             return;
 
           case XO_FRSP: {
@@ -5621,14 +5766,77 @@ static inline void translate_insn(
 
       case OPCD_x04:
         switch ((PPCExtendedOpcode04_750CL_5)insn_XO_5(insn)) {
+          case XO_PS_CMP:
+          case XO_PS_MOVE:
+          case XO_PS_MERGE:
           case XO_PS_MISC:
-            ASSERT(insn_XO_10(insn) == XO_DCBZ_L);
-            /* We treat "locked" cache identically to normal cache. */
-            translate_dcbz(ctx, insn);
-            return;
-          default: return;  // FIXME: not yet implemented
+            switch ((PPCExtendedOpcode04_750CL_10)insn_XO_10(insn)) {
+              case XO_PS_CMPU0:
+                translate_compare_fp(ctx, insn, false, 0);
+                return;
+              case XO_PS_CMPO0:
+                translate_compare_fp(ctx, insn, true, 0);
+                return;
+              case XO_PS_CMPU1:
+                translate_compare_fp(ctx, insn, false, 1);
+                return;
+              case XO_PS_CMPO1:
+                translate_compare_fp(ctx, insn, true, 1);
+                return;
+              case XO_PS_NEG:
+                // FIXME: FNEG or VFNEG?
+                //translate_move_fpr(ctx, insn, RTLOP_VFNEG, true);
+                return;
+              case XO_PS_MR:
+                translate_move_fpr(ctx, insn, RTLOP_MOVE, true);
+                return;
+              case XO_PS_NABS:
+                //translate_move_fpr(ctx, insn, RTLOP_VFNABS, true);
+                return;
+              case XO_PS_ABS:
+                //translate_move_fpr(ctx, insn, RTLOP_VFABS, true);
+                return;
+              case XO_PS_MERGE00:
+                translate_ps_merge(ctx, insn, 0, 0);
+                return;
+              case XO_PS_MERGE01:
+                translate_ps_merge(ctx, insn, 0, 1);
+                return;
+              case XO_PS_MERGE10:
+                translate_ps_merge(ctx, insn, 1, 0);
+                return;
+              case XO_PS_MERGE11:
+                translate_ps_merge(ctx, insn, 1, 1);
+                return;
+              case XO_DCBZ_L:
+                /* We treat "locked" cache identically to normal cache. */
+                translate_dcbz(ctx, insn);
+                return;
+            }
+            ASSERT(!"Missing 0x04_10 extended opcode handler");
+
+          case XO_PSQ_LX:
+          case XO_PSQ_STX:
+          case XO_PS_SUM0:
+          case XO_PS_SUM1:
+          case XO_PS_MULS0:
+          case XO_PS_MULS1:
+          case XO_PS_MADDS0:
+          case XO_PS_MADDS1:
+          case XO_PS_DIV:
+          case XO_PS_SUB:
+          case XO_PS_ADD:
+          case XO_PS_SEL:
+          case XO_PS_RES:
+          case XO_PS_MUL:
+          case XO_PS_RSQRTE:
+          case XO_PS_MSUB:
+          case XO_PS_MADD:
+          case XO_PS_NMSUB:
+          case XO_PS_NMADD:
+            return;  // FIXME: not yet implemented
         }
-        ASSERT(!"Missing 0x04 extended opcode handler");
+        ASSERT(!"Missing 0x04_5 extended opcode handler");
 
       case OPCD_MULLI:
         translate_arith_imm(ctx, insn, RTLOP_MULI, false, false, false);
@@ -6075,6 +6283,7 @@ bool guest_ppc_translate_block(GuestPPCContext *ctx, int index)
 
     memset(&ctx->live, 0, sizeof(ctx->live));
     ctx->fpr_is_safe = 0;
+    ctx->ps1_is_safe = 0;
     ctx->crb_dirty = 0;
     memset(&ctx->last_set, -1, sizeof(ctx->last_set));
 

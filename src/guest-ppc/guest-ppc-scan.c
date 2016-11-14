@@ -480,9 +480,10 @@ static inline void update_used_changed(
       case OPCD_x04:
         switch ((PPCExtendedOpcode04_750CL_5)insn_XO_5(insn)) {
           case XO_PS_CMP:
-            mark_fpr_used(block, insn_frA(insn), true);
-            mark_fpr_used(block, insn_frB(insn), true);
-            mark_crf_used(block, insn_crfD(insn));  // FIXME: temp until these insns are implemented, to avoid uninitialized values in CR merging
+            /* ps_cmp*0 are identical to fcmp*, so we don't need to force
+             * paired-single mode in that case. */
+            mark_fpr_used(block, insn_frA(insn), (insn_XO_10(insn)&0x40) != 0);
+            mark_fpr_used(block, insn_frB(insn), (insn_XO_10(insn)&0x40) != 0);
             mark_crf_changed(block, insn_crfD(insn));
             fpscr_used_changed_unless_no_state(ctx, block);
             break;
@@ -512,19 +513,11 @@ static inline void update_used_changed(
             check_fp_Rc(ctx, block, address, insn);
             break;
           case XO_PS_MERGE:
-            if (insn_XO_10(insn) == XO_PS_MERGE10
-             && insn_frB(insn) == insn_frA(insn)
-             && insn_frD(insn) == insn_frA(insn)) {
-                /* This is the IBM-recommended way to switch a register
-                 * from double to single precision without touching the
-                 * value in ps1, so it doesn't require a paired-mode alias. */
-                mark_fpr_used(block, insn_frD(insn), false);
-                mark_fpr_changed(block, insn_frD(insn), false);
-            } else {
-                mark_fpr_used(block, insn_frA(insn), true);
-                mark_fpr_used(block, insn_frB(insn), true);
-                mark_fpr_changed(block, insn_frD(insn), true);
-            }
+            /* We don't need to force paired-single mode for registers
+             * we're extracting ps0 from. */
+            mark_fpr_used(block, insn_frA(insn), (insn_XO_10(insn)&0x40) != 0);
+            mark_fpr_used(block, insn_frB(insn), (insn_XO_10(insn)&0x20) != 0);
+            mark_fpr_changed(block, insn_frD(insn), true);
             check_fp_Rc(ctx, block, address, insn);
             break;
           case XO_PS_MISC:  // dcbz_l
