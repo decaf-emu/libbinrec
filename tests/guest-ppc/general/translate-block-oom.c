@@ -26,7 +26,6 @@ int main(void)
     binrec_setup_t setup;
     memset(&setup, 0, sizeof(setup));
     setup.guest_memory_base = ppc_code;
-    setup.host_memory_base = UINT64_C(0x100000000);
     setup.state_offset_gpr = 0x100;
     setup.state_offset_fpr = 0x180;
     setup.state_offset_gqr = 0x380;
@@ -71,7 +70,7 @@ int main(void)
     mem_wrap_cancel_fail();
     EXPECT_STREQ(rtl_disassemble_unit(unit, false),
                  "    0: LOAD_ARG   r1, 0\n"
-                 "    1: LOAD_IMM   r2, 0x100000000\n"
+                 "    1: LOAD_ARG   r2, 1\n"
                  "    2: LOAD_IMM   r3, 1\n"
                  "    3: SET_ALIAS  a2, r3\n"
                  "    4: GOTO       L1\n"

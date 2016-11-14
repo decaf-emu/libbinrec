@@ -21,7 +21,7 @@ static const bool expected_success = true;
 
 static const char expected[] =
     "    0: LOAD_ARG   r1, 0\n"
-    "    1: LOAD_IMM   r2, 0x100000000\n"
+    "    1: LOAD_ARG   r2, 1\n"
     "    2: LOAD_IMM   r3, 0xFE001000\n"
     "    3: LOAD_IMM   r4, 8\n"
     "    4: SET_ALIAS  a2, r4\n"

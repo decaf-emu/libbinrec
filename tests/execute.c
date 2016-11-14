@@ -29,7 +29,7 @@
 /*************************************************************************/
 
 /* Cache of already-translated code, one entry per address. */
-typedef void (*GuestCode)(void *);
+typedef void (*GuestCode)(void *, void *);
 static GuestCode *func_table = NULL;
 static uint32_t func_table_base = -1;  // Guest address for func_table[0].
 static uint32_t func_table_limit = 0;  // Address of last table entry plus one.
@@ -199,7 +199,6 @@ bool call_guest_code(
     setup.host = binrec_native_arch();
     setup.host_features = binrec_native_features();
     setup.guest_memory_base = memory;
-    setup.host_memory_base = (uintptr_t)memory;
     setup.state_offset_gpr = offsetof(PPCState,gpr);
     setup.state_offset_fpr = offsetof(PPCState,fpr);
     setup.state_offset_gqr = offsetof(PPCState,gqr);
@@ -251,7 +250,7 @@ bool call_guest_code(
             base = func_table_base;
             limit = func_table_limit - func_table_base;
         }
-        (*table[nia - base])(state_ppc);
+        (*table[nia - base])(state_ppc, memory);
     }
 
     clear_cache();

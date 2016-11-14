@@ -24,7 +24,7 @@ static const bool expected_success = true;
 static const char expected[] =
     "[info] Scanning terminated at requested limit 0xF\n"
     "    0: LOAD_ARG   r1, 0\n"
-    "    1: LOAD_IMM   r2, 0x100000000\n"
+    "    1: LOAD_ARG   r2, 1\n"
     "    2: GET_ALIAS  r3, a2\n"
     /* This should not trigger an operand assertion on constant range. */
     "    3: ANDI       r4, r3, -2147483648\n"

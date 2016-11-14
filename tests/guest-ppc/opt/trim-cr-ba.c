@@ -29,7 +29,7 @@ static const char expected[] =
         "[info] Killing instruction 2\n"
     #endif
     "    0: LOAD_ARG   r1, 0\n"
-    "    1: LOAD_IMM   r2, 0x100000000\n"
+    "    1: LOAD_ARG   r2, 1\n"
     "    2: NOP\n"
     "    3: NOP\n"
     "    4: LOAD_IMM   r4, 0\n"

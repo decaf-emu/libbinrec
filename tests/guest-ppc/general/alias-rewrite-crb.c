@@ -26,7 +26,7 @@ static const char expected[] =
         "[info] r5 no longer used, setting death = birth\n"
     #endif
     "    0: LOAD_ARG   r1, 0\n"
-    "    1: LOAD_IMM   r2, 0x100000000\n"
+    "    1: LOAD_ARG   r2, 1\n"
     "    2: GET_ALIAS  r3, a2\n"
     "    3: BFEXT      r4, r3, 1, 1\n"
     "    4: SET_ALIAS  a3, r4\n"

@@ -22,7 +22,7 @@ static const char expected[] =
     "[info] Scanning terminated at requested limit 0x3\n"
     "[warning] Unsupported instruction 7C600124 at address 0x0, treating as invalid\n"
     "    0: LOAD_ARG   r1, 0\n"
-    "    1: LOAD_IMM   r2, 0x100000000\n"
+    "    1: LOAD_ARG   r2, 1\n"
     "    2: ILLEGAL\n"
     "    3: LOAD_IMM   r3, 4\n"
     "    4: SET_ALIAS  a1, r3\n"

@@ -21,7 +21,7 @@ static const bool expected_success = true;
 static const char expected[] =
     "[info] Scanning terminated at requested limit 0x3\n"
     "    0: LOAD_ARG   r1, 0\n"
-    "    1: LOAD_IMM   r2, 0x100000000\n"
+    "    1: LOAD_ARG   r2, 1\n"
     "    2: LOAD_U8    r3, 0(r2)\n"
     "    3: LOAD_U8    r4, 1(r2)\n"
     "    4: LOAD_U8    r5, 2(r2)\n"

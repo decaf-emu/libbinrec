@@ -25,7 +25,7 @@ static const char expected[] =
         "[info] r1 death rolled back to 14\n"
     #endif
     "    0: LOAD_ARG   r1, 0\n"
-    "    1: LOAD_IMM   r2, 0x100000000\n"
+    "    1: LOAD_ARG   r2, 1\n"
     "    2: GET_ALIAS  r3, a3\n"
     "    3: GET_ALIAS  r4, a4\n"
     "    4: ADD        r5, r3, r4\n"

@@ -27,7 +27,6 @@ int main(void)
     binrec_setup_t setup;
     memset(&setup, 0, sizeof(setup));
     setup.guest_memory_base = input;
-    setup.host_memory_base = UINT64_C(0x100000000);
     setup.state_offset_gpr = 0x100;
     setup.state_offset_fpr = 0x180;
     setup.state_offset_gqr = 0x380;

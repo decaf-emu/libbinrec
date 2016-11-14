@@ -293,26 +293,9 @@ typedef struct binrec_setup_t {
      * the address space of the guest code.  binrec_translate() calls will
      * read source machine instructions and constand data from this region.
      * Memory accesses within the translated code itself will use the
-     * address in host_memory_base, defined below.
+     * address passed as a parameter to the code.
      */
     void *guest_memory_base;
-
-    /**
-     * host_memory_base:  Base address in the host environment of the
-     * memory region reserved as the address space of the guest code.
-     * Generated host machine code will perform loads and stores by adding
-     * the target address to this value.  The program calling the
-     * translated code is responsible for correctly mapping the parts of
-     * this region corresponding to valid guest memory and for handling
-     * any invalid-access exceptions which occur during execution (such as
-     * loads or stores with an invalid address).
-     *
-     * In a typical JIT translation environment, this will have the same
-     * numeric value as guest_memory_base, but in certain usage patterns
-     * it can be useful to set a different address here than the pointer
-     * used to read instructions at translation time.
-     */
-    uint64_t host_memory_base;
 
     /**
      * state_offset_*:  Offsets from the beginning of the processor state
@@ -1383,10 +1366,11 @@ extern void binrec_set_post_insn_callback(binrec_t *handle,
  *
  * On success, the returned block can be executed by calling it as a
  * function with the following signature:
- *     void code(void *state);
- * where the single parameter is a pointer to a processor state block whose
- * structure conforms to the structure offsets specified in the setup data
- * passed to binrec_create_handle().
+ *     void code(void *state, void *memory);
+ * where the "state" parameter is a pointer to a processor state block
+ * whose structure conforms to the structure offsets specified in the
+ * setup data passed to binrec_create_handle(), and "memory" is a pointer
+ * to the base of the guest memory region.
  *
  * The returned code pointer will have been allocated with the code_malloc
  * or code_realloc function passed in the setup structure to

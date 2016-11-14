@@ -13,7 +13,6 @@
 static const binrec_setup_t setup = {
     .guest = BINREC_ARCH_PPC_7XX,
     .host = BINREC_ARCH_PPC_7XX,  // To force host_little_endian to false.
-    .host_memory_base = UINT64_C(0x100000000),
     .state_offset_gpr = 0x100,
     .state_offset_fpr = 0x180,
     .state_offset_gqr = 0x380,
@@ -44,7 +43,7 @@ static const bool expected_success = true;
 static const char expected[] =
     "[info] Scanning terminated at requested limit 0x3\n"
     "    0: LOAD_ARG   r1, 0\n"
-    "    1: LOAD_IMM   r2, 0x100000000\n"
+    "    1: LOAD_ARG   r2, 1\n"
     "    2: GET_ALIAS  r3, a3\n"
     "    3: ZCAST      r4, r3\n"
     "    4: ADD        r5, r2, r4\n"

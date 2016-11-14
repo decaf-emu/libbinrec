@@ -31,7 +31,6 @@ int main(void)
     setup.guest = BINREC_ARCH_PPC_7XX;
     setup.host = BINREC_ARCH_X86_64_SYSV;
     setup.guest_memory_base = input;
-    setup.host_memory_base = UINT64_C(0x100000000);
     setup.state_offset_gpr = offsetof(PPCState,gpr);
     setup.state_offset_fpr = offsetof(PPCState,fpr);
     setup.state_offset_gqr = offsetof(PPCState,gqr);
