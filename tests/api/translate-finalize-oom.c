@@ -56,7 +56,7 @@ int main(void)
     EXPECT(handle = binrec_create_handle(&setup));
 
     mem_wrap_fail_after(10);
-    EXPECT_FALSE(binrec_translate(handle, 0, sizeof(input) - 1,
+    EXPECT_FALSE(binrec_translate(handle, NULL, 0, sizeof(input) - 1,
                                   (void *[1]){}, (long[1]){}));
     mem_wrap_cancel_fail();
 

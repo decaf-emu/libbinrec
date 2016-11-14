@@ -329,6 +329,10 @@ struct binrec_t {
     unsigned int guest_opt;
     unsigned int host_opt;
 
+    /* Processor state block for optimizers to reference, or NULL if none
+     * was provided by the binrec_translate() caller. */
+    void *opt_state;
+
     /* Settings for inlining. */
     int max_inline_length;
     int max_inline_depth;

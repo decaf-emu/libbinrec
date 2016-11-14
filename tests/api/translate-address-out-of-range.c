@@ -25,19 +25,19 @@ int main(void)
 
     binrec_set_code_range(handle, 0x1000, 0x1FFF);
 
-    EXPECT_FALSE(binrec_translate(handle, 0xFFF, 0x1FFF,
+    EXPECT_FALSE(binrec_translate(handle, NULL, 0xFFF, 0x1FFF,
                                   (void *[1]){}, (long[1]){}));
     EXPECT_STREQ(get_log_messages(), "[error] Address 0xFFF not within code"
                  " range 0x1000-0x1FFF\n");
 
     clear_log_messages();
-    EXPECT_FALSE(binrec_translate(handle, 0x2000, 0x2FFF,
+    EXPECT_FALSE(binrec_translate(handle, NULL, 0x2000, 0x2FFF,
                                   (void *[1]){}, (long[1]){}));
     EXPECT_STREQ(get_log_messages(), "[error] Address 0x2000 not within code"
                  " range 0x1000-0x1FFF\n");
 
     clear_log_messages();
-    EXPECT_FALSE(binrec_translate(handle, 0x1001, 0x1000,
+    EXPECT_FALSE(binrec_translate(handle, NULL, 0x1001, 0x1000,
                                   (void *[1]){}, (long[1]){}));
     EXPECT_STREQ(get_log_messages(), "[error] Invalid translation range"
                  " 0x1001-0x1000\n");

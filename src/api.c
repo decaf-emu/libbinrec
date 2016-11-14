@@ -500,8 +500,8 @@ void binrec_set_post_insn_callback(binrec_t *handle,
 
 /*-----------------------------------------------------------------------*/
 
-int binrec_translate(binrec_t *handle, uint32_t address, uint32_t limit,
-                     void **code_ret, long *size_ret)
+int binrec_translate(binrec_t *handle, void *state, uint32_t address,
+                     uint32_t limit, void **code_ret, long *size_ret)
 {
     ASSERT(handle);
     ASSERT(code_ret);
@@ -539,6 +539,8 @@ int binrec_translate(binrec_t *handle, uint32_t address, uint32_t limit,
                   address, limit);
         return 0;
     }
+
+    handle->opt_state = state;
 
     RTLUnit *unit = rtl_create_unit(handle);
     if (UNLIKELY(!unit)) {

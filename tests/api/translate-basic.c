@@ -54,7 +54,7 @@ int main(void)
 
     void *x86_code;
     long x86_code_size;
-    EXPECT(binrec_translate(handle, start_address, end_address,
+    EXPECT(binrec_translate(handle, NULL, start_address, end_address,
                             &x86_code, &x86_code_size));
 
     static const uint8_t x86_expected[] = {

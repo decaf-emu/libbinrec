@@ -63,7 +63,7 @@ int main(void)
         }
         clear_log_messages();
         mem_wrap_fail_after(count);
-        if (binrec_translate(handle, start_address, end_address,
+        if (binrec_translate(handle, NULL, start_address, end_address,
                              &x86_code, &x86_code_size)) {
             if (count == 0) {
                 FAIL("Translation did not fail on memory allocation failure");

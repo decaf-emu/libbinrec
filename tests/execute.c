@@ -95,13 +95,14 @@ static void free_callable(void *ptr)
  *
  * [Parameters]
  *     handle: Translation handle.
+ *     state: Processor state block for reference by optimizers.
  *     address: Guest address from which to execute.
  *     translated_code_callback: Function to call after translating code,
  *         or NULL for none.
  * [Return value]
  *     True on success, false on error.
  */
-static bool translate(binrec_t *handle, uint32_t address,
+static bool translate(binrec_t *handle, void *state, uint32_t address,
     void (*translated_code_callback)(uint32_t, void *, long))
 {
     if (address < func_table_base) {
@@ -141,7 +142,7 @@ static bool translate(binrec_t *handle, uint32_t address,
     if (!func_table[address - func_table_base]) {
         void *code;
         long code_size;
-        if (!binrec_translate(handle, address, -1, &code, &code_size)) {
+        if (!binrec_translate(handle, state, address, -1, &code, &code_size)) {
             fprintf(stderr, "Failed to translate code at 0x%X\n", address);
             return false;
         }
@@ -241,7 +242,7 @@ bool call_guest_code(
     while (state_ppc->nia != RETURN_ADDRESS) {
         const uint32_t nia = state_ppc->nia;
         if (UNLIKELY(nia - base >= limit) || UNLIKELY(!table[nia - base])) {
-            if (!translate(handle, nia, translated_code_callback)) {
+            if (!translate(handle, state, nia, translated_code_callback)) {
                 clear_cache();
                 binrec_destroy_handle(handle);
                 return false;
@@ -250,7 +251,7 @@ bool call_guest_code(
             base = func_table_base;
             limit = func_table_limit - func_table_base;
         }
-        (*table[nia - base])(state_ppc, memory);
+        (*table[nia - base])(state, memory);
     }
 
     clear_cache();

@@ -1364,6 +1364,15 @@ extern void binrec_set_post_insn_callback(binrec_t *handle,
  * for "limit" allows translation to continue until such a natural endpoint
  * is found.
  *
+ * The "state" parameter can be used to provide a processor state block
+ * (of the same format as that passed to the generated code) for the
+ * translation routines to reference.  This is used by certain
+ * optimizations (currently only the PowerPC CONSTANT_GQRS optimization)
+ * to generate more efficient code under the assumption that certain
+ * elements of the processor state will remain constant for every call
+ * to the translated code.  If NULL is passed, such optimizations will be
+ * implicitly disabled for the current binrec_translate() call. 
+ *
  * On success, the returned block can be executed by calling it as a
  * function with the following signature:
  *     void code(void *state, void *memory);
@@ -1381,6 +1390,8 @@ extern void binrec_set_post_insn_callback(binrec_t *handle,
  *
  * [Parameters]
  *     handle: Handle to use for translation.
+ *     state: Guest processor state to reference for translation, or NULL
+ *         if none.
  *     address: Address (in guest memory) of first instruction to translate.
  *     limit: Address (in guest memory) at which to terminate translation.
  *     code_ret: Pointer to variable to receive a pointer to the
@@ -1390,7 +1401,8 @@ extern void binrec_set_post_insn_callback(binrec_t *handle,
  * [Return value]
  *     True (nonzero) on success, false (zero) on error.
  */
-extern int binrec_translate(binrec_t *handle, uint32_t address, uint32_t limit,
+extern int binrec_translate(binrec_t *handle, void *state,
+                            uint32_t address, uint32_t limit,
                             void **code_ret, long *size_ret);
 
 /*************************************************************************/
