@@ -679,6 +679,8 @@ static int gen_load_store_address(GuestPPCContext *ctx, uint32_t insn,
 
     RTLUnit * const unit = ctx->unit;
     int host_address;
+    const int disp =
+        insn_OPCD(insn) >= OPCD_PSQ_L ? insn_d12(insn) : insn_d(insn);
 
     if (update) {
         ASSERT(insn_rA(insn) != 0);
@@ -687,9 +689,9 @@ static int gen_load_store_address(GuestPPCContext *ctx, uint32_t insn,
         } else {
             int ea;
             const int rA = get_gpr(ctx, insn_rA(insn));
-            if (insn_d(insn) != 0) {
+            if (disp != 0) {
                 ea = rtl_alloc_register(unit, RTLTYPE_INT32);
-                rtl_add_insn(unit, RTLOP_ADDI, ea, rA, 0, insn_d(insn));
+                rtl_add_insn(unit, RTLOP_ADDI, ea, rA, 0, disp);
             } else {
                 ea = rA;
             }
@@ -706,13 +708,13 @@ static int gen_load_store_address(GuestPPCContext *ctx, uint32_t insn,
             host_address = get_ea_indexed(ctx, insn, NULL);
             *disp_ret = 0;
         } else {
-            if (insn_rA(insn) != 0 || insn_d(insn) >= 0) {
+            if (insn_rA(insn) != 0 || disp >= 0) {
                 host_address = get_ea_base(ctx, insn);
-                *disp_ret = insn_d(insn);
+                *disp_ret = disp;
             } else {
                 const int offset = rtl_alloc_register(unit, RTLTYPE_ADDRESS);
                 rtl_add_insn(unit, RTLOP_LOAD_IMM,
-                             offset, 0, 0, (uint32_t)insn_d(insn));
+                             offset, 0, 0, (uint32_t)disp);
                 host_address = rtl_alloc_register(unit, RTLTYPE_ADDRESS);
                 rtl_add_insn(unit, RTLOP_ADD,
                              host_address, ctx->membase_reg, offset, 0);
@@ -977,6 +979,129 @@ static void check_snan(GuestPPCContext *ctx, int reg, int label)
     rtl_add_insn(unit, RTLOP_GOTO_IF_Z, 0, is_snan, 0, not_snan_label);
     rtl_add_insn(unit, RTLOP_GOTO_IF_NZ, 0, mantissa_test, 0, label);
     rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, not_snan_label);
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
+ * flush_denormal:  Return a register containing the given input value,
+ * or zero if that value is a denormal.
+ *
+ * [Parameters]
+ *     ctx: Translation context.
+ *     reg: RTL register (must be of type FLOAT32).
+ * [Return value]
+ *     RTL register containing result.
+ */
+static int flush_denormal(GuestPPCContext *ctx, int reg)
+{
+    RTLUnit * const unit = ctx->unit;
+
+    ASSERT(unit->regs[reg].type == RTLTYPE_FLOAT32);
+    const int bits = rtl_alloc_register(unit, RTLTYPE_INT32);
+    rtl_add_insn(unit, RTLOP_BITCAST, bits, reg, 0, 0);
+    const int exp = rtl_alloc_register(unit, RTLTYPE_INT32);
+    rtl_add_insn(unit, RTLOP_BFEXT, exp, bits, 0, 23 | 8<<8);
+    const int sign = rtl_alloc_register(unit, RTLTYPE_INT32);
+    rtl_add_insn(unit, RTLOP_ANDI, sign, bits, 0, 0x80000000);
+    const int zero = rtl_alloc_register(unit, RTLTYPE_FLOAT32);
+    rtl_add_insn(unit, RTLOP_BITCAST, zero, sign, 0, 0);
+    const int flushed = rtl_alloc_register(unit, RTLTYPE_FLOAT32);
+    rtl_add_insn(unit, RTLOP_SELECT, flushed, reg, zero, exp);
+    return flushed;
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
+ * ps_dequantize:  Convert an integer value to floating-point for a
+ * paired-single load instruction.
+ *
+ * [Parameters]
+ *     ctx: Translation context.
+ *     intval: RTL register (of type INT32) containing the loaded value.
+ *     scale: RTL register (of type FLOAT32) containing the scale factor
+ *         (2^-gqr_scale), or 0 if the value does not need to be scaled.
+ * [Return value]
+ *     RTL register (of type FLOAT32) containing the converted value.
+ */
+static int ps_dequantize(GuestPPCContext *ctx, int intval, int scale)
+{
+    RTLUnit * const unit = ctx->unit;
+
+    const int floatval = rtl_alloc_register(unit, RTLTYPE_FLOAT32);
+    rtl_add_insn(unit, RTLOP_FSCAST, floatval, intval, 0, 0);
+    if (!scale) {
+        return floatval;
+    }
+
+    const int result = rtl_alloc_register(unit, RTLTYPE_FLOAT32);
+    rtl_add_insn(unit, RTLOP_FMUL, result, floatval, scale, 0);
+    return result;
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
+ * ps_quantize:  Convert a floating-point value to integer for a
+ * paired-single store instruction.
+ *
+ * This function may raise host floating-point exceptions.
+ *
+ * [Parameters]
+ *     ctx: Translation context.
+ *     floatval: RTL register (of type FLOAT32) containing the value to store.
+ *     scale: RTL register (of type FLOAT32) containing the scale factor
+ *         (2^gqr_scale), or 0 if the value does not need to be scaled.
+ *     min_val: RTL register containing the low bound of the result value.
+ *     max_val: RTL register containing the high bound of the result value.
+ * [Return value]
+ *     RTL register (of type INT32) containing the converted value.
+ */
+static int ps_quantize(GuestPPCContext *ctx, int floatval, int scale,
+                       int min_val, int max_val)
+{
+    RTLUnit * const unit = ctx->unit;
+
+    /* Scale the input value and convert to integer.  Also check (in
+     * parallel, for hopefully simultaneous execution) for overflow. */
+    int scaled_val;
+    if (scale) {
+        scaled_val = rtl_alloc_register(unit, RTLTYPE_FLOAT32);
+        rtl_add_insn(unit, RTLOP_FMUL, scaled_val, floatval, scale, 0);
+    } else {
+        scaled_val = floatval;
+    }
+    const int bits = rtl_alloc_register(unit, RTLTYPE_INT32);
+    rtl_add_insn(unit, RTLOP_BITCAST, bits, scaled_val, 0, 0);
+    const int scaled_int = rtl_alloc_register(unit, RTLTYPE_INT32);
+    rtl_add_insn(unit, RTLOP_FROUNDI, scaled_int, scaled_val, 0, 0);
+    const int bits_sll1 = rtl_alloc_register(unit, RTLTYPE_INT32);
+    rtl_add_insn(unit, RTLOP_SLLI, bits_sll1, bits, 0, 1);
+    const int is_sign = rtl_alloc_register(unit, RTLTYPE_INT32);
+    rtl_add_insn(unit, RTLOP_SRLI, is_sign, bits, 0, 31);
+    const int overflow_val = rtl_alloc_register(unit, RTLTYPE_INT32);
+    rtl_add_insn(unit, RTLOP_SELECT, overflow_val, min_val, max_val, is_sign);
+    const int is_overflow = rtl_alloc_register(unit, RTLTYPE_INT32);
+    /* For the overflow boundary, use a value which is both large enough
+     * not to clip any valid output values and small enough so we're not
+     * affected by host-defined saturation behavior. */
+    rtl_add_insn(unit, RTLOP_SGTUI, is_overflow, bits_sll1, 0,
+                 (0x47800000<<1)-1);  // 0x47800000 == 65536.0f
+    const int intval = rtl_alloc_register(unit, RTLTYPE_INT32);
+    rtl_add_insn(unit, RTLOP_SELECT,
+                 intval, overflow_val, scaled_int, is_overflow);
+
+    /* Clamp the result to the given bounds and return the clamped value. */
+    const int over_max = rtl_alloc_register(unit, RTLTYPE_INT32);
+    rtl_add_insn(unit, RTLOP_SGTS, over_max, intval, max_val, 0);
+    const int temp = rtl_alloc_register(unit, RTLTYPE_INT32);
+    rtl_add_insn(unit, RTLOP_SELECT, temp, max_val, intval, over_max);
+    const int under_min = rtl_alloc_register(unit, RTLTYPE_INT32);
+    rtl_add_insn(unit, RTLOP_SLTS, under_min, intval, min_val, 0);
+    const int result = rtl_alloc_register(unit, RTLTYPE_INT32);
+    rtl_add_insn(unit, RTLOP_SELECT, result, min_val, temp, under_min);
+    return result;
 }
 
 /*-----------------------------------------------------------------------*/
@@ -3429,7 +3554,7 @@ static void translate_load_store_fpr(
         /* If storing a single-precision value but the register is
          * currently in double-precision mode, we don't want to convert it
          * to single-precision because that would overwrite the register's
-         * ps1 slot in the PSB. */
+         * ps1 slot in the PSB. */  // FIXME: no longer true (get_fpr() doesn't overwrite current value)
         int value;
         bool need_cast = false;
         if (is_single && ctx->live.fpr[insn_frD(insn)]) {
@@ -3597,6 +3722,426 @@ static void translate_load_store_multiple(
      * live until the end of the block. */
     if (!is_store) {
         flush_live_regs(ctx, false);
+    }
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
+ * translate_load_store_ps:  Translate a paired-single load or store
+ * instruction.
+ *
+ * [Parameters]
+ *     ctx: Translation context.
+ *     insn: Instruction word.
+ *     is_store: True if the instruction is a store instruction.
+ *     is_indexed: True if the access is an indexed access (like lwx or stwx).
+ *     update: True if register rA should be updated with the final EA.
+ */
+static void translate_load_store_ps(
+    GuestPPCContext *ctx, uint32_t insn, bool is_store, bool is_indexed,
+    bool update)
+{
+    RTLUnit * const unit = ctx->unit;
+
+    const int frD_index = insn_frD(insn);
+    const int gqr_index = is_indexed ? insn_I_22(insn) : insn_I_17(insn);
+    const bool use_both = is_indexed ? !insn_W_21(insn) : !insn_W_16(insn);
+    const RTLOpcode rtlop_32 = (ctx->handle->host_little_endian
+                                ? (is_store ? RTLOP_STORE_BR : RTLOP_LOAD_BR)
+                                : (is_store ? RTLOP_STORE : RTLOP_LOAD));
+    const RTLOpcode rtlop_u16 =
+        (ctx->handle->host_little_endian
+         ? (is_store ? RTLOP_STORE_I16_BR : RTLOP_LOAD_U16_BR)
+         : (is_store ? RTLOP_STORE_I16 : RTLOP_LOAD_U16));
+    const RTLOpcode rtlop_s16 =
+        (ctx->handle->host_little_endian
+         ? (is_store ? RTLOP_STORE_I16_BR : RTLOP_LOAD_S16_BR)
+         : (is_store ? RTLOP_STORE_I16 : RTLOP_LOAD_S16));
+
+    const bool have_constant_gqr =
+        (ctx->handle->guest_opt & BINREC_OPT_G_PPC_CONSTANT_GQRS)
+        && ctx->handle->opt_state != NULL;
+    uint32_t cgqr_value_raw;
+    if (have_constant_gqr) {
+        uint32_t *state_gqr_ptr =
+            (uint32_t *)((uintptr_t)ctx->handle->opt_state
+                         + ctx->handle->setup.state_offset_gqr);
+        cgqr_value_raw = state_gqr_ptr[gqr_index];
+    } else {
+        cgqr_value_raw = 0;
+    }
+    const unsigned int cgqr_value =
+        is_store ? cgqr_value_raw & 0xFFFF : cgqr_value_raw >> 16;
+    const int cgqr_type = cgqr_value & 7;
+    const int cgqr_scale = (int16_t)(cgqr_value << 2) >> 10;
+
+    int disp, ea;
+    const int host_address =
+        gen_load_store_address(ctx, insn, is_indexed, update, &disp, &ea);
+
+    /* Load and test the GQR value. */
+    int gqr = 0, gqr_type = 0, label_int = 0, label_out = 0;
+    if (!have_constant_gqr) {
+        label_out = rtl_alloc_label(unit);
+        gqr = rtl_alloc_register(unit, RTLTYPE_INT32);
+        rtl_add_insn(unit, RTLOP_LOAD, gqr, ctx->psb_reg, 0,
+                     ctx->handle->setup.state_offset_gqr + gqr_index*4);
+        gqr_type = rtl_alloc_register(unit, RTLTYPE_INT32);
+        rtl_add_insn(unit, RTLOP_BFEXT,
+                     gqr_type, gqr, 0, (is_store ? 0 : 16) | 3<<8);
+        const int int_test = rtl_alloc_register(unit, RTLTYPE_INT32);
+        rtl_add_insn(unit, RTLOP_ANDI, int_test, gqr_type, 0, 4);
+        label_int = rtl_alloc_label(unit);
+        rtl_add_insn(unit, RTLOP_GOTO_IF_NZ, 0, int_test, 0, label_int);
+    }
+
+    /* Floating-point loads and stores. */
+    if (!have_constant_gqr || !(cgqr_type & 4)) {
+        if (is_store) {
+            int ps = 0, ps0;
+            if (use_both) {
+                ps = get_fpr(ctx, frD_index, RTLTYPE_V2_FLOAT32);
+                ps0 = rtl_alloc_register(unit, RTLTYPE_FLOAT32);
+                rtl_add_insn(unit, RTLOP_VEXTRACT, ps0, ps, 0, 0);
+            } else {
+                ps0 = get_fpr(ctx, frD_index, RTLTYPE_FLOAT32);
+            }
+            if (!(ctx->handle->guest_opt
+                  & BINREC_OPT_G_PPC_PS_STORE_DENORMALS)) {
+                ps0 = flush_denormal(ctx, ps0);
+            }
+            rtl_add_insn(unit, rtlop_32, 0, host_address, ps0, disp);
+            if (use_both) {
+                int ps1 = rtl_alloc_register(unit, RTLTYPE_FLOAT32);
+                rtl_add_insn(unit, RTLOP_VEXTRACT, ps1, ps, 0, 1);
+                if (!(ctx->handle->guest_opt
+                      & BINREC_OPT_G_PPC_PS_STORE_DENORMALS)) {
+                    ps1 = flush_denormal(ctx, ps1);
+                }
+                rtl_add_insn(unit, rtlop_32, 0, host_address, ps1, disp+4);
+            }
+        } else {  // !is_store
+            const int ps0 = rtl_alloc_register(unit, RTLTYPE_FLOAT32);
+            rtl_add_insn(unit, rtlop_32, ps0, host_address, 0, disp);
+            ctx->fpr_is_safe &= ~(1 << frD_index);
+            const int ps1 = rtl_alloc_register(unit, RTLTYPE_FLOAT32);
+            if (use_both) {
+                rtl_add_insn(unit, rtlop_32, ps1, host_address, 0, disp+4);
+                ctx->ps1_is_safe &= ~(1 << frD_index);
+            } else {
+                rtl_add_insn(unit, RTLOP_LOAD_IMM, ps1, 0, 0, 0x3F800000);
+                ctx->ps1_is_safe |= 1 << frD_index;
+            }
+            const int frD = rtl_alloc_register(unit, RTLTYPE_V2_FLOAT32);
+            rtl_add_insn(unit, RTLOP_VBUILD2, frD, ps0, ps1, 0);
+            set_fpr(ctx, frD_index, frD);
+            if (!have_constant_gqr) {
+                flush_fpr(ctx, frD_index, true);
+            }
+        }
+        if (!have_constant_gqr) {
+            rtl_add_insn(unit, RTLOP_GOTO, 0, 0, 0, label_out);
+        }
+    }
+
+    /* Integer loads and stores.  Set up the quantization scale factor,
+     * if necessary. */
+    int gqr_scale;
+    if (!have_constant_gqr) {
+        rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, label_int);
+        const int scale_temp = rtl_alloc_register(unit, RTLTYPE_INT32);
+        rtl_add_insn(unit, RTLOP_SLLI, scale_temp, gqr, 0, is_store ? 18 : 2);
+        const int scale_temp2 = rtl_alloc_register(unit, RTLTYPE_INT32);
+        rtl_add_insn(unit, RTLOP_SRAI, scale_temp2, scale_temp, 0, 26);
+        const int scale_exp = rtl_alloc_register(unit, RTLTYPE_INT32);
+        rtl_add_insn(unit, RTLOP_SLLI, scale_exp, scale_temp2, 0, 23);
+        int gqr_scale_bits;
+        if (is_store) {
+            gqr_scale_bits = rtl_alloc_register(unit, RTLTYPE_INT32);
+            rtl_add_insn(unit, RTLOP_ADDI,
+                         gqr_scale_bits, scale_exp, 0, 0x3F800000);
+        } else {
+            const int one_bits = rtl_imm32(unit, 0x3F800000);
+            gqr_scale_bits = rtl_alloc_register(unit, RTLTYPE_INT32);
+            rtl_add_insn(unit, RTLOP_SUB,
+                         gqr_scale_bits, one_bits, scale_exp, 0);
+        }
+        gqr_scale = rtl_alloc_register(unit, RTLTYPE_FLOAT32);
+        rtl_add_insn(unit, RTLOP_BITCAST, gqr_scale, gqr_scale_bits, 0, 0);
+    } else if ((cgqr_type & 4) && cgqr_scale != 0) {
+        gqr_scale = rtl_alloc_register(unit, RTLTYPE_FLOAT32);
+        rtl_add_insn(unit, RTLOP_LOAD_IMM, gqr_scale, 0, 0,
+                     is_store ? 0x3F800000 + (cgqr_scale<<23)
+                              : 0x3F800000 - (cgqr_scale<<23));
+    } else {
+        gqr_scale = 0;  // No scaling needed.
+    }
+
+    /* If storing, extract and quantize the values first. */
+    int ps0_int = 0, ps1_int = 0;
+    if ((!have_constant_gqr || (cgqr_type & 4)) && is_store) {
+        /* Determine the saturation bounds. */
+        int min_val, max_val;
+        if (have_constant_gqr) {
+            min_val = rtl_alloc_register(unit, RTLTYPE_INT32);
+            rtl_add_insn(unit, RTLOP_LOAD_IMM, min_val, 0, 0,
+                         cgqr_type & 1 ? (cgqr_type & 2 ? -0x8000 : 0)
+                                       : (cgqr_type & 2 ? -0x80 : 0));
+            max_val = rtl_alloc_register(unit, RTLTYPE_INT32);
+            rtl_add_insn(unit, RTLOP_LOAD_IMM, max_val, 0, 0,
+                         cgqr_type & 1 ? (cgqr_type & 2 ? 0x7FFF : 0xFFFF)
+                                       : (cgqr_type & 2 ? 0x7F : 0xFF));
+        } else {
+            const int signed_test = rtl_alloc_register(unit, RTLTYPE_INT32);
+            rtl_add_insn(unit, RTLOP_ANDI, signed_test, gqr_type, 0, 2);
+            const int sign_bit = rtl_alloc_register(unit, RTLTYPE_INT32);
+            rtl_add_insn(unit, RTLOP_SLLI, sign_bit, signed_test, 0, 14);
+            const int int16_test = rtl_alloc_register(unit, RTLTYPE_INT32);
+            rtl_add_insn(unit, RTLOP_ANDI, int16_test, gqr_type, 0, 1);
+            const int shift_temp = rtl_alloc_register(unit, RTLTYPE_INT32);
+            rtl_add_insn(unit, RTLOP_XORI, shift_temp, int16_test, 0, 1);
+            const int minmax_shift = rtl_alloc_register(unit, RTLTYPE_INT32);
+            rtl_add_insn(unit, RTLOP_SLLI, minmax_shift, shift_temp, 0, 3);
+            const int min_base = rtl_imm32(unit, 0);
+            const int max_base = rtl_imm32(unit, 0xFFFF);
+            const int min_signed = rtl_alloc_register(unit, RTLTYPE_INT32);
+            rtl_add_insn(unit, RTLOP_SUB, min_signed, min_base, sign_bit, 0);
+            const int max_signed = rtl_alloc_register(unit, RTLTYPE_INT32);
+            rtl_add_insn(unit, RTLOP_SUB, max_signed, max_base, sign_bit, 0);
+            min_val = rtl_alloc_register(unit, RTLTYPE_INT32);
+            rtl_add_insn(unit, RTLOP_SRA,
+                         min_val, min_signed, minmax_shift, 0);
+            max_val = rtl_alloc_register(unit, RTLTYPE_INT32);
+            rtl_add_insn(unit, RTLOP_SRA,
+                         max_val, max_signed, minmax_shift, 0);
+        }
+        /* Quantize the values.  For this case, we can unconditionally use
+         * FCVT/VFCVT instead of the SNaN-safe but generally slower
+         * FCAST/VFCAST since both SNaNs and QNaNs convert to the same
+         * output value.  (Note that we could in theory pass FLOAT64s
+         * straight to FROUNDI in ps_quantize(), but typically psq_st
+         * instructions should be located at the end of a sequence of
+         * calculations which will leave the register in V2_FLOAT32 mode,
+         * so it's probably not worth worrying about the FLOAT64 case.) */
+        const int fpstate = rtl_alloc_register(unit, RTLTYPE_FPSTATE);
+        rtl_add_insn(unit, RTLOP_FGETSTATE, fpstate, 0, 0, 0);
+        int ps = 0, ps0 = 0;
+        if (ctx->live.fpr[frD_index]
+         && unit->regs[ctx->live.fpr[frD_index]].type == RTLTYPE_V2_FLOAT32) {
+            ps = ctx->live.fpr[frD_index];
+            ps0 = rtl_alloc_register(unit, RTLTYPE_FLOAT32);
+            rtl_add_insn(unit, RTLOP_VEXTRACT,
+                         ps0, ctx->live.fpr[frD_index], 0, 0);
+        } else {
+            const int ps_64 = get_fpr(ctx, frD_index, RTLTYPE_V2_FLOAT64);
+            if (use_both) {
+                ps = rtl_alloc_register(unit, RTLTYPE_V2_FLOAT32);
+                rtl_add_insn(unit, RTLOP_VFCVT, ps, ps_64, 0, 0);
+                ps0 = rtl_alloc_register(unit, RTLTYPE_FLOAT32);
+                rtl_add_insn(unit, RTLOP_VEXTRACT, ps0, ps, 0, 0);
+            } else {
+                const int ps0_64 = rtl_alloc_register(unit, RTLTYPE_FLOAT64);
+                rtl_add_insn(unit, RTLOP_VEXTRACT, ps0_64, ps_64, 0, 0);
+                ps0 = rtl_alloc_register(unit, RTLTYPE_FLOAT32);
+                rtl_add_insn(unit, RTLOP_FCVT, ps0, ps0_64, 0, 0);
+            }
+        }
+        ps0_int = ps_quantize(ctx, ps0, gqr_scale, min_val, max_val);
+        if (use_both) {
+            const int ps1 = rtl_alloc_register(unit, RTLTYPE_FLOAT32);
+            rtl_add_insn(unit, RTLOP_VEXTRACT, ps1, ps, 0, 1);
+            ps1_int = ps_quantize(ctx, ps1, gqr_scale, min_val, max_val);
+        }
+        /* Clear any exceptions raised by the quantization. */
+        rtl_add_insn(unit, RTLOP_FSETSTATE, 0, fpstate, 0, 0);
+    }
+
+    /* Check the access type. */
+    int label_int16 = 0, label_sint8 = 0;
+    if (!have_constant_gqr) {
+        const int int16_test = rtl_alloc_register(unit, RTLTYPE_INT32);
+        rtl_add_insn(unit, RTLOP_ANDI, int16_test, gqr_type, 0, 1);
+        label_int16 = rtl_alloc_label(unit);
+        rtl_add_insn(unit, RTLOP_GOTO_IF_NZ, 0, int16_test, 0, label_int16);
+        if (!is_store) {
+            const int sint8_test = rtl_alloc_register(unit, RTLTYPE_INT32);
+            rtl_add_insn(unit, RTLOP_ANDI, sint8_test, gqr_type, 0, 2);
+            label_sint8 = rtl_alloc_label(unit);
+            rtl_add_insn(unit, RTLOP_GOTO_IF_NZ,
+                         0, sint8_test, 0, label_sint8);
+        }
+    }
+
+    /* 8-bit store or unsigned 8-bit load. */
+    if (!have_constant_gqr || cgqr_type == 4 || (is_store && cgqr_type == 6)) {
+        if (is_store) {
+            rtl_add_insn(unit, RTLOP_STORE_I8, 0, host_address, ps0_int, disp);
+            if (use_both) {
+                rtl_add_insn(unit, RTLOP_STORE_I8,
+                             0, host_address, ps1_int, disp+1);
+            }
+        } else {
+            const int int0 = rtl_alloc_register(unit, RTLTYPE_INT32);
+            rtl_add_insn(unit, RTLOP_LOAD_U8, int0, host_address, 0, disp);
+            int int1 = 0;
+            if (use_both) {
+                int1 = rtl_alloc_register(unit, RTLTYPE_INT32);
+                rtl_add_insn(unit, RTLOP_LOAD_U8,
+                             int1, host_address, 0, disp+1);
+            }
+            const int ps0 = ps_dequantize(ctx, int0, gqr_scale);
+            int ps1;
+            if (use_both) {
+                ps1 = ps_dequantize(ctx, int1, gqr_scale);
+            } else {
+                ps1 = rtl_alloc_register(unit, RTLTYPE_FLOAT32);
+                rtl_add_insn(unit, RTLOP_LOAD_IMM, ps1, 0, 0, 0x3F800000);
+            }
+            const int frD = rtl_alloc_register(unit, RTLTYPE_V2_FLOAT32);
+            rtl_add_insn(unit, RTLOP_VBUILD2, frD, ps0, ps1, 0);
+            if (have_constant_gqr) {
+                set_fpr(ctx, frD_index, frD);
+                ctx->fpr_is_safe |= 1 << frD_index;
+                ctx->ps1_is_safe |= 1 << frD_index;
+            } else {
+                set_fpr_and_flush(ctx, frD_index, frD);
+            }
+        }
+        if (!have_constant_gqr) {
+            rtl_add_insn(unit, RTLOP_GOTO, 0, 0, 0, label_out);
+        }
+    }
+
+    /* Signed 8-bit load. */
+    if (!is_store) {
+        if (!have_constant_gqr) {
+            rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, label_sint8);
+        }
+        if (!have_constant_gqr || cgqr_type == 6) {
+            const int int0 = rtl_alloc_register(unit, RTLTYPE_INT32);
+            rtl_add_insn(unit, RTLOP_LOAD_S8, int0, host_address, 0, disp);
+            int int1 = 0;
+            if (use_both) {
+                int1 = rtl_alloc_register(unit, RTLTYPE_INT32);
+                rtl_add_insn(unit, RTLOP_LOAD_S8,
+                             int1, host_address, 0, disp+1);
+            }
+            const int ps0 = ps_dequantize(ctx, int0, gqr_scale);
+            int ps1;
+            if (use_both) {
+                ps1 = ps_dequantize(ctx, int1, gqr_scale);
+            } else {
+                ps1 = rtl_alloc_register(unit, RTLTYPE_FLOAT32);
+                rtl_add_insn(unit, RTLOP_LOAD_IMM, ps1, 0, 0, 0x3F800000);
+            }
+            const int frD = rtl_alloc_register(unit, RTLTYPE_V2_FLOAT32);
+            rtl_add_insn(unit, RTLOP_VBUILD2, frD, ps0, ps1, 0);
+            if (have_constant_gqr) {
+                set_fpr(ctx, frD_index, frD);
+                ctx->fpr_is_safe |= 1 << frD_index;
+                ctx->ps1_is_safe |= 1 << frD_index;
+            } else {
+                set_fpr_and_flush(ctx, frD_index, frD);
+            }
+        }
+        if (!have_constant_gqr) {
+            rtl_add_insn(unit, RTLOP_GOTO, 0, 0, 0, label_out);
+        }
+    }
+
+    /* 16-bit signedness check (if loading data). */
+    int label_sint16 = 0;
+    if (!have_constant_gqr) {
+        rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, label_int16);
+        if (!is_store) {
+            const int sint16_test = rtl_alloc_register(unit, RTLTYPE_INT32);
+            rtl_add_insn(unit, RTLOP_ANDI, sint16_test, gqr_type, 0, 2);
+            label_sint16 = rtl_alloc_label(unit);
+            rtl_add_insn(unit, RTLOP_GOTO_IF_NZ,
+                         0, sint16_test, 0, label_sint16);
+        }
+    }
+
+    /* 16-bit store or unsigned 16-bit load. */
+    if (!have_constant_gqr || cgqr_type == 5 || (is_store && cgqr_type == 7)) {
+        if (is_store) {
+            rtl_add_insn(unit, rtlop_u16, 0, host_address, ps0_int, disp);
+            if (use_both) {
+                rtl_add_insn(unit, rtlop_u16,
+                             0, host_address, ps1_int, disp+2);
+            }
+        } else {
+            const int int0 = rtl_alloc_register(unit, RTLTYPE_INT32);
+            rtl_add_insn(unit, rtlop_u16, int0, host_address, 0, disp);
+            int int1 = 0;
+            if (use_both) {
+                int1 = rtl_alloc_register(unit, RTLTYPE_INT32);
+                rtl_add_insn(unit, rtlop_u16, int1, host_address, 0, disp+2);
+            }
+            const int ps0 = ps_dequantize(ctx, int0, gqr_scale);
+            int ps1;
+            if (use_both) {
+                ps1 = ps_dequantize(ctx, int1, gqr_scale);
+            } else {
+                ps1 = rtl_alloc_register(unit, RTLTYPE_FLOAT32);
+                rtl_add_insn(unit, RTLOP_LOAD_IMM, ps1, 0, 0, 0x3F800000);
+            }
+            const int frD = rtl_alloc_register(unit, RTLTYPE_V2_FLOAT32);
+            rtl_add_insn(unit, RTLOP_VBUILD2, frD, ps0, ps1, 0);
+            if (have_constant_gqr) {
+                set_fpr(ctx, frD_index, frD);
+                ctx->fpr_is_safe |= 1 << frD_index;
+                ctx->ps1_is_safe |= 1 << frD_index;
+            } else {
+                set_fpr_and_flush(ctx, frD_index, frD);
+            }
+        }
+        if (!have_constant_gqr && !is_store) {
+            rtl_add_insn(unit, RTLOP_GOTO, 0, 0, 0, label_out);
+        }
+    }
+
+    /* Signed 16-bit load. */
+    if (!is_store) {
+        if (!have_constant_gqr) {
+            rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, label_sint16);
+        }
+        if (!have_constant_gqr || cgqr_type == 7) {
+            const int int0 = rtl_alloc_register(unit, RTLTYPE_INT32);
+            rtl_add_insn(unit, rtlop_s16, int0, host_address, 0, disp);
+            int int1 = 0;
+            if (use_both) {
+                int1 = rtl_alloc_register(unit, RTLTYPE_INT32);
+                rtl_add_insn(unit, rtlop_s16, int1, host_address, 0, disp+2);
+            }
+            const int ps0 = ps_dequantize(ctx, int0, gqr_scale);
+            int ps1;
+            if (use_both) {
+                ps1 = ps_dequantize(ctx, int1, gqr_scale);
+            } else {
+                ps1 = rtl_alloc_register(unit, RTLTYPE_FLOAT32);
+                rtl_add_insn(unit, RTLOP_LOAD_IMM, ps1, 0, 0, 0x3F800000);
+            }
+            const int frD = rtl_alloc_register(unit, RTLTYPE_V2_FLOAT32);
+            rtl_add_insn(unit, RTLOP_VBUILD2, frD, ps0, ps1, 0);
+            if (have_constant_gqr) {
+                set_fpr(ctx, frD_index, frD);
+                ctx->fpr_is_safe |= 1 << frD_index;
+                ctx->ps1_is_safe |= 1 << frD_index;
+            } else {
+                set_fpr_and_flush(ctx, frD_index, frD);
+            }
+        }
+    }
+
+    if (!have_constant_gqr) {
+        rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, label_out);
+    }
+    if (update) {
+        if (is_indexed || insn_d12(insn) != 0) {
+            set_gpr(ctx, insn_rA(insn), ea);
+        }
     }
 }
 
@@ -4081,7 +4626,10 @@ static void translate_move_spr(
             const int rS = get_gpr(ctx, insn_rS(insn));
             rtl_add_insn(unit, RTLOP_STORE, 0, ctx->psb_reg, rS,
                          ctx->handle->setup.state_offset_gqr + 4 * (spr & 7));
-            // FIXME: this should stop GQR optimization when that's implemented
+            if (ctx->handle->guest_opt & BINREC_OPT_G_PPC_CONSTANT_GQRS) {
+                rtl_add_insn(unit, RTLOP_GOTO,
+                             0, 0, 0, guest_ppc_get_epilogue_label(ctx));
+            }
         } else {
             const int value = rtl_alloc_register(unit, RTLTYPE_INT32);
             rtl_add_insn(unit, RTLOP_LOAD, value, ctx->psb_reg, 0,
@@ -5802,7 +6350,15 @@ static inline void translate_insn(
             ASSERT(!"Missing 0x04_10 extended opcode handler");
 
           case XO_PSQ_LX:
+            translate_load_store_ps(ctx, insn, false, true,
+                                    (insn_XO_10(insn) & 0x20) != 0);
+            return;
+
           case XO_PSQ_STX:
+            translate_load_store_ps(ctx, insn, true, true,
+                                    (insn_XO_10(insn) & 0x20) != 0);
+            return;
+
           case XO_PS_SUM0:
           case XO_PS_SUM1:
           case XO_PS_MULS0:
@@ -6147,10 +6703,20 @@ static inline void translate_insn(
         return;
 
       case OPCD_PSQ_L:
+        translate_load_store_ps(ctx, insn, false, false, false);
+        return;
+
       case OPCD_PSQ_LU:
+        translate_load_store_ps(ctx, insn, false, false, true);
+        return;
+
       case OPCD_PSQ_ST:
+        translate_load_store_ps(ctx, insn, true, false, false);
+        return;
+
       case OPCD_PSQ_STU:
-        return;  // FIXME: not yet implemented
+        translate_load_store_ps(ctx, insn, true, false, true);
+        return;
 
       case OPCD_x3B:
         switch ((PPCExtendedOpcode3B)insn_XO_5(insn)) {

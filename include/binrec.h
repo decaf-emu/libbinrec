@@ -692,24 +692,22 @@ typedef struct binrec_setup_t {
  * store instructions) are constant with respect to the entry point of a
  * translation unit.
  *
- * If this optimization is enabled, the translator will (at translation
- * time) read the values of any GQRs referenced by guest code and
- * translate paired-single load and store instructions to appropriate host
- * instructions based on those values.  Otherwise, the translated host
- * code will read the GQRs and choose an appropriate load or store
- * operation at runtime, which can be more than an order of magnitude
- * slower.
+ * Ordinarily, translated code for a psq_l* or psq_st* instruction must
+ * read the referenced GQR at runtime and choose the appropriate load or
+ * store operation, which both adds several instructions' worth of latency
+ * and significantly increases code size.  If this optimization is enabled,
+ * the translator will instead read (at translation time) the value of each
+ * GQR referenced by guest code and translate paired-single load and store
+ * instructions based on those values.
  *
- * If guest code modifies a GQR and then performs a paired-single load or
- * store based on that GQR, the translated code will take the new value of
- * the GQR into account; if the value written to the GQR is not a constant
- * or if the GQR is only set conditionally, this optimization will be
- * effectively disabled for the remainder of the translation unit.
+ * If this optimization is enabled, an mtspr instruction which writes to a
+ * GQR will cause the translated code to immediately return to its caller.
+ * This ensures that any following load or store instructions will be
+ * translated using the value written by the mtspr instruction.
  *
- * This optimization is UNSAFE: if the assumption described above is
- * violated by guest code, the translated code will not behave correctly.
- *
- * This optimization is not currently implemented.
+ * This optimization is UNSAFE: if the value of a GQR is not constant with
+ * respect to any paired-single load or store instruction, the translated
+ * code will not behave correctly.
  */
 #define BINREC_OPT_G_PPC_CONSTANT_GQRS  (1<<0)
 
@@ -934,6 +932,22 @@ typedef struct binrec_setup_t {
 #define BINREC_OPT_G_PPC_NO_FPSCR_STATE  (1<<7)
 
 /**
+ * BINREC_OPT_G_PPC_PS_STORE_DENORMALS:  Do not flush denormals to zero
+ * when storing floating-point values with the paired-single store
+ * instructions (psq_st[u][x]).
+ *
+ * Normally, the paired-single store instructions flush denormal values
+ * to zero before writing them to memory.  Enabling this optimization
+ * allows the translator to skip the expensive denormal check and write
+ * the values straight to memory.
+ *
+ * This optimization is UNSAFE: code which relies on denormals being
+ * flushed to zero by paired-single store instructions will behave
+ * incorrectly if this optimization is enabled.
+ */
+#define BINREC_OPT_G_PPC_PS_STORE_DENORMALS  (1<<8)
+
+/**
  * BINREC_OPT_G_PPC_TRIM_CR_STORES:  Analyze the data flow through each
  * CR bit and eliminate stores which are not visible outside the
  * translated code.
@@ -943,7 +957,7 @@ typedef struct binrec_setup_t {
  * in the processor state block.  System call and trap handlers are not
  * affected.
  */
-#define BINREC_OPT_G_PPC_TRIM_CR_STORES  (1<<8)
+#define BINREC_OPT_G_PPC_TRIM_CR_STORES  (1<<9)
 
 /*------------ Host-architecture-specific optimization flags ------------*/
 

@@ -3,6 +3,7 @@
 # No copyright is claimed on this file.
 #
 # Update history:
+#    - 2016-11-15: Fixed a psq_l test skipping the next test on failure.
 #    - 2016-11-14: Added a TEST_UNDOCUMENTED symbol (enabled by default)
 #         protecting tests of instruction formats which are not documented
 #         or are documented to have undefined behavior.
@@ -12857,6 +12858,7 @@ get_load_address:
    bne 1f
    cmpwi %r8,0
    beq 0f
+1: addi %r6,%r6,32
 
    # Denormalized values are loaded without change but flushed to zero
    # on store.  These should also not cause any exceptions.

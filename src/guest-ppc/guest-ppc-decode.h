@@ -406,9 +406,15 @@ static inline CONST_FUNCTION unsigned int insn_AA(const uint32_t insn)
 static inline CONST_FUNCTION unsigned int insn_LK(const uint32_t insn)
     {return insn & 0x1;}
 
-/* Paired-single instruction fields */
+/* Paired-single load/store instruction fields */
+static inline CONST_FUNCTION unsigned int insn_W_16(const uint32_t insn)
+    {return (insn >> 15) & 0x1;}
 static inline CONST_FUNCTION unsigned int insn_I_17(const uint32_t insn)
     {return (insn >> 12) & 0x7;}
+static inline CONST_FUNCTION int insn_d12(const uint32_t insn)
+    {return (int32_t)(insn << 20) >> 20;}
+static inline CONST_FUNCTION unsigned int insn_W_21(const uint32_t insn)
+    {return (insn >> 10) & 0x1;}
 static inline CONST_FUNCTION unsigned int insn_I_22(const uint32_t insn)
     {return (insn >> 7) & 0x7;}
 

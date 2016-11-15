@@ -16,25 +16,48 @@
 /* For RTL_DEBUG_OPTIMIZE definition. */
 #include "src/rtl-internal.h"
 
+/* PowerPC state block for translation tests.  We include initial padding
+ * to verify that GPR references actually make use of the GPR offset. */
+typedef struct PPCInsnTestState {
+    uint8_t pad[256];
+    uint32_t gpr[32];
+    double fpr[32][2];
+    uint32_t gqr[8];
+    uint32_t cr;
+    uint32_t lr;
+    uint32_t ctr;
+    uint32_t xer;
+    uint32_t fpscr;
+    uint8_t reserve_flag;
+    uint32_t reserve_state;
+    uint32_t nia;
+    uint64_t tb;
+    uint64_t (*timebase_handler)(void *);
+    void (*sc_handler)(void *);
+    void (*trap_handler)(void *);
+    int (*branch_callback)(void *, uint32_t);
+    const uint16_t *fres_lut;
+    const uint16_t *frsqrte_lut;
+} PPCInsnTestState;
+
 static const binrec_setup_t setup = {
     .guest = BINREC_ARCH_PPC_7XX,
     .host = BINREC_ARCH_X86_64_SYSV,
-    .state_offset_gpr = 0x100,
-    .state_offset_fpr = 0x180,
-    .state_offset_gqr = 0x380,
-    .state_offset_cr = 0x3A0,
-    .state_offset_lr = 0x3A4,
-    .state_offset_ctr = 0x3A8,
-    .state_offset_xer = 0x3AC,
-    .state_offset_fpscr = 0x3B0,
-    .state_offset_reserve_flag = 0x3B4,
-    .state_offset_reserve_state = 0x3B8,
-    .state_offset_nia = 0x3BC,
-    /* 0x3C0: unused */
-    .state_offset_timebase_handler = 0x3C8,
-    .state_offset_sc_handler = 0x3D0,
-    .state_offset_trap_handler = 0x3D8,
-    .state_offset_branch_callback = 0x3E0,
+    .state_offset_gpr = offsetof(PPCInsnTestState,gpr),
+    .state_offset_fpr = offsetof(PPCInsnTestState,fpr),
+    .state_offset_gqr = offsetof(PPCInsnTestState,gqr),
+    .state_offset_cr = offsetof(PPCInsnTestState,cr),
+    .state_offset_lr = offsetof(PPCInsnTestState,lr),
+    .state_offset_ctr = offsetof(PPCInsnTestState,ctr),
+    .state_offset_xer = offsetof(PPCInsnTestState,xer),
+    .state_offset_fpscr = offsetof(PPCInsnTestState,fpscr),
+    .state_offset_reserve_flag = offsetof(PPCInsnTestState,reserve_flag),
+    .state_offset_reserve_state = offsetof(PPCInsnTestState,reserve_state),
+    .state_offset_nia = offsetof(PPCInsnTestState,nia),
+    .state_offset_timebase_handler = offsetof(PPCInsnTestState,timebase_handler),
+    .state_offset_sc_handler = offsetof(PPCInsnTestState,sc_handler),
+    .state_offset_trap_handler = offsetof(PPCInsnTestState,trap_handler),
+    .state_offset_branch_callback = offsetof(PPCInsnTestState,branch_callback),
 };
 
 #endif  // TESTS_GUEST_PPC_INSN_COMMON_H

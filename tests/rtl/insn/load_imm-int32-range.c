@@ -35,6 +35,7 @@ int main(void)
                " unit->regs[dest].type == RTLTYPE_INT64"
                " || unit->regs[dest].type == RTLTYPE_ADDRESS"
                " || unit->regs[dest].type == RTLTYPE_FLOAT64"
+               " || (unit->regs[dest].type == RTLTYPE_INT32 && other >= UINT64_C(-0x80000000))"
                " || other <= UINT64_C(0xFFFFFFFF)");
     EXPECT_EQ(unit->num_insns, 0);
     EXPECT(unit->error);

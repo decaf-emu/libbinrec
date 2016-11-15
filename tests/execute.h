@@ -32,10 +32,10 @@ typedef struct PPCState {
     uint32_t reserve_state;
     uint32_t nia;
     uint64_t tb;
-    uint64_t (*timebase_handler)(struct PPCState *);
-    void (*sc_handler)(struct PPCState *);
-    void (*trap_handler)(struct PPCState *);
-    int (*branch_callback)(struct PPCState *, uint32_t branch_address);
+    uint64_t (*timebase_handler)(struct PPCState *state);
+    void (*sc_handler)(struct PPCState *state);
+    void (*trap_handler)(struct PPCState *state);
+    int (*branch_callback)(struct PPCState *state, uint32_t branch_address);
     const uint16_t *fres_lut;
     const uint16_t *frsqrte_lut;
 } PPCState;

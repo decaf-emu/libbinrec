@@ -44,6 +44,10 @@
  * If the preprocessor symbols PRE_INSN_CALLBACK or POST_INSN_CALLBACK are
  * defined, they will be passed to binrec_set_pre_insn_callback() or
  * binrec_set_post_insn_callback() respectively.
+ *
+ * If the preprocessor symbol INITIAL_STATE is defined to a state block
+ * pointer, that pointer will be stored in handle->opt_state before the
+ * guest translator is called.
  */
 
 #include "src/common.h"
@@ -75,6 +79,9 @@ int main(void)
     #endif
     #ifdef POST_INSN_CALLBACK
         binrec_set_post_insn_callback(handle, POST_INSN_CALLBACK);
+    #endif
+    #ifdef INITIAL_STATE
+        handle->opt_state = INITIAL_STATE;
     #endif
 
     RTLUnit *unit;

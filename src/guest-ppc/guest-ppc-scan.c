@@ -1277,8 +1277,13 @@ bool guest_ppc_scan(GuestPPCContext *ctx, uint32_t limit)
             (opcd == OPCD_SC
              && (insn_count == max_insns - 1
                  || bswap_be32(memory_base[(address+4)/4]) != 0x4E800020));
+        /* Also terminate at a GQR write for constant GQR optimization. */
+        const bool is_terminal_gqr_write =
+            ((ctx->handle->guest_opt & BINREC_OPT_G_PPC_CONSTANT_GQRS)
+             && opcd == OPCD_x1F && insn_XO_10(insn) == XO_MTSPR
+             && (insn_spr(insn) & ~0x17) == SPR_UGQR(0));
         if (is_direct_branch || is_indirect_branch || block->has_trap
-         || is_invalid || is_icbi || is_sc) {
+         || is_invalid || is_icbi || is_sc || is_terminal_gqr_write) {
             block->len = (address + 4) - block->start;
             block->is_conditional_branch =
                 ((is_direct_branch || is_indirect_branch)
@@ -1323,10 +1328,12 @@ bool guest_ppc_scan(GuestPPCContext *ctx, uint32_t limit)
              * support for translating LK=1 branches to native calls, those
              * should not be treated as terminal here.
              *
-             * icbi and sc instructions always cause a return from
+             * icbi and sc instructions (and GQR writes, if the constant
+             * GQR optimization is enabled) always cause a return from
              * translated code, so they can potentially end the unit as well.
              */
-            if (is_invalid || is_icbi || is_sc || is_unconditional_branch) {
+            if (is_invalid || is_icbi || is_sc || is_terminal_gqr_write
+             || is_unconditional_branch) {
                 ASSERT(ctx->num_blocks > 0);
                 if (ctx->blocks[ctx->num_blocks-1].start <= address) {
                     /* No more blocks follow this one, so we've reached

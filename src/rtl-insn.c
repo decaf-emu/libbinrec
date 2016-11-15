@@ -1528,11 +1528,17 @@ static bool make_load_imm(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
     OPERAND_ASSERT(unit->regs[dest].type == RTLTYPE_INT64
                    || unit->regs[dest].type == RTLTYPE_ADDRESS
                    || unit->regs[dest].type == RTLTYPE_FLOAT64
+                   || (unit->regs[dest].type == RTLTYPE_INT32 && other >= UINT64_C(-0x80000000))
                    || other <= UINT64_C(0xFFFFFFFF));
 #endif
 
     insn->dest = dest;
-    insn->src_imm = other;
+    if (unit->regs[dest].type == RTLTYPE_INT32
+     || unit->regs[dest].type == RTLTYPE_FLOAT32) {
+        insn->src_imm = (uint32_t)other;
+    } else {
+        insn->src_imm = other;
+    }
 
     RTLRegister * const destreg = &unit->regs[dest];
     const int insn_index = unit->num_insns;
