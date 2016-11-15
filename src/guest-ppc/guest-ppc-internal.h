@@ -389,6 +389,9 @@ typedef struct GuestPPCContext {
 
     /* Set of FPR registers which need vector (paired-single) aliases. */
     uint32_t fpr_is_ps;
+    /* Set of live FPR registers which need to be stored back to the state
+     * block. */
+    uint32_t fpr_dirty;
     /* Set of live FPR registers known to have non-SNaN values. */
     uint32_t fpr_is_safe;
     /* Same, for paired-single slot 1. */

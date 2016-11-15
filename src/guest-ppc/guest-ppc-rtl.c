@@ -221,6 +221,7 @@ static inline int get_fpr(GuestPPCContext * const ctx, int index,
         reg = rtl_alloc_register(unit, base_type);
         ASSERT(ctx->alias.fpr[index]);
         rtl_add_insn(unit, RTLOP_GET_ALIAS, reg, 0, 0, ctx->alias.fpr[index]);
+        ctx->live.fpr[index] = reg;
         current_type = base_type;
     }
     if (type != current_type) {
@@ -436,7 +437,50 @@ static inline void set_gpr(GuestPPCContext * const ctx, int index, int reg)
 
 static inline void set_fpr(GuestPPCContext * const ctx, int index, int reg)
 {
+    RTLUnit * const unit = ctx->unit;
+
+    /* If overwriting a different type with FLOAT64, we need to store the
+     * second half of the old value to the state block or alias. */
+    if (ctx->live.fpr[index]
+     && unit->regs[reg].type == RTLTYPE_FLOAT64
+     && unit->regs[ctx->live.fpr[index]].type != RTLTYPE_FLOAT64) {
+        const int old_reg = ctx->live.fpr[index];
+        if (unit->regs[old_reg].type == RTLTYPE_V2_FLOAT64) {
+            /* This typically happens if a register is used in paired-single
+             * mode at a different point in the unit but is being used in
+             * double-precision mode here.  Just insert the new value into
+             * the old vector and use the updated vector as the current
+             * FPR value. */
+            const int new = rtl_alloc_register(unit, RTLTYPE_V2_FLOAT64);
+            rtl_add_insn(unit, RTLOP_VINSERT, new, old_reg, reg, 0);
+            reg = new;
+        } else {
+            int ps1;
+            if (unit->regs[old_reg].type == RTLTYPE_FLOAT32) {
+                ps1 = old_reg;
+            } else {
+                ASSERT(unit->regs[old_reg].type == RTLTYPE_V2_FLOAT32);
+                ps1 = rtl_alloc_register(unit, RTLTYPE_FLOAT32);
+                rtl_add_insn(unit, RTLOP_VEXTRACT, ps1, old_reg, 0, 1);
+            }
+            const int ps1_64 = rtl_alloc_register(unit, RTLTYPE_FLOAT64);
+            const bool snan_safe = (ctx->ps1_is_safe & (1 << index)) != 0;
+            rtl_add_insn(unit, snan_safe ? RTLOP_FCVT : RTLOP_FCAST,
+                         ps1_64, ps1, 0, 0);
+            if (ctx->fpr_is_ps & (1 << index)) {
+                const int new = rtl_alloc_register(unit, RTLTYPE_V2_FLOAT64);
+                rtl_add_insn(unit, RTLOP_VBUILD2, new, reg, ps1_64, 1);
+                reg = new;
+            } else {
+                rtl_add_insn(
+                    unit, RTLOP_STORE, 0, ctx->psb_reg, ps1_64,
+                    ctx->handle->setup.state_offset_fpr + index*16 + 8);
+            }
+        }
+    }
+
     ctx->live.fpr[index] = reg;
+    ctx->fpr_dirty |= 1 << index;
 }
 
 static inline void set_cr(GuestPPCContext * const ctx, int reg)
@@ -740,8 +784,8 @@ static int gen_load_store_address(GuestPPCContext *ctx, uint32_t insn,
  */
 static void flush_fpr(GuestPPCContext *ctx, int index, bool clear_live)
 {
-    int reg = ctx->live.fpr[index];
-    if (reg) {
+    if (ctx->fpr_dirty & (1 << index)) {
+        int reg = ctx->live.fpr[index];
         const RTLDataType base_type = (ctx->fpr_is_ps & (1 << index)
                                        ? RTLTYPE_V2_FLOAT64 : RTLTYPE_FLOAT64);
         const RTLDataType current_type = ctx->unit->regs[reg].type;
@@ -756,11 +800,12 @@ static void flush_fpr(GuestPPCContext *ctx, int index, bool clear_live)
         }
         rtl_add_insn(ctx->unit, RTLOP_SET_ALIAS,
                      0, reg, 0, ctx->alias.fpr[index]);
-        if (clear_live) {
-            ctx->live.fpr[index] = 0;
-            ctx->fpr_is_safe &= ~(1 << index);
-            ctx->ps1_is_safe &= ~(1 << index);
-        }
+        ctx->fpr_dirty &= ~(1 << index);
+    }
+    if (clear_live) {
+        ctx->live.fpr[index] = 0;
+        ctx->fpr_is_safe &= ~(1 << index);
+        ctx->ps1_is_safe &= ~(1 << index);
     }
 }
 
@@ -793,8 +838,11 @@ static void set_fpr_and_flush(GuestPPCContext *ctx, int index, int reg)
  */
 static void flush_live_regs(GuestPPCContext *ctx, bool clear)
 {
-    for (int i = 0; i < 32; i++) {
-        flush_fpr(ctx, i, false);
+    uint32_t fpr_dirty = ctx->fpr_dirty;
+    while (fpr_dirty) {
+        const int index = ctz32(fpr_dirty);
+        fpr_dirty ^= 1 << index;
+        flush_fpr(ctx, index, false);
     }
 
     memset(&ctx->last_set, -1, sizeof(ctx->last_set));
@@ -3752,6 +3800,12 @@ static void translate_load_store_ps(
         is_store ? cgqr_value_raw & 0xFFFF : cgqr_value_raw >> 16;
     const int cgqr_type = cgqr_value & 7;
     const int cgqr_scale = (int16_t)(cgqr_value << 2) >> 10;
+
+    /* For store operations, if not using constant GQR mode, make sure the
+     * alias is loaded here so it's not initialized on a conditional path. */
+    if (is_store && !have_constant_gqr) {
+        (void) get_fpr(ctx, frD_index, RTLTYPE_V2_FLOAT64);
+    }
 
     int disp, ea;
     const int host_address =
@@ -6811,6 +6865,7 @@ bool guest_ppc_translate_block(GuestPPCContext *ctx, int index)
     }
 
     memset(&ctx->live, 0, sizeof(ctx->live));
+    ctx->fpr_dirty = 0;
     ctx->fpr_is_safe = 0;
     ctx->ps1_is_safe = 0;
     ctx->crb_dirty = 0;
