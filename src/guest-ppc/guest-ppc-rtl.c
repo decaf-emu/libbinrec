@@ -3551,30 +3551,7 @@ static void translate_load_store_fpr(
         gen_load_store_address(ctx, insn, is_indexed, update, &disp, &ea);
 
     if (is_store) {
-        /* If storing a single-precision value but the register is
-         * currently in double-precision mode, we don't want to convert it
-         * to single-precision because that would overwrite the register's
-         * ps1 slot in the PSB. */  // FIXME: no longer true (get_fpr() doesn't overwrite current value)
-        int value;
-        bool need_cast = false;
-        if (is_single && ctx->live.fpr[insn_frD(insn)]) {
-            const int reg = ctx->live.fpr[insn_frD(insn)];
-            if (reg && unit->regs[reg].type != RTLTYPE_FLOAT32
-                    && unit->regs[reg].type != RTLTYPE_V2_FLOAT32) {
-                need_cast = true;
-            }
-        }
-        if (need_cast) {
-            const int f64 = get_fpr(ctx, insn_frD(insn), RTLTYPE_FLOAT64);
-            value = rtl_alloc_register(unit, RTLTYPE_FLOAT32);
-            if (ctx->handle->guest_opt & BINREC_OPT_G_PPC_FAST_NANS) {
-                rtl_add_insn(unit, RTLOP_FCVT, value, f64, 0, 0);
-            } else {
-                rtl_add_insn(unit, RTLOP_FCAST, value, f64, 0, 0);
-            }
-        } else {
-            value = get_fpr(ctx, insn_frD(insn), type);
-        }
+        const int value = get_fpr(ctx, insn_frD(insn), type);
         rtl_add_insn(unit, rtlop, 0, host_address, value, disp);
     } else {
         const int value = rtl_alloc_register(unit, type);
