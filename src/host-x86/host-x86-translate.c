@@ -1433,6 +1433,8 @@ static bool reload_regs_for_block(
         }
     }
 
+    /* If this is a backward branch, also include reloads of registers
+     * which are spilled now but were not spilled at the branch target. */
     if (unit->blocks[block_index].next_block < 0
      || target_block < unit->blocks[block_index].next_block) {
         const HostX86BlockInfo *target_info = &ctx->blocks[target_block];
@@ -1482,6 +1484,8 @@ static bool reload_regs_for_block(
                                           host_dest, host_src);
                 } else {
                     ASSERT(host_src < X86_XMM0);
+                    /* Slight laziness here: always exchange 64 bits even if
+                     * the values in both registers are only 32 bits wide. */
                     append_insn_ModRM_reg(code, true, X86OP_XCHG_Ev_Gv,
                                           host_src, host_dest);
                 }
@@ -1537,12 +1541,30 @@ static bool check_reload_conflicts(const HostX86Context *ctx, int block_index,
     const int target_label = unit->insns[branch_insn].label;
     const int target_block = unit->label_blockmap[target_label];
     const int target_insn = unit->blocks[target_block].first_insn;
-    const uint32_t end_live = ctx->blocks[block_index].end_live;
 
-    /* Check for alias reload conflicts. */
+    /* Check for alias reload conflicts.  A conflict occurs when the
+     * destination of a register move or reload is either:
+     *    - live past the branch (including registers which are dead at
+     *      the branch but alias-merged into the next block) -- this set
+     *      of registers is recorded in the block's end_live field; or
+     *    - dead at the branch, but alias-merged into the target block --
+     *      this covers cases where the reload would generate an XCHG
+     *      instruction (or an equivalent operation for XMM registers),
+     *      leaving the registers swapped if the branch was not taken.
+     * Make sure to cover both cases here. */
     const int num_aliases = unit->next_alias;
     const uint16_t *current_store = ctx->blocks[block_index].alias_store;
     const uint16_t *next_load = ctx->blocks[target_block].alias_load;
+    uint32_t conflict_regs = ctx->blocks[block_index].end_live;
+    for (int i = 1; i < num_aliases; i++) {
+        const int merge_reg = next_load[i];
+        if (merge_reg && ctx->regs[merge_reg].merge_alias) {
+            const int merge_src = current_store[i];
+            if (!is_spilled(ctx, branch_insn, merge_src)) {
+                conflict_regs |= 1 << ctx->regs[merge_src].host_reg;
+            }
+        }
+    }
     for (int i = 1; i < num_aliases; i++) {
         const int merge_reg = next_load[i];
         if (merge_reg && ctx->regs[merge_reg].merge_alias) {
@@ -1552,17 +1574,17 @@ static bool check_reload_conflicts(const HostX86Context *ctx, int block_index,
             const bool move_required =
                 (!merge_src || is_spilled(ctx, branch_insn, merge_src)
                  || host_src != host_dest);
-            if (move_required && (end_live & (1 << host_dest))) {
+            if (move_required && (conflict_regs & (1 << host_dest))) {
                 return true;
             }
         }
     }
 
-    /* If this is a backward branch, check for spill reload conflicts. */
+    /* If this is a backward branch, also check for spill reload conflicts. */
     if (target_insn < branch_insn) {
         const uint16_t *current_map = ctx->reg_map;
         const uint16_t *next_map = ctx->blocks[target_block].initial_reg_map;
-        uint32_t live = end_live;
+        uint32_t live = ctx->blocks[block_index].end_live;
         while (live) {
             const int host_reg = ctz32(live);
             live ^= 1u << host_reg;
