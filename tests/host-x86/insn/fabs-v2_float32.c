@@ -18,14 +18,16 @@ static const unsigned int host_opt = 0;
 
 static int add_rtl(RTLUnit *unit)
 {
-    alloc_dummy_registers(unit, 8, RTLTYPE_FLOAT32);
+    alloc_dummy_registers(unit, 1, RTLTYPE_FLOAT32);
 
-    int reg1, reg2;
+    int reg1, reg2, reg3;
     EXPECT(reg1 = rtl_alloc_register(unit, RTLTYPE_FLOAT32));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg1, 0, 0, 0x3F800000));
-    EXPECT(reg2 = rtl_alloc_register(unit, RTLTYPE_FLOAT32));
-    EXPECT(rtl_add_insn(unit, RTLOP_FNEG, reg2, reg1, 0, 0));
-    EXPECT(rtl_add_insn(unit, RTLOP_NOP, 0, reg1, 0, 0));
+    EXPECT(reg2 = rtl_alloc_register(unit, RTLTYPE_V2_FLOAT32));
+    EXPECT(rtl_add_insn(unit, RTLOP_VBROADCAST, reg2, reg1, 0, 0));
+    EXPECT(reg3 = rtl_alloc_register(unit, RTLTYPE_V2_FLOAT32));
+    EXPECT(rtl_add_insn(unit, RTLOP_FABS, reg3, reg2, 0, 0));
+    EXPECT(rtl_add_insn(unit, RTLOP_NOP, 0, reg2, 0, 0));
 
     return EXIT_SUCCESS;
 }
@@ -36,14 +38,15 @@ static const uint8_t expected_code[] = {
     0x00,0x00,0x00,0x00,0x00,0x00,0x00, // (padding)
     0x00,0x00,0x00,                     // (padding)
 
-    0x00,0x00,0x00,0x80,0x00,0x00,0x00,0x00, // (data)
+    0xFF,0xFF,0xFF,0x7F,0xFF,0xFF,0xFF,0x7F, // (data)
     0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00, // (data)
 
     0xB8,0x00,0x00,0x80,0x3F,           // mov $0x3F800000,%eax
-    0x66,0x44,0x0F,0x6E,0xC0,           // movd %eax,%xmm8
-    0x45,0x0F,0x28,0xC8,                // movaps %xmm8,%xmm9
-    0x44,0x0F,0x57,0x0D,0xDA,0xFF,0xFF, // xorps -38(%rip),%xmm9
-      0xFF,
+    0x66,0x0F,0x6E,0xC8,                // movd %eax,%xmm1
+    0x0F,0x14,0xC9,                     // unpcklps %xmm1,%xmm1
+    0xF3,0x0F,0x7E,0xC9,                // movq %xmm1,%xmm1
+    0x0F,0x28,0xD1,                     // movaps %xmm1,%xmm2
+    0x0F,0x54,0x15,0xD6,0xFF,0xFF,0xFF, // andps -42(%rip),%xmm2
     0x48,0x83,0xC4,0x08,                // add $8,%rsp
     0xC3,                               // ret
 };

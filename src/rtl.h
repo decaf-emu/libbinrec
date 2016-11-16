@@ -281,7 +281,8 @@ typedef enum RTLOpcode {
     RTLOP_FTRUNCI,      // dest = (signed typeof(dest))trunc(src1)
 
     /* Floating-point sign bit manipulation instructions.  These do not
-     * raise floating-point exceptions and treat NaNs like other values. */
+     * raise floating-point exceptions and treat NaNs like other values.
+     * Vector operands are allowed. */
     RTLOP_FNEG,         // dest = -src1
     RTLOP_FABS,         // dest = abs(src1)
     RTLOP_FNABS,        // dest = -abs(src1)
@@ -289,19 +290,23 @@ typedef enum RTLOpcode {
     /* Floating-point arithmetic instructions.  If multiple operands are
      * NaNs, the returned NaN is the first of {src1, src2, src3}; but if
      * the BINREC_OPT_NATIVE_IEEE_NAN optimization is enabled, any input
-     * NaN may be returned. */
+     * NaN may be returned.  Vector operands are allowed. */
     RTLOP_FADD,         // dest = src1 + src2
     RTLOP_FSUB,         // dest = src1 - src2
     RTLOP_FMUL,         // dest = src1 * src2
     RTLOP_FDIV,         // dest = src1 / src2
     RTLOP_FSQRT,        // dest = sqrt(src1)
-    RTLOP_FCMP,         // dest = fcmp(src1, src2, IMMEDIATE(other))
-                        //    [dest must be of integer type; other is an
-                        //     immediate comparison type (RTLFCMP_*)]
     RTLOP_FMADD,        // dest = fma(src1, src2, src3)
     RTLOP_FMSUB,        // dest = fma(src1, src2, -src3)
     RTLOP_FNMADD,       // dest = fma(-src1, src2, src3)
     RTLOP_FNMSUB,       // dest = fma(-src1, src2, -src3)
+
+    /* Floating-point compare instruction.  dest must be of integer type;
+     * other is an immediate value giving the comparison type (RTLFCMP_*).
+     * The result is 1 or 0; for example, "FCMP dest, src1, src2, RTLFCMP_GT"
+     * sets dest to 1 if src1 > src2 and 0 otherwise (including if src1 or
+     * src2 is a NaN). */
+    RTLOP_FCMP,         // dest = fcmp(src1, src2, IMMEDIATE(other))
 
     /* Floating-point state manipulation.  State operands must be of type
      * FPSTATE. */

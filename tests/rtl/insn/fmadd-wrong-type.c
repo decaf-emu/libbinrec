@@ -42,7 +42,8 @@ int main(void)
 
     EXPECT_FALSE(rtl_add_insn(unit, RTLOP_FMADD, reg4, reg1, reg2, reg3));
     EXPECT_ICE("Operand constraint violated:"
-               " rtl_register_is_float(&unit->regs[dest])");
+               " rtl_register_is_float(&unit->regs[dest])"
+               " || rtl_register_is_vector(&unit->regs[dest])");
     EXPECT_EQ(unit->num_insns, 3);
     EXPECT(unit->error);
     unit->error = false;

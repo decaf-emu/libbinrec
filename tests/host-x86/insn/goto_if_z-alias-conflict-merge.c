@@ -75,7 +75,7 @@ static const uint8_t expected_code[] = {
     0x8B,0xD0,                          // mov %eax,%edx
     0xE9,0x09,0x00,0x00,0x00,           // jmp L1
     0xB9,0x05,0x00,0x00,0x00,           // L2: mov $5,%ecx
-    0x03,0xC1,                          // add %ecx,$eax
+    0x03,0xC1,                          // add %ecx,%eax
     0xEB,0xF7,                          // jmp L2
     0xB8,0x06,0x00,0x00,0x00,           // L1: mov $6,%eax
     0x03,0xCA,                          // add %edx,%ecx

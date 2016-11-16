@@ -23,13 +23,19 @@
 static const struct {
     uint8_t data[16];
 } local_constants[NUM_LOCAL_CONSTANTS] = {
-    [LC_FLOAT32_SIGNBIT    ] = {{0x00,0x00,0x00,0x80}},
-    [LC_FLOAT32_INV_SIGNBIT] = {{0xFF,0xFF,0xFF,0x7F}},
-    [LC_FLOAT64_SIGNBIT    ] = {{0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x80}},
-    [LC_FLOAT64_INV_SIGNBIT] = {{0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0x7F}},
-    [LC_V2_FLOAT32_QUIETBIT] = {{0x00,0x00,0x40,0x00,0x00,0x00,0x40,0x00}},
-    [LC_V2_FLOAT64_QUIETBIT] = {{0x00,0x00,0x00,0x00,0x00,0x00,0x08,0x00,
-                                 0x00,0x00,0x00,0x00,0x00,0x00,0x08,0x00}},
+    [LC_FLOAT32_SIGNBIT       ] = {{0x00,0x00,0x00,0x80}},
+    [LC_FLOAT32_INV_SIGNBIT   ] = {{0xFF,0xFF,0xFF,0x7F}},
+    [LC_FLOAT64_SIGNBIT       ] = {{0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x80}},
+    [LC_FLOAT64_INV_SIGNBIT   ] = {{0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0x7F}},
+    [LC_V2_FLOAT32_SIGNBIT    ] = {{0x00,0x00,0x00,0x80,0x00,0x00,0x00,0x80}},
+    [LC_V2_FLOAT32_INV_SIGNBIT] = {{0xFF,0xFF,0xFF,0x7F,0xFF,0xFF,0xFF,0x7F}},
+    [LC_V2_FLOAT64_SIGNBIT    ] = {{0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x80,
+                                    0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x80}},
+    [LC_V2_FLOAT64_INV_SIGNBIT] = {{0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0x7F,
+                                    0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0x7F}},
+    [LC_V2_FLOAT32_QUIETBIT   ] = {{0x00,0x00,0x40,0x00,0x00,0x00,0x40,0x00}},
+    [LC_V2_FLOAT64_QUIETBIT   ] = {{0x00,0x00,0x00,0x00,0x00,0x00,0x08,0x00,
+                                    0x00,0x00,0x00,0x00,0x00,0x00,0x08,0x00}},
 };
 
 /*-----------------------------------------------------------------------*/
@@ -1845,22 +1851,19 @@ static bool append_prologue(HostX86Context *ctx)
         }
     }
     if (num_xmm_constants) {
-        /* For the moment, we can't have more than 4 constants so the
-         * jump will always be a short (2-byte) one. */
-        const int padding = (16 - (code.len + 2)) & 15;
-        const int disp = padding + 16*num_xmm_constants;
+        const int cst_size = 16 * num_xmm_constants;
+        const int padding = (16 - (code.len + (cst_size>=128 ? 5 : 2))) & 15;
+        const int disp = padding + cst_size;
 
         handle->code_len = code.len;
-        if (UNLIKELY(!binrec_ensure_code_space(handle, 2+disp))) {
+        if (UNLIKELY(!binrec_ensure_code_space(handle, 5+disp))) {
             log_error(handle, "No memory for local constants");
             return false;
         }
         code.buffer = handle->code_buffer;
         code.buffer_size = handle->code_buffer_size;
 
-        /* We don't currently have enough constants to require a long jump. */
-        ASSERT(disp < 128);
-        const X86Opcode jump_opcode = X86OP_JMP_Jb;
+        const X86Opcode jump_opcode = disp>=128 ? X86OP_JMP_Jz : X86OP_JMP_Jb;
         append_jump_raw(&code, jump_opcode, disp);
         ASSERT(code.len + padding <= code.buffer_size);
         memset(&code.buffer[code.len], 0, padding);
@@ -4003,15 +4006,23 @@ static bool translate_block(HostX86Context *ctx, int block_index)
           case RTLOP_FABS:
           case RTLOP_FNABS: {
             const X86Register host_dest = ctx->regs[dest].host_reg;
-            const bool is64 = (unit->regs[dest].type == RTLTYPE_FLOAT64);
+            const bool isvec = rtl_register_is_vector(&unit->regs[dest]);
+            const RTLDataType base_type = isvec
+                ? rtl_vector_element_type(unit->regs[dest].type)
+                : unit->regs[dest].type;
+            const bool is64 = (base_type == RTLTYPE_FLOAT64);
             const X86Opcode opcode = (
                 insn->opcode == RTLOP_FNEG ? X86OP_XORPS :
                 insn->opcode == RTLOP_FABS ? X86OP_ANDPS :
                             /* RTLOP_FNABS */ X86OP_ORPS);
             const int lc_id =
                 (insn->opcode == RTLOP_FABS
-                 ? (is64 ? LC_FLOAT64_INV_SIGNBIT : LC_FLOAT32_INV_SIGNBIT)
-                 : (is64 ? LC_FLOAT64_SIGNBIT : LC_FLOAT32_SIGNBIT));
+                 ? (isvec
+                    ? (is64 ? LC_V2_FLOAT64_INV_SIGNBIT : LC_V2_FLOAT32_INV_SIGNBIT)
+                    : (is64 ? LC_FLOAT64_INV_SIGNBIT : LC_FLOAT32_INV_SIGNBIT))
+                 : (isvec
+                    ? (is64 ? LC_V2_FLOAT64_SIGNBIT : LC_V2_FLOAT32_SIGNBIT)
+                    : (is64 ? LC_FLOAT64_SIGNBIT : LC_FLOAT32_SIGNBIT)));
             const long lc_offset = ctx->const_loc[lc_id];
             ASSERT(lc_offset);
             append_move_or_load(&code, ctx, unit, insn_index, host_dest, src1);

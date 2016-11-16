@@ -882,7 +882,10 @@ static bool make_fpu_1op(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
     OPERAND_ASSERT(src1 != 0);
     OPERAND_ASSERT(unit->regs[dest].source == RTLREG_UNDEFINED);
     OPERAND_ASSERT(unit->regs[src1].source != RTLREG_UNDEFINED);
-    OPERAND_ASSERT(rtl_register_is_float(&unit->regs[dest]));
+    /* We currently don't have integer vector types, so we don't need to
+     * explicitly check that vectors have floating-point elements. */
+    OPERAND_ASSERT(rtl_register_is_float(&unit->regs[dest])
+                || rtl_register_is_vector(&unit->regs[dest]));
     OPERAND_ASSERT(unit->regs[src1].type == unit->regs[dest].type);
 #endif
 
@@ -924,7 +927,8 @@ static bool make_fpu_2op(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
     OPERAND_ASSERT(unit->regs[dest].source == RTLREG_UNDEFINED);
     OPERAND_ASSERT(unit->regs[src1].source != RTLREG_UNDEFINED);
     OPERAND_ASSERT(unit->regs[src2].source != RTLREG_UNDEFINED);
-    OPERAND_ASSERT(rtl_register_is_float(&unit->regs[dest]));
+    OPERAND_ASSERT(rtl_register_is_float(&unit->regs[dest])
+                || rtl_register_is_vector(&unit->regs[dest]));
     OPERAND_ASSERT(unit->regs[src1].type == unit->regs[dest].type);
     OPERAND_ASSERT(unit->regs[src2].type == unit->regs[dest].type);
 #endif
@@ -974,7 +978,8 @@ static bool make_fpu_3op(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
     OPERAND_ASSERT(unit->regs[src1].source != RTLREG_UNDEFINED);
     OPERAND_ASSERT(unit->regs[src2].source != RTLREG_UNDEFINED);
     OPERAND_ASSERT(unit->regs[other].source != RTLREG_UNDEFINED);
-    OPERAND_ASSERT(rtl_register_is_float(&unit->regs[dest]));
+    OPERAND_ASSERT(rtl_register_is_float(&unit->regs[dest])
+                || rtl_register_is_vector(&unit->regs[dest]));
     OPERAND_ASSERT(unit->regs[src1].type == unit->regs[dest].type);
     OPERAND_ASSERT(unit->regs[src2].type == unit->regs[dest].type);
     OPERAND_ASSERT(unit->regs[other].type == unit->regs[dest].type);

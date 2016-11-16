@@ -138,12 +138,16 @@ enum {
 
 /* Constants which might be required by floating-point operations. */
 enum {
-    LC_FLOAT32_SIGNBIT = 0,  // 1<<31
-    LC_FLOAT32_INV_SIGNBIT,  // ~(1<<31)
-    LC_FLOAT64_SIGNBIT,      // 1<<63
-    LC_FLOAT64_INV_SIGNBIT,  // ~(1<<63)
-    LC_V2_FLOAT32_QUIETBIT,  // {1<<22, 1<<22}
-    LC_V2_FLOAT64_QUIETBIT,  // {1<<51, 1<<51}
+    LC_FLOAT32_SIGNBIT = 0,     // 1<<31
+    LC_FLOAT32_INV_SIGNBIT,     // ~(1<<31)
+    LC_FLOAT64_SIGNBIT,         // 1<<63
+    LC_FLOAT64_INV_SIGNBIT,     // ~(1<<63)
+    LC_V2_FLOAT32_SIGNBIT,      // {1<<31, 1<<31}
+    LC_V2_FLOAT32_INV_SIGNBIT,  // {~(1<<31), ~(1<<31)}
+    LC_V2_FLOAT64_SIGNBIT,      // {1<<63, 1<<63}
+    LC_V2_FLOAT64_INV_SIGNBIT,  // {~(1<<63), ~(1<<63)}
+    LC_V2_FLOAT32_QUIETBIT,     // {1<<22, 1<<22}
+    LC_V2_FLOAT64_QUIETBIT,     // {1<<51, 1<<51}
     NUM_LOCAL_CONSTANTS
 };
 

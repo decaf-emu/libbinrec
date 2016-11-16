@@ -6349,17 +6349,16 @@ static inline void translate_insn(
                 translate_compare_fp(ctx, insn, true, 1);
                 return;
               case XO_PS_NEG:
-                // FIXME: FNEG or VFNEG?
-                //translate_move_fpr(ctx, insn, RTLOP_VFNEG, true);
+                translate_move_fpr(ctx, insn, RTLOP_FNEG, true);
                 return;
               case XO_PS_MR:
                 translate_move_fpr(ctx, insn, RTLOP_MOVE, true);
                 return;
               case XO_PS_NABS:
-                //translate_move_fpr(ctx, insn, RTLOP_VFNABS, true);
+                translate_move_fpr(ctx, insn, RTLOP_FNABS, true);
                 return;
               case XO_PS_ABS:
-                //translate_move_fpr(ctx, insn, RTLOP_VFABS, true);
+                translate_move_fpr(ctx, insn, RTLOP_FABS, true);
                 return;
               case XO_PS_MERGE00:
                 translate_ps_merge(ctx, insn, 0, 0);

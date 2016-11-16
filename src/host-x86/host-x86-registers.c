@@ -1776,18 +1776,38 @@ static void first_pass_for_block(HostX86Context *ctx, int block_index)
 
           case RTLOP_FNEG:
           case RTLOP_FNABS:
-            if (unit->regs[insn->dest].type == RTLTYPE_FLOAT64) {
-                ctx->const_loc[LC_FLOAT64_SIGNBIT] = 1;
-            } else {
+            switch ((RTLDataType)unit->regs[insn->dest].type) {
+              case RTLTYPE_FLOAT32:
                 ctx->const_loc[LC_FLOAT32_SIGNBIT] = 1;
+                break;
+              case RTLTYPE_FLOAT64:
+                ctx->const_loc[LC_FLOAT64_SIGNBIT] = 1;
+                break;
+              case RTLTYPE_V2_FLOAT32:
+                ctx->const_loc[LC_V2_FLOAT32_SIGNBIT] = 1;
+                break;
+              default:
+                ASSERT(unit->regs[insn->dest].type == RTLTYPE_V2_FLOAT64);
+                ctx->const_loc[LC_V2_FLOAT64_SIGNBIT] = 1;
+                break;
             }
             break;
 
           case RTLOP_FABS:
-            if (unit->regs[insn->dest].type == RTLTYPE_FLOAT64) {
-                ctx->const_loc[LC_FLOAT64_INV_SIGNBIT] = 1;
-            } else {
+            switch ((RTLDataType)unit->regs[insn->dest].type) {
+              case RTLTYPE_FLOAT32:
                 ctx->const_loc[LC_FLOAT32_INV_SIGNBIT] = 1;
+                break;
+              case RTLTYPE_FLOAT64:
+                ctx->const_loc[LC_FLOAT64_INV_SIGNBIT] = 1;
+                break;
+              case RTLTYPE_V2_FLOAT32:
+                ctx->const_loc[LC_V2_FLOAT32_INV_SIGNBIT] = 1;
+                break;
+              default:
+                ASSERT(unit->regs[insn->dest].type == RTLTYPE_V2_FLOAT64);
+                ctx->const_loc[LC_V2_FLOAT64_INV_SIGNBIT] = 1;
+                break;
             }
             break;
 
