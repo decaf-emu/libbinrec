@@ -4968,11 +4968,12 @@ static void translate_muldiv_reg(
  *     ctx: Translation context.
  *     insn: Instruction word.
  *     rtlop: RTL opcode to perform the operation.
+ *     frC_slot: frC slot to use as the multiplier for ps_muls[01], else -1.
  *     vxfoo_no_snan: FPSCR_VXFOO bitmask indicating which non-VXSNAN
  *         exception(s) can be raised by the instruction.
  */
 static void translate_ps_arith(
-    GuestPPCContext *ctx, uint32_t insn, RTLOpcode rtlop,
+    GuestPPCContext *ctx, uint32_t insn, RTLOpcode rtlop, int frC_slot,
     uint32_t vxfoo_no_snan)
 {
     RTLUnit * const unit = ctx->unit;
@@ -4987,6 +4988,13 @@ static void translate_ps_arith(
 
     int src1 = get_fpr(ctx, src1_fpr, type);
     int src2 = get_fpr(ctx, src2_fpr, type);
+    if (frC_slot >= 0) {
+        const int multiplier = rtl_alloc_register(
+            unit, use_float32 ? RTLTYPE_FLOAT32 : RTLTYPE_FLOAT64);
+        rtl_add_insn(unit, RTLOP_VEXTRACT, multiplier, src2, 0, frC_slot);
+        src2 = rtl_alloc_register(unit, type);
+        rtl_add_insn(unit, RTLOP_VBROADCAST, src2, multiplier, 0, 0);
+    }
     if (rtlop == RTLOP_FMUL && type == RTLTYPE_V2_FLOAT64
      && !(ctx->handle->guest_opt & BINREC_OPT_G_PPC_FAST_FMULS)) {
         int src1_ps0 = rtl_alloc_register(unit, RTLTYPE_FLOAT64);
@@ -6819,39 +6827,36 @@ static inline void translate_insn(
             translate_load_store_ps(ctx, insn, false, true,
                                     (insn_XO_10(insn) & 0x20) != 0);
             return;
-
           case XO_PSQ_STX:
             translate_load_store_ps(ctx, insn, true, true,
                                     (insn_XO_10(insn) & 0x20) != 0);
             return;
-
           case XO_PS_DIV:
-            translate_ps_arith(ctx, insn, RTLOP_FDIV,
+            translate_ps_arith(ctx, insn, RTLOP_FDIV, -1,
                                FPSCR_VXIDI | FPSCR_VXZDZ);
             return;
-
           case XO_PS_SUB:
-            translate_ps_arith(ctx, insn, RTLOP_FSUB, FPSCR_VXISI);
+            translate_ps_arith(ctx, insn, RTLOP_FSUB, -1, FPSCR_VXISI);
             return;
-
           case XO_PS_ADD:
-            translate_ps_arith(ctx, insn, RTLOP_FADD, FPSCR_VXISI);
+            translate_ps_arith(ctx, insn, RTLOP_FADD, -1, FPSCR_VXISI);
             return;
-
           case XO_PS_MUL:
-            translate_ps_arith(ctx, insn, RTLOP_FMUL, FPSCR_VXIMZ);
+            translate_ps_arith(ctx, insn, RTLOP_FMUL, -1, FPSCR_VXIMZ);
             return;
-
           case XO_PS_SUM0:
             translate_ps_sum(ctx, insn, 0);
             return;
-
           case XO_PS_SUM1:
             translate_ps_sum(ctx, insn, 1);
             return;
-
           case XO_PS_MULS0:
+            translate_ps_arith(ctx, insn, RTLOP_FMUL, 0, FPSCR_VXIMZ);
+            return;
           case XO_PS_MULS1:
+            translate_ps_arith(ctx, insn, RTLOP_FMUL, 1, FPSCR_VXIMZ);
+            return;
+
           case XO_PS_MADDS0:
           case XO_PS_MADDS1:
           case XO_PS_SEL:
