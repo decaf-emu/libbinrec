@@ -158,6 +158,7 @@ static inline CONST_FUNCTION const char *fcmp_name(RTLFloatCompare fcmp)
 static inline CONST_FUNCTION const char *fexc_name(RTLFloatException fexc)
 {
     switch (fexc) {
+        case RTLFEXC_ANY:         return "ANY";
         case RTLFEXC_INEXACT:     return "INEXACT";
         case RTLFEXC_INVALID:     return "INVALID";
         case RTLFEXC_OVERFLOW:    return "OVERFLOW";

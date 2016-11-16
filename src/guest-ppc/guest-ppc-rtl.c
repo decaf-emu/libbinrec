@@ -1200,8 +1200,15 @@ static int gen_fprf(RTLUnit *unit, int value)
     ASSERT(unit);
     ASSERT(value > 0);
     ASSERT(value < unit->next_reg);
-    ASSERT(rtl_register_is_float(&unit->regs[value]));
 
+    if (rtl_register_is_vector(&unit->regs[value])) {
+        const int value_ps0 = rtl_alloc_register(
+            unit, rtl_vector_element_type(unit->regs[value].type));
+        rtl_add_insn(unit, RTLOP_VEXTRACT, value_ps0, value, 0, 0);
+        value = value_ps0;
+    }
+
+    ASSERT(rtl_register_is_float(&unit->regs[value]));
     const bool is64 = (unit->regs[value].type == RTLTYPE_FLOAT64);
     const RTLDataType bits_type = is64 ? RTLTYPE_INT64 : RTLTYPE_INT32;
 
@@ -1308,9 +1315,6 @@ static int gen_fprf(RTLUnit *unit, int value)
  * frA may also be modified so that the multiply operation returns the
  * correct value.
  *
- * If the BINREC_OPT_G_PPC_FAST_FMULS optimization is enabled, this
- * function does nothing.
- *
  * See the documentation of BINREC_OPT_G_PPC_FAST_FMULS for the rationale
  * behind this function.
  *
@@ -1324,10 +1328,6 @@ static int gen_fprf(RTLUnit *unit, int value)
 static void round_for_multiply(GuestPPCContext *ctx, int *frA_ptr,
                                int *frC_ptr)
 {
-    if (ctx->handle->guest_opt & BINREC_OPT_G_PPC_FAST_FMULS) {
-        return;
-    }
-
     RTLUnit * const unit = ctx->unit;
 
     if (!ctx->alias_mulround_frA) {
@@ -1760,8 +1760,88 @@ static void set_fp_result(GuestPPCContext *ctx, int index, int result,
         set_fpscr_exceptions(ctx, fpscr, FPSCR_ZX);
         const int ze_test = rtl_alloc_register(unit, RTLTYPE_INT32);
         rtl_add_insn(unit, RTLOP_ANDI, ze_test, fpscr, 0, FPSCR_ZE);
-        rtl_add_insn(unit, RTLOP_GOTO_IF_NZ,
-                     0, ze_test, 0, label_exception_abort);
+
+        if (rtl_register_is_vector(&unit->regs[result])) {
+            /* For ps_div, we still have to set FR/FI/FPRF before aborting,
+             * along with any other exceptions if the other slot was not
+             * also a zero-divide. */
+            rtl_add_insn(unit, RTLOP_GOTO_IF_Z, 0, ze_test, 0, label_no_zx);
+            const RTLDataType scalar_type =
+                rtl_vector_element_type(unit->regs[frA].type);
+            const int frA_ps0 = rtl_alloc_register(unit, scalar_type);
+            rtl_add_insn(unit, RTLOP_VEXTRACT, frA_ps0, frA, 0, 0);
+            const int frA_ps1 = rtl_alloc_register(unit, scalar_type);
+            rtl_add_insn(unit, RTLOP_VEXTRACT, frA_ps1, frA, 0, 1);
+            const int frB_ps0 = rtl_alloc_register(unit, scalar_type);
+            rtl_add_insn(unit, RTLOP_VEXTRACT, frB_ps0, frB, 0, 0);
+            const int frB_ps1 = rtl_alloc_register(unit, scalar_type);
+            rtl_add_insn(unit, RTLOP_VEXTRACT, frB_ps1, frB, 0, 1);
+
+            int result_ps0 = rtl_alloc_register(unit, scalar_type);
+            rtl_add_insn(unit, RTLOP_FDIV, result_ps0, frA_ps0, frB_ps0, 0);
+            if (scalar_type != RTLTYPE_FLOAT32) {
+                const int result64 = result_ps0;
+                result_ps0 = rtl_alloc_register(unit, RTLTYPE_FLOAT32);
+                rtl_add_insn(unit, RTLOP_FCVT, result_ps0, result64, 0, 0);
+            }
+            const int fpstate_ps0 = rtl_alloc_register(unit, RTLTYPE_FPSTATE);
+            rtl_add_insn(unit, RTLOP_FGETSTATE, fpstate_ps0, 0, 0, 0);
+
+            int result_ps1 = rtl_alloc_register(unit, scalar_type);
+            rtl_add_insn(unit, RTLOP_FDIV, result_ps1, frA_ps1, frB_ps1, 0);
+            /* Give the FDIV time to finish before we FCVT it. */
+            const int zx_ps0 = rtl_alloc_register(unit, RTLTYPE_INT32);
+            rtl_add_insn(unit, RTLOP_FTESTEXC,
+                         zx_ps0, fpstate_ps0, 0, RTLFEXC_ZERO_DIVIDE);
+            const int fprf_full_ps0 = gen_fprf(unit, result_ps0);
+            const int fprf_zero_ps0 = rtl_imm32(unit, 0);
+            const int fprf_ps0 = rtl_alloc_register(unit, RTLTYPE_INT32);
+            rtl_add_insn(unit, RTLOP_SELECT,
+                         fprf_ps0, fprf_zero_ps0, fprf_full_ps0, zx_ps0);
+            if (scalar_type != RTLTYPE_FLOAT32) {
+                const int result64 = result_ps1;
+                result_ps1 = rtl_alloc_register(unit, RTLTYPE_FLOAT32);
+                rtl_add_insn(unit, RTLOP_FCVT, result_ps1, result64, 0, 0);
+            }
+            const int fpstate_ps1 = rtl_alloc_register(unit, RTLTYPE_FPSTATE);
+            rtl_add_insn(unit, RTLOP_FGETSTATE, fpstate_ps1, 0, 0, 0);
+            rtl_add_insn(unit, RTLOP_FSETSTATE, 0, clearexc, 0, 0);
+
+            const int zx_xx = rtl_alloc_register(unit, RTLTYPE_INT32);
+            rtl_add_insn(unit, RTLOP_FTESTEXC,
+                         zx_xx, fpstate_ps1, 0, RTLFEXC_INEXACT);
+            const int label_zx_no_xx = rtl_alloc_label(unit);
+            rtl_add_insn(unit, RTLOP_GOTO_IF_Z, 0, zx_xx, 0, label_zx_no_xx);
+            set_fpscr_exceptions(ctx, 0, FPSCR_XX);
+            rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, label_zx_no_xx);
+
+            const int zx_ox = rtl_alloc_register(unit, RTLTYPE_INT32);
+            rtl_add_insn(unit, RTLOP_FTESTEXC,
+                         zx_ox, fpstate_ps1, 0, RTLFEXC_OVERFLOW);
+            const int label_zx_no_ox = rtl_alloc_label(unit);
+            rtl_add_insn(unit, RTLOP_GOTO_IF_Z, 0, zx_ox, 0, label_zx_no_ox);
+            set_fpscr_exceptions(ctx, 0, FPSCR_OX);
+            rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, label_zx_no_ox);
+
+            const int zx_ux = rtl_alloc_register(unit, RTLTYPE_INT32);
+            rtl_add_insn(unit, RTLOP_FTESTEXC,
+                         zx_ux, fpstate_ps1, 0, RTLFEXC_UNDERFLOW);
+            const int label_zx_no_ux = rtl_alloc_label(unit);
+            rtl_add_insn(unit, RTLOP_GOTO_IF_Z, 0, zx_ux, 0, label_zx_no_ux);
+            set_fpscr_exceptions(ctx, 0, FPSCR_UX);
+            rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, label_zx_no_ux);
+
+            const int fi_sll5 = rtl_alloc_register(unit, RTLTYPE_INT32);
+            rtl_add_insn(unit, RTLOP_SLLI, fi_sll5, zx_xx, 0, 5);
+            const int fi_fprf = rtl_alloc_register(unit, RTLTYPE_INT32);
+            rtl_add_insn(unit, RTLOP_OR, fi_fprf, fi_sll5, fprf_ps0, 0);
+            rtl_add_insn(unit, RTLOP_SET_ALIAS,
+                         0, fi_fprf, 0, ctx->alias.fr_fi_fprf);
+            rtl_add_insn(unit, RTLOP_GOTO, 0, 0, 0, label_out);
+        } else {  // Not paired-single.
+            rtl_add_insn(unit, RTLOP_GOTO_IF_NZ,
+                         0, ze_test, 0, label_exception_abort);
+        }
         rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, label_no_zx);
     }
 
@@ -2752,10 +2832,11 @@ static void translate_fctiw(GuestPPCContext *ctx, uint32_t insn,
  * while x86 (at least) defines it as "tiny after rounding".  If we're not
  * ignoring precise underflow behavior and the result is equal to the
  * smallest (in magnitude) normal number, we may need to manually raise an
- * underflow exception.  This function checks for this case and, if it
- * applies, runs the operation a second time in round-toward-zero mode,
- * which will raise an underflow exception regardless of whether the host
- * detects underflow before or after rounding.
+ * underflow exception in order to match PowerPC behavior.  This function
+ * checks for this case and, if it applies, runs the operation a second
+ * time in round-toward-zero mode, which will raise an underflow exception
+ * if appropriate regardless of whether the host detects underflow before
+ * or after rounding.
  *
  * [Parameters]
  *     ctx: Translation context.
@@ -2764,12 +2845,14 @@ static void translate_fctiw(GuestPPCContext *ctx, uint32_t insn,
  *     src1, src2, src3: RTL instruction operands.
  *     is_single: True if a single-precision (32-bit) operation, false if
  *         a double-precision (64-bit) operation.
+ *     is_paired: True if a paired-single operation, false if not.
  *     use_float32: True if the input operands (src1/src2/src3) are of
- *         type FLOAT32, false if they are of type FLOAT64.
+ *         type FLOAT32 (V2_FLOAT32 for a paired-single operation), false
+ *         if they are of type FLOAT64 (V2_FLOAT64 for paired-single).
  */
 static void check_fp_underflow(
     GuestPPCContext *ctx, int result, RTLOpcode rtlop, int src1,
-    int src2, int src3, bool is_single, bool use_float32)
+    int src2, int src3, bool is_single, bool is_paired, bool use_float32)
 {
     if ((ctx->handle->common_opt & BINREC_OPT_NATIVE_IEEE_UNDERFLOW)
      || (ctx->handle->guest_opt & BINREC_OPT_G_PPC_NO_FPSCR_STATE)) {
@@ -2779,11 +2862,6 @@ static void check_fp_underflow(
     RTLUnit * const unit = ctx->unit;
 
     const int bits_type = is_single ? RTLTYPE_INT32 : RTLTYPE_INT64;
-    const int result_bits = rtl_alloc_register(unit, bits_type);
-    rtl_add_insn(unit, RTLOP_BITCAST, result_bits, result, 0, 0);
-    /* Ignore the sign bit by shifting it out. */
-    const int result_bits_x2 = rtl_alloc_register(unit, bits_type);
-    rtl_add_insn(unit, RTLOP_SLLI, result_bits_x2, result_bits, 0, 1);
     const int min_normal_x2 = rtl_alloc_register(unit, bits_type);
     if (is_single) {
         rtl_add_insn(unit, RTLOP_LOAD_IMM, min_normal_x2, 0, 0, 0x00800000<<1);
@@ -2791,6 +2869,30 @@ static void check_fp_underflow(
         rtl_add_insn(unit, RTLOP_LOAD_IMM,
                      min_normal_x2, 0, 0, UINT64_C(0x0010000000000000)<<1);
     }
+    int label_check_tiny = 0;
+    if (is_paired) {
+        ASSERT(is_single);
+        const int result_ps1 = rtl_alloc_register(unit, RTLTYPE_FLOAT32);
+        rtl_add_insn(unit, RTLOP_VEXTRACT, result_ps1, result, 0, 1);
+        const int result_bits = rtl_alloc_register(unit, RTLTYPE_INT32);
+        rtl_add_insn(unit, RTLOP_BITCAST, result_bits, result_ps1, 0, 0);
+        const int result_bits_x2 = rtl_alloc_register(unit, RTLTYPE_INT32);
+        rtl_add_insn(unit, RTLOP_SLLI, result_bits_x2, result_bits, 0, 1);
+        const int is_min_normal = rtl_alloc_register(unit, RTLTYPE_INT32);
+        rtl_add_insn(unit, RTLOP_SEQ,
+                     is_min_normal, result_bits_x2, min_normal_x2, 0);
+        label_check_tiny = rtl_alloc_label(unit);
+        rtl_add_insn(unit, RTLOP_GOTO_IF_NZ,
+                     0, is_min_normal, 0, label_check_tiny);
+        const int result_ps0 = rtl_alloc_register(unit, RTLTYPE_FLOAT32);
+        rtl_add_insn(unit, RTLOP_VEXTRACT, result_ps0, result, 0, 0);
+        result = result_ps0;
+    }
+    const int result_bits = rtl_alloc_register(unit, bits_type);
+    rtl_add_insn(unit, RTLOP_BITCAST, result_bits, result, 0, 0);
+    /* Ignore the sign bit by shifting it out. */
+    const int result_bits_x2 = rtl_alloc_register(unit, bits_type);
+    rtl_add_insn(unit, RTLOP_SLLI, result_bits_x2, result_bits, 0, 1);
     const int is_min_normal = rtl_alloc_register(unit, RTLTYPE_INT32);
     rtl_add_insn(unit, RTLOP_SEQ,
                  is_min_normal, result_bits_x2, min_normal_x2, 0);
@@ -2803,18 +2905,26 @@ static void check_fp_underflow(
      * these technically dead stores from being eliminated (unless
      * BINREC_OPT_DSE_FP is enabled, in which case this entire check is
      * meaningless). */
+    if (label_check_tiny) {
+        rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, label_check_tiny);
+    }
     const int fpstate = rtl_alloc_register(unit, RTLTYPE_FPSTATE);
     rtl_add_insn(unit, RTLOP_FGETSTATE, fpstate, 0, 0, 0);
     const int fpstate_trunc = rtl_alloc_register(unit, RTLTYPE_FPSTATE);
     rtl_add_insn(unit, RTLOP_FSETROUND,
                  fpstate_trunc, fpstate, 0, RTLFROUND_TRUNC);
     rtl_add_insn(unit, RTLOP_FSETSTATE, 0, fpstate_trunc, 0, 0);
-    const RTLDataType type = use_float32 ? RTLTYPE_FLOAT32 : RTLTYPE_FLOAT64;
+    const RTLDataType type = is_paired
+        ? (use_float32 ? RTLTYPE_V2_FLOAT32 : RTLTYPE_V2_FLOAT64)
+        : (use_float32 ? RTLTYPE_FLOAT32 : RTLTYPE_FLOAT64);
     const int dummy_result = rtl_alloc_register(unit, type);
     rtl_add_insn(unit, rtlop, dummy_result, src1, src2, src3);
     if (is_single && !use_float32) {
-        const int dummy_result32 = rtl_alloc_register(unit, RTLTYPE_FLOAT32);
-        rtl_add_insn(unit, RTLOP_FCVT, dummy_result32, dummy_result, 0, 0);
+        const RTLDataType type32 =
+            is_paired ? RTLTYPE_V2_FLOAT32 : RTLTYPE_FLOAT32;
+        const int dummy_result32 = rtl_alloc_register(unit, type32);
+        rtl_add_insn(unit, is_paired ? RTLOP_VFCVT : RTLOP_FCVT,
+                     dummy_result32, dummy_result, 0, 0);
     }
     const int fpstate2 = rtl_alloc_register(unit, RTLTYPE_FPSTATE);
     rtl_add_insn(unit, RTLOP_FGETSTATE, fpstate2, 0, 0, 0);
@@ -2861,7 +2971,8 @@ static void translate_fp_arith(
     const RTLDataType type = use_float32 ? RTLTYPE_FLOAT32 : RTLTYPE_FLOAT64;
     int src1 = get_fpr(ctx, src1_fpr, type);
     int src2 = get_fpr(ctx, src2_fpr, type);
-    if (is_single && rtlop == RTLOP_FMUL && type == RTLTYPE_FLOAT64) {
+    if (is_single && rtlop == RTLOP_FMUL && type == RTLTYPE_FLOAT64
+     && !(ctx->handle->guest_opt & BINREC_OPT_G_PPC_FAST_FMULS)) {
         round_for_multiply(ctx, &src1, &src2);
     }
     int result = rtl_alloc_register(unit, type);
@@ -2872,7 +2983,7 @@ static void translate_fp_arith(
         rtl_add_insn(unit, RTLOP_FCVT, result, result64, 0, 0);
     }
 
-    check_fp_underflow(ctx, result, rtlop, src1, src2, 0, is_single,
+    check_fp_underflow(ctx, result, rtlop, src1, src2, 0, is_single, false,
                        use_float32);
 
     set_fp_result(ctx, insn_frD(insn), result, src1, src2, 0,
@@ -2914,7 +3025,8 @@ static void translate_fp_fma(
     int frA = get_fpr(ctx, insn_frA(insn), type);
     int frC = get_fpr(ctx, insn_frC(insn), type);
     int frB = get_fpr(ctx, insn_frB(insn), type);
-    if (is_single && type == RTLTYPE_FLOAT64) {
+    if (is_single && type == RTLTYPE_FLOAT64
+     && !(ctx->handle->guest_opt & BINREC_OPT_G_PPC_FAST_FMULS)) {
         round_for_multiply(ctx, &frA, &frC);
     }
 
@@ -2995,7 +3107,7 @@ static void translate_fp_fma(
         rtl_add_insn(unit, RTLOP_FCVT, result, result64, 0, 0);
     }
 
-    check_fp_underflow(ctx, result, rtlop, frA, frC, frB, is_single,
+    check_fp_underflow(ctx, result, rtlop, frA, frC, frB, is_single, false,
                        use_float32);
 
     set_fp_result(ctx, insn_frD(insn), result, frA, frB, frC,
@@ -4794,6 +4906,188 @@ static void translate_muldiv_reg(
 /*-----------------------------------------------------------------------*/
 
 /**
+ * translate_ps_arith:  Translate a two-operand paired-single arithmetic
+ * instruction.
+ *
+ * [Parameters]
+ *     ctx: Translation context.
+ *     insn: Instruction word.
+ *     rtlop: RTL opcode to perform the operation.
+ *     vxfoo_no_snan: FPSCR_VXFOO bitmask indicating which non-VXSNAN
+ *         exception(s) can be raised by the instruction.
+ */
+static void translate_ps_arith(
+    GuestPPCContext *ctx, uint32_t insn, RTLOpcode rtlop,
+    uint32_t vxfoo_no_snan)
+{
+    RTLUnit * const unit = ctx->unit;
+
+    const int src1_fpr = insn_frA(insn);
+    const int src2_fpr = (rtlop==RTLOP_FMUL ? insn_frC(insn) : insn_frB(insn));
+    const bool use_float32 =
+        (get_fpr_scalar_type(ctx, insn_frA(insn)) == RTLTYPE_FLOAT32
+         && get_fpr_scalar_type(ctx, insn_frB(insn)) == RTLTYPE_FLOAT32);
+    const RTLDataType type =
+        use_float32 ? RTLTYPE_V2_FLOAT32 : RTLTYPE_V2_FLOAT64;
+
+    int src1 = get_fpr(ctx, src1_fpr, type);
+    int src2 = get_fpr(ctx, src2_fpr, type);
+    if (rtlop == RTLOP_FMUL && type == RTLTYPE_V2_FLOAT64
+     && !(ctx->handle->guest_opt & BINREC_OPT_G_PPC_FAST_FMULS)) {
+        int src1_ps0 = rtl_alloc_register(unit, RTLTYPE_FLOAT64);
+        rtl_add_insn(unit, RTLOP_VEXTRACT, src1_ps0, src1, 0, 0);
+        int src2_ps0 = rtl_alloc_register(unit, RTLTYPE_FLOAT64);
+        rtl_add_insn(unit, RTLOP_VEXTRACT, src2_ps0, src2, 0, 0);
+        round_for_multiply(ctx, &src1_ps0, &src2_ps0);
+        const int new_src1 = rtl_alloc_register(unit, RTLTYPE_V2_FLOAT64);
+        rtl_add_insn(unit, RTLOP_VINSERT, new_src1, src1, src1_ps0, 0);
+        const int new_src2 = rtl_alloc_register(unit, RTLTYPE_V2_FLOAT64);
+        rtl_add_insn(unit, RTLOP_VINSERT, new_src2, src2, src2_ps0, 0);
+        src1 = new_src1;
+        src2 = new_src2;
+    }
+
+    int result = rtl_alloc_register(unit, type);
+    rtl_add_insn(unit, rtlop, result, src1, src2, 0);
+    if (!use_float32) {
+        const int result64 = result;
+        result = rtl_alloc_register(unit, RTLTYPE_V2_FLOAT32);
+        rtl_add_insn(unit, RTLOP_VFCVT, result, result64, 0, 0);
+    }
+
+    check_fp_underflow(ctx, result, rtlop, src1, src2, 0, true, true,
+                       use_float32);
+
+    /* If an invalid-operation exception occurred and either (1) we're
+     * setting VXFOO exception flags or (2) we want to match guest NaN
+     * behavior, we have to re-run the operation separately on each
+     * paired-single slot, since each slot could raise a different VXFOO
+     * exception or we might need to write a PowerPC default QNaN.
+     * (FIXME: We should find some way to make these callable subroutines
+     * instead of having to inline them everywhere.) */
+    int label_skip_set_result = 0;
+    if (!(ctx->handle->guest_opt & BINREC_OPT_G_PPC_NO_FPSCR_STATE)
+        && (!(ctx->handle->guest_opt & BINREC_OPT_G_PPC_IGNORE_FPSCR_VXFOO)
+            || !(ctx->handle->common_opt & BINREC_OPT_NATIVE_IEEE_NAN))) {
+        const int fpstate = rtl_alloc_register(unit, RTLTYPE_FPSTATE);
+        rtl_add_insn(unit, RTLOP_FGETSTATE, fpstate, 0, 0, 0);
+        const int has_vx = rtl_alloc_register(unit, RTLTYPE_INT32);
+        rtl_add_insn(unit, RTLOP_FTESTEXC,
+                     has_vx, fpstate, 0, RTLFEXC_INVALID);
+        const int label_do_set_result = rtl_alloc_label(unit);
+        rtl_add_insn(unit, RTLOP_GOTO_IF_Z, 0, has_vx, 0, label_do_set_result);
+
+        /* Save the current value of the output register so we can restore
+         * it later in case FPSCR[VE] is set. */
+        int saved_frD;
+        if (ctx->live.fpr[insn_frD(insn)]) {
+            saved_frD = ctx->live.fpr[insn_frD(insn)];
+            ctx->live.fpr[insn_frD(insn)] = 0;
+            ctx->fpr_dirty &= ~(1 << insn_frD(insn));
+            ctx->fpr_is_safe &= ~(1 << insn_frD(insn));
+            ctx->ps1_is_safe &= ~(1 << insn_frD(insn));
+        } else {
+            saved_frD = rtl_alloc_register(unit, RTLTYPE_V2_FLOAT64);
+            rtl_add_insn(unit, RTLOP_GET_ALIAS,
+                         saved_frD, 0, 0, ctx->alias.fpr[insn_frD(insn)]);
+        }
+
+        const int fpstate_cleared = rtl_alloc_register(unit, RTLTYPE_FPSTATE);
+        rtl_add_insn(unit, RTLOP_FCLEAREXC, fpstate_cleared, fpstate, 0, 0);
+        rtl_add_insn(unit, RTLOP_FSETSTATE, 0, fpstate_cleared, 0, 0);
+
+        /* Perform the operation and call set_fp_result() to set
+         * appropriate exception flags (and possibly modify the result)
+         * for each slot.  We use the frD alias as a temporary for
+         * simplicity's sake. */
+        const int scalar_type = rtl_vector_element_type(type);
+        const int src1_ps0 = rtl_alloc_register(unit, scalar_type);
+        rtl_add_insn(unit, RTLOP_VEXTRACT, src1_ps0, src1, 0, 0);
+        const int src2_ps0 = rtl_alloc_register(unit, scalar_type);
+        rtl_add_insn(unit, RTLOP_VEXTRACT, src2_ps0, src2, 0, 0);
+        int result_ps0 = rtl_alloc_register(unit, scalar_type);
+        rtl_add_insn(unit, rtlop, result_ps0, src1_ps0, src2_ps0, 0);
+        if (!use_float32) {
+            const int result64 = result_ps0;
+            result_ps0 = rtl_alloc_register(unit, RTLTYPE_FLOAT32);
+            rtl_add_insn(unit, RTLOP_FCVT, result_ps0, result64, 0, 0);
+        }
+        set_fp_result(ctx, insn_frD(insn), result_ps0, src1_ps0, src2_ps0, 0,
+                      0, vxfoo_no_snan, rtlop == RTLOP_FDIV, true);
+        /* This will always be a direct alias access, so we might as well
+         * avoid extra conversions to and from float32. */
+        result_ps0 = get_fpr(ctx, insn_frD(insn), RTLTYPE_FLOAT64);
+        ctx->live.fpr[insn_frD(insn)] = 0;
+        const int fi_fprf_ps0 = rtl_alloc_register(unit, RTLTYPE_INT32);
+        rtl_add_insn(unit, RTLOP_GET_ALIAS,
+                     fi_fprf_ps0, 0, 0, ctx->alias.fr_fi_fprf);
+
+        const int src1_ps1 = rtl_alloc_register(unit, scalar_type);
+        rtl_add_insn(unit, RTLOP_VEXTRACT, src1_ps1, src1, 0, 1);
+        const int src2_ps1 = rtl_alloc_register(unit, scalar_type);
+        rtl_add_insn(unit, RTLOP_VEXTRACT, src2_ps1, src2, 0, 1);
+        int result_ps1 = rtl_alloc_register(unit, scalar_type);
+        rtl_add_insn(unit, rtlop, result_ps1, src1_ps1, src2_ps1, 0);
+        if (!use_float32) {
+            const int result64 = result_ps1;
+            result_ps1 = rtl_alloc_register(unit, RTLTYPE_FLOAT32);
+            rtl_add_insn(unit, RTLOP_FCVT, result_ps1, result64, 0, 0);
+        }
+        set_fp_result(ctx, insn_frD(insn), result_ps1, src1_ps1, src2_ps1, 0,
+                      0, vxfoo_no_snan, rtlop == RTLOP_FDIV, true);
+        result_ps1 = get_fpr(ctx, insn_frD(insn), RTLTYPE_FLOAT64);
+        ctx->live.fpr[insn_frD(insn)] = 0;
+        /* FPRF is set from ps0 only; FI is set if either slot is inexact.
+         * This update takes place regardless of whether FPSCR[VE] is set.
+         * (That's probably a hardware bug, but if we've come this far we
+         * might as well try to stay bug-compatible.) */
+        const int fi_fprf_ps1 = rtl_alloc_register(unit, RTLTYPE_INT32);
+        rtl_add_insn(unit, RTLOP_GET_ALIAS,
+                     fi_fprf_ps1, 0, 0, ctx->alias.fr_fi_fprf);
+        const int fi_ps1 = rtl_alloc_register(unit, RTLTYPE_INT32);
+        rtl_add_insn(unit, RTLOP_ANDI, fi_ps1, fi_fprf_ps1, 0, 0x20);
+        const int final_fi_fprf = rtl_alloc_register(unit, RTLTYPE_INT32);
+        rtl_add_insn(unit, RTLOP_OR, final_fi_fprf, fi_fprf_ps0, fi_ps1, 0);
+        rtl_add_insn(unit, RTLOP_SET_ALIAS,
+                     0, final_fi_fprf, 0, ctx->alias.fr_fi_fprf);
+
+        /* Merge the two outputs to frD, or restore the original value of
+         * frD if FPSCR[VE] is set. */
+        const int fpscr = rtl_alloc_register(unit, RTLTYPE_INT32);
+        rtl_add_insn(unit, RTLOP_GET_ALIAS, fpscr, 0, 0, ctx->alias.fpscr);
+        const int has_ve = rtl_alloc_register(unit, RTLTYPE_INT32);
+        rtl_add_insn(unit, RTLOP_ANDI, has_ve, fpscr, 0, FPSCR_VE);
+        const int label_no_ve = rtl_alloc_label(unit);
+        rtl_add_insn(unit, RTLOP_GOTO_IF_Z, 0, has_ve, 0, label_no_ve);
+        /* The original value isn't necessarily safe for VFCVT, so we
+         * can't use set_fpr_and_flush(). */
+        set_fpr(ctx, insn_frD(insn), saved_frD);
+        flush_fpr(ctx, insn_frD(insn), true);
+        label_skip_set_result = rtl_alloc_label(unit);
+        rtl_add_insn(unit, RTLOP_GOTO, 0, 0, 0, label_skip_set_result);
+        rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, label_no_ve);
+        const int new_result = rtl_alloc_register(unit, RTLTYPE_V2_FLOAT64);
+        rtl_add_insn(unit, RTLOP_VBUILD2,
+                     new_result, result_ps0, result_ps1, 0);
+        set_fpr_and_flush(ctx, insn_frD(insn), new_result);
+        rtl_add_insn(unit, RTLOP_GOTO, 0, 0, 0, label_skip_set_result);
+
+        rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, label_do_set_result);
+    }
+    set_fp_result(ctx, insn_frD(insn), result, src1, src2, 0,
+                  0, 0, rtlop == RTLOP_FDIV, true);
+    if (label_skip_set_result) {
+        rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, label_skip_set_result);
+    }
+
+    if (insn_Rc(insn)) {
+        update_cr1(ctx);
+    }
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
  * translate_ps_merge:  Translate a ps_merge* instruction.
  *
  * [Parameters]
@@ -5822,7 +6116,7 @@ static inline void translate_x3F(
         switch ((PPCExtendedOpcode3F_5)insn_XO_5(insn)) {
           case XO_FDIV:
             translate_fp_arith(ctx, insn, RTLOP_FDIV, false,
-                              FPSCR_VXIDI | FPSCR_VXZDZ);
+                               FPSCR_VXIDI | FPSCR_VXZDZ);
             return;
 
           case XO_FSUB:
@@ -6389,18 +6683,31 @@ static inline void translate_insn(
                                     (insn_XO_10(insn) & 0x20) != 0);
             return;
 
+          case XO_PS_DIV:
+            translate_ps_arith(ctx, insn, RTLOP_FDIV,
+                               FPSCR_VXIDI | FPSCR_VXZDZ);
+            return;
+
+          case XO_PS_SUB:
+            translate_ps_arith(ctx, insn, RTLOP_FSUB, FPSCR_VXISI);
+            return;
+
+          case XO_PS_ADD:
+            translate_ps_arith(ctx, insn, RTLOP_FADD, FPSCR_VXISI);
+            return;
+
+          case XO_PS_MUL:
+            translate_ps_arith(ctx, insn, RTLOP_FMUL, FPSCR_VXIMZ);
+            return;
+
           case XO_PS_SUM0:
           case XO_PS_SUM1:
           case XO_PS_MULS0:
           case XO_PS_MULS1:
           case XO_PS_MADDS0:
           case XO_PS_MADDS1:
-          case XO_PS_DIV:
-          case XO_PS_SUB:
-          case XO_PS_ADD:
           case XO_PS_SEL:
           case XO_PS_RES:
-          case XO_PS_MUL:
           case XO_PS_RSQRTE:
           case XO_PS_MSUB:
           case XO_PS_MADD:

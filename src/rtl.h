@@ -452,7 +452,8 @@ enum {
  * with the FTESTEXC instruction.
  */
 typedef enum RTLFloatException {
-    RTLFEXC_INEXACT = 0,
+    RTLFEXC_ANY = 0,  // Evaluates to true if any exception has been raised.
+    RTLFEXC_INEXACT,
     RTLFEXC_INVALID,
     RTLFEXC_OVERFLOW,
     RTLFEXC_UNDERFLOW,

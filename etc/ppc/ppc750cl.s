@@ -3,6 +3,7 @@
 # No copyright is claimed on this file.
 #
 # Update history:
+#    - 2016-11-16: Added more tests for paired-single exception handling.
 #    - 2016-11-15: Fixed a psq_l test skipping the next test on failure.
 #    - 2016-11-14: Added a TEST_UNDOCUMENTED symbol (enabled by default)
 #         protecting tests of instruction formats which are not documented
@@ -11084,7 +11085,7 @@ get_load_address:
    lfd %f4,152(%r31)
    bl add_fpscr_ox
    # The 750CL sets FPSCR[FI] but not FPSCR[XX] on inexact results.
-   oris %r0,%r0,2
+   bl add_fpscr_fi
    bl check_fpu_pnorm
 0: lfs %f13,48(%r30)    # -tiny
    fres %f4,%f13
@@ -11093,7 +11094,7 @@ get_load_address:
    lfd %f4,152(%r31)
    fneg %f4,%f4
    bl add_fpscr_ox
-   oris %r0,%r0,2
+   bl add_fpscr_fi
    bl check_fpu_nnorm
 0: lfd %f14,152(%r31)   # +huge
    fres %f3,%f14
@@ -15459,7 +15460,11 @@ get_load_address:
    bl add_fpscr_vxsnan
    bl add_fpscr_ox
    bl add_fpscr_xx_fi
-   bl check_ps_pinf     # FPRF is updated even though the result wasn't stored.
+   # If only the second slot (ps1) of a paired-single operation raises an
+   # enabled exception, FPRF is set based on the ps0 result even though
+   # the result is not written back to the output register.  (This appears
+   # to be a bug in the hardware.)
+   bl check_ps_pinf
    mtfsb0 24
 
    # ps_add (excess precision/range on input)
@@ -16968,6 +16973,54 @@ get_load_address:
    bl add_fpscr_xx_fi
    bl check_ps_pinf
    mtfsb0 24
+0: ps_merge00 %f3,%f0,%f9  # (0,inf) / (0,inf)
+   ps_div %f3,%f3,%f3
+   bl record
+   lfd %f4,168(%r31)
+   fmr %f5,%f4
+   bl add_fpscr_vxidi   # Both invalid exceptions should be raised.
+   bl add_fpscr_vxzdz
+   bl check_ps_nan
+0: mtfsf 255,%f0        # Same, with exception enabled
+   mtfsb1 24
+   ps_mr %f3,%f1
+   ps_merge00 %f5,%f0,%f9
+   ps_div %f3,%f5,%f5
+   bl record
+   fmr %f4,%f1
+   fmr %f5,%f1
+   bl add_fpscr_fex
+   bl add_fpscr_vxidi
+   bl add_fpscr_vxzdz
+   bl check_ps_noresult
+   mtfsb0 24
+0: mtfsf 255,%f0        # (normal,normal) / (normal,0) (exception enabled)
+   mtfsb1 27
+   ps_merge00 %f4,%f2,%f0
+   ps_mr %f3,%f1
+   ps_div %f3,%f1,%f4
+   bl record
+   fmr %f4,%f1
+   fmr %f5,%f1
+   bl add_fpscr_fex
+   bl add_fpscr_zx
+   bl check_ps_pnorm
+   mtfsb0 27
+0: mtfsf 255,%f0        # (normal,normal) / (0,normal) = (inf,overflow) (exception enabled)
+   mtfsb1 27
+   ps_merge00 %f5,%f1,%f7
+   ps_merge00 %f14,%f0,%f27
+   ps_mr %f3,%f1
+   ps_div %f3,%f5,%f14
+   bl record
+   fmr %f4,%f1
+   fmr %f5,%f1
+   bl add_fpscr_fex
+   bl add_fpscr_ox
+   bl add_fpscr_zx
+   bl add_fpscr_xx_fi
+   bl check_ps_noresult
+   mtfsb0 27
 
    # ps_div (excess precision/range on input)
 0: lfd_ps %f4,336(%r31),%f0  # 2^128 / 2.0
@@ -17007,7 +17060,7 @@ get_load_address:
    bl record
    lfs %f4,8(%r4)
    fmr %f5,%f0
-   bl check_ps_pnorm #FIME: why _inex?
+   bl check_ps_pnorm
 
    # ps_div.
 0: ps_div. %f3,%f1,%f11  # normal / SNaN
@@ -17289,6 +17342,16 @@ get_load_address:
    bl add_fpscr_xx_fi
    bl check_ps_pinf
    mtfsb0 24
+0: mtfsf 255,%f0              # -infinity * (0,normal) + +infinity
+   ps_neg %f13,%f9
+   ps_merge00 %f3,%f0,%f2
+   ps_madd %f3,%f13,%f3,%f9
+   bl record
+   lfd %f4,168(%r31)
+   fmr %f5,%f4
+   bl add_fpscr_vximz         # Both invalid exceptions should be raised.
+   bl add_fpscr_vxisi
+   bl check_ps_nan
 
    # ps_madd (excess precision/range on input)
 0: mtfsfi 7,1               # 1.333... * 1.5 + 1ulp (round toward zero)
@@ -18824,7 +18887,7 @@ get_load_address:
    bl record
    lfd %f4,152(%r31)
    bl add_fpscr_ox
-   oris %r0,%r0,2
+   bl add_fpscr_fi
    fmr %f5,%r4
    bl check_ps_pnorm
 0: lfs %f13,48(%r30)    # -tiny
@@ -18834,7 +18897,7 @@ get_load_address:
    lfd %f4,152(%r31)
    fneg %f4,%f4
    bl add_fpscr_ox
-   oris %r0,%r0,2
+   bl add_fpscr_fi
    fmr %f5,%r4
    bl check_ps_nnorm
 0: lfd %f14,152(%r31)   # +huge
@@ -18942,6 +19005,64 @@ get_load_address:
    fmr %f7,%f6
    bl add_fpscr_vxsnan
    bl check_ps_estimate_pnorm
+
+   # ps_res (different values in slots)
+0: lfs %f3,44(%r30)     # 1 / (SNaN,normal) = (NaN,overflow)
+   ps_merge00 %f3,%f11,%f3
+   ps_res %f14,%f3
+   bl record
+   ps_mr %f3,%f14
+   fmr %f4,%f12
+   lfd %f5,152(%r31)
+   bl add_fpscr_vxsnan
+   bl add_fpscr_ox
+   bl add_fpscr_fi
+   bl check_ps_nan
+0: mtfsf 255,%f0        # Same, with exception enabled
+   mtfsb1 24
+   lfs %f3,44(%r30)
+   ps_merge00 %f4,%f11,%f3
+   ps_mr %f14,%f1
+   ps_res %f14,%f4
+   bl record
+   ps_mr %f3,%f14
+   fmr %f4,%f1
+   fmr %f5,%f1
+   bl add_fpscr_fex
+   bl add_fpscr_vxsnan
+   bl add_fpscr_ox
+   bl add_fpscr_fi
+   bl check_ps_noresult
+   mtfsb0 24
+0: mtfsf 255,%f0        # Same, with NaN in the second slot
+   mtfsb1 24
+   lfs %f3,44(%r30)
+   ps_merge00 %f5,%f3,%f11
+   ps_mr %f14,%f1
+   ps_res %f14,%f5
+   bl record
+   ps_mr %f3,%f14
+   fmr %f4,%f1
+   fmr %f5,%f1
+   bl add_fpscr_fex
+   bl add_fpscr_vxsnan
+   bl add_fpscr_ox
+   bl add_fpscr_fi
+   bl check_ps_pnorm
+   mtfsb0 24
+0: mtfsf 255,%f0        # 1 / (normal,0) (exception enabled)
+   mtfsb1 27
+   ps_merge00 %f13,%f2,%f0
+   ps_mr %f14,%f1
+   ps_res %f14,%f13
+   bl record
+   ps_mr %f3,%f14
+   fmr %f4,%f1
+   fmr %f5,%f1
+   bl add_fpscr_fex
+   bl add_fpscr_zx
+   bl check_ps_pnorm
+   mtfsb0 27
 
    # ps_res.
 0: ps_res. %f3,%f11     # SNaN
@@ -19086,6 +19207,58 @@ get_load_address:
    fmr %f7,%f6
    bl add_fpscr_vxsnan
    bl check_ps_estimate_pnorm
+
+   # ps_rsqrte (different values in slots)
+0: ps_merge00 %f3,%f11,%f2  # 1 / sqrt(SNaN,normal) = (NaN,normal)
+   ps_rsqrte %f14,%f3
+   bl record
+   ps_mr %f3,%f14
+   fmr %f4,%f12
+   lis %r3,0x3F34  # Exact result from the 750CL, for simplicity.
+   ori %r3,%r3,0xFD00
+   stw %r3,0(%r4)
+   lfs %f5,0(%r4)
+   bl add_fpscr_vxsnan
+   bl check_ps_nan
+0: mtfsf 255,%f0        # Same, with exception enabled
+   mtfsb1 24
+   ps_merge00 %f4,%f11,%f2
+   ps_mr %f14,%f1
+   ps_rsqrte %f14,%f4
+   bl record
+   ps_mr %f3,%f14
+   fmr %f4,%f1
+   fmr %f5,%f1
+   bl add_fpscr_fex
+   bl add_fpscr_vxsnan
+   bl check_ps_noresult
+   mtfsb0 24
+0: mtfsf 255,%f0        # Same, with NaN in the second slot
+   mtfsb1 24
+   ps_merge00 %f5,%f2,%f11
+   ps_mr %f14,%f1
+   ps_rsqrte %f14,%f5
+   bl record
+   ps_mr %f3,%f14
+   fmr %f4,%f1
+   fmr %f5,%f1
+   bl add_fpscr_fex
+   bl add_fpscr_vxsnan
+   bl check_ps_pnorm
+   mtfsb0 24
+0: mtfsf 255,%f0        # 1 / sqrt(normal,0) (exception enabled)
+   mtfsb1 27
+   ps_merge00 %f13,%f2,%f0
+   ps_mr %f14,%f1
+   ps_rsqrte %f14,%f13
+   bl record
+   ps_mr %f3,%f14
+   fmr %f4,%f1
+   fmr %f5,%f1
+   bl add_fpscr_fex
+   bl add_fpscr_zx
+   bl check_ps_pnorm
+   mtfsb0 27
 
    # ps_rsqrte.
 0: ps_rsqrte. %f3,%f11    # SNaN
@@ -20507,6 +20680,11 @@ add_fpscr_xx:
 
 add_fpscr_xx_fi:
    oris %r0,%r0,0x8202
+   blr
+
+# The fres and ps_res instructions set FI without XX.
+add_fpscr_fi:
+   oris %r0,%r0,0x0002
    blr
 
 add_fpscr_vxsnan:

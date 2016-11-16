@@ -18,6 +18,8 @@ static const unsigned int host_opt = 0;
 
 static int add_rtl(RTLUnit *unit)
 {
+    unit->handle->common_opt |= BINREC_OPT_NATIVE_IEEE_NAN;
+
     alloc_dummy_registers(unit, 1, RTLTYPE_FLOAT32);
 
     int reg1, reg2, reg3, reg4;
@@ -28,8 +30,6 @@ static int add_rtl(RTLUnit *unit)
     EXPECT(reg3 = rtl_alloc_register(unit, RTLTYPE_FLOAT32));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg3, 0, 0, 0x40400000));
     EXPECT(reg4 = rtl_alloc_register(unit, RTLTYPE_FLOAT32));
-    /* reg2 should not be reused even though it dies here, in order to
-     * preserve NaN selection order. */
     EXPECT(rtl_add_insn(unit, RTLOP_FMADD, reg4, reg1, reg2, reg3));
     EXPECT(rtl_add_insn(unit, RTLOP_NOP, 0, reg1, reg3, 0));
 
@@ -44,9 +44,8 @@ static const uint8_t expected_code[] = {
     0x66,0x0F,0x6E,0xD0,                // movd %eax,%xmm2
     0xB8,0x00,0x00,0x40,0x40,           // mov $0x40400000,%eax
     0x66,0x0F,0x6E,0xD8,                // movd %eax,%xmm3
-    0x0F,0x28,0xE1,                     // movaps %xmm1,%xmm4
-    0xF3,0x0F,0x59,0xE2,                // mulss %xmm2,%xmm4
-    0xF3,0x0F,0x58,0xE3,                // addss %xmm3,%xmm4
+    0xF3,0x0F,0x59,0xD1,                // mulss %xmm1,%xmm2
+    0xF3,0x0F,0x58,0xD3,                // addss %xmm3,%xmm2
     0x48,0x83,0xC4,0x08,                // add $8,%rsp
     0xC3,                               // ret
 };

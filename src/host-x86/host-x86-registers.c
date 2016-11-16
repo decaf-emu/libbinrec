@@ -934,9 +934,13 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
                 } else {
                     /* For non-FMA, avoid src3 since we'd have to exchange
                      * it with src1 or src2 and there's no XMM equivalent
-                     * to XCHG. */
+                     * to XCHG.  Also avoid src2 if NaN order is important. */
                     if (!ctx->regs[insn->src3].spilled) {
                         avoid_regs |= 1u << ctx->regs[insn->src3].host_reg;
+                    }
+                    if (!(ctx->handle->common_opt & BINREC_OPT_NATIVE_IEEE_NAN)
+                     && !ctx->regs[src2].spilled) {
+                        avoid_regs |= 1u << ctx->regs[src2].host_reg;
                     }
                 }
                 break;
@@ -1211,6 +1215,13 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
             /* Temporary needed if converting a 64-bit or spilled 32-bit
              * value. */
             need_temp = (int_type_is_64(src1_reg->type) || src1_info->spilled);
+            break;
+
+          case RTLOP_FDIV:
+            /* Temporary needed for type V2_FLOAT32 to load 1's into the
+             * high elements (see translation logic for explanation). */
+            need_temp = (dest_reg->type == RTLTYPE_V2_FLOAT32);
+            temp_is_fpr = true;
             break;
 
           case RTLOP_FMADD:
@@ -1811,6 +1822,12 @@ static void first_pass_for_block(HostX86Context *ctx, int block_index)
             }
             break;
 
+          case RTLOP_FDIV:
+            if (unit->regs[insn->dest].type == RTLTYPE_V2_FLOAT32) {
+                ctx->const_loc[LC_V2_FLOAT32_HIGH_ONES] = 1;
+            }
+            break;
+
           case RTLOP_FCMP: {
             /* For less-than comparisons, it's faster to swap the operands
              * and the sense of the comparison so we don't need to check
@@ -1832,10 +1849,20 @@ static void first_pass_for_block(HostX86Context *ctx, int block_index)
           case RTLOP_FNMADD:
           case RTLOP_FNMSUB:
             if (!(ctx->handle->setup.host_features & BINREC_FEATURE_X86_FMA)) {
-                if (unit->regs[insn->dest].type == RTLTYPE_FLOAT64) {
-                    ctx->const_loc[LC_FLOAT64_SIGNBIT] = 1;
-                } else {
+                switch ((RTLDataType)unit->regs[insn->dest].type) {
+                  case RTLTYPE_FLOAT32:
                     ctx->const_loc[LC_FLOAT32_SIGNBIT] = 1;
+                    break;
+                  case RTLTYPE_FLOAT64:
+                    ctx->const_loc[LC_FLOAT64_SIGNBIT] = 1;
+                    break;
+                  case RTLTYPE_V2_FLOAT32:
+                    ctx->const_loc[LC_V2_FLOAT32_SIGNBIT] = 1;
+                    break;
+                  default:
+                    ASSERT(unit->regs[insn->dest].type == RTLTYPE_V2_FLOAT64);
+                    ctx->const_loc[LC_V2_FLOAT64_SIGNBIT] = 1;
+                    break;
                 }
             }
             break;

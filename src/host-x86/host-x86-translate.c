@@ -36,6 +36,8 @@ static const struct {
     [LC_V2_FLOAT32_QUIETBIT   ] = {{0x00,0x00,0x40,0x00,0x00,0x00,0x40,0x00}},
     [LC_V2_FLOAT64_QUIETBIT   ] = {{0x00,0x00,0x00,0x00,0x00,0x00,0x08,0x00,
                                     0x00,0x00,0x00,0x00,0x00,0x00,0x08,0x00}},
+    [LC_V2_FLOAT32_HIGH_ONES  ] = {{0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
+                                    0x00,0x00,0x80,0x3F,0x00,0x00,0x80,0x3F}},
 };
 
 /*-----------------------------------------------------------------------*/
@@ -72,6 +74,28 @@ static inline PURE_FUNCTION bool is_spilled(const HostX86Context *ctx,
 {
     const HostX86RegInfo *reg_info = &ctx->regs[reg];
     return reg_info->spilled && reg_info->spill_insn <= insn_index;
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
+ * sse_opcode_prefix_for_type:  Return the opcode prefix byte (0x66, 0xF3,
+ * 0xF2, or 0 for no prefix) to use with SSE opcodes for the given data type.
+ *
+ * [Parameters]
+ *     type: RTL data type.
+ * [Return value]
+ *     Prefix byte, or 0 for no prefix.
+ */
+static inline CONST_FUNCTION uint8_t sse_opcode_prefix_for_type(
+    RTLDataType type)
+{
+    switch (type) {
+        case RTLTYPE_V2_FLOAT64: return 0x66;
+        case RTLTYPE_FLOAT32:    return 0xF3;
+        case RTLTYPE_FLOAT64:    return 0xF2;
+        default:                 return 0;
+    }
 }
 
 /*-----------------------------------------------------------------------*/
@@ -2459,7 +2483,7 @@ static bool translate_fcast(HostX86Context *ctx, int insn_index)
  *     code: Output code buffer.
  *     ctx: Translation context.
  *     insn_index: Index of instruction in ctx->unit->insns[].
- *     fma_base_opcode: Base opcode (one of VF*132SS) when using the FMA
+ *     fma_base_opcode: Base opcode (one of VF*132PS) when using the FMA
  *         instruction set extension.
  *     sub: True if the operation is FMSUB or FNMSUB.
  *     negate: True if the operation is FNMADD or FNMSUB.
@@ -2483,7 +2507,10 @@ static void translate_fma(CodeBuffer *code, HostX86Context *ctx,
     const int src3 = insn->src3;
     const X86Register host_dest = ctx->regs[dest].host_reg;
     const RTLDataType type = unit->regs[dest].type;
-    const bool is64 = (type == RTLTYPE_FLOAT64);
+    const bool is_vector = rtl_type_is_vector(type);
+    const RTLDataType scalar_type =
+        is_vector ? rtl_vector_element_type(type) : type;
+    const bool is64 = (scalar_type == RTLTYPE_FLOAT64);
 
     if (ctx->handle->setup.host_features & BINREC_FEATURE_X86_FMA) {
 
@@ -2539,6 +2566,12 @@ static void translate_fma(CodeBuffer *code, HostX86Context *ctx,
             vex_vvvv = host_src3;
         }
 
+        /* Choose between vector and scalar versions of the instruction. */
+        ASSERT(!(opcode & 1));
+        if (!rtl_register_is_vector(&unit->regs[dest])) {
+            opcode |= 1;
+        }
+
         /* Reload registers as needed. */
         append_move_or_load(code, ctx, unit, insn_index, host_dest, dest_reg);
         if (reload_src1) {
@@ -2555,26 +2588,36 @@ static void translate_fma(CodeBuffer *code, HostX86Context *ctx,
          * operations and eat the precision loss.  Yum. */
 
         const X86Register host_src2 = ctx->regs[src2].host_reg;
-        const X86Opcode mul_opcode = is64 ? X86OP_MULSD : X86OP_MULSS;
-        const X86Opcode add_opcode = sub ? (is64 ? X86OP_SUBSD : X86OP_SUBSS)
-                                         : (is64 ? X86OP_ADDSD : X86OP_ADDSS);
+        const uint8_t prefix = sse_opcode_prefix_for_type(type);
+        const X86Opcode add_opcode = sub ? X86OP_SUBPS : X86OP_ADDPS;
 
         if (host_dest == host_src2 && !is_spilled(ctx, insn_index, src2)) {
-            append_insn_ModRM_ctx(code, false, mul_opcode, host_dest,
+            if (prefix) {
+                append_imm8(code, prefix);
+            }       
+            append_insn_ModRM_ctx(code, false, X86OP_MULPS, host_dest,
                                   ctx, insn_index, src1);
         } else {
             append_move_or_load(code, ctx, unit, insn_index, host_dest, src1);
-            append_insn_ModRM_ctx(code, false, mul_opcode, host_dest,
+            if (prefix) {
+                append_imm8(code, prefix);
+            }
+            append_insn_ModRM_ctx(code, false, X86OP_MULPS, host_dest,
                                   ctx, insn_index, src2);
         }
 
         if (negate) {
-            const int lc_id = is64 ? LC_FLOAT64_SIGNBIT : LC_FLOAT32_SIGNBIT;
+            const int lc_id = is_vector
+                ? (is64 ? LC_V2_FLOAT64_SIGNBIT : LC_V2_FLOAT32_SIGNBIT)
+                : (is64 ? LC_FLOAT64_SIGNBIT : LC_FLOAT32_SIGNBIT);
             const long lc_offset = ctx->const_loc[lc_id];
             ASSERT(lc_offset);
             append_insn_ModRM_riprel(code, X86OP_XORPS, host_dest, lc_offset);
         }
 
+        if (prefix) {
+            append_imm8(code, prefix);
+        }
         append_insn_ModRM_ctx(code, false, add_opcode, host_dest,
                               ctx, insn_index, insn->src3);
 
@@ -4035,30 +4078,72 @@ static bool translate_block(HostX86Context *ctx, int block_index)
           case RTLOP_FMUL:
           case RTLOP_FDIV: {
             const X86Register host_dest = ctx->regs[dest].host_reg;
-            const X86Register host_src2 = ctx->regs[src2].host_reg;
-            const bool is64 = (unit->regs[dest].type == RTLTYPE_FLOAT64);
-            const X86Opcode opcode = (
-                insn->opcode==RTLOP_FADD ? (is64 ? X86OP_ADDSD : X86OP_ADDSS) :
-                insn->opcode==RTLOP_FSUB ? (is64 ? X86OP_SUBSD : X86OP_SUBSS) :
-                insn->opcode==RTLOP_FMUL ? (is64 ? X86OP_MULSD : X86OP_MULSS) :
-                          /* RTLOP_FDIV */ (is64 ? X86OP_DIVSD : X86OP_DIVSS));
-            if (host_dest == host_src2 && !is_spilled(ctx, insn_index, src2)) {
-                append_insn_ModRM_ctx(&code, false, opcode, host_dest,
+            X86Register host_src2 = ctx->regs[src2].host_reg;
+            bool src2_loaded = !is_spilled(ctx, insn_index, src2);
+            const X86Opcode base_opcode = (
+                insn->opcode==RTLOP_FADD ? X86OP_ADDPS :
+                insn->opcode==RTLOP_FSUB ? X86OP_SUBPS :
+                insn->opcode==RTLOP_FMUL ? X86OP_MULPS :
+                          /* RTLOP_FDIV */ X86OP_DIVPS);
+            const uint8_t prefix =
+                sse_opcode_prefix_for_type(unit->regs[dest].type);
+
+            if (insn->opcode == RTLOP_FDIV
+             && unit->regs[dest].type == RTLTYPE_V2_FLOAT32) {
+                /* If we do a DIVPS directly on the register values, the
+                 * two high elements of the XMM vector will trigger
+                 * invalid-operation exceptions since they're always zero
+                 * for V2_FLOAT32.  To avoid this, we copy src2 into a
+                 * temporary register and insert 1.0f in the two high
+                 * elements, then divide by that temporary register
+                 * instead of the original src2.  This also conveniently
+                 * leaves zeroes in the high words of the output. */
+                ASSERT(ctx->regs[dest].temp_allocated);
+                const X86Register host_temp = ctx->regs[dest].host_temp;
+                append_move_or_load(&code, ctx, unit, insn_index,
+                                    host_temp, src2);
+                const long lc_offset = ctx->const_loc[LC_V2_FLOAT32_HIGH_ONES];
+                ASSERT(lc_offset);
+                append_insn_ModRM_riprel(&code, X86OP_ORPS, host_temp,
+                                         lc_offset);
+                host_src2 = host_temp;
+                src2_loaded = true;
+            }
+
+            if (host_dest == host_src2 && src2_loaded) {
+                if (prefix) {
+                    append_imm8(&code, prefix);
+                }
+                append_insn_ModRM_ctx(&code, false, base_opcode, host_dest,
                                       ctx, insn_index, src1);
             } else {
                 append_move_or_load(&code, ctx, unit, insn_index,
                                     host_dest, src1);
-                append_insn_ModRM_ctx(&code, false, opcode, host_dest,
-                                      ctx, insn_index, src2);
+                if (prefix) {
+                    append_imm8(&code, prefix);
+                }
+                /* We can't use append_insn_ModRM_ctx() because src2 might
+                 * be in a different regsiter due to the FDIV hack. */
+                if (src2_loaded) {
+                    append_insn_ModRM_reg(&code, false, base_opcode,
+                                          host_dest, host_src2);
+                } else {
+                    append_insn_ModRM_mem(
+                        &code, false, base_opcode, host_dest,
+                        X86_SP, -1, ctx->regs[src2].spill_offset);
+                }
             }
             break;
           }  // case RTLOP_FADD, RTLOP_FSUB, RTLOP_FMUL, RTLOP_FDIV
 
           case RTLOP_FSQRT: {
             const X86Register host_dest = ctx->regs[dest].host_reg;
-            const bool is64 = (unit->regs[dest].type == RTLTYPE_FLOAT64);
-            const X86UnaryOpcode opcode = is64 ? X86OP_SQRTSD : X86OP_SQRTSS;
-            append_insn_ModRM_ctx(&code, false, opcode, host_dest,
+            const uint8_t prefix =
+                sse_opcode_prefix_for_type(unit->regs[dest].type);
+            if (prefix) {
+                append_imm8(&code, prefix);
+            }
+            append_insn_ModRM_ctx(&code, false, X86OP_SQRTPS, host_dest,
                                   ctx, insn_index, src1);
             break;
           }  // case RTLOP_FSQRT
@@ -4146,22 +4231,22 @@ static bool translate_block(HostX86Context *ctx, int block_index)
 
           case RTLOP_FMADD:
             translate_fma(&code, ctx, insn_index,
-                          X86OP_VFMADD132SS, false, false);
+                          X86OP_VFMADD132PS, false, false);
             break;
 
           case RTLOP_FMSUB:
             translate_fma(&code, ctx, insn_index,
-                          X86OP_VFMSUB132SS, true, false);
+                          X86OP_VFMSUB132PS, true, false);
             break;
 
           case RTLOP_FNMADD:
             translate_fma(&code, ctx, insn_index,
-                          X86OP_VFNMADD132SS, false, true);
+                          X86OP_VFNMADD132PS, false, true);
             break;
 
           case RTLOP_FNMSUB:
             translate_fma(&code, ctx, insn_index,
-                          X86OP_VFNMSUB132SS, true, true);
+                          X86OP_VFNMSUB132PS, true, true);
             break;
 
           case RTLOP_FGETSTATE:
@@ -4190,15 +4275,16 @@ static bool translate_block(HostX86Context *ctx, int block_index)
           case RTLOP_FTESTEXC: {
             const X86Register host_dest = ctx->regs[dest].host_reg;
             const X86Register host_src1 = ctx->regs[src1].host_reg;
-            int bit = 0;
+            int bits = 0;
             switch ((RTLFloatException)insn->src_imm) {
-                case RTLFEXC_INEXACT:     bit = 1<<5; break;
-                case RTLFEXC_INVALID:     bit = 1<<0; break;
-                case RTLFEXC_OVERFLOW:    bit = 1<<3; break;
-                case RTLFEXC_UNDERFLOW:   bit = 1<<4; break;
-                case RTLFEXC_ZERO_DIVIDE: bit = 1<<2; break;
+                case RTLFEXC_ANY:         bits = 0x3D; break;
+                case RTLFEXC_INEXACT:     bits = 0x20; break;
+                case RTLFEXC_INVALID:     bits = 0x01; break;
+                case RTLFEXC_OVERFLOW:    bits = 0x08; break;
+                case RTLFEXC_UNDERFLOW:   bits = 0x10; break;
+                case RTLFEXC_ZERO_DIVIDE: bits = 0x04; break;
             }
-            if (UNLIKELY(!bit)) {
+            if (UNLIKELY(!bits)) {
                 log_error(handle, "Invalid FP exception %d in FTESTEXC at %d",
                           (int)insn->src_imm, insn_index);
                 break;
@@ -4221,7 +4307,7 @@ static bool translate_block(HostX86Context *ctx, int block_index)
                 append_insn_ModRM_reg(&code, false, X86OP_UNARY_Eb,
                                       X86OP_UNARY_TEST, host_src1);
             }
-            append_imm8(&code, bit);
+            append_imm8(&code, bits);
             ctx->last_test_reg = 0;
             ctx->last_cmp_reg = 0;
             ctx->last_cmp_target = 0;
