@@ -88,6 +88,10 @@ extern "C" {
  * any floating-point operations or modify FPSCR on its own only needs to
  * set host floating-point state once, before first calling translated code.
  *
+ * The FPSCR[FR] bit is not set by any floating-point instructions, though
+ * it can be written as usual by instructions which directly manipulate
+ * FPSCR.
+ *
  * The overflow and underflow exception enable bits (OE and UE) in FPSCR
  * are ignored; floating-point operations are performed as if both
  * exceptions are masked (FPSCR[OE]=0 and FPSCR[UE]=0).  However,
@@ -806,29 +810,6 @@ typedef struct binrec_setup_t {
 #define BINREC_OPT_G_PPC_FNMADD_ZERO_SIGN  (1<<3)
 
 /**
- * BINREC_OPT_G_PPC_IGNORE_FPSCR_FR:  Do not set the FR bit of FPSCR after
- * floating-point operations.
- *
- * Properly emulating FPSCR[FR] in software requires performing each
- * operation twice to check the rounding direction, with rounding mode
- * changes between each operation; this naturally has a severe impact on
- * performance of floating-point-heavy code.  Enabling this optimization
- * allows the translator to skip those extra operations.  Instructions
- * which directly manipulate FPSCR (such as mtfsf) are not affected by
- * this optimization and continue to behave normally.
- *
- * This optimization is UNSAFE for obvious reasons, though it is believed
- * that most real-life PowerPC code does not make use of the FR bit.
- *
- * This optimization has no effect if BINREC_OPT_G_PPC_NO_FPSCR_STATE is
- * enabled.
- *
- * This optimization cannot currently be disabled; the translator always
- * behaves as if it was set.
- */
-#define BINREC_OPT_G_PPC_IGNORE_FPSCR_FR  (1<<4)
-
-/**
  * BINREC_OPT_G_PPC_IGNORE_FPSCR_VXFOO:  Do not set FPSCR exception bits
  * for specific invalid exception types (the "VXFOO" bits).
  *
@@ -852,7 +833,7 @@ typedef struct binrec_setup_t {
  * This optimization has no effect if BINREC_OPT_G_PPC_NO_FPSCR_STATE is
  * enabled.
  */
-#define BINREC_OPT_G_PPC_IGNORE_FPSCR_VXFOO  (1<<5)
+#define BINREC_OPT_G_PPC_IGNORE_FPSCR_VXFOO  (1<<4)
 
 /**
  * BINREC_OPT_G_PPC_NATIVE_RECIPROCAL:  Translate guest PowerPC
@@ -907,7 +888,7 @@ typedef struct binrec_setup_t {
  * the PowerPC architecture specification, it will behave correctly under
  * this optimization.
  */
-#define BINREC_OPT_G_PPC_NATIVE_RECIPROCAL  (1<<6)
+#define BINREC_OPT_G_PPC_NATIVE_RECIPROCAL  (1<<5)
 
 /**
  * BINREC_OPT_G_PPC_NO_FPSCR_STATE:  Do not write any state bits (exception
@@ -941,7 +922,7 @@ typedef struct binrec_setup_t {
  * This optimization is UNSAFE: code which relies on any of the FPSCR
  * state bits will behave incorrectly if this optimization is enabled.
  */
-#define BINREC_OPT_G_PPC_NO_FPSCR_STATE  (1<<7)
+#define BINREC_OPT_G_PPC_NO_FPSCR_STATE  (1<<6)
 
 /**
  * BINREC_OPT_G_PPC_PS_STORE_DENORMALS:  Do not flush denormals to zero
@@ -957,7 +938,7 @@ typedef struct binrec_setup_t {
  * flushed to zero by paired-single store instructions will behave
  * incorrectly if this optimization is enabled.
  */
-#define BINREC_OPT_G_PPC_PS_STORE_DENORMALS  (1<<8)
+#define BINREC_OPT_G_PPC_PS_STORE_DENORMALS  (1<<7)
 
 /**
  * BINREC_OPT_G_PPC_TRIM_CR_STORES:  Analyze the data flow through each
@@ -969,7 +950,7 @@ typedef struct binrec_setup_t {
  * in the processor state block.  System call and trap handlers are not
  * affected.
  */
-#define BINREC_OPT_G_PPC_TRIM_CR_STORES  (1<<9)
+#define BINREC_OPT_G_PPC_TRIM_CR_STORES  (1<<8)
 
 /*------------ Host-architecture-specific optimization flags ------------*/
 
