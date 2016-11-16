@@ -3803,7 +3803,7 @@ static void translate_load_store_ps(
 
     /* For store operations, if not using constant GQR mode, make sure the
      * alias is loaded here so it's not initialized on a conditional path. */
-    if (is_store && !have_constant_gqr) {
+    if (is_store && !have_constant_gqr && !ctx->live.fpr[frD_index]) {
         (void) get_fpr(ctx, frD_index, RTLTYPE_V2_FLOAT64);
     }
 
