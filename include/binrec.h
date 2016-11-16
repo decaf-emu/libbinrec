@@ -311,7 +311,7 @@ typedef struct binrec_setup_t {
     /**
      * guest_memory_base:  Pointer to a region of host memory reserved as
      * the address space of the guest code.  binrec_translate() calls will
-     * read source machine instructions and constand data from this region.
+     * read source machine instructions and constant data from this region.
      * Memory accesses within the translated code itself will use the
      * address passed as a parameter to the code.
      */
