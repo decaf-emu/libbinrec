@@ -13525,6 +13525,68 @@ get_load_address:
    lfs %f4,0(%r4)
    lfs %f5,4(%r4)
    bl check_ps
+0: lfd %f4,320(%r31)  # HUGE_VAL
+   ps_merge00 %f3,%f4,%f4
+   bl record
+   stfd %f3,8(%r6)
+   stfs %f3,16(%r6)
+   ps_merge11 %f3,%f3,%f3
+   stfs %f3,20(%r6)
+   # Slot 0 rounds up to infinity.
+   lwz %r3,8(%r6)
+   lis %r7,0x7FF0
+   cmpw %r3,%r7
+   bne 1f
+   lwz %r3,12(%r6)
+   cmpwi %r3,0
+   bne 1f
+   lwz %r3,16(%r6)
+   lis %r7,0x7F80
+   cmpw %r3,%r7
+   bne 1f
+   # Slot 1 is clamped to the maximum normal value.
+   lwz %r3,20(%r6)
+   addi %r7,%r7,-1
+   cmpw %r3,%r7
+   beq 0f
+1: addi %r6,%r6,32
+0: lfd %f5,376(%r31)  # Minimum double-precision denormal
+   ps_merge00 %f3,%f5,%f5
+   bl record
+   stfd %f3,8(%r6)
+   stfs %f3,16(%r6)
+   ps_merge11 %f3,%f3,%f3
+   stfs %f3,20(%r6)
+   # Slot 0 is rounded down to 0 as double-precision...
+   lwz %r3,8(%r6)
+   cmpwi %r3,0
+   bne 1f
+   lwz %r3,12(%r6)
+   cmpwi %r3,0
+   bne 1f
+   # ... but clamped to the minimum (single-precision) normal value when
+   # stored as single-precision.
+   lwz %r3,16(%r6)
+   lis %r7,0x80
+   cmpw %r3,%r7
+   bne 2f
+   # A subsequent double-precision store of ps0 still stores zero.
+   stfd %f3,8(%r6)
+   lwz %r3,8(%r6)
+   cmpwi %r3,0
+   bne 2f
+   lwz %r3,12(%r6)
+   cmpwi %r3,0
+   bne 2f
+   # Slot 1 is also clamped.
+   lwz %r3,20(%r6)
+   lis %r7,0x80
+   cmpw %r3,%r7
+   bne 2f
+   b 0f
+1: li %r3,-1    # Indicate failure of the initial double-precision test.
+   stw %r3,20(%r6)
+2: addi %r6,%r6,32
 
    # lfd over paired-single register -> stfd
 0: ps_merge00 %f3,%f2,%f2

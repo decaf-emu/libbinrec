@@ -171,6 +171,10 @@ extern "C" {
  * However, accesses to the top 32k of memory using single-register (not
  * lmw/stmw) D-form instructions with rA = 0 are handled correctly.
  *
+ * Some obscure hardware quirks are not emulated by the translated code;
+ * see the list of expected failures in tests/guest-ppc/exec/750cl-noopt.c
+ * for details.
+ *
  *
  * Host-specific notes
  * ===================

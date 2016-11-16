@@ -65,6 +65,9 @@ int main(void)
         print_750cl_errors(result, memory);
     }
     // FIXME: eventually record all expected errors to make sure they match
+    // - 7C60212D 0100A5E0 (stwcx. to different address)
+    // - C89F0008 0100B778 (lfd/ps data hazard)
+    // - 10652C20 0100B81C (ps_* read double-precision denormal as 00800000)
 
     free(memory);
     return exitcode;
