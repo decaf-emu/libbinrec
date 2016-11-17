@@ -5822,6 +5822,63 @@ static void translate_ps_recip(GuestPPCContext *ctx, uint32_t insn,
 /*-----------------------------------------------------------------------*/
 
 /**
+ * translate_ps_sel:  Translate a ps_sel instruction.
+ *
+ * [Parameters]
+ *     ctx: Translation context.
+ *     insn: Instruction word.
+ */
+static void translate_ps_sel(GuestPPCContext *ctx, uint32_t insn)
+{
+    RTLUnit * const unit = ctx->unit;
+
+    const int fpstate = rtl_alloc_register(unit, RTLTYPE_FPSTATE);
+    rtl_add_insn(unit, RTLOP_FGETSTATE, fpstate, 0, 0, 0);
+
+    const RTLDataType frA_scalar_type =
+        get_fpr_scalar_type(ctx, insn_frA(insn));
+    const RTLDataType frA_type = (frA_scalar_type == RTLTYPE_FLOAT32
+                                  ? RTLTYPE_V2_FLOAT32 : RTLTYPE_V2_FLOAT64);
+    const bool frBC_float32 =
+        (get_fpr_scalar_type(ctx, insn_frB(insn)) == RTLTYPE_FLOAT32
+         && get_fpr_scalar_type(ctx, insn_frC(insn)) == RTLTYPE_FLOAT32);
+    const RTLDataType frBC_scalar_type =
+        (frBC_float32 ? RTLTYPE_FLOAT32 : RTLTYPE_FLOAT64);
+    const RTLDataType frBC_type =
+        (frBC_float32 ? RTLTYPE_V2_FLOAT32 : RTLTYPE_V2_FLOAT64);
+    const int frA = get_fpr(ctx, insn_frA(insn), frA_type);
+    const int frC = get_fpr(ctx, insn_frC(insn), frBC_type);
+    const int frB = get_fpr(ctx, insn_frB(insn), frBC_type);
+    const int zero = rtl_alloc_register(unit, frA_scalar_type);
+    rtl_add_insn(unit, RTLOP_LOAD_IMM, zero, 0, 0, 0);
+
+    int frD_ps[2];
+    for (int slot = 0; slot < 2; slot++) {
+        const int frA_ps = rtl_alloc_register(unit, frA_scalar_type);
+        rtl_add_insn(unit, RTLOP_VEXTRACT, frA_ps, frA, 0, slot);
+        const int frC_ps = rtl_alloc_register(unit, frBC_scalar_type);
+        rtl_add_insn(unit, RTLOP_VEXTRACT, frC_ps, frC, 0, slot);
+        const int frB_ps = rtl_alloc_register(unit, frBC_scalar_type);
+        rtl_add_insn(unit, RTLOP_VEXTRACT, frB_ps, frB, 0, slot);
+        const int test = rtl_alloc_register(unit, RTLTYPE_INT32);
+        rtl_add_insn(unit, RTLOP_FCMP, test, frA_ps, zero, RTLFCMP_GE);
+        frD_ps[slot] = rtl_alloc_register(unit, frBC_scalar_type);
+        rtl_add_insn(unit, RTLOP_SELECT, frD_ps[slot], frC_ps, frB_ps, test);
+    }
+
+    const int frD = rtl_alloc_register(unit, frBC_type);
+    rtl_add_insn(unit, RTLOP_VBUILD2, frD, frD_ps[0], frD_ps[1], 0);
+    set_fpr(ctx, insn_frD(insn), frD);
+
+    rtl_add_insn(unit, RTLOP_FSETSTATE, 0, fpstate, 0, 0);
+    if (insn_Rc(insn)) {
+        update_cr1(ctx);
+    }
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
  * translate_ps_sum:  Translate a ps_sum* instruction.
  *
  * [Parameters]
@@ -7448,7 +7505,8 @@ static inline void translate_insn(
             translate_ps_arith(ctx, insn, RTLOP_FADD, -1, FPSCR_VXISI);
             return;
           case XO_PS_SEL:
-            return;  // FIXME: not yet implemented
+            translate_ps_sel(ctx, insn);
+            return;
           case XO_PS_RES:
             translate_ps_recip(ctx, insn, false);
             return;
