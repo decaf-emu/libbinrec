@@ -32,7 +32,7 @@ static const char expected[] =
     "    9: FADD       r10, r4, r6\n"
     "   10: FCVT       r11, r10\n"
     "   11: VBUILD2    r12, r11, r9\n"
-    "   12: VFCVT      r13, r12\n"
+    "   12: VFCAST     r13, r12\n"
     "   13: SET_ALIAS  a2, r13\n"
     "   14: LOAD_IMM   r14, 4\n"
     "   15: SET_ALIAS  a1, r14\n"
