@@ -3,6 +3,8 @@
 # No copyright is claimed on this file.
 #
 # Update history:
+#    - 2016-11-16: Added reciprocal table tests for ps_res and ps_rsqrte.
+#    - 2016-11-16: Added tests for excess range on ps_merge* and ps_rsqrte.
 #    - 2016-11-16: Added more tests for paired-single exception handling.
 #    - 2016-11-15: Fixed a psq_l test skipping the next test on failure.
 #    - 2016-11-14: Added a TEST_UNDOCUMENTED symbol (enabled by default)
@@ -11721,9 +11723,9 @@ get_load_address:
    blt 0b
 
    # frsqrte (precise output: denormal inputs)
-0: lis %r14,0x0010
-   lis %r15,0x00A0
-   lis %r12,0x10
+0: lis %r14,0x0002
+   lis %r15,0x0014
+   lis %r12,2
 0: stw %r14,0(%r4)
    stw %r0,4(%r4)
    lfd %f3,0(%r4)
@@ -19167,6 +19169,271 @@ get_load_address:
    bl check_ps_noresult
    mtfsb0 24
 
+.if TEST_RECIPROCAL_TABLES
+
+   # If frD[ps0] and FPSCR match the expected output but frD[ps1] does not,
+   # these tests will store frD[ps1] instead of frD[ps0] to word 2 of the
+   # failure record and set the lowest bit of word 4 (nominally the value
+   # of FPSCR after the instruction under test) to indicate that fact.
+
+   # ps_res (precise output: basic tests)
+0: bl 1f
+1: mflr %r3
+   addi %r14,%r3,2f-1b
+   addi %r15,%r3,0f-1b
+   b 0f
+   # 12 bytes per entry: input, output, expected FPSCR if in ps0
+2: .int 0x40000000,0x3EFFF800,0x00004000
+   .int 0xC0000000,0xBEFFF800,0x00008000
+   .int 0x7F7FFFFF,0x00200020,0x88034000
+   .int 0xFF7FFFFF,0x80200020,0x88038000
+   .int 0x00000001,0x7F7FFFFF,0x90024000
+   .int 0x80000001,0xFF7FFFFF,0x90028000
+   .int 0x001FFFFF,0x7F7FFFFF,0x90024000
+   .int 0x801FFFFF,0xFF7FFFFF,0x90028000
+   .int 0x00200000,0x7F7FF800,0x00004000
+   .int 0x80200000,0xFF7FF800,0x00008000
+0: lfs %f3,0(%r14)
+   mtfsf 255,%f0
+   ps_res %f5,%f3
+   bl record
+   mffs %f4
+   stfd %f4,0(%r4)
+   stfs %f5,8(%r4)
+   ps_merge10 %f5,%f5,%f5
+   stfs %f5,12(%r4)
+   lwz %r3,8(%r4)
+   lwz %r7,4(%r14)
+   lwz %r8,4(%r4)
+   lwz %r9,8(%r14)
+   cmpw %r3,%r7
+   bne 1f
+   cmpw %r8,%r9
+   bne 1f
+   lwz %r3,12(%r4)
+   cmpw %r3,%r7
+   beq 2f
+   # Low bit of word 4 (FPSCR) set indicates that the error was in ps1.
+   ori %r8,%r8,1
+1: stw %r3,8(%r6)
+   stw %r7,12(%r6)
+   stw %r8,16(%r6)
+   lwz %r3,0(%r14)
+   stw %r3,20(%r6)
+   addi %r6,%r6,32
+2: addi %r14,%r14,12
+   cmpw %r14,%r15
+   blt 0b
+
+   # ps_res (precise output: all base and delta values)
+0: lis %r14,0x4000
+   lis %r15,0x4080
+   lis %r12,0x0001
+0: stw %r14,0(%r4)
+   lfs %f3,0(%r4)
+   bl calc_fres
+   stfs %f4,4(%r4)
+   mr %r11,%r3
+   mtfsf 255,%f0
+   ps_mr %f4,%f3
+   ps_res %f5,%f4
+   bl record
+   lwz %r7,4(%r4)
+   stfs %f5,8(%r4)
+   ps_merge10 %f5,%f5,%f5
+   stfs %f5,12(%r4)
+   lwz %r3,8(%r4)
+   cmpw %r3,%r7
+   mffs %f4
+   stfd %f4,16(%r4)
+   lwz %r7,20(%r4)
+   bne 1f
+   cmpw %r7,%r11
+   bne 1f
+   lwz %r3,12(%r4)
+   lwz %r8,4(%r4)
+   cmpw %r3,%r8
+   beq 2f
+   ori %r7,%r7,1
+1: stw %r3,8(%r6)
+   lwz %r3,4(%r4)
+   stw %r3,12(%r6)
+   stw %r7,16(%r6)
+   lwz %r3,0(%r4)
+   stw %r3,20(%r6)
+   addi %r6,%r6,32
+2: add %r14,%r14,%r12
+   cmpw %r14,%r15
+   blt 0b
+
+   # ps_res (precise output: input precision and FI)
+0: lis %r14,0x4000
+   ori %r15,%r14,0x200
+   li %r12,1
+0: stw %r14,0(%r4)
+   lfs %f3,0(%r4)
+   bl calc_fres
+   stfs %f4,4(%r4)
+   mr %r11,%r3
+   mtfsf 255,%f0
+   ps_mr %f5,%f3
+   ps_res %f5,%f5
+   bl record
+   lwz %r7,4(%r4)
+   stfs %f5,8(%r4)
+   ps_merge10 %f5,%f5,%f5
+   stfs %f5,12(%r4)
+   lwz %r3,8(%r4)
+   cmpw %r3,%r7
+   mffs %f4
+   stfd %f4,16(%r4)
+   lwz %r7,20(%r4)
+   bne 1f
+   cmpw %r7,%r11
+   bne 1f
+   lwz %r3,12(%r4)
+   lwz %r8,4(%r4)
+   cmpw %r3,%r8
+   beq 2f
+   ori %r7,%r7,1
+1: stw %r3,8(%r6)
+   lwz %r3,4(%r4)
+   stw %r3,12(%r6)
+   stw %r7,16(%r6)
+   lwz %r3,0(%r4)
+   stw %r3,20(%r6)
+   addi %r6,%r6,32
+2: add %r14,%r14,%r12
+   cmpw %r14,%r15
+   blt 0b
+
+   # ps_res (precise output: denormal inputs)
+0: lis %r14,0x0010
+   lis %r15,0x00A0
+   lis %r12,0x10
+0: stw %r14,0(%r4)
+   lfs %f3,0(%r4)
+   bl calc_fres
+   stfs %f4,4(%r4)
+   mr %r11,%r3
+   mtfsf 255,%f0
+   ps_mr %f13,%f3
+   ps_res %f5,%f13
+   bl record
+   lwz %r7,4(%r4)
+   stfs %f5,8(%r4)
+   ps_merge10 %f5,%f5,%f5
+   stfs %f5,12(%r4)
+   lwz %r3,8(%r4)
+   cmpw %r3,%r7
+   mffs %f4
+   stfd %f4,16(%r4)
+   lwz %r7,20(%r4)
+   bne 1f
+   cmpw %r7,%r11
+   bne 1f
+   lwz %r3,12(%r4)
+   lwz %r8,4(%r4)
+   cmpw %r3,%r8
+   beq 2f
+   ori %r7,%r7,1
+1: stw %r3,8(%r6)
+   lwz %r3,4(%r4)
+   stw %r3,12(%r6)
+   stw %r7,16(%r6)
+   lwz %r3,0(%r4)
+   stw %r3,20(%r6)
+   addi %r6,%r6,32
+2: add %r14,%r14,%r12
+   cmpw %r14,%r15
+   blt 0b
+
+   # ps_res (precise output: input precision for denormals)
+0: lis %r14,0x003F
+   ori %r14,%r14,0xFE00
+   lis %r15,0x0040
+   ori %r15,%r15,0x0200
+   li %r12,0x20
+0: stw %r14,0(%r4)
+   lfs %f3,0(%r4)
+   bl calc_fres
+   stfs %f4,4(%r4)
+   mr %r11,%r3
+   mtfsf 255,%f0
+   ps_mr %f14,%f3
+   ps_res %f5,%f14
+   bl record
+   lwz %r7,4(%r4)
+   stfs %f5,8(%r4)
+   ps_merge10 %f5,%f5,%f5
+   stfs %f5,12(%r4)
+   lwz %r3,8(%r4)
+   cmpw %r3,%r7
+   mffs %f4
+   stfd %f4,16(%r4)
+   lwz %r7,20(%r4)
+   bne 1f
+   cmpw %r7,%r11
+   bne 1f
+   lwz %r3,12(%r4)
+   lwz %r8,4(%r4)
+   cmpw %r3,%r8
+   beq 2f
+   ori %r7,%r7,1
+1: stw %r3,8(%r6)
+   lwz %r3,4(%r4)
+   stw %r3,12(%r6)
+   stw %r7,16(%r6)
+   lwz %r3,0(%r4)
+   stw %r3,20(%r6)
+   addi %r6,%r6,32
+2: add %r14,%r14,%r12
+   cmpw %r14,%r15
+   blt 0b
+
+   # ps_res (precise output: denormal outputs)
+0: lis %r14,0x7E00
+   lis %r15,0x7F80
+   lis %r12,0x10
+0: stw %r14,0(%r4)
+   lfs %f3,0(%r4)
+   bl calc_fres
+   stfs %f4,4(%r4)
+   mr %r11,%r3
+   mtfsf 255,%f0
+   ps_mr %f15,%f3
+   ps_res %f5,%f15
+   bl record
+   lwz %r7,4(%r4)
+   stfs %f5,8(%r4)
+   ps_merge10 %f5,%f5,%f5
+   stfs %f5,12(%r4)
+   lwz %r3,8(%r4)
+   cmpw %r3,%r7
+   mffs %f4
+   stfd %f4,16(%r4)
+   lwz %r7,20(%r4)
+   bne 1f
+   cmpw %r7,%r11
+   bne 1f
+   lwz %r3,12(%r4)
+   lwz %r8,4(%r4)
+   cmpw %r3,%r8
+   beq 2f
+   ori %r7,%r7,1
+1: stw %r3,8(%r6)
+   lwz %r3,4(%r4)
+   stw %r3,12(%r6)
+   stw %r7,16(%r6)
+   lwz %r3,0(%r4)
+   stw %r3,20(%r6)
+   addi %r6,%r6,32
+2: add %r14,%r14,%r12
+   cmpw %r14,%r15
+   blt 0b
+
+.endif  # TEST_RECIPROCAL_TABLES
+
    # ps_rsqrte
 0: ps_rsqrte %f3,%f29   # +normal
    bl record
@@ -19322,8 +19589,93 @@ get_load_address:
    bl check_ps_pnorm
    mtfsb0 27
 
+   # ps_rsqrte (excess range on input)
+0: mtfsf 255,%f0
+   lfd %f3,320(%r31)    # HUGE_VAL
+   isync
+   ps_merge00 %f3,%f3,%f3
+   isync
+   lfd %f3,320(%r31)
+   isync
+   ps_rsqrte %f13,%f3
+   bl record
+   mffs %f4
+   stfd %f4,8(%r4)
+   isync
+   stfd %f13,0(%r4)
+   isync
+   ps_merge11 %f3,%f13,%f13
+   stfs %f3,8(%r4)
+   lwz %r3,0(%r4)
+   lwz %r7,4(%r4)
+   lwz %r8,8(%r4)
+   lwz %r9,12(%r4)
+   # The mantissa of ps0 is rounded to single precision, but the exponent
+   # keeps its full double-precision range.
+   lis %r10,0x1FF0
+   ori %r10,%r10,0x0008
+   lis %r11,0x2000
+   # ps1's exponent gets reset to 0 (unbiased).
+   lis %r12,0x3F80
+   ori %r12,%r12,0x0041
+   cmpw %r3,%r10
+   bne 1f
+   cmpw %r7,%r11
+   bne 1f
+   cmpw %r8,%r12
+   bne 1f
+   cmpwi %r9,0x4000
+   beq 0f
+1: stw %r3,8(%r6)
+   stw %r7,12(%r6)
+   stw %r8,16(%r6)
+   stw %r9,20(%r6)
+   addi %r6,%r6,32
+0: mtfsf 255,%f0
+   lfd %f3,376(%r31)    # Minimum double-precision denormal
+   isync
+   ps_merge00 %f3,%f3,%f3
+   isync
+   lfd %f4,376(%r31)
+   isync
+   ps_rsqrte %f13,%f4
+   bl record
+   mffs %f4
+   stfd %f4,8(%r4)
+   isync
+   stfd %f13,0(%r4)
+   isync
+   ps_merge11 %f3,%f13,%f13
+   stfs %f3,8(%r4)
+   lwz %r3,0(%r4)
+   lwz %r7,4(%r4)
+   lwz %r8,8(%r4)
+   lwz %r9,12(%r4)
+   # ps0's exponent still keeps its full range.
+   lis %r10,0x617F
+   ori %r10,%r10,0xFE80
+   li %r11,0
+   # ps1's exponent gets reset, in this case to -1.
+   lis %r12,0x3F7F
+   ori %r12,%r12,0xF400
+   cmpw %r3,%r10
+   bne 1f
+   cmpw %r7,%r11
+   bne 1f
+   cmpw %r8,%r12
+   bne 1f
+   cmpwi %r9,0x4000
+   beq 0f
+1: stw %r3,8(%r6)
+   stw %r7,12(%r6)
+   stw %r8,16(%r6)
+   stw %r9,20(%r6)
+   addi %r6,%r6,32
+
    # ps_rsqrte.
-0: ps_rsqrte. %f3,%f11    # SNaN
+0: mtcr %r0
+   mtfsf 255,%f0
+   ps_rsqrte. %f3,%f11  # SNaN
    bl record
    mfcr %r3
    lis %r7,0x0A00
@@ -19362,6 +19714,218 @@ get_load_address:
    fmr %f5,%f4
    bl check_ps_noresult
    mtfsb0 24
+
+.if TEST_RECIPROCAL_TABLES
+
+   # As for ps_res tests, a set low bit in word 4 of the failure record
+   # indicates that an error was detected in frD[ps1] rather than frD[ps0]
+   # or FPSCR, and (since ps_rsqrte's inputs are single-precision) the
+   # input is stored to word 5 of the failure record.
+
+   # ps_rsqrte (precise output: basic tests)
+0: bl 1f
+1: mflr %r3
+   addi %r14,%r3,2f-1b
+   addi %r15,%r3,0f-1b
+   b 0f
+   # 12 bytes per entry: input, output, expected FPSCR
+2: .int 0x40000000, 0x3F34FD00, 0x00004000
+   .int 0x40800000, 0x3EFFF400, 0x00004000
+   .int 0x7F7FFFFF, 0x1F800041, 0x00004000
+   .int 0x00800000, 0x5EFFF400, 0x00004000
+   .int 0x00000001, 0x64B4FD00, 0x00004000
+0: lfs %f3,0(%r14)
+   mtfsf 255,%f0
+   ps_rsqrte %f5,%f3
+   bl record
+   mffs %f4
+   stfd %f4,0(%r4)
+   stfs %f5,8(%r4)
+   ps_merge10 %f5,%f5,%f5
+   stfs %f5,12(%r4)
+   lwz %r3,8(%r4)
+   lwz %r7,4(%r14)
+   lwz %r10,4(%r4)
+   lwz %r11,8(%r14)
+   cmpw %r3,%r7
+   bne 1f
+   cmpw %r10,%r11
+   bne 1f
+   lwz %r3,12(%r4)
+   cmpw %r3,%r7
+   beq 2f
+   ori %r10,%r10,1
+1: stw %r3,8(%r6)
+   stw %r7,12(%r6)
+   stw %r10,16(%r6)
+   lwz %r3,0(%r14)
+   stw %r3,20(%r6)
+   addi %r6,%r6,32
+2: addi %r14,%r14,12
+   cmpw %r14,%r15
+   blt 0b
+
+   # ps_rsqrte (precise output: all base and delta values)
+0: lis %r14,0x4080
+   lis %r15,0x4180
+   lis %r12,2
+0: stw %r14,0(%r4)
+   lfs %f3,0(%r4)
+   bl calc_ps_rsqrte
+   stfs %f4,8(%r4)
+   mr %r11,%r3
+   mtfsf 255,%f0
+   ps_mr %f4,%f3
+   ps_rsqrte %f5,%f4
+   bl record
+   stfs %f5,16(%r4)
+   ps_merge11 %f5,%f5,%f5
+   stfs %f5,20(%r4)
+   lwz %r3,16(%r4)
+   lwz %r7,8(%r4)
+   mffs %f4
+   stfd %f4,24(%r4)
+   lwz %r10,28(%r4)
+   cmpw %r3,%r7
+   bne 1f
+   cmpw %r10,%r11
+   bne 1f
+   lwz %r3,20(%r4)
+   cmpw %r3,%r7
+   beq 2f
+   ori %r10,%r10,1
+1: stw %r3,8(%r6)
+   stw %r7,12(%r6)
+   stw %r10,16(%r6)
+   lwz %r3,0(%r4)
+   stw %r3,20(%r6)
+   addi %r6,%r6,32
+2: add %r14,%r14,%r12
+   cmpw %r14,%r15
+   blt 0b
+
+   # ps_rsqrte (precise output: input precision)
+0: lis %r14,0x40FF
+   ori %r14,%r14,0x8000
+   lis %r15,0x4100
+   ori %r14,%r14,0x8000
+   li %r12,0x80
+0: stw %r14,0(%r4)
+   lfs %f3,0(%r4)
+   bl calc_ps_rsqrte
+   stfs %f4,8(%r4)
+   mr %r11,%r3
+   mtfsf 255,%f0
+   ps_mr %f5,%f3
+   ps_rsqrte %f5,%f5
+   bl record
+   stfs %f5,16(%r4)
+   ps_merge11 %f5,%f5,%f5
+   stfs %f5,20(%r4)
+   lwz %r3,16(%r4)
+   lwz %r7,8(%r4)
+   mffs %f4
+   stfd %f4,24(%r4)
+   lwz %r10,28(%r4)
+   cmpw %r3,%r7
+   bne 1f
+   cmpw %r10,%r11
+   bne 1f
+   lwz %r3,20(%r4)
+   cmpw %r3,%r7
+   beq 2f
+   ori %r10,%r10,1
+1: stw %r3,8(%r6)
+   stw %r7,12(%r6)
+   stw %r10,16(%r6)
+   lwz %r3,0(%r4)
+   stw %r3,20(%r6)
+   addi %r6,%r6,32
+2: add %r14,%r14,%r12
+   cmpw %r14,%r15
+   blt 0b
+
+   # ps_rsqrte (precise output: denormal inputs)
+0: lis %r14,0x0010
+   lis %r15,0x00A0
+   lis %r12,0x10
+0: stw %r14,0(%r4)
+   lfs %f3,0(%r4)
+   bl calc_ps_rsqrte
+   stfs %f4,8(%r4)
+   mr %r11,%r3
+   mtfsf 255,%f0
+   ps_mr %f13,%f3
+   ps_rsqrte %f5,%f13
+   bl record
+   stfs %f5,16(%r4)
+   ps_merge11 %f5,%f5,%f5
+   stfs %f5,20(%r4)
+   lwz %r3,16(%r4)
+   lwz %r7,8(%r4)
+   mffs %f4
+   stfd %f4,24(%r4)
+   lwz %r10,28(%r4)
+   cmpw %r3,%r7
+   bne 1f
+   cmpw %r10,%r11
+   bne 1f
+   lwz %r3,20(%r4)
+   cmpw %r3,%r7
+   beq 2f
+   ori %r10,%r10,1
+1: stw %r3,8(%r6)
+   stw %r7,12(%r6)
+   stw %r10,16(%r6)
+   lwz %r3,0(%r4)
+   stw %r3,20(%r6)
+   addi %r6,%r6,32
+2: add %r14,%r14,%r12
+   cmpw %r14,%r15
+   blt 0b
+
+   # ps_rsqrte (precise output: input precision for denormals)
+0: lis %r14,0x001F
+   ori %r14,%r14,0xFE00
+   lis %r15,0x0020
+   ori %r15,%r15,0x0200
+   li %r12,0x10
+0: stw %r14,0(%r4)
+   lfs %f3,0(%r4)
+   bl calc_ps_rsqrte
+   stfs %f4,8(%r4)
+   mr %r11,%r3
+   mtfsf 255,%f0
+   ps_mr %f14,%f3
+   ps_rsqrte %f5,%f14
+   bl record
+   stfs %f5,16(%r4)
+   ps_merge11 %f5,%f5,%f5
+   stfs %f5,20(%r4)
+   lwz %r3,16(%r4)
+   lwz %r7,8(%r4)
+   mffs %f4
+   stfd %f4,24(%r4)
+   lwz %r10,28(%r4)
+   cmpw %r3,%r7
+   bne 1f
+   cmpw %r10,%r11
+   bne 1f
+   lwz %r3,20(%r4)
+   cmpw %r3,%r7
+   beq 2f
+   ori %r10,%r10,1
+1: stw %r3,8(%r6)
+   stw %r7,12(%r6)
+   stw %r10,16(%r6)
+   lwz %r3,0(%r4)
+   stw %r3,20(%r6)
+   addi %r6,%r6,32
+2: add %r14,%r14,%r12
+   cmpw %r14,%r15
+   blt 0b
+
+.endif  # TEST_RECIPROCAL_TABLES
 
    ########################################################################
    # Paired-single select instruction
@@ -21622,6 +22186,39 @@ calc_frsqrte:
    stfd %f5,0x7000(%r4)
    lwz %r3,0x7004(%r4)
    rlwinm %r3,%r3,0,15,19
+   blr
+
+   ########################################################################
+   # Software implementation of the ps_rsqrte instruction.
+   # On entry:
+   #     F1 = 1.0
+   #     F3 = ps_rsqrte instruction input (as a scalar value)
+   # On return:
+   #     F4 = expected output
+   #     F5 = destroyed
+   #     R3 = expected FPSCR[FPRF]
+   #     R7 = destroyed
+   #     R8 = destroyed
+   #     R9 = destroyed
+   #     R10 = destroyed
+   #     R11 = destroyed
+   #     CR0 = destroyed
+   #     XER[CA] = destroyed
+   #     0x6FFC..0x7007(%r4) = destroyed
+   ########################################################################
+
+calc_ps_rsqrte:
+   mflr %r9
+   stw %r9,0x6FFC(%r4)
+   bl calc_frsqrte
+   lwz %r9,0x6FFC(%r4)
+   mtlr %r9
+   # Truncate to single precision.
+   stfd %f4,0x7000(%r4)
+   lwz %r7,0x7004(%r4)
+   andis. %r7,%r7,0xE000
+   stw %r7,0x7004(%r4)
+   lfd %f4,0x7000(%r4)
    blr
 
 .endif  # TEST_RECIPROCAL_TABLES

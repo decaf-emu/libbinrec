@@ -49,12 +49,12 @@ int main(void)
     }
 
     int exitcode = EXIT_SUCCESS;
-    const int expected_errors = 3;
+    const int expected_errors = 5;
     const int result = state.gpr[3];
     if (result < 0) {
         exitcode = EXIT_FAILURE;
         printf("Test failed to bootstrap (error %d)\n", result);
-    } else if (result > expected_errors) {  // FIXME: temp > instead of != since we might get fewer errors due to uninitialized data
+    } else if (result != expected_errors) {
         exitcode = EXIT_FAILURE;
         printf("Wrong number of errors returned (expected %d, got %d)\n",
                expected_errors, result);

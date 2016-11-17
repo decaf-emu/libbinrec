@@ -52,12 +52,12 @@ int main(void)
     EXPECT_STREQ(log, "");
 
     int exitcode = EXIT_SUCCESS;
-    const int expected_errors = 3;
+    const int expected_errors = 5;
     const int result = state.gpr[3];
     if (result < 0) {
         exitcode = EXIT_FAILURE;
         printf("Test failed to bootstrap (error %d)\n", result);
-    } else if (result > expected_errors) {  // FIXME: temp > instead of != since we might get fewer errors due to uninitialized data
+    } else if (result != expected_errors) {
         exitcode = EXIT_FAILURE;
         printf("Wrong number of errors returned (expected %d, got %d)\n",
                expected_errors, result);
@@ -68,6 +68,8 @@ int main(void)
     // - 7C60212D 0100A5E0 (stwcx. to different address)
     // - C89F0008 0100B778 (lfd/ps data hazard)
     // - 10652C20 0100B81C (ps_* read double-precision denormal as 00800000)
+    // - 11A01834 01011990 (ps_rsqrte on huge double-precision value)
+    // - 11A02034 01011A24 (ps_rsqrte on tiny double-precision value)
 
     free(memory);
     return exitcode;
