@@ -16,7 +16,29 @@ compilation, which trades faster execution on average (translated code
 can approach a 1:1 source-to-native instruction ratio, as opposed to
 the dozens of native instructions which may be required to interpret
 each source instruction on the fly) for additional overhead when
-executing a block of code for the first time.
+executing a block of code for the first time.  To this end, the library
+is written so that in the default state (with no optimizations enabled),
+it will produce code that runs both accurately and reasonably quickly
+while keeping compilation time to a minimum.  The library also provides
+several optimization flags which allow trading longer compilation time
+for faster execution or disabling emulation of rarely-used features of
+the guest architecture (such as floating-point status bits) to
+streamline the generated code.
+
+While libbinrec is designed for use in a JIT environment, it can be used
+in any situation requiring translation of machine code between supported
+architectures.  The machine code produced by the library is independent
+of both libbinrec itself and the environment in which it is run: a
+client program encountering a new guest code sequence could translate it
+once with no optimization to quickly obtain runnable code, then signal a
+background process to translate the same code at a higher optimization
+level and switch to that code when it is ready.  (This is true even if
+the background process is running on a separate computer with a
+different architecture; it is entirely possible, for example, to
+translate from PowerPC to x86-64 while running on a 32-bit ARM CPU.)
+By implication, the generated code is also fully relocatable, so it can
+be safely stored in a persistent cache and reused for later invocations
+of the same program.
 
 Currently, libbinrec only supports the PowerPC 32-bit instruction set
 implemented in PowerPC 6xx/7xx processors as input and 64-bit x86
@@ -97,16 +119,14 @@ Limitations
 libbinrec assumes that the input program it is given is valid machine
 code for the selected input architecture (referred to as the "guest"
 architecture in library documentation).  The library will correctly
-detect and translate explicit illegal instructions, such as the x86 UD2
-(0x0F 0x0B) or Motorola 68000 ILLEGAL (0x4AFC) instructions (note that
-neither of these architectures are currently supported as guests) or the
-all-zero PowerPC instruction word, but other byte sequences which do not
-repesent a valid instruction for the guest architecture may result in
-behavior different from a physical implementation of that architecture.
-As a consequence, libbinrec may not correctly translate programs which
-include deliberately invalid instruction encodings, such as to take
-advantage of undocumented behavior of a specific architecture
-implementation.
+detect and translate illegal instructions explicitly reserved as such
+by the architecture, such as the all-zero PowerPC instruction word, but
+other byte sequences which do not repesent a valid instruction for the
+guest architecture may result in behavior different from a physical
+implementation of that architecture.  As a consequence, libbinrec may
+not correctly translate programs which include deliberately invalid
+instruction encodings, such as to take advantage of undocumented
+behavior of a specific architecture implementation.
 
 More generally, libbinrec is designed to translate between architectures
 rather than hardware implementations; thus, as a rule, input code which

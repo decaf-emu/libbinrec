@@ -33,8 +33,11 @@ extern "C" {
  * interfaces to the library.  The library ABI (including those values and
  * offsets) will be kept consistent through revisions of a major version,
  * such that a program compiled against library version x.y (x >= 1) will
- * also run correctly using library version x.z (z > y), but the ABI may
- * change between major versions, or at any time before version 1.0.
+ * also run correctly using library version x.z (if z < y, features such
+ * as optimization flags only defined later than version x.z may be
+ * ignored, but the generated code will behave in a compatible manner).
+ * However, the ABI may change between major versions, or at any time
+ * before version 1.0.
  *
  *
  * Guest-specific notes
@@ -182,14 +185,26 @@ extern "C" {
  * Intel/AMD x86 64-bit architecture (BINREC_ARCH_X86_*)
  * -----------------------------------------------------
  * Translated code assumes support for all instruction set extensions
- * through SSE3.  Use of later extensions can be enabled by setting
- * appropriate feature bits (BINREC_FEATURE_X86_*) in the host_features
- * field of binrec_setup_t.
+ * through SSE3.  (More specifically, the following CPUID feature bits are
+ * assumed to be set: CMOV, SSE, SSE2, and SSE3.)  Use of later extensions
+ * can be enabled by setting appropriate feature bits (BINREC_FEATURE_X86_*)
+ * in the host_features field of binrec_setup_t.
  *
  * Translated code must be located at a 16-byte-aligned address for correct
  * behavior.  If the code is not correctly aligned, certain floating-point
- * operations may crash due to misaligned accesses.  libbinrec will always
- * request 16-byte alignment if a code_malloc() callback is supplied.
+ * operations may raise exceptions (specifically the general-protection
+ * exception, "#GP" as described in Intel documentation).  libbinrec will
+ * always request 16-byte alignment if a code_malloc() callback is supplied.
+ *
+ * Translated code maintains the host stack at 16-byte alignment, as
+ * required by both System V and Windows ABIs.  If the client program calls
+ * translated code with a misaligned stack, floating-point code may raise
+ * exceptions due to unaligned stack accesses.
+ *
+ * Loads of 64-bit floating point ("double") 2-element vectors must be
+ * 16-byte aligned, or an exception will be raised.  Other data types can
+ * be loaded from any alignment, though values not aligned to a multiple of
+ * the value size may take additional CPU cycles to load.
  *
  * Full (non-rounding) support for fused multiply-add operations is only
  * supported on CPUs which support the FMA3 instruction set.  On CPUs
