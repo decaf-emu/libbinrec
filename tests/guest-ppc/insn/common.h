@@ -58,6 +58,8 @@ static const binrec_setup_t setup = {
     .state_offset_sc_handler = offsetof(PPCInsnTestState,sc_handler),
     .state_offset_trap_handler = offsetof(PPCInsnTestState,trap_handler),
     .state_offset_branch_callback = offsetof(PPCInsnTestState,branch_callback),
+    .state_offset_fres_lut = offsetof(PPCInsnTestState,fres_lut),
+    .state_offset_frsqrte_lut = offsetof(PPCInsnTestState,frsqrte_lut),
 };
 
 #endif  // TESTS_GUEST_PPC_INSN_COMMON_H

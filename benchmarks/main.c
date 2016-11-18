@@ -379,7 +379,7 @@ static bool call_native(void)
 /*-----------------------------------------------------------------------*/
 
 /**
- * log_callback:  Log callback for translation.
+ * log_callback:  Logging callback for translation.
  */
 static void log_callback(UNUSED void *userdata, binrec_loglevel_t level,
                          const char *message)
@@ -393,7 +393,6 @@ static void log_callback(UNUSED void *userdata, binrec_loglevel_t level,
         fprintf(stderr, "[%s] %s\n", level_prefix[level], message);
     }
 }
-
 
 /*-----------------------------------------------------------------------*/
 

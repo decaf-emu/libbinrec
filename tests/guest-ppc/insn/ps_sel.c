@@ -10,7 +10,7 @@
 #include "tests/guest-ppc/insn/common.h"
 
 static const uint8_t input[] = {
-    0x10,0x22,0x20,0xEE,  // fsel %f1,%f2,%f3,%f4
+    0x10,0x22,0x20,0xEE,  // ps_sel f1,f2,f3,f4
 };
 
 static const unsigned int guest_opt = 0;

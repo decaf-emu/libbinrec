@@ -1,0 +1,118 @@
+/*
+ * libbinrec: a recompiling translator for machine code
+ * Copyright (c) 2016 Andrew Church <achurch@achurch.org>
+ *
+ * This software may be copied and redistributed under certain conditions;
+ * see the file "COPYING" in the source code distribution for details.
+ * NO WARRANTY is provided with this software.
+ */
+
+#include "tests/guest-ppc/insn/common.h"
+
+static const uint8_t input[] = {
+    0x10,0x22,0x00,0xF2,  // ps_mul f1,f2,f3
+};
+
+static const unsigned int guest_opt = BINREC_OPT_G_PPC_NO_FPSCR_STATE;
+static const unsigned int common_opt = 0;
+
+static const bool expected_success = true;
+
+static const char expected[] =
+    "[info] Scanning terminated at requested limit 0x3\n"
+    "    0: LOAD_ARG   r1, 0\n"
+    "    1: LOAD_ARG   r2, 1\n"
+    "    2: GET_ALIAS  r3, a3\n"
+    "    3: GET_ALIAS  r4, a4\n"
+    "    4: VEXTRACT   r5, r3, 0\n"
+    "    5: VEXTRACT   r6, r4, 0\n"
+    "    6: SET_ALIAS  a5, r5\n"
+    "    7: SET_ALIAS  a6, r6\n"
+    "    8: BITCAST    r7, r6\n"
+    "    9: BITCAST    r8, r5\n"
+    "   10: BFEXT      r9, r7, 0, 52\n"
+    "   11: GOTO_IF_Z  r9, L1\n"
+    "   12: BFEXT      r10, r8, 52, 11\n"
+    "   13: BFEXT      r11, r7, 52, 11\n"
+    "   14: SEQI       r12, r10, 2047\n"
+    "   15: GOTO_IF_NZ r12, L1\n"
+    "   16: SEQI       r13, r11, 2047\n"
+    "   17: GOTO_IF_NZ r13, L1\n"
+    "   18: GOTO_IF_NZ r11, L2\n"
+    "   19: CLZ        r14, r9\n"
+    "   20: ADDI       r15, r14, -11\n"
+    "   21: SUB        r16, r10, r15\n"
+    "   22: SGTSI      r17, r16, 0\n"
+    "   23: GOTO_IF_Z  r17, L1\n"
+    "   24: LOAD_IMM   r18, 0x8000000000000000\n"
+    "   25: AND        r19, r7, r18\n"
+    "   26: SLL        r20, r9, r15\n"
+    "   27: BFINS      r21, r8, r16, 52, 11\n"
+    "   28: OR         r22, r19, r20\n"
+    "   29: BITCAST    r23, r21\n"
+    "   30: BITCAST    r24, r22\n"
+    "   31: SET_ALIAS  a5, r23\n"
+    "   32: SET_ALIAS  a6, r24\n"
+    "   33: LABEL      L2\n"
+    "   34: GET_ALIAS  r25, a6\n"
+    "   35: BITCAST    r26, r25\n"
+    "   36: ANDI       r27, r26, -134217728\n"
+    "   37: ANDI       r28, r26, 134217728\n"
+    "   38: ADD        r29, r27, r28\n"
+    "   39: BITCAST    r30, r29\n"
+    "   40: SET_ALIAS  a6, r30\n"
+    "   41: BFEXT      r31, r29, 52, 11\n"
+    "   42: SEQI       r32, r31, 2047\n"
+    "   43: GOTO_IF_Z  r32, L1\n"
+    "   44: LOAD_IMM   r33, 0x10000000000000\n"
+    "   45: SUB        r34, r29, r33\n"
+    "   46: BITCAST    r35, r34\n"
+    "   47: SET_ALIAS  a6, r35\n"
+    "   48: BFEXT      r36, r8, 52, 11\n"
+    "   49: GOTO_IF_Z  r36, L3\n"
+    "   50: SGTUI      r37, r36, 2045\n"
+    "   51: GOTO_IF_NZ r37, L1\n"
+    "   52: ADD        r38, r8, r33\n"
+    "   53: BITCAST    r39, r38\n"
+    "   54: SET_ALIAS  a5, r39\n"
+    "   55: GOTO       L1\n"
+    "   56: LABEL      L3\n"
+    "   57: SLLI       r40, r8, 1\n"
+    "   58: BFINS      r41, r8, r40, 0, 63\n"
+    "   59: BITCAST    r42, r41\n"
+    "   60: SET_ALIAS  a5, r42\n"
+    "   61: LABEL      L1\n"
+    "   62: GET_ALIAS  r43, a5\n"
+    "   63: GET_ALIAS  r44, a6\n"
+    "   64: VINSERT    r45, r3, r43, 0\n"
+    "   65: VINSERT    r46, r4, r44, 0\n"
+    "   66: FMUL       r47, r45, r46\n"
+    "   67: VFCVT      r48, r47\n"
+    "   68: VFCVT      r49, r48\n"
+    "   69: SET_ALIAS  a2, r49\n"
+    "   70: LOAD_IMM   r50, 4\n"
+    "   71: SET_ALIAS  a1, r50\n"
+    "   72: RETURN\n"
+    "\n"
+    "Alias 1: int32 @ 956(r1)\n"
+    "Alias 2: float64[2] @ 400(r1)\n"
+    "Alias 3: float64[2] @ 416(r1)\n"
+    "Alias 4: float64[2] @ 432(r1)\n"
+    "Alias 5: float64, no bound storage\n"
+    "Alias 6: float64, no bound storage\n"
+    "\n"
+    "Block 0: <none> --> [0,11] --> 1,11\n"
+    "Block 1: 0 --> [12,15] --> 2,11\n"
+    "Block 2: 1 --> [16,17] --> 3,11\n"
+    "Block 3: 2 --> [18,18] --> 4,6\n"
+    "Block 4: 3 --> [19,23] --> 5,11\n"
+    "Block 5: 4 --> [24,32] --> 6\n"
+    "Block 6: 5,3 --> [33,43] --> 7,11\n"
+    "Block 7: 6 --> [44,49] --> 8,10\n"
+    "Block 8: 7 --> [50,51] --> 9,11\n"
+    "Block 9: 8 --> [52,55] --> 11\n"
+    "Block 10: 7 --> [56,60] --> 11\n"
+    "Block 11: 10,9,0,1,2,4,6,8 --> [61,72] --> <none>\n"
+    ;
+
+#include "tests/rtl-disasm-test.i"

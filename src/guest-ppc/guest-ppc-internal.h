@@ -510,15 +510,13 @@ extern void guest_ppc_flush_cr(GuestPPCContext *ctx, bool make_live);
 
 /**
  * guest_ppc_flush_fpscr:  Flush the FR/FI/FPRF alias to the full FPSCR
- * register.
+ * register.  FPSCR is not made live if it was not live already.
  *
  * [Parameters]
  *     ctx: Translation context.
- *     make_live: True to leave the flushed FPSCR value live in its alias,
- *         false to leave the alias liveness state unchanged.
  */
 #define guest_ppc_flush_fpscr INTERNAL(guest_ppc_flush_fpscr)
-extern void guest_ppc_flush_fpscr(GuestPPCContext *ctx, bool make_live);
+extern void guest_ppc_flush_fpscr(GuestPPCContext *ctx);
 
 /*-------- Input code scanning (guest-ppc-scan.c) --------*/
 

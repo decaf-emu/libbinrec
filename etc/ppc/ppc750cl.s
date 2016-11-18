@@ -3,6 +3,7 @@
 # No copyright is claimed on this file.
 #
 # Update history:
+#    - 2016-11-18: Added more tests for various instructions.
 #    - 2016-11-16: Added reciprocal table tests for ps_res and ps_rsqrte.
 #    - 2016-11-16: Added tests for excess range on ps_merge* and ps_rsqrte.
 #    - 2016-11-16: Added more tests for paired-single exception handling.
@@ -15717,6 +15718,16 @@ get_load_address:
    fmr %f4,%f31
    fmr %f5,%f0
    bl check_ps_pnorm
+0: ps_merge00 %f13,%f9,%f11  # (infinity + -infinity, normal)
+   fneg %f5,%f9
+   ps_merge00 %f5,%f11,%f5
+   ps_merge00 %f4,%f11,%f1
+   ps_sum0 %f3,%f13,%f4,%f5
+   bl record
+   lfd %f4,168(%r31)
+   fmr %f5,%f1
+   bl add_fpscr_vxisi
+   bl check_ps_nan
 0: ps_merge00 %f4,%f1,%f11  # (normal + normal, NaN)
    ps_merge00 %f5,%f11,%f2
    ps_sum0 %f3,%f4,%f11,%f5 # Copying a NaN should not cause an exception.
@@ -15897,7 +15908,7 @@ get_load_address:
    bl check_ps_pnorm
 
    # ps_sum1 (different values in slots)
-0: ps_merge00 %f4,%f1,%f11  # (normal + normal, normal)
+0: ps_merge00 %f4,%f1,%f11  # (normal, normal + normal)
    ps_merge00 %f5,%f11,%f2  # NaNs in unused slots should be ignored.
    ps_merge00 %f13,%f0,%f11
    ps_sum1 %f3,%f4,%f13,%f5
@@ -15905,7 +15916,17 @@ get_load_address:
    fmr %f5,%f31
    fmr %f4,%f0
    bl check_ps_pnorm
-0: ps_merge00 %f4,%f1,%f11  # (normal + normal, NaN)
+0: ps_merge00 %f13,%f9,%f11  # (normal, infinity + -infinity)
+   fneg %f5,%f9
+   ps_merge00 %f5,%f11,%f5
+   ps_merge00 %f4,%f1,%f11
+   ps_sum1 %f3,%f13,%f4,%f5
+   bl record
+   lfd %f5,168(%r31)
+   fmr %f4,%f1
+   bl add_fpscr_vxisi
+   bl check_ps_nan
+0: ps_merge00 %f4,%f1,%f11  # (NaN, normal + normal)
    ps_merge00 %f5,%f11,%f2
    ps_sum1 %f3,%f4,%f11,%f5 # Copying a NaN should not cause an exception.
    bl record
