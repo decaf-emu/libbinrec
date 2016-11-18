@@ -70,7 +70,7 @@ static bool init_unit(GuestPPCContext *ctx)
         crb_changed |= ctx->blocks[i].crb_changed;
         ctx->fpscr_changed |= ctx->blocks[i].fpscr_changed;
     }
-    ctx->crb_changed = bitrev32(crb_changed);
+    ctx->crb_changed_bitrev = bitrev32(crb_changed);
 
     /* Allocate alias registers for all required guest registers. */
 

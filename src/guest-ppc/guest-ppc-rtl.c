@@ -256,7 +256,7 @@ static inline int get_crb(GuestPPCContext * const ctx, int index)
     } else {
         RTLUnit * const unit = ctx->unit;
         int reg;
-        if (ctx->crb_changed & (0x80000000u >> index)) {
+        if (ctx->crb_changed_bitrev & (0x80000000u >> index)) {
             ASSERT(ctx->alias.crb[index]);
             reg = rtl_alloc_register(unit, RTLTYPE_INT32);
             rtl_add_insn(unit, RTLOP_GET_ALIAS,
@@ -517,7 +517,7 @@ static inline void set_cr(GuestPPCContext * const ctx, int reg)
 static inline void set_crb(GuestPPCContext * const ctx, int index, int reg)
 {
     RTLUnit * const unit = ctx->unit;
-    ASSERT(ctx->crb_changed & (0x80000000u >> index));
+    ASSERT(ctx->crb_changed_bitrev & (0x80000000u >> index));
     if (ctx->last_set.crb[index] >= 0) {
         rtl_opt_kill_insn(unit, ctx->last_set.crb[index], false, false);
     }
@@ -901,7 +901,7 @@ static int merge_cr(GuestPPCContext *ctx, bool make_live)
 {
     RTLUnit * const unit = ctx->unit;
 
-    uint32_t crb_changed = ctx->crb_changed;
+    uint32_t crb_changed = ctx->crb_changed_bitrev;
     ASSERT(crb_changed != 0);  // We won't be called if nothing to merge.
 
     int cr;
@@ -8024,7 +8024,7 @@ void guest_ppc_flush_cr(GuestPPCContext *ctx, bool make_live)
 
     RTLUnit * const unit = ctx->unit;
 
-    if (ctx->crb_changed) {
+    if (ctx->crb_changed_bitrev) {
         const int cr = merge_cr(ctx, make_live);
         if (make_live) {
             set_cr(ctx, cr);

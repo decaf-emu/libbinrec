@@ -407,9 +407,9 @@ typedef struct GuestPPCContext {
     uint32_t ps1_is_safe;
     /* Set of CR bits which are modified by the unit.  These bits are
      * stored in the same order as the CR word, so that the MSB corresponds
-     * to CR bit 0 (this saves the cost of a bit-reverse operation every
-     * time we need to merge bits back to the CR word). */
-    uint32_t crb_changed;
+     * to CR bit 0; this saves the cost of a bit-reverse operation every
+     * time we need to merge bits back to the CR word. */
+    uint32_t crb_changed_bitrev;
     /* Set of CR bits which have live registers.  Bits are in natural order
      * (the LSB corresponds to CR bit 0), as with GuestPPCBlockInfo bitmaps. */
     uint32_t crb_dirty;
