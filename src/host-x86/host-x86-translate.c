@@ -5279,7 +5279,7 @@ static bool translate_block(HostX86Context *ctx, int block_index)
                 /* Write this jump as though the next one (to the target
                  * label) will have a 32-bit displacement.  If it ends up
                  * having an 8-bit displacement, we'll fix up this
-                 * instruction afterwards. */
+                 * instruction afterward. */
                 const long reload_jump = code.len;
                 /* Flipping the low bit of the opcode will invert the sense
                  * of the branch. */
