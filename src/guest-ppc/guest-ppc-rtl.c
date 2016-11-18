@@ -4971,6 +4971,7 @@ static void translate_move_spr(
             rtl_add_insn(unit, RTLOP_STORE, 0, ctx->psb_reg, rS,
                          ctx->handle->setup.state_offset_gqr + 4 * (spr & 7));
             if (ctx->handle->guest_opt & BINREC_OPT_G_PPC_CONSTANT_GQRS) {
+                set_nia_imm(ctx, address+4);
                 rtl_add_insn(unit, RTLOP_GOTO,
                              0, 0, 0, guest_ppc_get_epilogue_label(ctx));
             }

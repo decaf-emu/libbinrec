@@ -1143,8 +1143,12 @@ static void scan_cr_bits(GuestPPCContext *ctx, uint8_t *visited,
 
     GuestPPCBlockInfo * const block = &ctx->blocks[block_index];
 
-    /* Mark the current block as currently being scanned, so we can detect
-     * cycles. */
+    /* Mark the current block as visited, so we can detect cycles.  Note
+     * that we don't distinguish blocks in the current recursion chain
+     * from blocks whose processing is completed, but since we don't set
+     * crb_changed_recursive until the very end of the function, the
+     * successor_changed computation below will pick up correct values
+     * without knowing whether the referenced blocks are complete or not. */
     visited[block_index] = 1;
 
     /* Look up the control flow edges out of this block, and recursively
@@ -1172,14 +1176,14 @@ static void scan_cr_bits(GuestPPCContext *ctx, uint8_t *visited,
     uint32_t successor_changed;
     if (block->has_trap) {
         successor_changed = 0;
-    } else if (block->branch_block >= 0 && visited[block->branch_block] == 2) {
+    } else if (block->branch_block >= 0) {
         successor_changed =
             ctx->blocks[block->branch_block].crb_changed_recursive;
     } else {
         successor_changed = 0;
     }
     if (successor_changed != 0 && block->is_conditional_branch) {
-        if (block->next_block >= 0 && visited[block->next_block] == 2) {
+        if (block->next_block >= 0) {
             successor_changed &=
                 ctx->blocks[block->next_block].crb_changed_recursive;
         } else {
@@ -1193,10 +1197,6 @@ static void scan_cr_bits(GuestPPCContext *ctx, uint8_t *visited,
      * naturally the empty set. */
     block->crb_changed_recursive = block->used.cr ? 0 :
         (block->changed.crb | successor_changed) & ~block->used.crb;
-
-    /* Mark the current block as completely scanned so that predecessor
-     * blocks can pick up its data. */
-    visited[block_index] = 2;
 }
 
 /*************************************************************************/
@@ -1280,7 +1280,7 @@ bool guest_ppc_scan(GuestPPCContext *ctx, uint32_t limit)
         /* Also terminate at a GQR write for constant GQR optimization. */
         const bool is_terminal_gqr_write =
             ((ctx->handle->guest_opt & BINREC_OPT_G_PPC_CONSTANT_GQRS)
-             && opcd == OPCD_x1F && insn_XO_10(insn) == XO_MTSPR
+             && (insn & 0xFC0007FE) == (OPCD_x1F<<26 | XO_MTSPR<<1)
              && (insn_spr(insn) & ~0x17) == SPR_UGQR(0));
         if (is_direct_branch || is_indirect_branch || block->has_trap
          || is_invalid || is_icbi || is_sc || is_terminal_gqr_write) {
@@ -1355,7 +1355,7 @@ bool guest_ppc_scan(GuestPPCContext *ctx, uint32_t limit)
                      " 0x%X", limit);
         } else {
             log_warning(ctx->handle, "Scanning terminated at 0x%X due to code"
-                        " range bounds", aligned_limit + 4);
+                        " range bounds", aligned_limit + 3);
         }
     }
 

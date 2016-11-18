@@ -26,10 +26,22 @@ int main(void)
     RTLUnit *unit;
     EXPECT(unit = rtl_create_unit(handle));
 
-    int reg;
-    EXPECT(reg = rtl_alloc_register(unit, RTLTYPE_INT32));
+    int reg1, reg2, reg3, reg4;
+    EXPECT(reg1 = rtl_alloc_register(unit, RTLTYPE_INT32));
+    EXPECT(reg2 = rtl_alloc_register(unit, RTLTYPE_INT32));
+    EXPECT(reg3 = rtl_alloc_register(unit, RTLTYPE_INT32));
+    EXPECT(reg4 = rtl_alloc_register(unit, RTLTYPE_INT32));
 
-    EXPECT_FALSE(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg, 0, 0,
+    EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg1, 0, 0,
+                        UINT64_C(0x7FFFFFFF)));
+    EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg2, 0, 0,
+                        UINT64_C(-0x80000000)));
+    EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg3, 0, 0,
+                        UINT64_C(0xFFFFFFFF)));
+    EXPECT_EQ(unit->num_insns, 3);
+    EXPECT_FALSE(unit->error);
+
+    EXPECT_FALSE(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg4, 0, 0,
                               UINT64_C(0x123456789)));
     EXPECT_ICE("Operand constraint violated:"
                " unit->regs[dest].type == RTLTYPE_INT64"
@@ -37,7 +49,7 @@ int main(void)
                " || unit->regs[dest].type == RTLTYPE_FLOAT64"
                " || (unit->regs[dest].type == RTLTYPE_INT32 && other >= UINT64_C(-0x80000000))"
                " || other <= UINT64_C(0xFFFFFFFF)");
-    EXPECT_EQ(unit->num_insns, 0);
+    EXPECT_EQ(unit->num_insns, 3);
     EXPECT(unit->error);
     unit->error = false;
 

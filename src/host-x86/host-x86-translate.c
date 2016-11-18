@@ -2358,6 +2358,7 @@ static bool translate_fcast(HostX86Context *ctx, int insn_index)
         //  f64x2: 10+5+4 = 19
         /* Scalar conversions are trivial: we know the sole value had its
          * quiet bit set, so we just need to clear it. */
+        // FIXME: make this a local constant instead of loading it here
         if (unit->regs[dest].type == RTLTYPE_FLOAT64) {
             const uint64_t mask = ~(UINT64_C(1) << 51);
             //@ 10 = 48 Bx imm64

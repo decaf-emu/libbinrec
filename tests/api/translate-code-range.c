@@ -71,7 +71,7 @@ int main(void)
     EXPECT_MEMEQ(x86_code, x86_expected, sizeof(x86_expected));
     EXPECT_EQ(x86_code_size, sizeof(x86_expected));
 
-    EXPECT_STREQ(get_log_messages(), "[warning] Scanning terminated at 0x1004"
+    EXPECT_STREQ(get_log_messages(), "[warning] Scanning terminated at 0x1003"
                  " due to code range bounds\n");
 
     free(x86_code);
