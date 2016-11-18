@@ -233,8 +233,7 @@ static void check_fp_Rc(GuestPPCContext *ctx, GuestPPCBlockInfo *block,
 
 /**
  * update_used_changed:  Update the register used and changed data in the
- * given block based on the given instruction.  The instruction is assumed
- * to be valid.
+ * given block based on the given instruction.
  */
 static inline void update_used_changed(
     GuestPPCContext *ctx, GuestPPCBlockInfo *block, uint32_t address,
@@ -486,6 +485,9 @@ static inline void update_used_changed(
       case OPCD_x04:
         switch ((PPCExtendedOpcode04_750CL_5)insn_XO_5(insn)) {
           case XO_PS_CMP:
+            if (!is_valid_insn(insn)) {  // Invalid XO.
+                break;
+            }
             /* ps_cmp*0 are identical to fcmp*, so we don't need to force
              * paired-single mode in that case. */
             mark_fpr_used(block, insn_frA(insn), (insn_XO_10(insn)&0x40) != 0);
@@ -514,11 +516,17 @@ static inline void update_used_changed(
             }
             break;
           case XO_PS_MOVE:
+            if (!is_valid_insn(insn)) {  // Invalid XO.
+                break;
+            }
             mark_fpr_used(block, insn_frB(insn), true);
             mark_fpr_changed(block, insn_frD(insn), true);
             check_fp_Rc(ctx, block, address, insn);
             break;
           case XO_PS_MERGE:
+            if (!is_valid_insn(insn)) {  // Invalid XO.
+                break;
+            }
             /* We don't need to force paired-single mode for registers
              * we're extracting ps0 from. */
             mark_fpr_used(block, insn_frA(insn), (insn_XO_10(insn)&0x40) != 0);
@@ -527,6 +535,9 @@ static inline void update_used_changed(
             check_fp_Rc(ctx, block, address, insn);
             break;
           case XO_PS_MISC:  // dcbz_l
+            if (!is_valid_insn(insn)) {  // Invalid XO.
+                break;
+            }
             if (insn_rA(insn) != 0) {
                 mark_gpr_used(block, insn_rA(insn));
             }
@@ -580,7 +591,7 @@ static inline void update_used_changed(
             check_fp_Rc(ctx, block, address, insn);
             break;
           default:
-            ASSERT(!"impossible");
+            break;  // Invalid instruction.
         }
         break;
 
@@ -602,6 +613,9 @@ static inline void update_used_changed(
             break;
 
           case 0x10:  // bclr/bcctr
+            if (!is_valid_insn(insn)) {  // Invalid XO or BO field.
+                break;
+            }
             if (insn_XO_10(insn) & 0x200) {  // bcctr
                 mark_ctr_used(block);
                 // FIXME: try to detect jump tables
@@ -622,10 +636,10 @@ static inline void update_used_changed(
 
           case 0x12:  // rfi
           case 0x16:  // isync
-            break;  // No user-level registers modified
+            break;  // No user-level registers modified.
 
           default:
-            ASSERT(!"impossible");
+            break;  // Invalid instruction.
         }
         break;
 
@@ -843,7 +857,7 @@ static inline void update_used_changed(
               case XO_EIEIO:  // And on that farm he had a duck...
                 break;
               default:
-                ASSERT(!"impossible");
+                break;  // Invalid instruction.
             }
             break;
 
@@ -912,7 +926,7 @@ static inline void update_used_changed(
             break;
 
           default:
-            ASSERT(!"impossible");
+            break;  // Invalid instruction.
         }
         break;
 
@@ -923,15 +937,24 @@ static inline void update_used_changed(
           case XO_FADDS:
             mark_fpr_used(block, insn_frA(insn), false);
             mark_fpr_used(block, insn_frB(insn), false);
+            mark_fpr_changed(block, insn_frD(insn), false);
+            fpscr_used_changed_unless_no_state(ctx, block);
+            check_fp_Rc(ctx, block, address, insn);
             break;
 
           case XO_FRES:
             mark_fpr_used(block, insn_frB(insn), false);
+            mark_fpr_changed(block, insn_frD(insn), false);
+            fpscr_used_changed_unless_no_state(ctx, block);
+            check_fp_Rc(ctx, block, address, insn);
             break;
 
           case XO_FMULS:
             mark_fpr_used(block, insn_frA(insn), false);
             mark_fpr_used(block, insn_frC(insn), false);
+            mark_fpr_changed(block, insn_frD(insn), false);
+            fpscr_used_changed_unless_no_state(ctx, block);
+            check_fp_Rc(ctx, block, address, insn);
             break;
 
           case XO_FMSUBS:
@@ -941,14 +964,14 @@ static inline void update_used_changed(
             mark_fpr_used(block, insn_frA(insn), false);
             mark_fpr_used(block, insn_frB(insn), false);
             mark_fpr_used(block, insn_frC(insn), false);
+            mark_fpr_changed(block, insn_frD(insn), false);
+            fpscr_used_changed_unless_no_state(ctx, block);
+            check_fp_Rc(ctx, block, address, insn);
             break;
 
           default:
-            ASSERT(!"impossible");
+            break;  // Invalid instruction.
         }
-        mark_fpr_changed(block, insn_frD(insn), false);
-        fpscr_used_changed_unless_no_state(ctx, block);
-        check_fp_Rc(ctx, block, address, insn);
         break;
 
       case OPCD_x3F:
@@ -1068,12 +1091,12 @@ static inline void update_used_changed(
             break;
 
           default:
-            ASSERT(!"impossible");
+            break;  // Invalid instruction.
         }
         break;
 
       default:
-        ASSERT(!"impossible");
+        break;  // Invalid instruction.
     }  // switch (insn_OPCD(insn))
 }
 
@@ -1388,9 +1411,7 @@ bool guest_ppc_scan(GuestPPCContext *ctx, uint32_t limit)
         const uint32_t *block_base = &memory_base[block->start/4];
         for (uint32_t j = 0; j < block->len; j += 4) {
             const uint32_t insn = bswap_be32(block_base[j/4]);
-            if (is_valid_insn(insn)) {
-                update_used_changed(ctx, block, block->start + j, insn);
-            }
+            update_used_changed(ctx, block, block->start + j, insn);
         }
     }
 

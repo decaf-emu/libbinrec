@@ -2179,6 +2179,20 @@ static void update_rounding_mode(GuestPPCContext *ctx)
 /*************************************************************************/
 
 /**
+ * translate_illegal:  Translate an illegal instruction word.
+ *
+ * [Parameters]
+ *     ctx: Translation context.
+ *     insn: Instruction word.
+ */
+static inline void translate_illegal(GuestPPCContext *ctx, uint32_t insn)
+{
+    rtl_add_insn(ctx->unit, RTLOP_ILLEGAL, 0, 0, 0, 0);
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
  * translate_arith_imm:  Translate an integer register-immediate arithmetic
  * instruction.  For addi and addis, rA is assumed to be nonzero.
  *
@@ -6907,7 +6921,7 @@ static inline void translate_x1F(
         return;
     }
 
-    ASSERT(!"Missing 0x1F extended opcode handler");
+    translate_illegal(ctx, insn);
 }
 
 /*-----------------------------------------------------------------------*/
@@ -7004,8 +7018,6 @@ static inline void translate_x3F(
             }
             return;
         }
-
-        ASSERT(!"Missing 0x3F_5 extended opcode handler");
 
     } else {  // !(insn_XO_5(insn) & 0x10)
 
@@ -7380,9 +7392,9 @@ static inline void translate_x3F(
             return;
         }
 
-        ASSERT(!"Missing 0x3F_10 extended opcode handler");
-
     }  // if (insn_XO_5(insn) & 0x10)
+
+    translate_illegal(ctx, insn);
 }
 
 /*-----------------------------------------------------------------------*/
@@ -7406,11 +7418,6 @@ static inline void translate_insn(
      * instruction pair (such as sc followed by blr). */
     if (ctx->skip_next_insn) {
         ctx->skip_next_insn = false;
-        return;
-    }
-
-    if (UNLIKELY(!is_valid_insn(insn))) {
-        rtl_add_insn(unit, RTLOP_ILLEGAL, 0, 0, 0, 0);
         return;
     }
 
@@ -7467,7 +7474,8 @@ static inline void translate_insn(
                 translate_dcbz(ctx, insn);
                 return;
             }
-            ASSERT(!"Missing 0x04_10 extended opcode handler");
+            translate_illegal(ctx, insn);
+            return;
 
           case XO_PSQ_LX:
             translate_load_store_ps(ctx, insn, false, true,
@@ -7530,7 +7538,8 @@ static inline void translate_insn(
             translate_ps_fma(ctx, insn, RTLOP_FMADD, -1, true);
             return;
         }
-        ASSERT(!"Missing 0x04_5 extended opcode handler");
+        translate_illegal(ctx, insn);
+        return;
 
       case OPCD_MULLI:
         translate_arith_imm(ctx, insn, RTLOP_MULI, false, false, false);
@@ -7698,12 +7707,17 @@ static inline void translate_insn(
             translate_logic_crb(ctx, insn, RTLOP_OR, false, false);
             return;
           case XO_BCCTR:
+            if (!(insn_BO(insn) & 0x04)) {  // Invalid BO field for bcctr.
+                translate_illegal(ctx, insn);
+                return;
+            }
             translate_branch_terminal(ctx, address, insn_BO(insn),
                                       insn_BI(insn), insn_LK(insn),
                                       get_ctr(ctx), true);
             return;
         }
-        ASSERT(!"Missing 0x13 extended opcode handler");
+        translate_illegal(ctx, insn);
+        return;
 
       case OPCD_RLWIMI:
         translate_rotate_mask(ctx, insn, true, true);
@@ -7909,7 +7923,8 @@ static inline void translate_insn(
             }
             return;
         }
-        ASSERT(!"Missing 0x3B extended opcode handler");
+        translate_illegal(ctx, insn);
+        return;
 
       case OPCD_x3F:
         translate_x3F(ctx, insn);
@@ -7917,7 +7932,7 @@ static inline void translate_insn(
 
     }  // switch (insn_OPCD(insn))
 
-    ASSERT(!"Missing primary opcode handler");
+    translate_illegal(ctx, insn);
 }
 
 /*************************************************************************/
