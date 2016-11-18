@@ -32,6 +32,33 @@
 #define PPC750CL_ERROR_LOG_ADDRESS  0x200000
 
 /*************************************************************************/
+/************************* Expected error lists **************************/
+/*************************************************************************/
+
+/*
+ * Include the appropriate error sets in an array of FailureRecord, and
+ * pass the array with its length to check_750cl_errors().
+ */
+
+typedef struct FailureRecord {
+    uint32_t insn;
+    uint32_t address;
+    uint32_t data[6];
+} FailureRecord;
+
+/* Expected errors for all tests. */
+#define EXPECTED_ERRORS_COMMON  \
+    /* stwcx. to different address, not handled by the translator. */        \
+    {0x7C60212D,0x0100A5E0, {0xFFFFFFFF,0xFFFFFFFF, 0x00000000,0x00000000}}, \
+    /* lfd/paired-single data hazard. */                                     \
+    {0xC89F0008,0x0100B778, {0x3FF00000,0x00000000, 0x00000000,0x00000000}}, \
+    /* lfd/ps_merge misbehavior. */                                          \
+    {0x10652C20,0x0100B81C, {0x00000000,0x00000000, 0x00000000,0x00000000}}, \
+    /* lfd/ps_rsqrte misbehavior. */                                         \
+    {0x11A01834,0x01011994, {0x00000000,0x00000000, 0x1F800041,0x00002000}}, \
+    {0x11A02034,0x01011A2C, {0x7FF00000,0x00000000, 0x3F7FF400,0x84005000}}
+
+/*************************************************************************/
 /************************** Callback functions ***************************/
 /*************************************************************************/
 
@@ -103,28 +130,87 @@ static void *setup_750cl(PPCState *state)
 /*-----------------------------------------------------------------------*/
 
 /**
- * print_750cl_errors:  Print the error log from the 750CL test routine.
+ * check_750cl_errors:  Check the errors reported from the 750CL test
+ * routine against the expected error list, and print any discrepancies
+ * to stdout.
  *
  * [Parameters]
- *     count: Number of failure records returned from the test routine.
+ *     count: Return value from the test routine.
  *     memory: Pointer to guest memory region.
+ *     expected_errors: Array of expected errors.  Errors are matched by
+ *         the first two words of the record; if the same test is listed
+ *         multiple times, the first occurrence is used.
+ *     expected_length: Length of the expected_errors array.
+ * [Return value]
+ *     True if only the expected errors were detected, false otherwise.
  */
-static void print_750cl_errors(int count, void *memory)
+static bool check_750cl_errors(
+    int count, void *memory, const FailureRecord *expected_errors,
+    int expected_length)
 {
+    if (count < 0) {
+        printf("Test failed to bootstrap (error %d)\n", count);
+        return false;
+    }
+
+    bool success = true;
     const uint32_t *error_log =
         (const uint32_t *)((uintptr_t)memory + PPC750CL_ERROR_LOG_ADDRESS);
+    bool printed_header = false;
+
     for (int i = 0; i < count; i++, error_log += 8) {
         const uint32_t insn = bswap_be32(error_log[0]);
         const uint32_t address = bswap_be32(error_log[1]);
-        printf("    %08X %08X  %08X %08X  %08X %08X", insn, address,
-               bswap_be32(error_log[2]), bswap_be32(error_log[3]),
-               bswap_be32(error_log[4]), bswap_be32(error_log[5]));
-        if ((insn & 0xFC00003E) == 0xFC000034) {  // frsqrte
-            printf("  %08X %08X",
-                   bswap_be32(error_log[6]), bswap_be32(error_log[7]));
+        bool pass = false;
+
+        int found_index = -1;
+        for (int j = 0; j < expected_length; j++) {
+            if (expected_errors[j].insn == insn
+             && expected_errors[j].address == address) {
+                found_index = j;
+                pass = true;
+                for (int k = 0; k < 6; k++) {
+                    const uint32_t data = bswap_be32(error_log[2+k]);
+                    if (data != expected_errors[j].data[k]) {
+                        pass = false;
+                        break;
+                    }
+                }
+                break;
+            }
         }
-        printf("\n");
+
+        if (!pass) {
+            success = false;
+            if (!printed_header) {
+                printf("Unexpected errors detected:\n");
+                printed_header = true;
+            }
+            printf("    %08X %08X  %08X %08X  %08X %08X", insn, address,
+                   bswap_be32(error_log[2]), bswap_be32(error_log[3]),
+                   bswap_be32(error_log[4]), bswap_be32(error_log[5]));
+            if ((insn & 0xFC00003E) == 0xFC000034) {  // frsqrte
+                printf("  %08X %08X",
+                       bswap_be32(error_log[6]), bswap_be32(error_log[7]));
+            }
+            printf("\n");
+            if (found_index >= 0) {
+                printf("        `--> Expected: %08X %08X  %08X %08X",
+                       expected_errors[found_index].data[0],
+                       expected_errors[found_index].data[1],
+                       expected_errors[found_index].data[2],
+                       expected_errors[found_index].data[3]);
+                if ((insn & 0xFC00003E) == 0xFC000034) {  // frsqrte
+                    printf("  %08X %08X",
+                           expected_errors[found_index].data[4],
+                           expected_errors[found_index].data[5]);
+                }
+                printf("\n");
+            }
+        }
     }
+
+    return success;
 }
 
 /*************************************************************************/

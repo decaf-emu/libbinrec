@@ -16,6 +16,10 @@
 
 #include "tests/guest-ppc/exec/750cl-common.i"
 
+static const FailureRecord expected_error_list[] = {
+    EXPECTED_ERRORS_COMMON,
+};
+
 
 static void configure_handle(binrec_t *handle)
 {
@@ -48,21 +52,9 @@ int main(void)
         FAIL("Failed to execute guest code");
     }
 
-    int exitcode = EXIT_SUCCESS;
-    const int expected_errors = 5;
-    const int result = state.gpr[3];
-    if (result < 0) {
-        exitcode = EXIT_FAILURE;
-        printf("Test failed to bootstrap (error %d)\n", result);
-    } else if (result != expected_errors) {
-        exitcode = EXIT_FAILURE;
-        printf("Wrong number of errors returned (expected %d, got %d)\n",
-               expected_errors, result);
-        printf("Error log follows:\n");
-        print_750cl_errors(result, memory);
-    }
-    // FIXME: eventually record all expected errors to make sure they match
+    const bool success = check_750cl_errors(
+        state.gpr[3], memory, expected_error_list, lenof(expected_error_list));
 
     free(memory);
-    return exitcode;
+    return success ? EXIT_SUCCESS : EXIT_FAILURE;
 }
