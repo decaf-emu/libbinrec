@@ -57,24 +57,25 @@ static bool init_unit(GuestPPCContext *ctx)
 
     /* Check which guest CPU registers are referenced in the unit, to avoid
      * creating unnecessary RTL alias registers below. */
-    GuestPPCRegSet used, changed;
-    memset(&used, 0, sizeof(used));
-    memset(&changed, 0, sizeof(changed));
+    GuestPPCRegSet touched;
+    memset(&touched, 0, sizeof(touched));
     ctx->fpr_is_ps = 0;
+    uint32_t crb_changed = 0;
+    ctx->fpscr_changed = false;
     for (int i = 0; i < ctx->num_blocks; i++) {
-        for (int j = 0; j < (int)sizeof(used) / 4; j++) {
-            (&used.gpr)[j] |= (&ctx->blocks[i].used.gpr)[j];
-            (&changed.gpr)[j] |= (&ctx->blocks[i].changed.gpr)[j];
+        for (int j = 0; j < (int)sizeof(touched) / 4; j++) {
+            (&touched.gpr)[j] |= (&ctx->blocks[i].touched.gpr)[j];
         }
         ctx->fpr_is_ps |= ctx->blocks[i].fpr_is_ps;
+        crb_changed |= ctx->blocks[i].crb_changed;
+        ctx->fpscr_changed |= ctx->blocks[i].fpscr_changed;
     }
-    ctx->crb_changed = bitrev32(changed.crb);
-    ctx->fpscr_changed = changed.fpscr;
+    ctx->crb_changed = bitrev32(crb_changed);
 
     /* Allocate alias registers for all required guest registers. */
 
     for (int i = 0; i < 32; i++) {
-        if ((used.gpr | changed.gpr) & (1 << i)) {
+        if (touched.gpr & (1 << i)) {
             ctx->alias.gpr[i] = rtl_alloc_alias_register(unit, RTLTYPE_INT32);
             rtl_set_alias_storage(unit, ctx->alias.gpr[i], ctx->psb_reg,
                                   ctx->handle->setup.state_offset_gpr + i*4);
@@ -82,7 +83,7 @@ static bool init_unit(GuestPPCContext *ctx)
     }
 
     for (int i = 0; i < 32; i++) {
-        if ((used.fpr | changed.fpr) & (1 << i)) {
+        if (touched.fpr & (1 << i)) {
             if (ctx->fpr_is_ps & (1 << i)) {
                 ctx->alias.fpr[i] =
                     rtl_alloc_alias_register(unit, RTLTYPE_V2_FLOAT64);
@@ -95,7 +96,7 @@ static bool init_unit(GuestPPCContext *ctx)
         }
     }
 
-    if (used.crb || changed.crb || used.cr || changed.cr) {
+    if (touched.crb || touched.cr) {
         ctx->alias.cr = rtl_alloc_alias_register(unit, RTLTYPE_INT32);
         rtl_set_alias_storage(unit, ctx->alias.cr, ctx->psb_reg,
                               ctx->handle->setup.state_offset_cr);
@@ -104,7 +105,7 @@ static bool init_unit(GuestPPCContext *ctx)
     int cr = 0;
     for (int i = 0; i < 32; i++) {
         /* Bits which aren't changed are re-extracted from CR as needed. */
-        if (changed.crb & (1 << i)) {
+        if (crb_changed & (1 << i)) {
             ctx->alias.crb[i] = rtl_alloc_alias_register(unit, RTLTYPE_INT32);
             /* Load the initial value of the bit, unless we know from
              * data flow analysis that its value is not needed.  We have
@@ -134,29 +135,29 @@ static bool init_unit(GuestPPCContext *ctx)
         }
     }
 
-    if (used.lr || changed.lr) {
+    if (touched.lr) {
         ctx->alias.lr = rtl_alloc_alias_register(unit, RTLTYPE_INT32);
         rtl_set_alias_storage(unit, ctx->alias.lr, ctx->psb_reg,
                               ctx->handle->setup.state_offset_lr);
     }
 
-    if (used.ctr || changed.ctr) {
+    if (touched.ctr) {
         ctx->alias.ctr = rtl_alloc_alias_register(unit, RTLTYPE_INT32);
         rtl_set_alias_storage(unit, ctx->alias.ctr, ctx->psb_reg,
                               ctx->handle->setup.state_offset_ctr);
     }
 
-    if (used.xer || changed.xer) {
+    if (touched.xer) {
         ctx->alias.xer = rtl_alloc_alias_register(unit, RTLTYPE_INT32);
         rtl_set_alias_storage(unit, ctx->alias.xer, ctx->psb_reg,
                               ctx->handle->setup.state_offset_xer);
     }
 
-    if (used.fpscr || changed.fpscr) {
+    if (touched.fpscr) {
         ctx->alias.fpscr = rtl_alloc_alias_register(unit, RTLTYPE_INT32);
         rtl_set_alias_storage(unit, ctx->alias.fpscr, ctx->psb_reg,
                               ctx->handle->setup.state_offset_fpscr);
-        if (used.fr_fi_fprf || changed.fr_fi_fprf) {
+        if (touched.fr_fi_fprf) {
             ctx->alias.fr_fi_fprf =
                 rtl_alloc_alias_register(unit, RTLTYPE_INT32);
             /* As with CR bit aliases, this initialization may not be

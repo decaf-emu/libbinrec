@@ -92,9 +92,9 @@ struct RTLInsn;
  * can be omitted as long as there is another compare later in the unit
  * which overwrites them.
  *
- * In some common cases, this will not be enough to fully eliminate
- * unnecessary stores.  Consider this (admittedly somewhat contrived)
- * instruction sequence:
+ * In some cases, this will not be enough to fully eliminate unnecessary
+ * stores.  Consider this (admittedly somewhat contrived) instruction
+ * sequence:
  *
  *       andi. r0,r3,8
  *       bne 4f
@@ -113,28 +113,30 @@ struct RTLInsn;
  *
  * In this example, whichever branch is taken will leave the unit without
  * further writes to CR, so none of the bit stores can be trivially
- * eliminated.  The BINREC_OPT_G_PPC_TRIM_CR_STORES optimization improves
- * performance for cases such as this by finding cases in which CR bits
- * are only written on one side of a conditional branch and moving the bit
- * stores, along with the instructions that set those bits (typically
- * set-conditional or bit-extract operations), so they are only executed
- * on that code path.  While this does not reduce code size (and may
- * actually increase it slightly, since setting bits on the taken side of
- * a conditional branch requires flipping the sense of the branch and
- * adding an extra unconditional jump afterward), it does help ensure that
- * the actual control flow goes through as few CR-modifying instructions
- * as possible.
+ * eliminated, but in each of the first three cases, the CR write is dead
+ * if the branch is not taken.  The BINREC_OPT_G_PPC_TRIM_CR_STORES
+ * optimization improves performance for code such as this by finding
+ * cases in which CR stores are only visible on one side of a conditional
+ * branch and moving the bit stores, along with the instructions that set
+ * those bits (typically set-conditional or bit-extract operations), so
+ * they are only executed on that code path.  While this does not reduce
+ * code size (and may actually increase it slightly, since setting bits on
+ * the taken side of a conditional branch requires flipping the sense of
+ * the branch and adding an extra unconditional jump afterward), it does
+ * help ensure that the actual control flow goes through as few
+ * CR-modifying instructions as possible.
  *
  * Similar logic applies to the FI, FR, and FPRF fields of FPSCR, which
  * are rewritten by most floating-point instructions.  Since these bits
  * are always written as a unit (except in the case of fcmp/ps_cmp, which
- * only write the FPCC bits) and since there are no instructions which
- * read individual bits from those fields, we allocate a single alias for
- * all 7 bits instead of separate aliases for each bit.  The remainder of
- * the register is not treated specially; exception bits accumulate rather
- * than being overwritten by each instruction, and there are no
- * instructions other than the mtfs group which write RN, so there is no
- * benefit to using separate aliases for each bit.
+ * only write the FPCC bits, and the mtfs group of instructions) and since
+ * there are no instructions which read individual bits from those fields,
+ * we allocate a single alias for all 7 bits instead of separate aliases
+ * for each bit.  The remainder of the register is not treated specially;
+ * exception bits accumulate rather than being overwritten by each
+ * instruction, and there are no instructions other than the mtfs group
+ * which write RN, so there is no benefit to using separate aliases for
+ * each bit.
  */
 
 /*************************************************************************/
@@ -293,12 +295,19 @@ typedef struct GuestPPCBlockInfo {
     int next_block;  // -1 if block is terminal or ends in an uncond'l branch.
     int branch_block;  // -1 if block is terminal.
 
-    /* Bitmasks of registers which are used (i.e., their values on block
-     * entry are read) and changed by the block. */
-    GuestPPCRegSet used;
-    GuestPPCRegSet changed;
+    /* Set of registers which are referenced (read or written) by the block. */
+    GuestPPCRegSet touched;
     /* Set of FPR registers used or changed in paired-single mode. */
     uint32_t fpr_is_ps;
+    /* Set of CR bits whose values on entry to the block are visible to an
+     * instruction within the block. */
+    uint32_t crb_used;
+    /* Set of CR bits which are written by the block. */
+    uint32_t crb_changed;
+    /* Flag indicating whether CR as a whole is read by the block. */
+    bool cr_used;
+    /* Flag indicating whether FPSCR is written by the block. */
+    bool fpscr_changed;
 
     /* Bitmask of CR bits which are changed without being read on every
      * code path out of the unit.  Used by the TRIM_CR_STORES optimization. */
@@ -398,7 +407,8 @@ typedef struct GuestPPCContext {
     uint32_t ps1_is_safe;
     /* Set of CR bits which are modified by the unit.  These bits are
      * stored in the same order as the CR word, so that the MSB corresponds
-     * to CR bit 0. */
+     * to CR bit 0 (this saves the cost of a bit-reverse operation every
+     * time we need to merge bits back to the CR word). */
     uint32_t crb_changed;
     /* Set of CR bits which have live registers.  Bits are in natural order
      * (the LSB corresponds to CR bit 0), as with GuestPPCBlockInfo bitmaps. */

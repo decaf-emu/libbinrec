@@ -92,90 +92,96 @@ static int get_block(GuestPPCContext *ctx, uint32_t address, bool create_new)
  */
 
 static inline void mark_gpr_used(GuestPPCBlockInfo *block, const int index) {
-    if (!(block->changed.gpr & (1 << index))) block->used.gpr |= 1 << index;
+    block->touched.gpr |= 1 << index;
 }
 
 static inline void mark_gpr_changed(GuestPPCBlockInfo *block, const int index) {
-    block->changed.gpr |= 1 << index;
+    block->touched.gpr |= 1 << index;
 }
 
 static inline void mark_fpr_used(GuestPPCBlockInfo *block, const int index,
                                  bool is_paired) {
-    if (!(block->changed.fpr & (1 << index))) block->used.fpr |= 1 << index;
+    block->touched.fpr |= 1 << index;
     if (is_paired) block->fpr_is_ps |= 1 << index;
 }
 
 static inline void mark_fpr_changed(GuestPPCBlockInfo *block, const int index,
                                     bool is_paired) {
-    block->changed.fpr |= 1 << index;
+    block->touched.fpr |= 1 << index;
     if (is_paired) block->fpr_is_ps |= 1 << index;
 }
 
 static inline void mark_crb_used(GuestPPCBlockInfo *block, const int index) {
-    if (!(block->changed.crb & (1 << index))) block->used.crb |= 1 << index;
+    block->touched.crb |= 1 << index;
+    if (!(block->crb_changed & (1 << index))) block->crb_used |= 1 << index;
 }
 
 static inline void mark_crf_used(GuestPPCBlockInfo *block, const int index) {
     const uint32_t mask = 0xF << (4*index);
-    if ((block->changed.crb & mask) != mask) {
-        block->used.crb |= 0xF << (4*index);
-    }
+    block->touched.crb |= mask;
+    block->crb_used |= mask & ~block->crb_changed;
 }
 
 static inline void mark_cr_used(GuestPPCBlockInfo *block) {
-    if (!block->changed.cr) block->used.cr = 1;
+    block->touched.cr = 1;
+    /* Technically we could omit this if the block has a preceding mtcr,
+     * but that case should be fairly rare outside test code. */
+    block->cr_used = true;
 }
 
 static inline void mark_crb_changed(GuestPPCBlockInfo *block, const int index) {
-    block->changed.crb |= 1 << index;
+    block->touched.crb |= 1 << index;
+    block->crb_changed |= 1 << index;
 }
 
 static inline void mark_crf_changed(GuestPPCBlockInfo *block, const int index) {
-    block->changed.crb |= 0xF << (4*index);
+    block->touched.crb |= 0xF << (4*index);
+    block->crb_changed |= 0xF << (4*index);
 }
 
 static inline void mark_cr_changed(GuestPPCBlockInfo *block) {
-    block->changed.cr = 1;
+    block->touched.cr = 1;
 }
 
 static inline void mark_lr_used(GuestPPCBlockInfo *block) {
-    if (!block->changed.lr) block->used.lr = 1;
+    block->touched.lr = 1;
 }
 
 static inline void mark_lr_changed(GuestPPCBlockInfo *block) {
-    block->changed.lr = 1;
+    block->touched.lr = 1;
 }
 
 static inline void mark_ctr_used(GuestPPCBlockInfo *block) {
-    if (!block->changed.ctr) block->used.ctr = 1;
+    block->touched.ctr = 1;
 }
 
 static inline void mark_ctr_changed(GuestPPCBlockInfo *block) {
-    block->changed.ctr = 1;
+    block->touched.ctr = 1;
 }
 
 static inline void mark_xer_used(GuestPPCBlockInfo *block) {
-    if (!block->changed.xer) block->used.xer = 1;
+    block->touched.xer = 1;
 }
 
 static inline void mark_xer_changed(GuestPPCBlockInfo *block) {
-    block->changed.xer = 1;
+    block->touched.xer = 1;
 }
 
 static inline void mark_fpscr_used(GuestPPCBlockInfo *block) {
-    if (!block->changed.fpscr) block->used.fpscr = 1;
+    block->touched.fpscr = 1;
 }
 
 static inline void mark_fpscr_changed(GuestPPCBlockInfo *block) {
-    block->changed.fpscr = 1;
+    block->touched.fpscr = 1;
+    block->fpscr_changed = true;
 }
 
 static inline void mark_fr_fi_fprf_used(GuestPPCBlockInfo *block) {
-    if (!block->changed.fr_fi_fprf) block->used.fr_fi_fprf = 1;
+    block->touched.fr_fi_fprf = 1;
 }
 
 static inline void mark_fr_fi_fprf_changed(GuestPPCBlockInfo *block) {
-    block->changed.fr_fi_fprf = 1;
+    block->touched.fr_fi_fprf = 1;
 }
 
 /*-----------------------------------------------------------------------*/
@@ -1195,8 +1201,8 @@ static void scan_cr_bits(GuestPPCContext *ctx, uint8_t *visited,
      * the set of CR bits to which stores in predecessor units can be
      * eliminated.  If the block contains an mfcr instruction, this is
      * naturally the empty set. */
-    block->crb_changed_recursive = block->used.cr ? 0 :
-        (block->changed.crb | successor_changed) & ~block->used.crb;
+    block->crb_changed_recursive = block->cr_used ? 0 :
+        (block->crb_changed | successor_changed) & ~block->crb_used;
 }
 
 /*************************************************************************/
