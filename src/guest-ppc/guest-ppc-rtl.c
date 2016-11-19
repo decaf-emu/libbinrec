@@ -1634,7 +1634,7 @@ static void round_for_multiply(GuestPPCContext *ctx, int *frA_ptr,
  * [Parameters]
  *     ctx: Translation context.
  *     index: Index of FPR to set.
- *     result: RTL register containing result value.    
+ *     result: RTL register containing result value.
  *     fprf_slot: Paired-slot index (0 or 1) from which to set FPRF, if
  *         result is a paired-single value.
  *     frA, frB, frC: RTL registers containing operand values, or 0 for no
@@ -3385,7 +3385,7 @@ static void translate_fres_lookup(GuestPPCContext *ctx, int input, int output,
     const int label_normalized = rtl_alloc_label(unit);
     rtl_add_insn(unit, RTLOP_GOTO_IF_NZ,
                  0, normalized_test, 0, label_normalized);
-    rtl_add_insn(unit, RTLOP_SET_ALIAS, 0, rtl_imm32(unit,-1), 0, alias_exp); 
+    rtl_add_insn(unit, RTLOP_SET_ALIAS, 0, rtl_imm32(unit,-1), 0, alias_exp);
     const int shifted_mant_2 = rtl_alloc_register(unit, RTLTYPE_INT32);
     rtl_add_insn(unit, RTLOP_SLLI, shifted_mant_2, shifted_mant_1, 0, 1);
     rtl_add_insn(unit, RTLOP_SET_ALIAS, 0, shifted_mant_2, 0, alias_mant);
@@ -6589,9 +6589,9 @@ static inline void translate_x1F(
          * writes the same register. */
         const uint32_t next_insn =
             guest_ppc_get_insn_at(ctx, block, address+4);
-        const uint32_t extract_bit_insn = 
+        const uint32_t extract_bit_insn =
             OPCD_RLWINM<<26 | insn_rD(insn)<<21 | 31<<6 | 31<<1;
-        const uint32_t extract_bit_same_reg_insn = 
+        const uint32_t extract_bit_same_reg_insn =
             extract_bit_insn | insn_rD(insn)<<16;
         if ((next_insn & 0xFFFF07FE) != extract_bit_same_reg_insn) {
             guest_ppc_flush_cr(ctx, true);

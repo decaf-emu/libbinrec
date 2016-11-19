@@ -2595,7 +2595,7 @@ static void translate_fma(CodeBuffer *code, HostX86Context *ctx,
         if (host_dest == host_src2 && !is_spilled(ctx, insn_index, src2)) {
             if (prefix) {
                 append_imm8(code, prefix);
-            }       
+            }
             append_insn_ModRM_ctx(code, false, X86OP_MULPS, host_dest,
                                   ctx, insn_index, src1);
         } else {

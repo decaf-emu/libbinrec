@@ -729,7 +729,7 @@ static inline void update_used_changed(
                      * the rlwinm reads and writes the same register. */
                     const uint32_t next_insn =
                         guest_ppc_get_insn_at(ctx, block, address+4);
-                    const uint32_t extract_bit_same_reg_insn = 
+                    const uint32_t extract_bit_same_reg_insn =
                         OPCD_RLWINM<<26 | insn_rD(insn)<<21 | insn_rD(insn)<<16
                         | 31<<6 | 31<<1;
                     if ((next_insn & 0xFFFF07FE) != extract_bit_same_reg_insn) {
@@ -1419,7 +1419,7 @@ bool guest_ppc_scan(GuestPPCContext *ctx, uint32_t limit)
      * find which CR bits don't need to be stored. */
     if (ctx->handle->guest_opt & BINREC_OPT_G_PPC_TRIM_CR_STORES) {
         uint8_t *visited = binrec_malloc(ctx->handle, ctx->num_blocks);
-        if (UNLIKELY(!visited)){ 
+        if (UNLIKELY(!visited)) {
             log_warning(ctx->handle, "No memory for block visited flags"
                         " (%d bytes), skipping TRIM_CR_STORES optimization",
                         ctx->num_blocks);
