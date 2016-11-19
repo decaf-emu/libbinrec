@@ -1646,6 +1646,7 @@ static void round_for_multiply(GuestPPCContext *ctx, int *frA_ptr,
  *     vxfoo_no_snan: FPSCR_VXFOO bitmask indicating which invalid
  *         exceptions other than VXSNAN can be raised.  Zero indicates
  *         that only SNaNs can trigger VX.
+ *     check_vx: True to check for invalid-operation exceptions.
  *     check_zx: True to check for divide-by-zero exceptions.
  *     set_xx: True to set FPSCR[XX] when an inexact exception is raised;
  *         false to only set FPSCR[FI] (for fres).
@@ -1655,7 +1656,8 @@ static void round_for_multiply(GuestPPCContext *ctx, int *frA_ptr,
 static void set_fp_result(GuestPPCContext *ctx, int index, int result,
                           int fprf_slot, int frA, int frB, int frC,
                           uint32_t vxfoo_snan, uint32_t vxfoo_no_snan,
-                          bool check_zx, bool set_xx, bool snan_safe)
+                          bool check_vx, bool check_zx, bool set_xx,
+                          bool snan_safe)
 {
     if (ctx->handle->guest_opt & BINREC_OPT_G_PPC_NO_FPSCR_STATE) {
         set_fpr(ctx, index, result);
@@ -1688,219 +1690,238 @@ static void set_fp_result(GuestPPCContext *ctx, int index, int result,
     const int clearexc = rtl_alloc_register(unit, RTLTYPE_FPSTATE);
     rtl_add_insn(unit, RTLOP_FCLEAREXC, clearexc, fpstate, 0, 0);
     rtl_add_insn(unit, RTLOP_FSETSTATE, 0, clearexc, 0, 0);
-    const int invalid = rtl_alloc_register(unit, RTLTYPE_INT32);
-    rtl_add_insn(unit, RTLOP_FTESTEXC, invalid, fpstate, 0, RTLFEXC_INVALID);
-    const int label_no_vx = rtl_alloc_label(unit);
-    rtl_add_insn(unit, RTLOP_GOTO_IF_Z, 0, invalid, 0, label_no_vx);
 
     int label_out = 0;
-    int label_check_ve_snan = 0;
-
-    if (vxfoo_no_snan) {
-        const int label_snan = rtl_alloc_label(unit);
-        int label_frB_snan = 0;
-        if (frA) {
-            check_snan(ctx, frA, label_snan);
-        }
-        if (frC) {
-            check_snan(ctx, frC, label_snan);
-        }
-        ASSERT(frB);  // Nonzero for all calls.
-        if (vxfoo_no_snan == (FPSCR_VXIMZ | FPSCR_VXISI)) {
-            /* Special handling for FMA instructions; see notes below. */
-            label_frB_snan = rtl_alloc_label(unit);
-            check_snan(ctx, frB, label_frB_snan);
-        } else {
-            check_snan(ctx, frB, label_snan);
-        }
-
-        /* If there are multiple exception types, we have to check for each
-         * one separately. */
-        int label_check_ve = 0;
-        if (vxfoo_no_snan == (FPSCR_VXIDI | FPSCR_VXZDZ)) {  // fdiv, fdivs
-            const int bits_type = (unit->regs[frA].type == RTLTYPE_FLOAT64
-                                   ? RTLTYPE_INT64 : RTLTYPE_INT32);
-            const int frA_bits = rtl_alloc_register(unit, bits_type);
-            rtl_add_insn(unit, RTLOP_BITCAST, frA_bits, frA, 0, 0);
-            const int frB_bits = rtl_alloc_register(unit, bits_type);
-            rtl_add_insn(unit, RTLOP_BITCAST, frB_bits, frB, 0, 0);
-            const int both_bits = rtl_alloc_register(unit, bits_type);
-            rtl_add_insn(unit, RTLOP_OR, both_bits, frA_bits, frB_bits, 0);
-            const int zero_test = rtl_alloc_register(unit, bits_type);
-            rtl_add_insn(unit, RTLOP_SLLI, zero_test, both_bits, 0, 1);
-            const int label_vxidi = rtl_alloc_label(unit);
-            rtl_add_insn(unit, RTLOP_GOTO_IF_NZ, 0, zero_test, 0, label_vxidi);
-            set_fpscr_exceptions(ctx, fpscr, FPSCR_VXZDZ);
-            if (ctx->handle->common_opt & BINREC_OPT_NATIVE_IEEE_NAN) {
-                label_check_ve_snan = rtl_alloc_label(unit);
-                rtl_add_insn(unit, RTLOP_GOTO, 0, 0, 0, label_check_ve_snan);
-            } else {
-                label_check_ve = rtl_alloc_label(unit);
-                rtl_add_insn(unit, RTLOP_GOTO, 0, 0, 0, label_check_ve);
-            }
-            rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, label_vxidi);
-            set_fpscr_exceptions(ctx, fpscr, FPSCR_VXIDI);
-
-        } else if (vxfoo_no_snan == (FPSCR_VXIMZ | FPSCR_VXISI)) { // fmadd etc
-            /* For an FMA operation to cause VX with no SNaNs, one of the
-             * following must be true:
-             *    - frA = +/-inf, frC = 0 (frB don't care)
-             *    - frA = 0, frC = +/-inf (frB don't care)
-             *    - frA = +/-inf, frC = nonzero, frB = -/+inf
-             *    - frA = nonzero, frC = +/-inf, frB = -/+inf
-             * In other words, at least one of frA and frC must be an
-             * infinity, so if we see that frA is not infinite, we can
-             * assume that frC is infinite without checking. */
-            const int bits_type = (unit->regs[frA].type == RTLTYPE_FLOAT64
-                                   ? RTLTYPE_INT64 : RTLTYPE_INT32);
-            const int frA_bits = rtl_alloc_register(unit, bits_type);
-            rtl_add_insn(unit, RTLOP_BITCAST, frA_bits, frA, 0, 0);
-            const int frC_bits = rtl_alloc_register(unit, bits_type);
-            rtl_add_insn(unit, RTLOP_BITCAST, frC_bits, frC, 0, 0);
-            const int frA_zero_test = rtl_alloc_register(unit, bits_type);
-            rtl_add_insn(unit, RTLOP_SLLI, frA_zero_test, frA_bits, 0, 1);
-            const int frC_zero_test = rtl_alloc_register(unit, bits_type);
-            rtl_add_insn(unit, RTLOP_SLLI, frC_zero_test, frC_bits, 0, 1);
-            int frA_inf_test;
-            if (bits_type == RTLTYPE_INT32) {
-                frA_inf_test = rtl_alloc_register(unit, RTLTYPE_INT32);
-                rtl_add_insn(unit, RTLOP_SEQI,
-                             frA_inf_test, frA_zero_test, 0, 0xFF000000);
-            } else {
-                const int inf_sll1 = rtl_alloc_register(unit, RTLTYPE_INT64);
-                rtl_add_insn(unit, RTLOP_LOAD_IMM,
-                             inf_sll1, 0, 0, UINT64_C(0xFFE0000000000000));
-                frA_inf_test = rtl_alloc_register(unit, RTLTYPE_INT32);
-                rtl_add_insn(unit, RTLOP_SEQ,
-                             frA_inf_test, frA_zero_test, inf_sll1, 0);
-            }
-            const int label_frC_inf = rtl_alloc_label(unit);
-            rtl_add_insn(unit, RTLOP_GOTO_IF_Z,
-                         0, frA_inf_test, 0, label_frC_inf);
-            const int label_vximz = rtl_alloc_label(unit);
-            rtl_add_insn(unit, RTLOP_GOTO_IF_Z,
-                         0, frC_zero_test, 0, label_vximz);
-            const int label_vxisi = rtl_alloc_label(unit);
-            rtl_add_insn(unit, RTLOP_GOTO, 0, 0, 0, label_vxisi);
-            rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, label_frC_inf);
-            rtl_add_insn(unit, RTLOP_GOTO_IF_NZ,
-                         0, frA_zero_test, 0, label_vxisi);
-            rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, label_vximz);
-            set_fpscr_exceptions(ctx, fpscr, FPSCR_VXIMZ);
-            if (ctx->handle->common_opt & BINREC_OPT_NATIVE_IEEE_NAN) {
-                label_check_ve_snan = rtl_alloc_label(unit);
-                rtl_add_insn(unit, RTLOP_GOTO, 0, 0, 0, label_check_ve_snan);
-            } else {
-                label_check_ve = rtl_alloc_label(unit);
-                rtl_add_insn(unit, RTLOP_GOTO, 0, 0, 0, label_check_ve);
-            }
-            rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, label_vxisi);
-            set_fpscr_exceptions(ctx, fpscr, FPSCR_VXISI);
-
-        } else {
-            /* Make sure only one VXFOO bit is set. */
-            ASSERT((vxfoo_no_snan & (vxfoo_no_snan - 1)) == 0);
-            set_fpscr_exceptions(ctx, fpscr, vxfoo_no_snan);
-        }
-
-        if (ctx->handle->common_opt & BINREC_OPT_NATIVE_IEEE_NAN) {
-            if (!label_check_ve_snan) {
-                label_check_ve_snan = rtl_alloc_label(unit);
-            }
-            rtl_add_insn(unit, RTLOP_GOTO, 0, 0, 0, label_check_ve_snan);
-        } else {
-            if (label_check_ve) {
-                rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, label_check_ve);
-            }
-            const int ve_test = rtl_alloc_register(unit, RTLTYPE_INT32);
-            rtl_add_insn(unit, RTLOP_ANDI, ve_test, fpscr, 0, FPSCR_VE);
-            int label_no_ve_default_nan = 0;
-            label_no_ve_default_nan = rtl_alloc_label(unit);
-            rtl_add_insn(unit, RTLOP_GOTO_IF_Z,
-                         0, ve_test, 0, label_no_ve_default_nan);
-            const int fr_fi_fprf = rtl_alloc_register(unit, RTLTYPE_INT32);
-            rtl_add_insn(unit, RTLOP_GET_ALIAS,
-                         fr_fi_fprf, 0, 0, ctx->alias.fr_fi_fprf);
-            const int fr_fi_cleared = rtl_alloc_register(unit, RTLTYPE_INT32);
-            rtl_add_insn(unit, RTLOP_ANDI, fr_fi_cleared, fr_fi_fprf, 0, 0x1F);
-            rtl_add_insn(unit, RTLOP_SET_ALIAS,
-                         0, fr_fi_cleared, 0, ctx->alias.fr_fi_fprf);
-            label_out = rtl_alloc_label(unit);
-            rtl_add_insn(unit, RTLOP_GOTO, 0, 0, 0, label_out);
-            rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, label_no_ve_default_nan);
-            RTLDataType default_nan_type = unit->regs[result].type;
-            ASSERT(!rtl_type_is_vector(default_nan_type));
-            const int default_nan =
-                rtl_alloc_register(unit, default_nan_type);
-            rtl_add_insn(unit, RTLOP_LOAD_IMM, default_nan, 0, 0,
-                         default_nan_type == RTLTYPE_FLOAT64
-                             ? UINT64_C(0x7FF8000000000000) : 0x7FC00000);
-            set_fpr_and_flush(ctx, index, default_nan, true);
-            const int default_nan_fprf =
-                rtl_alloc_register(unit, RTLTYPE_INT32);
-            rtl_add_insn(unit, RTLOP_LOAD_IMM, default_nan_fprf, 0, 0, 0x11);
-            rtl_add_insn(unit, RTLOP_SET_ALIAS,
-                         0, default_nan_fprf, 0, ctx->alias.fr_fi_fprf);
-            rtl_add_insn(unit, RTLOP_GOTO, 0, 0, 0, label_out);
-        }
-
-        /* A fused multiply-add of the form inf*0+SNaN (or 0*inf-SNaN, etc.)
-         * raises both VXIMZ and VXSNAN, so we need an extra check if frB
-         * triggers VXSNAN. */
-        if (vxfoo_no_snan == (FPSCR_VXIMZ | FPSCR_VXISI)) {
-            rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, label_frB_snan);
-            /* In the interest of not overly bloating the output code
-             * (possibly a lost cause at this point...) we just calculate
-             * frA*frC directly and see if that raises an exception.  We
-             * check frA and frC for SNaNs before frB, so if we get here,
-             * only inf*0 will trigger an invalid-operation exception.
-             * Note that exceptions are already cleared here, so we don't
-             * need an extra clear before the FMUL. */
-            const int mul_test =
-                rtl_alloc_register(unit, unit->regs[frA].type);
-            rtl_add_insn(unit, RTLOP_FMUL, mul_test, frA, frC, 0);
-            const int mul_state = rtl_alloc_register(unit, RTLTYPE_FPSTATE);
-            rtl_add_insn(unit, RTLOP_FGETSTATE, mul_state, 0, 0, 0);
-            rtl_add_insn(unit, RTLOP_FSETSTATE, 0, clearexc, 0, 0);
-            const int mul_invalid = rtl_alloc_register(unit, RTLTYPE_INT32);
-            rtl_add_insn(unit, RTLOP_FTESTEXC,
-                         mul_invalid, mul_state, 0, RTLFEXC_INVALID);
-            rtl_add_insn(unit, RTLOP_GOTO_IF_Z, 0, mul_invalid, 0, label_snan);
-            set_fpscr_exceptions(ctx, fpscr, FPSCR_VXSNAN | FPSCR_VXIMZ);
-            if (!label_check_ve_snan) {
-                label_check_ve_snan = rtl_alloc_label(unit);
-            }
-            rtl_add_insn(unit, RTLOP_GOTO, 0, 0, 0, label_check_ve_snan);
-        }
-
-        rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, label_snan);
-    }  // if (vxfoo_no_snan)
-
-    set_fpscr_exceptions(ctx, fpscr, FPSCR_VXSNAN | vxfoo_snan);
-    if (label_check_ve_snan) {
-        rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, label_check_ve_snan);
-    }
-    const int ve_test = rtl_alloc_register(unit, RTLTYPE_INT32);
-    rtl_add_insn(unit, RTLOP_ANDI, ve_test, fpscr, 0, FPSCR_VE);
-    rtl_add_insn(unit, RTLOP_GOTO_IF_Z, 0, ve_test, 0, label_no_vx);
     int label_exception_abort = 0;
-    if (check_zx) {
-        label_exception_abort = rtl_alloc_label(unit);
-        rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, label_exception_abort);
-    }
-    const int fr_fi_fprf = rtl_alloc_register(unit, RTLTYPE_INT32);
-    rtl_add_insn(unit, RTLOP_GET_ALIAS,
-                 fr_fi_fprf, 0, 0, ctx->alias.fr_fi_fprf);
-    const int fr_fi_cleared = rtl_alloc_register(unit, RTLTYPE_INT32);
-    rtl_add_insn(unit, RTLOP_ANDI, fr_fi_cleared, fr_fi_fprf, 0, 0x1F);
-    rtl_add_insn(unit, RTLOP_SET_ALIAS,
-                 0, fr_fi_cleared, 0, ctx->alias.fr_fi_fprf);
-    if (!label_out) {
-        label_out = rtl_alloc_label(unit);
-    }
-    rtl_add_insn(unit, RTLOP_GOTO, 0, 0, 0, label_out);
 
-    rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, label_no_vx);
+    if (check_vx) {
+        const int invalid = rtl_alloc_register(unit, RTLTYPE_INT32);
+        rtl_add_insn(unit, RTLOP_FTESTEXC,
+                     invalid, fpstate, 0, RTLFEXC_INVALID);
+        const int label_no_vx = rtl_alloc_label(unit);
+        rtl_add_insn(unit, RTLOP_GOTO_IF_Z, 0, invalid, 0, label_no_vx);
+
+        int label_check_ve_snan = 0;
+
+        if (vxfoo_no_snan) {
+            const int label_snan = rtl_alloc_label(unit);
+            int label_frB_snan = 0;
+            if (frA) {
+                check_snan(ctx, frA, label_snan);
+            }
+            if (frC) {
+                check_snan(ctx, frC, label_snan);
+            }
+            ASSERT(frB);  // Nonzero for all calls.
+            if (vxfoo_no_snan == (FPSCR_VXIMZ | FPSCR_VXISI)) {
+                /* Special handling for FMA instructions; see notes below. */
+                label_frB_snan = rtl_alloc_label(unit);
+                check_snan(ctx, frB, label_frB_snan);
+            } else {
+                check_snan(ctx, frB, label_snan);
+            }
+
+            /* If there are multiple exception types, we have to check for each
+             * one separately. */
+            int label_check_ve = 0;
+            if (vxfoo_no_snan == (FPSCR_VXIDI | FPSCR_VXZDZ)) {  // fdiv, fdivs
+                const int bits_type = (unit->regs[frA].type == RTLTYPE_FLOAT64
+                                       ? RTLTYPE_INT64 : RTLTYPE_INT32);
+                const int frA_bits = rtl_alloc_register(unit, bits_type);
+                rtl_add_insn(unit, RTLOP_BITCAST, frA_bits, frA, 0, 0);
+                const int frB_bits = rtl_alloc_register(unit, bits_type);
+                rtl_add_insn(unit, RTLOP_BITCAST, frB_bits, frB, 0, 0);
+                const int both_bits = rtl_alloc_register(unit, bits_type);
+                rtl_add_insn(unit, RTLOP_OR, both_bits, frA_bits, frB_bits, 0);
+                const int zero_test = rtl_alloc_register(unit, bits_type);
+                rtl_add_insn(unit, RTLOP_SLLI, zero_test, both_bits, 0, 1);
+                const int label_vxidi = rtl_alloc_label(unit);
+                rtl_add_insn(unit, RTLOP_GOTO_IF_NZ,
+                             0, zero_test, 0, label_vxidi);
+                set_fpscr_exceptions(ctx, fpscr, FPSCR_VXZDZ);
+                if (ctx->handle->common_opt & BINREC_OPT_NATIVE_IEEE_NAN) {
+                    label_check_ve_snan = rtl_alloc_label(unit);
+                    rtl_add_insn(unit, RTLOP_GOTO,
+                                 0, 0, 0, label_check_ve_snan);
+                } else {
+                    label_check_ve = rtl_alloc_label(unit);
+                    rtl_add_insn(unit, RTLOP_GOTO, 0, 0, 0, label_check_ve);
+                }
+                rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, label_vxidi);
+                set_fpscr_exceptions(ctx, fpscr, FPSCR_VXIDI);
+
+            } else if (vxfoo_no_snan == (FPSCR_VXIMZ | FPSCR_VXISI)) {
+                /* For an FMA operation to cause VX with no SNaNs, one of
+                 * the following must be true:
+                 *    - frA = +/-inf, frC = 0 (frB don't care)
+                 *    - frA = 0, frC = +/-inf (frB don't care)
+                 *    - frA = +/-inf, frC = nonzero, frB = -/+inf
+                 *    - frA = nonzero, frC = +/-inf, frB = -/+inf
+                 * In other words, at least one of frA and frC must be an
+                 * infinity, so if we see that frA is not infinite, we can
+                 * assume that frC is infinite without checking. */
+                const int bits_type = (unit->regs[frA].type == RTLTYPE_FLOAT64
+                                       ? RTLTYPE_INT64 : RTLTYPE_INT32);
+                const int frA_bits = rtl_alloc_register(unit, bits_type);
+                rtl_add_insn(unit, RTLOP_BITCAST, frA_bits, frA, 0, 0);
+                const int frC_bits = rtl_alloc_register(unit, bits_type);
+                rtl_add_insn(unit, RTLOP_BITCAST, frC_bits, frC, 0, 0);
+                const int frA_zero_test = rtl_alloc_register(unit, bits_type);
+                rtl_add_insn(unit, RTLOP_SLLI, frA_zero_test, frA_bits, 0, 1);
+                const int frC_zero_test = rtl_alloc_register(unit, bits_type);
+                rtl_add_insn(unit, RTLOP_SLLI, frC_zero_test, frC_bits, 0, 1);
+                int frA_inf_test;
+                if (bits_type == RTLTYPE_INT32) {
+                    frA_inf_test = rtl_alloc_register(unit, RTLTYPE_INT32);
+                    rtl_add_insn(unit, RTLOP_SEQI,
+                                 frA_inf_test, frA_zero_test, 0, 0xFF000000);
+                } else {
+                    const int inf_sll1 =
+                        rtl_alloc_register(unit, RTLTYPE_INT64);
+                    rtl_add_insn(unit, RTLOP_LOAD_IMM,
+                                 inf_sll1, 0, 0, UINT64_C(0xFFE0000000000000));
+                    frA_inf_test = rtl_alloc_register(unit, RTLTYPE_INT32);
+                    rtl_add_insn(unit, RTLOP_SEQ,
+                                 frA_inf_test, frA_zero_test, inf_sll1, 0);
+                }
+                const int label_frC_inf = rtl_alloc_label(unit);
+                rtl_add_insn(unit, RTLOP_GOTO_IF_Z,
+                             0, frA_inf_test, 0, label_frC_inf);
+                const int label_vximz = rtl_alloc_label(unit);
+                rtl_add_insn(unit, RTLOP_GOTO_IF_Z,
+                             0, frC_zero_test, 0, label_vximz);
+                const int label_vxisi = rtl_alloc_label(unit);
+                rtl_add_insn(unit, RTLOP_GOTO, 0, 0, 0, label_vxisi);
+                rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, label_frC_inf);
+                rtl_add_insn(unit, RTLOP_GOTO_IF_NZ,
+                             0, frA_zero_test, 0, label_vxisi);
+                rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, label_vximz);
+                set_fpscr_exceptions(ctx, fpscr, FPSCR_VXIMZ);
+                if (ctx->handle->common_opt & BINREC_OPT_NATIVE_IEEE_NAN) {
+                    label_check_ve_snan = rtl_alloc_label(unit);
+                    rtl_add_insn(unit, RTLOP_GOTO,
+                                 0, 0, 0, label_check_ve_snan);
+                } else {
+                    label_check_ve = rtl_alloc_label(unit);
+                    rtl_add_insn(unit, RTLOP_GOTO, 0, 0, 0, label_check_ve);
+                }
+                rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, label_vxisi);
+                set_fpscr_exceptions(ctx, fpscr, FPSCR_VXISI);
+
+            } else {
+                /* Make sure only one VXFOO bit is set. */
+                ASSERT((vxfoo_no_snan & (vxfoo_no_snan - 1)) == 0);
+                set_fpscr_exceptions(ctx, fpscr, vxfoo_no_snan);
+            }
+
+            if (ctx->handle->common_opt & BINREC_OPT_NATIVE_IEEE_NAN) {
+                if (!label_check_ve_snan) {
+                    label_check_ve_snan = rtl_alloc_label(unit);
+                }
+                rtl_add_insn(unit, RTLOP_GOTO, 0, 0, 0, label_check_ve_snan);
+            } else {
+                if (label_check_ve) {
+                    rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, label_check_ve);
+                }
+                const int ve_test = rtl_alloc_register(unit, RTLTYPE_INT32);
+                rtl_add_insn(unit, RTLOP_ANDI, ve_test, fpscr, 0, FPSCR_VE);
+                int label_no_ve_default_nan = 0;
+                label_no_ve_default_nan = rtl_alloc_label(unit);
+                rtl_add_insn(unit, RTLOP_GOTO_IF_Z,
+                             0, ve_test, 0, label_no_ve_default_nan);
+                const int fr_fi_fprf = rtl_alloc_register(unit, RTLTYPE_INT32);
+                rtl_add_insn(unit, RTLOP_GET_ALIAS,
+                             fr_fi_fprf, 0, 0, ctx->alias.fr_fi_fprf);
+                const int fr_fi_cleared =
+                    rtl_alloc_register(unit, RTLTYPE_INT32);
+                rtl_add_insn(unit, RTLOP_ANDI,
+                             fr_fi_cleared, fr_fi_fprf, 0, 0x1F);
+                rtl_add_insn(unit, RTLOP_SET_ALIAS,
+                             0, fr_fi_cleared, 0, ctx->alias.fr_fi_fprf);
+                label_out = rtl_alloc_label(unit);
+                rtl_add_insn(unit, RTLOP_GOTO, 0, 0, 0, label_out);
+                rtl_add_insn(unit, RTLOP_LABEL,
+                             0, 0, 0, label_no_ve_default_nan);
+                RTLDataType default_nan_type = unit->regs[result].type;
+                ASSERT(!rtl_type_is_vector(default_nan_type));
+                const int default_nan =
+                    rtl_alloc_register(unit, default_nan_type);
+                rtl_add_insn(unit, RTLOP_LOAD_IMM, default_nan, 0, 0,
+                             default_nan_type == RTLTYPE_FLOAT64
+                             ? UINT64_C(0x7FF8000000000000) : 0x7FC00000);
+                set_fpr_and_flush(ctx, index, default_nan, true);
+                const int default_nan_fprf =
+                    rtl_alloc_register(unit, RTLTYPE_INT32);
+                rtl_add_insn(unit, RTLOP_LOAD_IMM,
+                             default_nan_fprf, 0, 0, 0x11);
+                rtl_add_insn(unit, RTLOP_SET_ALIAS,
+                             0, default_nan_fprf, 0, ctx->alias.fr_fi_fprf);
+                rtl_add_insn(unit, RTLOP_GOTO, 0, 0, 0, label_out);
+            }
+
+            /* A fused multiply-add of the form inf*0+SNaN (or 0*inf-SNaN,
+             * etc.) raises both VXIMZ and VXSNAN, so we need an extra
+             * check if frB triggers VXSNAN. */
+            if (vxfoo_no_snan == (FPSCR_VXIMZ | FPSCR_VXISI)) {
+                rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, label_frB_snan);
+                /* In the interest of not overly bloating the output code
+                 * (possibly a lost cause at this point...) we just calculate
+                 * frA*frC directly and see if that raises an exception.  We
+                 * check frA and frC for SNaNs before frB, so if we get here,
+                 * only inf*0 will trigger an invalid-operation exception.
+                 * Note that exceptions are already cleared here, so we don't
+                 * need an extra clear before the FMUL. */
+                const int mul_test =
+                    rtl_alloc_register(unit, unit->regs[frA].type);
+                rtl_add_insn(unit, RTLOP_FMUL, mul_test, frA, frC, 0);
+                const int mul_state =
+                    rtl_alloc_register(unit, RTLTYPE_FPSTATE);
+                rtl_add_insn(unit, RTLOP_FGETSTATE, mul_state, 0, 0, 0);
+                rtl_add_insn(unit, RTLOP_FSETSTATE, 0, clearexc, 0, 0);
+                const int mul_invalid =
+                    rtl_alloc_register(unit, RTLTYPE_INT32);
+                rtl_add_insn(unit, RTLOP_FTESTEXC,
+                             mul_invalid, mul_state, 0, RTLFEXC_INVALID);
+                rtl_add_insn(unit, RTLOP_GOTO_IF_Z,
+                             0, mul_invalid, 0, label_snan);
+                set_fpscr_exceptions(ctx, fpscr, FPSCR_VXSNAN | FPSCR_VXIMZ);
+                if (!label_check_ve_snan) {
+                    label_check_ve_snan = rtl_alloc_label(unit);
+                }
+                rtl_add_insn(unit, RTLOP_GOTO, 0, 0, 0, label_check_ve_snan);
+            }
+
+            rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, label_snan);
+        }  // if (vxfoo_no_snan)
+
+        set_fpscr_exceptions(ctx, fpscr, FPSCR_VXSNAN | vxfoo_snan);
+        if (label_check_ve_snan) {
+            rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, label_check_ve_snan);
+        }
+        const int ve_test = rtl_alloc_register(unit, RTLTYPE_INT32);
+        rtl_add_insn(unit, RTLOP_ANDI, ve_test, fpscr, 0, FPSCR_VE);
+        rtl_add_insn(unit, RTLOP_GOTO_IF_Z, 0, ve_test, 0, label_no_vx);
+
+        const bool need_zx_abort =
+            check_zx && !rtl_register_is_vector(&unit->regs[result]);
+        if (need_zx_abort) {
+            label_exception_abort = rtl_alloc_label(unit);
+            rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, label_exception_abort);
+        }
+        const int fr_fi_fprf = rtl_alloc_register(unit, RTLTYPE_INT32);
+        rtl_add_insn(unit, RTLOP_GET_ALIAS,
+                     fr_fi_fprf, 0, 0, ctx->alias.fr_fi_fprf);
+        const int fr_fi_cleared = rtl_alloc_register(unit, RTLTYPE_INT32);
+        rtl_add_insn(unit, RTLOP_ANDI, fr_fi_cleared, fr_fi_fprf, 0, 0x1F);
+        rtl_add_insn(unit, RTLOP_SET_ALIAS,
+                     0, fr_fi_cleared, 0, ctx->alias.fr_fi_fprf);
+        if (!label_out) {
+            label_out = rtl_alloc_label(unit);
+        }
+        rtl_add_insn(unit, RTLOP_GOTO, 0, 0, 0, label_out);
+
+        rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, label_no_vx);
+    }
 
     if (check_zx) {
         const int zerodiv = rtl_alloc_register(unit, RTLTYPE_INT32);
@@ -1988,10 +2009,34 @@ static void set_fp_result(GuestPPCContext *ctx, int index, int result,
             rtl_add_insn(unit, RTLOP_OR, fi_fprf, fi_sll5, fprf_ps0, 0);
             rtl_add_insn(unit, RTLOP_SET_ALIAS,
                          0, fi_fprf, 0, ctx->alias.fr_fi_fprf);
+            if (!label_out) {
+                label_out = rtl_alloc_label(unit);
+            }
             rtl_add_insn(unit, RTLOP_GOTO, 0, 0, 0, label_out);
         } else {  // Not paired-single.
-            rtl_add_insn(unit, RTLOP_GOTO_IF_NZ,
-                         0, ze_test, 0, label_exception_abort);
+            if (label_exception_abort) {
+                rtl_add_insn(unit, RTLOP_GOTO_IF_NZ,
+                             0, ze_test, 0, label_exception_abort);
+            } else {
+                rtl_add_insn(unit, RTLOP_GOTO_IF_Z,
+                             0, ze_test, 0, label_no_zx);
+                /* This is the same as the exception_abort code from the
+                 * VX case.  We need a separate copy here in case the VX
+                 * check is skipped. */
+                const int fr_fi_fprf = rtl_alloc_register(unit, RTLTYPE_INT32);
+                rtl_add_insn(unit, RTLOP_GET_ALIAS,
+                             fr_fi_fprf, 0, 0, ctx->alias.fr_fi_fprf);
+                const int fr_fi_cleared =
+                    rtl_alloc_register(unit, RTLTYPE_INT32);
+                rtl_add_insn(unit, RTLOP_ANDI,
+                             fr_fi_cleared, fr_fi_fprf, 0, 0x1F);
+                rtl_add_insn(unit, RTLOP_SET_ALIAS,
+                             0, fr_fi_cleared, 0, ctx->alias.fr_fi_fprf);
+                if (!label_out) {
+                    label_out = rtl_alloc_label(unit);
+                }
+                rtl_add_insn(unit, RTLOP_GOTO, 0, 0, 0, label_out);
+            }
         }
         rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, label_no_zx);
     }
@@ -2024,6 +2069,9 @@ static void set_fp_result(GuestPPCContext *ctx, int index, int result,
     const int underflow = rtl_alloc_register(unit, RTLTYPE_INT32);
     rtl_add_insn(unit, RTLOP_FTESTEXC,
                  underflow, fpstate, 0, RTLFEXC_UNDERFLOW);
+    if (!label_out) {
+        label_out = rtl_alloc_label(unit);
+    }
     rtl_add_insn(unit, RTLOP_GOTO_IF_Z, 0, underflow, 0, label_out);
     set_fpscr_exceptions(ctx, 0, FPSCR_UX);
 
@@ -2034,7 +2082,7 @@ static void set_fp_result(GuestPPCContext *ctx, int index, int result,
 
 /**
  * set_ps_result:  Set FPR[index] and FPSCR based on the given
- * floating-point value and the current host exception state.  If an
+ * paired-single value and the current host exception state.  If an
  * invalid-operation exception has been raised and FPSCR[VE] is set, the
  * target FPR will not be written.
  *
@@ -2141,7 +2189,7 @@ static void set_ps_result(GuestPPCContext *ctx, int index, int result,
                              result_ps[slot], result64, 0, 0);
             }
             set_fp_result(ctx, index, result_ps[slot], 0, op_src1, op_src2,
-                          0, 0, vxfoo_no_snan, real_rtlop == RTLOP_FDIV,
+                          0, 0, vxfoo_no_snan, true, real_rtlop == RTLOP_FDIV,
                           !(is_res || is_rsqrte), true);
             /* This will always be a direct alias access, so we might as
              * well avoid extra conversions to and from float32. */
@@ -2199,7 +2247,7 @@ static void set_ps_result(GuestPPCContext *ctx, int index, int result,
     /* If no invalid-operation exception occurred, we can just store the
      * result directly. */
     set_fp_result(ctx, index, result, 0, src1, src2, 0,
-                  0, 0, real_rtlop == RTLOP_FDIV, true, true);
+                  0, 0, false, real_rtlop == RTLOP_FDIV, true, true);
     if (label_skip_set_result) {
         rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, label_skip_set_result);
     }
@@ -3330,7 +3378,7 @@ static void translate_fp_arith(
                        use_float32);
 
     set_fp_result(ctx, insn_frD(insn), result, 0, src1, src2, 0,
-                  0, vxfoo_no_snan, rtlop == RTLOP_FDIV, true, true);
+                  0, vxfoo_no_snan, true, rtlop == RTLOP_FDIV, true, true);
     if (insn_Rc(insn)) {
         update_cr1(ctx);
     }
@@ -3400,7 +3448,7 @@ static void translate_fp_fma(
                        use_float32);
 
     set_fp_result(ctx, insn_frD(insn), result, 0, frA, frB, frC,
-                  0, FPSCR_VXIMZ | FPSCR_VXISI, false, true, true);
+                  0, FPSCR_VXIMZ | FPSCR_VXISI, true, false, true, true);
 
     if (insn_Rc(insn)) {
         update_cr1(ctx);
@@ -4043,7 +4091,8 @@ static void translate_fp_recip(GuestPPCContext *ctx, uint32_t insn,
         const int result = rtl_alloc_register(unit, type);
         rtl_add_insn(unit, RTLOP_FDIV, result, one, div_src, 0);
         set_fp_result(ctx, insn_frD(insn), result, 0, 0, frB, 0,
-                      0, is_rsqrte ? FPSCR_VXSQRT : 0, true, false, true);
+                      0, is_rsqrte ? FPSCR_VXSQRT : 0,
+                      true, true, false, true);
     } else {
         const int alias = rtl_alloc_alias_register(unit, type);
         int label_skip_set = 0;
@@ -5456,7 +5505,7 @@ static void translate_ps_fma(
         check_fp_underflow(ctx, result, rtlop, frA, frC, frB, true, true,
                            use_float32);
         set_fp_result(ctx, insn_frD(insn), result, 0, frA, frB, frC,
-                      0, 0, false, true, true);
+                      0, 0, true, false, true, true);
 
     } else {  // SIMD instructions not usable
 
@@ -5534,7 +5583,8 @@ static void translate_ps_fma(
             } else {
                 set_fp_result(ctx, insn_frD(insn), result, 0,
                               frA_ps[slot], frB_ps[slot], frC_ps[slot],
-                              0, FPSCR_VXIMZ | FPSCR_VXISI, false, true, true);
+                              0, FPSCR_VXIMZ | FPSCR_VXISI,
+                              true, false, true, true);
                 frD_ps[slot] = get_fpr(ctx, insn_frD(insn), RTLTYPE_FLOAT64);
                 fi_fprf[slot] = rtl_alloc_register(unit, RTLTYPE_INT32);
                 rtl_add_insn(unit, RTLOP_GET_ALIAS,
@@ -5884,7 +5934,7 @@ static void translate_ps_sum(GuestPPCContext *ctx, uint32_t insn, int index)
         const int label_do_result = rtl_alloc_label(unit);
         rtl_add_insn(unit, RTLOP_GOTO_IF_Z, 0, invalid, 0, label_do_result);
         set_fp_result(ctx, insn_frD(insn), sum, index, frA, frB, 0,
-                      0, FPSCR_VXISI, false, true, true);
+                      0, FPSCR_VXISI, true, false, true, true);
         const int fpscr = rtl_alloc_register(unit, RTLTYPE_INT32);
         rtl_add_insn(unit, RTLOP_GET_ALIAS, fpscr, 0, 0, ctx->alias.fpscr);
         const int has_ve = rtl_alloc_register(unit, RTLTYPE_INT32);
@@ -5916,7 +5966,7 @@ static void translate_ps_sum(GuestPPCContext *ctx, uint32_t insn, int index)
          * generator.  This is only reached if VX was not raised, so we
          * don't need to specify any exceptions anyway. */
         set_fp_result(ctx, insn_frD(insn), result, index, frA, frB, 0,
-                      0, 0, false, true, false);
+                      0, 0, false, false, true, false);
         rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, label_skip_result);
     } else {
         /* If we don't have to worry about default NaNs, we can just set
@@ -5925,7 +5975,7 @@ static void translate_ps_sum(GuestPPCContext *ctx, uint32_t insn, int index)
         rtl_add_insn(unit, RTLOP_VBUILD2,
                      result, index==0 ? sum : frC, index==0 ? frC : sum, 0);
         set_fp_result(ctx, insn_frD(insn), result, index, frA, frB, 0,
-                      0, FPSCR_VXISI, false, true, false);
+                      0, FPSCR_VXISI, true, false, true, false);
     }
 
     if (insn_Rc(insn)) {
@@ -7328,7 +7378,7 @@ static inline void translate_x3F(
             const int result = rtl_alloc_register(unit, RTLTYPE_FLOAT32);
             rtl_add_insn(unit, RTLOP_FCVT, result, frB, 0, 0);
             set_fp_result(ctx, insn_frD(insn), result, 0, 0, frB, 0,
-                          0, 0, false, true, true);
+                          0, 0, true, false, true, true);
             if (insn_Rc(insn)) {
                 update_cr1(ctx);
             }
