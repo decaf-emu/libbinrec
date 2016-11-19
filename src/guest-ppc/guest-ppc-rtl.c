@@ -1691,7 +1691,7 @@ static void set_fp_result(GuestPPCContext *ctx, int index, int result,
     rtl_add_insn(unit, RTLOP_FCLEAREXC, clearexc, fpstate, 0, 0);
     rtl_add_insn(unit, RTLOP_FSETSTATE, 0, clearexc, 0, 0);
 
-    int label_out = 0;
+    int label_out = rtl_alloc_label(unit);
     int label_exception_abort = 0;
 
     if (check_vx) {
@@ -1838,7 +1838,6 @@ static void set_fp_result(GuestPPCContext *ctx, int index, int result,
                              fr_fi_cleared, fr_fi_fprf, 0, 0x1F);
                 rtl_add_insn(unit, RTLOP_SET_ALIAS,
                              0, fr_fi_cleared, 0, ctx->alias.fr_fi_fprf);
-                label_out = rtl_alloc_label(unit);
                 rtl_add_insn(unit, RTLOP_GOTO, 0, 0, 0, label_out);
                 rtl_add_insn(unit, RTLOP_LABEL,
                              0, 0, 0, label_no_ve_default_nan);
@@ -1902,9 +1901,11 @@ static void set_fp_result(GuestPPCContext *ctx, int index, int result,
         rtl_add_insn(unit, RTLOP_ANDI, ve_test, fpscr, 0, FPSCR_VE);
         rtl_add_insn(unit, RTLOP_GOTO_IF_Z, 0, ve_test, 0, label_no_vx);
 
-        const bool need_zx_abort =
-            check_zx && !rtl_register_is_vector(&unit->regs[result]);
-        if (need_zx_abort) {
+        if (check_zx) {
+            /* We technically don't need this label if the result is a
+             * paired-single value, but paired-single arithmetic operations
+             * handle VX by falling back to scalars, so we'll never reach
+             * this point with check_zx true and a paired-single value. */
             label_exception_abort = rtl_alloc_label(unit);
             rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, label_exception_abort);
         }
@@ -1915,9 +1916,6 @@ static void set_fp_result(GuestPPCContext *ctx, int index, int result,
         rtl_add_insn(unit, RTLOP_ANDI, fr_fi_cleared, fr_fi_fprf, 0, 0x1F);
         rtl_add_insn(unit, RTLOP_SET_ALIAS,
                      0, fr_fi_cleared, 0, ctx->alias.fr_fi_fprf);
-        if (!label_out) {
-            label_out = rtl_alloc_label(unit);
-        }
         rtl_add_insn(unit, RTLOP_GOTO, 0, 0, 0, label_out);
 
         rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, label_no_vx);
@@ -1934,6 +1932,7 @@ static void set_fp_result(GuestPPCContext *ctx, int index, int result,
         rtl_add_insn(unit, RTLOP_ANDI, ze_test, fpscr, 0, FPSCR_ZE);
 
         if (rtl_register_is_vector(&unit->regs[result])) {
+
             /* For ps_div, we still have to set FR/FI/FPRF before aborting,
              * along with any other exceptions if the other slot was not
              * also a zero-divide. */
@@ -2009,37 +2008,23 @@ static void set_fp_result(GuestPPCContext *ctx, int index, int result,
             rtl_add_insn(unit, RTLOP_OR, fi_fprf, fi_sll5, fprf_ps0, 0);
             rtl_add_insn(unit, RTLOP_SET_ALIAS,
                          0, fi_fprf, 0, ctx->alias.fr_fi_fprf);
-            if (!label_out) {
-                label_out = rtl_alloc_label(unit);
-            }
+
             rtl_add_insn(unit, RTLOP_GOTO, 0, 0, 0, label_out);
+
         } else {  // Not paired-single.
-            if (label_exception_abort) {
-                rtl_add_insn(unit, RTLOP_GOTO_IF_NZ,
-                             0, ze_test, 0, label_exception_abort);
-            } else {
-                rtl_add_insn(unit, RTLOP_GOTO_IF_Z,
-                             0, ze_test, 0, label_no_zx);
-                /* This is the same as the exception_abort code from the
-                 * VX case.  We need a separate copy here in case the VX
-                 * check is skipped. */
-                const int fr_fi_fprf = rtl_alloc_register(unit, RTLTYPE_INT32);
-                rtl_add_insn(unit, RTLOP_GET_ALIAS,
-                             fr_fi_fprf, 0, 0, ctx->alias.fr_fi_fprf);
-                const int fr_fi_cleared =
-                    rtl_alloc_register(unit, RTLTYPE_INT32);
-                rtl_add_insn(unit, RTLOP_ANDI,
-                             fr_fi_cleared, fr_fi_fprf, 0, 0x1F);
-                rtl_add_insn(unit, RTLOP_SET_ALIAS,
-                             0, fr_fi_cleared, 0, ctx->alias.fr_fi_fprf);
-                if (!label_out) {
-                    label_out = rtl_alloc_label(unit);
-                }
-                rtl_add_insn(unit, RTLOP_GOTO, 0, 0, 0, label_out);
-            }
-        }
+
+            /* The only cases in which we pass check_vx = false are for
+             * paired-single results, so if we get here, we must have
+             * already come through the VX check and thus
+             * label_exception_abort will be set. */
+            ASSERT(label_exception_abort);
+            rtl_add_insn(unit, RTLOP_GOTO_IF_NZ,
+                         0, ze_test, 0, label_exception_abort);
+
+        }  // if (rtl_register_is_vector(&unit->regs[result]))
+
         rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, label_no_zx);
-    }
+    }  // if (check_zx)
 
     set_fpr_and_flush(ctx, index, result, snan_safe);
 
@@ -2069,9 +2054,6 @@ static void set_fp_result(GuestPPCContext *ctx, int index, int result,
     const int underflow = rtl_alloc_register(unit, RTLTYPE_INT32);
     rtl_add_insn(unit, RTLOP_FTESTEXC,
                  underflow, fpstate, 0, RTLFEXC_UNDERFLOW);
-    if (!label_out) {
-        label_out = rtl_alloc_label(unit);
-    }
     rtl_add_insn(unit, RTLOP_GOTO_IF_Z, 0, underflow, 0, label_out);
     set_fpscr_exceptions(ctx, 0, FPSCR_UX);
 
