@@ -1432,6 +1432,7 @@ static bool reload_regs_for_block(
     uint8_t value_map[32]; // Map from original reg values to current locations
                            //    (i.e., "what does this register now hold?")
     uint8_t src_count[32]; // # of times each host register is used as a source
+                           //    (indexed by original host register)
     uint8_t dest_type[32]; // RTLDataType of each alias, indexed by move target
     uint16_t reload_map[32]; // RTL register to load into each reload target
     uint16_t load_map[32]; // RTL alias to load into each load target
@@ -1491,43 +1492,85 @@ static bool reload_regs_for_block(
         }
     }
 
-    /* Now actually perform the moves, swapping registers as needed.
-     * There's no equivalent of the XCHG instruction for XMM registers,
-     * so we implement XMM swaps using the XOR method (a^=b, b^=a, a^=b). */
+    /* Add any registers which are live and unspilled both here and at the
+     * beginning of the target block as moves to themselves, to ensure that
+     * their values don't get lost during register shuffling. */
+    for (int i = 0; i < 32; i++) {
+        const int reg = ctx->reg_map[i];
+        const int later_insn = max(last_insn, target_insn);
+        if (reg
+         && (target_insn > last_insn || unit->regs[reg].birth < target_insn)
+         && unit->regs[reg].death >= later_insn
+         && !is_spilled(ctx, later_insn, reg)) {
+            ASSERT(!(move_targets & (1u << i)));
+            move_targets |= 1u << i;
+            move_map[i] = i;
+            src_map[i] = i;
+            value_map[i] = i;
+            src_count[i]++;
+        }
+    }
+
+    /* Now actually perform the moves, swapping registers as needed.  In
+     * order to avoid clobbering values in certain move patterns (see
+     * tests/host-x86/general/alias-merge-source-live-no-swap.c for an
+     * example), we initially only move registers whose targets are not
+     * themselves used as sources.  If no moves can be done during a pass
+     * but there are still registers left to be moved, then the remaining
+     * moves must form one or more cycles, so we swap one pair to try and
+     * break a cycle, then start a new pass. */
     while (move_targets) {
-        const X86Register host_dest = ctz32(move_targets);
-        move_targets ^= 1u << host_dest;
-        const X86Register move_src = move_map[host_dest];
-        const X86Register host_src = src_map[move_src];
-        if (host_src != host_dest) {
-            if (src_count[value_map[host_dest]] > 0) {
-                /* The value in the register we're about to write is still
-                 * needed.  Swap it with the source value for this alias,
-                 * then update maps so we know where the values have gone. */
-                if (host_dest >= X86_XMM0) {
-                    ASSERT(host_src >= X86_XMM0);
-                    append_insn_ModRM_reg(code, false, X86OP_XORPS,
-                                          host_dest, host_src);
-                    append_insn_ModRM_reg(code, false, X86OP_XORPS,
-                                          host_src, host_dest);
-                    append_insn_ModRM_reg(code, false, X86OP_XORPS,
-                                          host_dest, host_src);
-                } else {
-                    ASSERT(host_src < X86_XMM0);
-                    /* Slight laziness here: always exchange 64 bits even if
-                     * the values in both registers are only 32 bits wide. */
-                    append_insn_ModRM_reg(code, true, X86OP_XCHG_Ev_Gv,
-                                          host_src, host_dest);
+        uint32_t move_targets_pass = move_targets;
+        bool resolved_any = false;
+        while (move_targets_pass) {
+            const X86Register host_dest = ctz32(move_targets_pass);
+            move_targets_pass ^= 1u << host_dest;
+            const X86Register move_src = move_map[host_dest];
+            const X86Register host_src = src_map[move_src];
+            if (host_src != host_dest) {
+                if (src_count[value_map[host_dest]] > 0) {
+                    /* The value in the register we're about to write is
+                     * still needed, so skip it for now. */
+                    continue;
                 }
-                value_map[host_src] = value_map[host_dest];
-                src_map[value_map[host_dest]] = host_src;
-                value_map[host_dest] = move_src;
-                src_map[move_src] = host_dest;
-            } else {
                 append_move(code, dest_type[host_dest], host_dest, host_src);
             }
+            move_targets ^= 1u << host_dest;  // Register was resolved.
+            resolved_any = true;
+            src_count[move_src]--;
         }
-        src_count[move_src]--;
+        if (move_targets && !resolved_any) {
+            /* There's a cycle in the move graph, so pick the first target
+             * remaining and swap it with its source value. */
+            const X86Register host_dest = ctz32(move_targets);
+            move_targets ^= 1u << host_dest;
+            const X86Register move_src = move_map[host_dest];
+            const X86Register host_src = src_map[move_src];
+            ASSERT(host_src != host_dest);  // Or it would already be resolved.
+            /* Swap the registers, then update maps so we know where the
+             * values have gone.  There's no equivalent of the XCHG
+             * instruction for XMM registers, so use the XOR method
+             * (a^=b, b^=a, a^=b) in that case. */
+            if (host_dest >= X86_XMM0) {
+                ASSERT(host_src >= X86_XMM0);
+                append_insn_ModRM_reg(code, false, X86OP_XORPS,
+                                      host_dest, host_src);
+                append_insn_ModRM_reg(code, false, X86OP_XORPS,
+                                      host_src, host_dest);
+                append_insn_ModRM_reg(code, false, X86OP_XORPS,
+                                      host_dest, host_src);
+            } else {
+                ASSERT(host_src < X86_XMM0);
+                /* Slight laziness here: always exchange 64 bits even if
+                 * the values in both registers are only 32 bits wide. */
+                append_insn_ModRM_reg(code, true, X86OP_XCHG_Ev_Gv,
+                                      host_src, host_dest);
+            }
+            value_map[host_src] = value_map[host_dest];
+            src_map[value_map[host_dest]] = host_src;
+            value_map[host_dest] = move_src;
+            src_map[move_src] = host_dest;
+        }
     }
 
     /* Finally, load values from storage which were spilled or not live. */

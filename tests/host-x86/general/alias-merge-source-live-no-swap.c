@@ -21,31 +21,32 @@ static int add_rtl(RTLUnit *unit)
     int reg1, reg2, reg3, alias1, alias2;
     EXPECT(reg1 = rtl_alloc_register(unit, RTLTYPE_ADDRESS));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_ARG, reg1, 0, 0, 0));
-    EXPECT(alias1 = rtl_alloc_alias_register(unit, RTLTYPE_ADDRESS));
+    EXPECT(alias1 = rtl_alloc_alias_register(unit, RTLTYPE_INT32));
     rtl_set_alias_storage(unit, alias1, reg1, 0x1234);
     EXPECT(alias2 = rtl_alloc_alias_register(unit, RTLTYPE_INT32));
     rtl_set_alias_storage(unit, alias2, reg1, 0x5678);
-    EXPECT(reg2 = rtl_alloc_register(unit, RTLTYPE_ADDRESS));
+    EXPECT(reg2 = rtl_alloc_register(unit, RTLTYPE_INT32));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg2, 0, 0, 2));
     EXPECT(rtl_add_insn(unit, RTLOP_SET_ALIAS, 0, reg2, 0, alias1));
     EXPECT(reg3 = rtl_alloc_register(unit, RTLTYPE_INT32));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg3, 0, 0, 3));
     EXPECT(rtl_add_insn(unit, RTLOP_SET_ALIAS, 0, reg3, 0, alias2));
 
-    int reg4, reg5, reg6, reg7, reg8, label;
+    int reg4, reg5, reg6, reg7, label;
     EXPECT(label = rtl_alloc_label(unit));
     EXPECT(rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, label));
-    EXPECT(reg4 = rtl_alloc_register(unit, RTLTYPE_ADDRESS));
-    EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg4, 0, 0, 4));  // Touch EAX.
-    EXPECT(reg5 = rtl_alloc_register(unit, RTLTYPE_ADDRESS));
-    EXPECT(rtl_add_insn(unit, RTLOP_GET_ALIAS, reg5, 0, 0, alias1));  // AX->CX
+    EXPECT(reg4 = rtl_alloc_register(unit, RTLTYPE_INT32));
+    /* This can't get ECX because we keep reg3 live, so it goes to EAX. */
+    EXPECT(rtl_add_insn(unit, RTLOP_GET_ALIAS, reg4, 0, 0, alias2));
+    EXPECT(reg5 = rtl_alloc_register(unit, RTLTYPE_INT32));
+    /* EAX is now taken, so this goes to EDX. */
+    EXPECT(rtl_add_insn(unit, RTLOP_GET_ALIAS, reg5, 0, 0, alias1));
     EXPECT(reg6 = rtl_alloc_register(unit, RTLTYPE_INT32));
-    EXPECT(rtl_add_insn(unit, RTLOP_GET_ALIAS, reg6, 0, 0, alias2));  // CX->DX
-    EXPECT(reg7 = rtl_alloc_register(unit, RTLTYPE_ADDRESS));
-    EXPECT(rtl_add_insn(unit, RTLOP_ZCAST, reg7, reg6, 0, 0));
-    EXPECT(reg8 = rtl_alloc_register(unit, RTLTYPE_ADDRESS));
-    EXPECT(rtl_add_insn(unit, RTLOP_ADD, reg8, reg5, reg7, 0));
-    EXPECT(rtl_add_insn(unit, RTLOP_SET_ALIAS, 0, reg8, 0, alias1));
+    /* reg3 is live through here. */
+    EXPECT(rtl_add_insn(unit, RTLOP_ADD, reg6, reg5, reg3, 0));
+    EXPECT(reg7 = rtl_alloc_register(unit, RTLTYPE_INT32));
+    EXPECT(rtl_add_insn(unit, RTLOP_ADD, reg7, reg6, reg4, 0));
+    EXPECT(rtl_add_insn(unit, RTLOP_SET_ALIAS, 0, reg7, 0, alias1));
 
     EXPECT(rtl_add_insn(unit, RTLOP_NOP, 0, reg1, 0, 0));
     return EXIT_SUCCESS;
@@ -56,11 +57,20 @@ static const uint8_t expected_code[] = {
     0xB8,0x02,0x00,0x00,0x00,           // mov $2,%eax
     0xB9,0x03,0x00,0x00,0x00,           // mov $3,%ecx
     0x89,0x8F,0x78,0x56,0x00,0x00,      // mov %ecx,0x5678(%rdi)
-    0x48,0x87,0xC1,                     // xchg %rax,%rcx
+    /*
+     * Reload analysis should go like this:
+     * - Pass 1:
+     *      - EAX <- ECX: EAX is still needed, so skip
+     *      - ECX <- ECX: resolve (no move needed)
+     *      - EDX <- EAX: EDX is not needed, so move and resolve
+     * - Pass 2:
+     *      - EAX <- ECX: EAX is no longer needed, so move and resolve
+     */
     0x8B,0xD0,                          // mov %eax,%edx
-    0xB8,0x04,0x00,0x00,0x00,           // mov $4,%eax
-    0x48,0x03,0xCA,                     // add %rdx,%rcx
-    0x48,0x89,0x8F,0x34,0x12,0x00,0x00, // mov %rcx,0x1234(%rdi)
+    0x8B,0xC1,                          // mov %ecx,%eax
+    0x03,0xD1,                          // add %ecx,%edx
+    0x03,0xD0,                          // add %eax,%edx
+    0x89,0x97,0x34,0x12,0x00,0x00,      // mov %edx,0x1234(%rdi)
     0x48,0x83,0xC4,0x08,                // add $8,%rsp
     0xC3,                               // ret
 };

@@ -19,6 +19,10 @@
 # program is also required; set the environment variable PPC_OBJDUMP if
 # necessary.
 
+# Set these variables to generate different versions of the test code.
+tables=1   # Sets TEST_RECIPROCAL_TABLES.
+nofpscr=0  # Sets IGNORE_FPSCR_STATE.
+
 set -e
 
 dumpfile=""
@@ -45,8 +49,8 @@ trap "rm -r '$tempdir'" EXIT SIGHUP SIGINT SIGQUIT SIGTERM
 
 (
     set -x
-    "$PPC_AS" --defsym ESPRESSO=1 --defsym TEST_RECIPROCAL_TABLES=1 \
-        -o"$tempdir/ppc750cl.o" "$1"
+    "$PPC_AS" --defsym ESPRESSO=1 --defsym TEST_RECIPROCAL_TABLES=$tables \
+        --defsym IGNORE_FPSCR_STATE=$nofpscr -o"$tempdir/ppc750cl.o" "$1"
     "$PPC_LD" -Ttext=0x1000000 --defsym _start=0x1000000 \
         -o"$tempdir/ppc750cl" "$tempdir/ppc750cl.o"
     if test -n "$dumpfile"; then

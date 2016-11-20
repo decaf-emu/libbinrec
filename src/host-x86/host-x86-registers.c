@@ -397,6 +397,10 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
     const RTLRegister * const src2_reg = &unit->regs[src2];
     const HostX86RegInfo * const src2_info = &ctx->regs[src2];
 
+    /* Bitmap of registers we need to avoid for output or temporary
+     * register allocation. */
+    uint32_t avoid_regs = dest_info->avoid_regs | ctx->early_merge_regs;
+
     /* Special cases for store-type instructions.  These don't have
      * destination register operands, and (except for SET_ALIAS) the
      * host_data fields of the instruction are already used for address
@@ -436,7 +440,7 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
             int value_temp;
             if (rtl_register_is_int(src2_reg)
              || insn->opcode == RTLOP_STORE_BR) {
-                value_temp = get_gpr(ctx, 0);
+                value_temp = get_gpr(ctx, avoid_regs);
                 if (value_temp < 0) {
                     if (insn->opcode == RTLOP_STORE) {
                         /* For a plain store, we can just reload into and
@@ -454,7 +458,7 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
                     }
                 }
             } else {  // non-integer, non-byte-reversed
-                value_temp = get_xmm(ctx, 0);
+                value_temp = get_xmm(ctx, avoid_regs);
                 if (value_temp < 0) {
                     value_temp = X86_XMM15;
                 }
@@ -568,7 +572,6 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
         bool host_allocated = dest_info->host_allocated;
         dest_info->host_allocated = true;  // We'll find one eventually.
 
-        uint32_t avoid_regs = dest_info->avoid_regs | ctx->early_merge_regs;
         uint32_t soft_avoid = 0;  // Bitmap of last-choice registers.
 
         /* For GET_ALIAS handling -- this has to be set before we allocate
@@ -1401,14 +1404,15 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
                      * doesn't overlap cmp2. */
                     cmp1_temp = dest_info->host_reg;
                 } else {
-                    const uint32_t avoid_regs = 1u << ctx->regs[cmp2].host_reg;
+                    const uint32_t cmp1_avoid_regs =
+                        1u << ctx->regs[cmp2].host_reg | avoid_regs;
                     if (rtl_register_is_int(&unit->regs[cmp1])) {
-                        cmp1_temp = get_gpr(ctx, avoid_regs);
+                        cmp1_temp = get_gpr(ctx, cmp1_avoid_regs);
                         if (cmp1_temp < 0) {
                             cmp1_temp = X86_R15;
                         }
                     } else {  // non-integer
-                        cmp1_temp = get_xmm(ctx, avoid_regs);
+                        cmp1_temp = get_xmm(ctx, cmp1_avoid_regs);
                         if (cmp1_temp < 0) {
                             cmp1_temp = X86_XMM15;
                         }

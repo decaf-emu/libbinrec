@@ -72,43 +72,42 @@ static int convert_fpr(GuestPPCContext *ctx, int index, int reg,
            || (rtl_type_is_vector(new_type) && rtl_vector_length(new_type) == 2
                && rtl_type_is_float(rtl_vector_element_type(new_type))));
 
-    if (ctx->handle->guest_opt & BINREC_OPT_G_PPC_FAST_NANS) {
-        snan_safe = true;
+    RTLOpcode fcast_op = RTLOP_FCAST;
+    RTLOpcode vfcast_op = RTLOP_VFCAST;
+    if (snan_safe
+     || (ctx->handle->guest_opt & BINREC_OPT_G_PPC_ASSUME_NO_SNAN)) {
+        fcast_op = RTLOP_FCVT;
+        vfcast_op = RTLOP_VFCVT;
     }
 
     RTLUnit * const unit = ctx->unit;
+    int new_reg;
 
     if (old_type == RTLTYPE_V2_FLOAT64) {
         if (new_type == RTLTYPE_V2_FLOAT32) {
-            const int new_reg = rtl_alloc_register(unit, RTLTYPE_V2_FLOAT32);
-            rtl_add_insn(unit, snan_safe ? RTLOP_VFCVT : RTLOP_VFCAST,
-                         new_reg, reg, 0, 0);
-            return new_reg;
+            new_reg = rtl_alloc_register(unit, RTLTYPE_V2_FLOAT32);
+            rtl_add_insn(unit, vfcast_op, new_reg, reg, 0, 0);
         } else {
             const int f64 = rtl_alloc_register(unit, RTLTYPE_FLOAT64);
             rtl_add_insn(unit, RTLOP_VEXTRACT, f64, reg, 0, 0);
             if (new_type == RTLTYPE_FLOAT64) {
-                return f64;
+                new_reg = f64;
             } else {
                 ASSERT(new_type == RTLTYPE_FLOAT32);
-                const int new_reg = rtl_alloc_register(unit, RTLTYPE_FLOAT32);
-                rtl_add_insn(unit, snan_safe ? RTLOP_FCVT : RTLOP_FCAST,
-                             new_reg, f64, 0, 0);
-                return new_reg;
+                new_reg = rtl_alloc_register(unit, RTLTYPE_FLOAT32);
+                rtl_add_insn(unit, fcast_op, new_reg, f64, 0, 0);
             }
         }
 
     } else if (old_type == RTLTYPE_V2_FLOAT32) {
         if (new_type == RTLTYPE_FLOAT32) {
-            const int new_reg = rtl_alloc_register(unit, RTLTYPE_FLOAT32);
+            new_reg = rtl_alloc_register(unit, RTLTYPE_FLOAT32);
             rtl_add_insn(unit, RTLOP_VEXTRACT, new_reg, reg, 0, 0);
-            return new_reg;
         } else {
             const int f64x2 = rtl_alloc_register(unit, RTLTYPE_V2_FLOAT64);
-            rtl_add_insn(unit, snan_safe ? RTLOP_VFCVT : RTLOP_VFCAST,
-                         f64x2, reg, 0, 0);
+            rtl_add_insn(unit, vfcast_op, f64x2, reg, 0, 0);
             if (new_type == RTLTYPE_V2_FLOAT64) {
-                return f64x2;
+                new_reg = f64x2;
             } else {
                 ASSERT(new_type == RTLTYPE_FLOAT64);
                 ASSERT(unit->aliases[ctx->alias.fpr[index]].type
@@ -116,18 +115,15 @@ static int convert_fpr(GuestPPCContext *ctx, int index, int reg,
                 rtl_add_insn(unit, RTLOP_SET_ALIAS,
                              0, f64x2, 0, ctx->alias.fpr[index]);
                 ctx->live.fpr[index] = f64x2;
-                const int new_reg = rtl_alloc_register(unit, RTLTYPE_FLOAT64);
+                new_reg = rtl_alloc_register(unit, RTLTYPE_FLOAT64);
                 rtl_add_insn(unit, RTLOP_VEXTRACT, new_reg, f64x2, 0, 0);
-                return new_reg;
             }
         }
 
     } else if (old_type == RTLTYPE_FLOAT64) {
         if (new_type == RTLTYPE_FLOAT32) {
-            const int new_reg = rtl_alloc_register(unit, RTLTYPE_FLOAT32);
-            rtl_add_insn(unit, snan_safe ? RTLOP_FCVT : RTLOP_FCAST,
-                         new_reg, reg, 0, 0);
-            return new_reg;
+            new_reg = rtl_alloc_register(unit, RTLTYPE_FLOAT32);
+            rtl_add_insn(unit, fcast_op, new_reg, reg, 0, 0);
         } else {
             ASSERT(unit->aliases[ctx->alias.fpr[index]].type
                    == RTLTYPE_V2_FLOAT64);
@@ -137,38 +133,33 @@ static int convert_fpr(GuestPPCContext *ctx, int index, int reg,
             const int f64x2 = rtl_alloc_register(unit, RTLTYPE_V2_FLOAT64);
             rtl_add_insn(unit, RTLOP_VINSERT, f64x2, old_f64x2, reg, 0);
             if (new_type == RTLTYPE_V2_FLOAT64) {
-                return f64x2;
+                new_reg = f64x2;
             } else {
                 ASSERT(new_type == RTLTYPE_V2_FLOAT32);
-                const int new_reg = rtl_alloc_register(unit,
-                                                       RTLTYPE_V2_FLOAT32);
-                rtl_add_insn(unit, snan_safe ? RTLOP_VFCVT : RTLOP_VFCAST,
-                             new_reg, f64x2, 0, 0);
-                return new_reg;
+                new_reg = rtl_alloc_register(unit, RTLTYPE_V2_FLOAT32);
+                rtl_add_insn(unit, vfcast_op, new_reg, f64x2, 0, 0);
             }
         }
 
     } else {
         ASSERT(old_type == RTLTYPE_FLOAT32);
         if (new_type == RTLTYPE_V2_FLOAT32) {
-            const int new_reg = rtl_alloc_register(unit, RTLTYPE_V2_FLOAT32);
+            new_reg = rtl_alloc_register(unit, RTLTYPE_V2_FLOAT32);
             rtl_add_insn(unit, RTLOP_VBROADCAST, new_reg, reg, 0, 0);
-            return new_reg;
         } else {
             const int f64 = rtl_alloc_register(unit, RTLTYPE_FLOAT64);
-            rtl_add_insn(unit, snan_safe ? RTLOP_FCVT : RTLOP_FCAST,
-                         f64, reg, 0, 0);
+            rtl_add_insn(unit, fcast_op, f64, reg, 0, 0);
             if (new_type == RTLTYPE_V2_FLOAT64) {
-                const int new_reg = rtl_alloc_register(unit,
-                                                       RTLTYPE_V2_FLOAT64);
+                new_reg = rtl_alloc_register(unit, RTLTYPE_V2_FLOAT64);
                 rtl_add_insn(unit, RTLOP_VBROADCAST, new_reg, f64, 0, 0);
-                return new_reg;
             } else {
                 ASSERT(new_type == RTLTYPE_FLOAT64);
-                return f64;
+                new_reg = f64;
             }
         }
     }
+
+    return new_reg;
 }
 
 /*-----------------------------------------------------------------------*/
@@ -381,7 +372,7 @@ static inline int get_ps1(GuestPPCContext * const ctx, int index,
         const int old_reg = reg;
         reg = rtl_alloc_register(unit, type);
         if ((ctx->ps1_is_safe & (1 << index))
-         || (ctx->handle->guest_opt & BINREC_OPT_G_PPC_FAST_NANS)) {
+         || (ctx->handle->guest_opt & BINREC_OPT_G_PPC_ASSUME_NO_SNAN)) {
             rtl_add_insn(unit, RTLOP_FCVT, reg, old_reg, 0, 0);
         } else {
             rtl_add_insn(unit, RTLOP_FCAST, reg, old_reg, 0, 0);
@@ -2170,8 +2161,8 @@ static void set_ps_result(GuestPPCContext *ctx, int index, int result,
                 rtl_add_insn(unit, RTLOP_FCVT,
                              result_ps[slot], result64, 0, 0);
             }
-            set_fp_result(ctx, index, result_ps[slot], 0, op_src1, op_src2,
-                          0, 0, vxfoo_no_snan, true, real_rtlop == RTLOP_FDIV,
+            set_fp_result(ctx, index, result_ps[slot], 0, op_src1, src2_ps, 0,
+                          0, vxfoo_no_snan, true, real_rtlop == RTLOP_FDIV,
                           !(is_res || is_rsqrte), true);
             /* This will always be a direct alias access, so we might as
              * well avoid extra conversions to and from float32. */
@@ -5192,7 +5183,11 @@ static void translate_move_spr(
             rtl_add_insn(unit, RTLOP_STORE, 0, ctx->psb_reg, rS,
                          ctx->handle->setup.state_offset_gqr + 4 * (spr & 7));
             if (ctx->handle->guest_opt & BINREC_OPT_G_PPC_CONSTANT_GQRS) {
+                flush_live_regs(ctx, true);
+                guest_ppc_flush_cr(ctx, false);
+                guest_ppc_flush_fpscr(ctx);
                 set_nia_imm(ctx, address+4);
+                post_insn_callback(ctx, address);
                 rtl_add_insn(unit, RTLOP_GOTO,
                              0, 0, 0, guest_ppc_get_epilogue_label(ctx));
             }
@@ -5930,7 +5925,7 @@ static void translate_ps_sum(GuestPPCContext *ctx, uint32_t insn, int index)
         rtl_add_insn(unit, RTLOP_VEXTRACT, sum_64, frD_ps, 0, 0);
         const int frC_64 = rtl_alloc_register(unit, RTLTYPE_FLOAT64);
         const bool frC_snan_safe =
-            (ctx->handle->guest_opt & BINREC_OPT_G_PPC_FAST_NANS) != 0;
+            (ctx->handle->guest_opt & BINREC_OPT_G_PPC_ASSUME_NO_SNAN) != 0;
         rtl_add_insn(unit, frC_snan_safe ? RTLOP_FCVT : RTLOP_FCAST,
                      frC_64, frC, 0, 0);
         const int nan_result = rtl_alloc_register(unit, RTLTYPE_V2_FLOAT64);
@@ -6712,6 +6707,8 @@ static inline void translate_x1F(
          * unconditionally return from this unit.  We currently don't
          * bother checking the invalidation address. */
         flush_live_regs(ctx, true);
+        guest_ppc_flush_cr(ctx, false);
+        guest_ppc_flush_fpscr(ctx);
         set_nia_imm(ctx, address + 4);
         post_insn_callback(ctx, address);
         rtl_add_insn(unit, RTLOP_GOTO,

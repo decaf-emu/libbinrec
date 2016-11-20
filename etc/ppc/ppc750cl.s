@@ -3,7 +3,16 @@
 # No copyright is claimed on this file.
 #
 # Update history:
-#    - 2016-11-18: Added more tests for various instructions.
+#    - 2016-11-19: Added an IGNORE_FPSCR_STATE symbol (disabled by default)
+#         to cause floating-point tests to ignore the state bits in FPSCR.
+#         This can be useful in testing an implementation which omits FPSCR
+#         state bits for performance reasons.
+#    - 2016-11-19: Added more tests for various instructions, and fixed
+#         a few tests spuriously failing if the previous tests failed.
+#         (In general, later tests assume the success of earlier tests;
+#         these cases are just for parallelism with similar tests which do
+#         avoid such failures, or to avoid failures whose cause may not
+#         be immediately clear from the code.)
 #    - 2016-11-16: Added reciprocal table tests for ps_res and ps_rsqrte.
 #    - 2016-11-16: Added tests for excess range on ps_merge* and ps_rsqrte.
 #    - 2016-11-16: Added more tests for paired-single exception handling.
@@ -137,6 +146,31 @@
 #    - The effect of floating-point operations on FPSCR[FR]
 #
 
+# CAN_SET_GQR:  Set this to 1 if the routine will be run in an environment
+# which allows writing to the GQR registers.  If this is not set, the
+# routine will test only the floating point load and store operations, and
+# will assume that all fields of GQR0 are set to zero.
+.ifndef CAN_SET_GQR
+CAN_SET_GQR = 1
+.endif
+
+# ESPRESSO:  Set this to 1 if testing the Espresso CPU.  This enables use
+# of the Espresso-specific UGQR registers to set GQRs without supervisor
+# privileges.
+.ifndef ESPRESSO
+ESPRESSO = 0
+.endif
+
+# IGNORE_FPSCR_STATE:  Set this to 1 to cause all floating-point tests to
+# assume that floating-point operations do not modify FPSCR.  Tests for
+# instructions which directly manipulate FPSCR (mtfsf, etc.) are not
+# affected.  Enabling this setting will not cause any tests to fail on a
+# 750CL implementation which does update FPSCR.  Enabling this setting
+# also will not change the address of any test.
+.ifndef IGNORE_FPSCR_STATE
+IGNORE_FPSCR_STATE = 0
+.endif
+
 # MFTB_SPIN_COUNT:  Set this to the number of times to loop while waiting
 # for the time base register to increment.
 .ifndef MFTB_SPIN_COUNT
@@ -183,21 +217,6 @@ TEST_PAIRED_SINGLE = 1
 # or documented-as-undefined instruction formats.
 .ifndef TEST_UNDOCUMENTED
 TEST_UNDOCUMENTED = 1
-.endif
-
-# CAN_SET_GQR:  Set this to 1 if the routine will be run in an environment
-# which allows writing to the GQR registers.  If this is not set, the
-# routine will test only the floating point load and store operations, and
-# will assume that all fields of GQR0 are set to zero.
-.ifndef CAN_SET_GQR
-CAN_SET_GQR = 1
-.endif
-
-# ESPRESSO:  Set this to 1 if testing the Espresso CPU.  This enables use
-# of the Espresso-specific UGQR registers to set GQRs without supervisor
-# privileges.
-.ifndef ESPRESSO
-ESPRESSO = 0
 .endif
 
 
@@ -6955,11 +6974,19 @@ get_load_address:
    lis %r8,0x2000
    cmpw %r3,%r8
    bne 1f
-   cmpwi %r7,0x2000
+   li %r8,0x2000
+.if IGNORE_FPSCR_STATE
+   bl copy_r8_to_fpscr
+.else
+   cmpw %r7,%r8
+.endif
    beq 0f
 1: stw %r3,8(%r6)
    stw %r7,16(%r6)
    addi %r6,%r6,32
+   # Leave CR with the expected state for the next test.
+   lis %r8,0x2000
+   mtcr %r8
 0: fcmpu cr1,%f1,%f0    # 1.0 > 0.0
    bl record
    mfcr %r3
@@ -6969,7 +6996,12 @@ get_load_address:
    lis %r8,0x2400
    cmpw %r3,%r8
    bne 1f
-   cmpwi %r7,0x4000
+   li %r8,0x4000
+.if IGNORE_FPSCR_STATE
+   bl copy_r8_to_fpscr
+.else
+   cmpw %r7,%r8
+.endif
    beq 0f
 1: stw %r3,8(%r6)
    stw %r7,16(%r6)
@@ -6984,7 +7016,11 @@ get_load_address:
    cmpwi %r3,8
    bne 1f
    ori %r8,%r0,0x8000
+.if IGNORE_FPSCR_STATE
+   bl copy_r8_to_fpscr
+.else
    cmpw %r7,%r8
+.endif
    beq 0f
 1: stw %r3,8(%r6)
    stw %r7,16(%r6)
@@ -6998,7 +7034,12 @@ get_load_address:
    lwz %r7,4(%r4)
    cmpwi %r3,1
    bne 1f
-   cmpwi %r7,0x1000
+   li %r8,0x1000
+.if IGNORE_FPSCR_STATE
+   bl copy_r8_to_fpscr
+.else
+   cmpw %r7,%r8
+.endif
    beq 0f
 1: stw %r3,8(%r6)
    stw %r7,16(%r6)
@@ -7015,7 +7056,12 @@ get_load_address:
    lwz %r7,4(%r4)
    cmpwi %r3,1
    bne 1f
-   cmpwi %r7,0x1000
+   li %r8,0x1000
+.if IGNORE_FPSCR_STATE
+   bl copy_r8_to_fpscr
+.else
+   cmpw %r7,%r8
+.endif
    beq 0f
 1: stw %r3,8(%r6)
    stw %r7,16(%r6)
@@ -7032,7 +7078,11 @@ get_load_address:
    bne 1f
    lis %r8,0xA100
    ori %r8,%r8,0x1000
+.if IGNORE_FPSCR_STATE
+   bl copy_r8_to_fpscr
+.else
    cmpw %r7,%r8
+.endif
    beq 0f
 1: stw %r3,8(%r6)
    stw %r7,16(%r6)
@@ -7051,7 +7101,11 @@ get_load_address:
    bne 1f
    lis %r8,0xA100
    ori %r8,%r8,0x1000
+.if IGNORE_FPSCR_STATE
+   bl copy_r8_to_fpscr
+.else
    cmpw %r7,%r8
+.endif
    beq 0f
 1: stw %r3,8(%r6)
    stw %r7,16(%r6)
@@ -7070,7 +7124,11 @@ get_load_address:
    bne 1f
    lis %r8,0x2100
    ori %r8,%r8,0x1000
+.if IGNORE_FPSCR_STATE
+   bl copy_r8_to_fpscr
+.else
    cmpw %r7,%r8
+.endif
    beq 0f
 1: stw %r3,8(%r6)
    stw %r7,16(%r6)
@@ -7087,7 +7145,11 @@ get_load_address:
    bne 1f
    lis %r8,0x2100
    ori %r8,%r8,0x2000
+.if IGNORE_FPSCR_STATE
+   bl copy_r8_to_fpscr
+.else
    cmpw %r7,%r8
+.endif
    beq 0f
 1: stw %r3,8(%r6)
    stw %r7,16(%r6)
@@ -7105,7 +7167,12 @@ get_load_address:
    lis %r8,0x2000
    cmpw %r3,%r8
    bne 1f
-   cmpwi %r7,0x2000
+   li %r8,0x2000
+.if IGNORE_FPSCR_STATE
+   bl copy_r8_to_fpscr
+.else
+   cmpw %r7,%r8
+.endif
    beq 0f
 1: stw %r3,8(%r6)
    stw %r7,16(%r6)
@@ -7119,7 +7186,12 @@ get_load_address:
    lis %r8,0x2400
    cmpw %r3,%r8
    bne 1f
-   cmpwi %r7,0x4000
+   li %r8,0x4000
+.if IGNORE_FPSCR_STATE
+   bl copy_r8_to_fpscr
+.else
+   cmpw %r7,%r8
+.endif
    beq 0f
 1: stw %r3,8(%r6)
    stw %r7,16(%r6)
@@ -7134,7 +7206,11 @@ get_load_address:
    cmpwi %r3,8
    bne 1f
    ori %r8,%r0,0x8000
+.if IGNORE_FPSCR_STATE
+   bl copy_r8_to_fpscr
+.else
    cmpw %r7,%r8
+.endif
    beq 0f
 1: stw %r3,8(%r6)
    stw %r7,16(%r6)
@@ -7150,7 +7226,11 @@ get_load_address:
    bne 1f
    lis %r8,0xA008
    ori %r8,%r8,0x1000
+.if IGNORE_FPSCR_STATE
+   bl copy_r8_to_fpscr
+.else
    cmpw %r7,%r8
+.endif
    beq 0f
 1: stw %r3,8(%r6)
    stw %r7,16(%r6)
@@ -7167,7 +7247,11 @@ get_load_address:
    bne 1f
    lis %r8,0xA008
    ori %r8,%r8,0x1000
+.if IGNORE_FPSCR_STATE
+   bl copy_r8_to_fpscr
+.else
    cmpw %r7,%r8
+.endif
    beq 0f
 1: stw %r3,8(%r6)
    stw %r7,16(%r6)
@@ -7184,7 +7268,11 @@ get_load_address:
    bne 1f
    lis %r8,0xA108
    ori %r8,%r8,0x1000
+.if IGNORE_FPSCR_STATE
+   bl copy_r8_to_fpscr
+.else
    cmpw %r7,%r8
+.endif
    beq 0f
 1: stw %r3,8(%r6)
    stw %r7,16(%r6)
@@ -7201,7 +7289,11 @@ get_load_address:
    bne 1f
    lis %r8,0xA108
    ori %r8,%r8,0x1000
+.if IGNORE_FPSCR_STATE
+   bl copy_r8_to_fpscr
+.else
    cmpw %r7,%r8
+.endif
    beq 0f
 1: stw %r3,8(%r6)
    stw %r7,16(%r6)
@@ -7218,7 +7310,11 @@ get_load_address:
    bne 1f
    lis %r8,0x2108
    ori %r8,%r8,0x1000
+.if IGNORE_FPSCR_STATE
+   bl copy_r8_to_fpscr
+.else
    cmpw %r7,%r8
+.endif
    beq 0f
 1: stw %r3,8(%r6)
    stw %r7,16(%r6)
@@ -7234,7 +7330,11 @@ get_load_address:
    bne 1f
    lis %r8,0x2108
    ori %r8,%r8,0x2000
+.if IGNORE_FPSCR_STATE
+   bl copy_r8_to_fpscr
+.else
    cmpw %r7,%r8
+.endif
    beq 0f
 1: stw %r3,8(%r6)
    stw %r7,16(%r6)
@@ -7254,7 +7354,11 @@ get_load_address:
    bne 1f
    lis %r8,0xE100
    ori %r8,%r8,0x1080
+.if IGNORE_FPSCR_STATE
+   bl copy_r8_to_fpscr
+.else
    cmpw %r7,%r8
+.endif
    beq 0f
 1: stw %r3,8(%r6)
    stw %r7,16(%r6)
@@ -7272,7 +7376,11 @@ get_load_address:
    bne 1f
    lis %r8,0xE100
    ori %r8,%r8,0x1080
+.if IGNORE_FPSCR_STATE
+   bl copy_r8_to_fpscr
+.else
    cmpw %r7,%r8
+.endif
    beq 0f
 1: stw %r3,8(%r6)
    stw %r7,16(%r6)
@@ -7289,7 +7397,11 @@ get_load_address:
    bne 1f
    lis %r8,0x6100
    ori %r8,%r8,0x1080
+.if IGNORE_FPSCR_STATE
+   bl copy_r8_to_fpscr
+.else
    cmpw %r7,%r8
+.endif
    beq 0f
 1: stw %r3,8(%r6)
    stw %r7,16(%r6)
@@ -7305,7 +7417,11 @@ get_load_address:
    bne 1f
    lis %r8,0x6100
    ori %r8,%r8,0x2080
+.if IGNORE_FPSCR_STATE
+   bl copy_r8_to_fpscr
+.else
    cmpw %r7,%r8
+.endif
    beq 0f
 1: stw %r3,8(%r6)
    stw %r7,16(%r6)
@@ -7615,7 +7731,7 @@ get_load_address:
    fmr %f4,%f0
    bl check_fpu_pzero
 
-   # stfs (denormal)
+   # stfsx (denormal)
 0: lis %r3,0x36A0
    stw %r3,0(%r4)
    stw %r0,4(%r4)
@@ -7637,7 +7753,7 @@ get_load_address:
    fmr %f4,%f0
    bl check_fpu_pzero
 
-   # stfs (infinity)
+   # stfsx (infinity)
 0: lis %r3,0x7FF0
    stw %r3,0(%r4)
    stw %r0,4(%r4)
@@ -7659,7 +7775,7 @@ get_load_address:
    fmr %f4,%f0
    bl check_fpu_pzero
 
-   # stfs (QNaN)
+   # stfsx (QNaN)
 0: lis %r3,0x7FFA
    stw %r3,0(%r4)
    stw %r0,4(%r4)
@@ -7681,7 +7797,7 @@ get_load_address:
    fmr %f4,%f0
    bl check_fpu_pzero
 
-   # stfs (QNaN)
+   # stfsx (QNaN)
 0: lis %r3,0x7FF4
    stw %r3,0(%r4)
    stw %r0,4(%r4)
@@ -7998,7 +8114,8 @@ get_load_address:
    fmr %f4,%f24
    frsp %f4,%f11  # Should not change the target register's contents.
    bl record
-   fmr %f3,%f24
+   fmr %f3,%f4
+   fmr %f4,%f24
    bl add_fpscr_fex
    bl add_fpscr_vxsnan
    bl check_fpu_noresult
@@ -8039,7 +8156,11 @@ get_load_address:
    bl record
    mfcr %r3
    lis %r7,0x0A00
+.if IGNORE_FPSCR_STATE
+   crset 2
+.else
    cmpw %r3,%r7
+.endif
    beq 1f
    stw %r3,16(%r6)
    li %r3,-1
@@ -8058,7 +8179,11 @@ get_load_address:
    bl record
    mfcr %r3
    lis %r7,0x0E00
+.if IGNORE_FPSCR_STATE
+   crset 2
+.else
    cmpw %r3,%r7
+.endif
    beq 1f
    stw %r3,16(%r6)
    li %r3,-1
@@ -8177,7 +8302,11 @@ get_load_address:
    bl record
    mfcr %r3
    lis %r7,0x0A00
+.if IGNORE_FPSCR_STATE
+   crset 2
+.else
    cmpw %r3,%r7
+.endif
    beq 1f
    stw %r3,16(%r6)
    li %r3,-1
@@ -8196,7 +8325,11 @@ get_load_address:
    bl record
    mfcr %r3
    lis %r7,0x0E00
+.if IGNORE_FPSCR_STATE
+   crset 2
+.else
    cmpw %r3,%r7
+.endif
    beq 1f
    stw %r3,16(%r6)
    li %r3,-1
@@ -8272,7 +8405,11 @@ get_load_address:
    bl record
    mfcr %r3
    lis %r7,0x0A00
+.if IGNORE_FPSCR_STATE
+   crset 2
+.else
    cmpw %r3,%r7
+.endif
    beq 1f
    stw %r3,16(%r6)
    li %r3,-1
@@ -8373,7 +8510,11 @@ get_load_address:
    bl record
    mfcr %r3
    lis %r7,0x0A00
+.if IGNORE_FPSCR_STATE
+   crset 2
+.else
    cmpw %r3,%r7
+.endif
    beq 1f
    stw %r3,16(%r6)
    li %r3,-1
@@ -8392,7 +8533,11 @@ get_load_address:
    bl record
    mfcr %r3
    lis %r7,0x0E00
+.if IGNORE_FPSCR_STATE
+   crset 2
+.else
    cmpw %r3,%r7
+.endif
    beq 1f
    stw %r3,16(%r6)
    li %r3,-1
@@ -8463,7 +8608,11 @@ get_load_address:
    bl record
    mfcr %r3
    lis %r7,0x0A00
+.if IGNORE_FPSCR_STATE
+   crset 2
+.else
    cmpw %r3,%r7
+.endif
    beq 1f
    stw %r3,16(%r6)
    li %r3,-1
@@ -8605,7 +8754,11 @@ get_load_address:
    bl record
    mfcr %r3
    lis %r7,0x0A00
+.if IGNORE_FPSCR_STATE
+   crset 2
+.else
    cmpw %r3,%r7
+.endif
    beq 1f
    stw %r3,16(%r6)
    li %r3,-1
@@ -8624,7 +8777,11 @@ get_load_address:
    bl record
    mfcr %r3
    lis %r7,0x0E00
+.if IGNORE_FPSCR_STATE
+   crset 2
+.else
    cmpw %r3,%r7
+.endif
    beq 1f
    stw %r3,16(%r6)
    li %r3,-1
@@ -8947,7 +9104,11 @@ get_load_address:
    bl record
    mfcr %r3
    lis %r7,0x0A00
+.if IGNORE_FPSCR_STATE
+   crset 2
+.else
    cmpw %r3,%r7
+.endif
    beq 1f
    stw %r3,16(%r6)
    li %r3,-1
@@ -9036,7 +9197,8 @@ get_load_address:
    bl add_fpscr_vxzdz
    bl check_fpu_noresult
    mtfsb0 24
-0: mtfsb1 27            # normal / 0 (exception enabled)
+0: mtfsf 255,%f0        # normal / 0 (exception enabled)
+   mtfsb1 27
    fmr %f3,%f24
    fdiv %f3,%f1,%f0
    bl record
@@ -9079,7 +9241,11 @@ get_load_address:
    bl record
    mfcr %r3
    lis %r7,0x0A00
+.if IGNORE_FPSCR_STATE
+   crset 2
+.else
    cmpw %r3,%r7
+.endif
    beq 1f
    stw %r3,16(%r6)
    li %r3,-1
@@ -9098,7 +9264,11 @@ get_load_address:
    bl record
    mfcr %r3
    lis %r7,0x0E00
+.if IGNORE_FPSCR_STATE
+   crset 2
+.else
    cmpw %r3,%r7
+.endif
    beq 1f
    stw %r3,16(%r6)
    li %r3,-1
@@ -9173,7 +9343,11 @@ get_load_address:
    bl record
    mfcr %r3
    lis %r7,0x0A00
+.if IGNORE_FPSCR_STATE
+   crset 2
+.else
    cmpw %r3,%r7
+.endif
    beq 1f
    stw %r3,16(%r6)
    li %r3,-1
@@ -9477,7 +9651,11 @@ get_load_address:
    bl record
    mfcr %r3
    lis %r7,0x0A00
+.if IGNORE_FPSCR_STATE
+   crset 2
+.else
    cmpw %r3,%r7
+.endif
    beq 1f
    stw %r3,16(%r6)
    li %r3,-1
@@ -9496,7 +9674,11 @@ get_load_address:
    bl record
    mfcr %r3
    lis %r7,0x0E00
+.if IGNORE_FPSCR_STATE
+   crset 2
+.else
    cmpw %r3,%r7
+.endif
    beq 1f
    stw %r3,16(%r6)
    li %r3,-1
@@ -9659,7 +9841,11 @@ get_load_address:
    bl record
    mfcr %r3
    lis %r7,0x0A00
+.if IGNORE_FPSCR_STATE
+   crset 2
+.else
    cmpw %r3,%r7
+.endif
    beq 1f
    stw %r3,16(%r6)
    li %r3,-1
@@ -9843,7 +10029,11 @@ get_load_address:
    bl record
    mfcr %r3
    lis %r7,0x0A00
+.if IGNORE_FPSCR_STATE
+   crset 2
+.else
    cmpw %r3,%r7
+.endif
    beq 1f
    stw %r3,16(%r6)
    li %r3,-1
@@ -9862,7 +10052,11 @@ get_load_address:
    bl record
    mfcr %r3
    lis %r7,0x0E00
+.if IGNORE_FPSCR_STATE
+   crset 2
+.else
    cmpw %r3,%r7
+.endif
    beq 1f
    stw %r3,16(%r6)
    li %r3,-1
@@ -10017,7 +10211,11 @@ get_load_address:
    bl record
    mfcr %r3
    lis %r7,0x0A00
+.if IGNORE_FPSCR_STATE
+   crset 2
+.else
    cmpw %r3,%r7
+.endif
    beq 1f
    stw %r3,16(%r6)
    li %r3,-1
@@ -10203,7 +10401,11 @@ get_load_address:
    bl record
    mfcr %r3
    lis %r7,0x0A00
+.if IGNORE_FPSCR_STATE
+   crset 2
+.else
    cmpw %r3,%r7
+.endif
    beq 1f
    stw %r3,16(%r6)
    li %r3,-1
@@ -10222,7 +10424,11 @@ get_load_address:
    bl record
    mfcr %r3
    lis %r7,0x0E00
+.if IGNORE_FPSCR_STATE
+   crset 2
+.else
    cmpw %r3,%r7
+.endif
    beq 1f
    stw %r3,16(%r6)
    li %r3,-1
@@ -10386,7 +10592,11 @@ get_load_address:
    bl record
    mfcr %r3
    lis %r7,0x0A00
+.if IGNORE_FPSCR_STATE
+   crset 2
+.else
    cmpw %r3,%r7
+.endif
    beq 1f
    stw %r3,16(%r6)
    li %r3,-1
@@ -10569,7 +10779,11 @@ get_load_address:
    bl record
    mfcr %r3
    lis %r7,0x0A00
+.if IGNORE_FPSCR_STATE
+   crset 2
+.else
    cmpw %r3,%r7
+.endif
    beq 1f
    stw %r3,16(%r6)
    li %r3,-1
@@ -10588,7 +10802,11 @@ get_load_address:
    bl record
    mfcr %r3
    lis %r7,0x0E00
+.if IGNORE_FPSCR_STATE
+   crset 2
+.else
    cmpw %r3,%r7
+.endif
    beq 1f
    stw %r3,16(%r6)
    li %r3,-1
@@ -10744,7 +10962,11 @@ get_load_address:
    bl record
    mfcr %r3
    lis %r7,0x0A00
+.if IGNORE_FPSCR_STATE
+   crset 2
+.else
    cmpw %r3,%r7
+.endif
    beq 1f
    stw %r3,16(%r6)
    li %r3,-1
@@ -10943,7 +11165,11 @@ get_load_address:
    bl record
    mfcr %r3
    lis %r7,0x0A00
+.if IGNORE_FPSCR_STATE
+   crset 2
+.else
    cmpw %r3,%r7
+.endif
    beq 1f
    stw %r3,16(%r6)
    li %r3,-1
@@ -10963,7 +11189,11 @@ get_load_address:
    bl record
    mfcr %r3
    lis %r7,0x0E00
+.if IGNORE_FPSCR_STATE
+   crset 2
+.else
    cmpw %r3,%r7
+.endif
    beq 1f
    stw %r3,16(%r6)
    li %r3,-1
@@ -11002,7 +11232,11 @@ get_load_address:
    bl record
    mfcr %r3
    lis %r7,0x0A00
+.if IGNORE_FPSCR_STATE
+   crset 2
+.else
    cmpw %r3,%r7
+.endif
    beq 1f
    stw %r3,16(%r6)
    li %r3,-1
@@ -11156,7 +11390,8 @@ get_load_address:
    bl add_fpscr_vxsnan
    bl check_fpu_noresult
    mtfsb0 24
-0: mtfsb1 27            # 0 (exception enabled)
+0: mtfsf 255,%f0        # 0 (exception enabled)
+   mtfsb1 27
    fmr %f3,%f24
    fmr %f4,%f0
    fres %f3,%f4
@@ -11202,7 +11437,11 @@ get_load_address:
    bl record
    mfcr %r3
    lis %r7,0x0A00
+.if IGNORE_FPSCR_STATE
+   crset 2
+.else
    cmpw %r3,%r7
+.endif
    beq 1f
    stw %r3,16(%r6)
    li %r3,-1
@@ -11221,7 +11460,11 @@ get_load_address:
    bl record
    mfcr %r3
    lis %r7,0x0E00
+.if IGNORE_FPSCR_STATE
+   crset 2
+.else
    cmpw %r3,%r7
+.endif
    beq 1f
    stw %r3,16(%r6)
    li %r3,-1
@@ -11268,7 +11511,11 @@ get_load_address:
    lwz %r9,8(%r14)
    cmpw %r3,%r7
    bne 1f
+.if IGNORE_FPSCR_STATE
+   nop
+.else
    cmpw %r8,%r9
+.endif
    beq 2f
 1: stw %r3,8(%r6)
    stw %r7,12(%r6)
@@ -11301,7 +11548,11 @@ get_load_address:
    stfd %f4,8(%r4)
    lwz %r7,12(%r4)
    bne 1f
+.if IGNORE_FPSCR_STATE
+   nop
+.else
    cmpw %r7,%r11
+.endif
    beq 2f
 1: stw %r3,8(%r6)
    lwz %r3,4(%r4)
@@ -11335,7 +11586,11 @@ get_load_address:
    stfd %f4,8(%r4)
    lwz %r7,12(%r4)
    bne 1f
+.if IGNORE_FPSCR_STATE
+   nop
+.else
    cmpw %r7,%r11
+.endif
    beq 2f
 1: stw %r3,8(%r6)
    lwz %r3,4(%r4)
@@ -11369,7 +11624,11 @@ get_load_address:
    stfd %f4,8(%r4)
    lwz %r7,12(%r4)
    bne 1f
+.if IGNORE_FPSCR_STATE
+   nop
+.else
    cmpw %r7,%r11
+.endif
    beq 2f
 1: stw %r3,8(%r6)
    lwz %r3,4(%r4)
@@ -11405,7 +11664,11 @@ get_load_address:
    stfd %f4,8(%r4)
    lwz %r7,12(%r4)
    bne 1f
+.if IGNORE_FPSCR_STATE
+   nop
+.else
    cmpw %r7,%r11
+.endif
    beq 2f
 1: stw %r3,8(%r6)
    lwz %r3,4(%r4)
@@ -11439,7 +11702,11 @@ get_load_address:
    stfd %f4,8(%r4)
    lwz %r7,12(%r4)
    bne 1f
+.if IGNORE_FPSCR_STATE
+   nop
+.else
    cmpw %r7,%r11
+.endif
    beq 2f
 1: stw %r3,8(%r6)
    lwz %r3,4(%r4)
@@ -11511,7 +11778,8 @@ get_load_address:
    bl add_fpscr_vxsqrt
    bl check_fpu_noresult
    mtfsb0 24
-0: mtfsb1 27            # -0 (exception enabled)
+0: mtfsf 255,%f0        # -0 (exception enabled)
+   mtfsb1 27
    fmr %f3,%f24
    fneg %f4,%f0
    frsqrte %f3,%f4
@@ -11557,7 +11825,11 @@ get_load_address:
    bl record
    mfcr %r3
    lis %r7,0x0A00
+.if IGNORE_FPSCR_STATE
+   crset 2
+.else
    cmpw %r3,%r7
+.endif
    beq 1f
    stw %r3,16(%r6)
    li %r3,-1
@@ -11576,7 +11848,11 @@ get_load_address:
    bl record
    mfcr %r3
    lis %r7,0x0E00
+.if IGNORE_FPSCR_STATE
+   crset 2
+.else
    cmpw %r3,%r7
+.endif
    beq 1f
    stw %r3,16(%r6)
    li %r3,-1
@@ -11627,7 +11903,11 @@ get_load_address:
    bne 1f
    cmpw %r8,%r9
    bne 1f
+.if IGNORE_FPSCR_STATE
+   nop
+.else
    cmpw %r10,%r11
+.endif
    beq 2f
 1: stw %r3,8(%r6)
    stw %r8,12(%r6)
@@ -11667,7 +11947,11 @@ get_load_address:
    bne 1f
    cmpw %r8,%r9
    bne 1f
+.if IGNORE_FPSCR_STATE
+   nop
+.else
    cmpw %r10,%r11
+.endif
    beq 2f
 1: stw %r3,8(%r6)
    stw %r8,12(%r6)
@@ -11709,7 +11993,11 @@ get_load_address:
    bne 1f
    cmpw %r8,%r9
    bne 1f
+.if IGNORE_FPSCR_STATE
+   nop
+.else
    cmpw %r10,%r11
+.endif
    beq 2f
 1: stw %r3,8(%r6)
    stw %r8,12(%r6)
@@ -11749,7 +12037,11 @@ get_load_address:
    bne 1f
    cmpw %r8,%r9
    bne 1f
+.if IGNORE_FPSCR_STATE
+   nop
+.else
    cmpw %r10,%r11
+.endif
    beq 2f
 1: stw %r3,8(%r6)
    stw %r8,12(%r6)
@@ -11791,7 +12083,11 @@ get_load_address:
    bne 1f
    cmpw %r8,%r9
    bne 1f
+.if IGNORE_FPSCR_STATE
+   nop
+.else
    cmpw %r10,%r11
+.endif
    beq 2f
 1: stw %r3,8(%r6)
    stw %r8,12(%r6)
@@ -11856,7 +12152,11 @@ get_load_address:
    lwz %r7,4(%r4)
    cmpwi %r3,0
    bne 1f
+.if IGNORE_FPSCR_STATE
+   nop
+.else
    cmpwi %r7,0x2000
+.endif
    beq 2f
 1: stfd %f3,8(%r6)
    stw %r3,16(%r6)
@@ -11876,7 +12176,11 @@ get_load_address:
    bl record
    mfcr %r3
    lis %r7,0x0A00
+.if IGNORE_FPSCR_STATE
+   crset 2
+.else
    cmpw %r3,%r7
+.endif
    bne 1f
    fcmpu cr0,%f3,%f1
    beq 0f
@@ -14426,11 +14730,19 @@ get_load_address:
    lis %r8,0x2000
    cmpw %r3,%r8
    bne 1f
-   cmpwi %r7,0x2000
+   li %r8,0x2000
+.if IGNORE_FPSCR_STATE
+   bl copy_r8_to_fpscr
+.else
+   cmpw %r7,%r8
+.endif
    beq 0f
 1: stw %r3,8(%r6)
    stw %r7,16(%r6)
    addi %r6,%r6,32
+   # Leave CR with the expected state for the next test.
+   lis %r8,0x2000
+   mtcr %r8
 0: ps_cmpu0 cr1,%f1,%f0     # 1.0 > 0.0
    bl record
    mfcr %r3
@@ -14440,7 +14752,12 @@ get_load_address:
    lis %r8,0x2400
    cmpw %r3,%r8
    bne 1f
-   cmpwi %r7,0x4000
+   li %r8,0x4000
+.if IGNORE_FPSCR_STATE
+   bl copy_r8_to_fpscr
+.else
+   cmpw %r7,%r8
+.endif
    beq 0f
 1: stw %r3,8(%r6)
    stw %r7,16(%r6)
@@ -14456,7 +14773,11 @@ get_load_address:
    cmpwi %r3,8
    bne 1f
    ori %r8,%r0,0x8000
+.if IGNORE_FPSCR_STATE
+   bl copy_r8_to_fpscr
+.else
    cmpw %r7,%r8
+.endif
    beq 0f
 1: stw %r3,8(%r6)
    stw %r7,16(%r6)
@@ -14470,7 +14791,12 @@ get_load_address:
    lwz %r7,4(%r4)
    cmpwi %r3,1
    bne 1f
-   cmpwi %r7,0x1000
+   li %r8,0x1000
+.if IGNORE_FPSCR_STATE
+   bl copy_r8_to_fpscr
+.else
+   cmpw %r7,%r8
+.endif
    beq 0f
 1: stw %r3,8(%r6)
    stw %r7,16(%r6)
@@ -14487,7 +14813,12 @@ get_load_address:
    lwz %r7,4(%r4)
    cmpwi %r3,1
    bne 1f
-   cmpwi %r7,0x1000
+   li %r8,0x1000
+.if IGNORE_FPSCR_STATE
+   bl copy_r8_to_fpscr
+.else
+   cmpw %r7,%r8
+.endif
    beq 0f
 1: stw %r3,8(%r6)
    stw %r7,16(%r6)
@@ -14504,7 +14835,11 @@ get_load_address:
    bne 1f
    lis %r8,0xA100
    ori %r8,%r8,0x1000
+.if IGNORE_FPSCR_STATE
+   bl copy_r8_to_fpscr
+.else
    cmpw %r7,%r8
+.endif
    beq 0f
 1: stw %r3,8(%r6)
    stw %r7,16(%r6)
@@ -14523,7 +14858,11 @@ get_load_address:
    bne 1f
    lis %r8,0xA100
    ori %r8,%r8,0x1000
+.if IGNORE_FPSCR_STATE
+   bl copy_r8_to_fpscr
+.else
    cmpw %r7,%r8
+.endif
    beq 0f
 1: stw %r3,8(%r6)
    stw %r7,16(%r6)
@@ -14542,7 +14881,11 @@ get_load_address:
    bne 1f
    lis %r8,0x2100
    ori %r8,%r8,0x1000
+.if IGNORE_FPSCR_STATE
+   bl copy_r8_to_fpscr
+.else
    cmpw %r7,%r8
+.endif
    beq 0f
 1: stw %r3,8(%r6)
    stw %r7,16(%r6)
@@ -14559,7 +14902,11 @@ get_load_address:
    bne 1f
    lis %r8,0x2100
    ori %r8,%r8,0x2000
+.if IGNORE_FPSCR_STATE
+   bl copy_r8_to_fpscr
+.else
    cmpw %r7,%r8
+.endif
    beq 0f
 1: stw %r3,8(%r6)
    stw %r7,16(%r6)
@@ -14579,7 +14926,12 @@ get_load_address:
    lis %r8,0x4000
    cmpw %r3,%r8
    bne 1f
-   cmpwi %r7,0x4000
+   li %r8,0x4000
+.if IGNORE_FPSCR_STATE
+   bl copy_r8_to_fpscr
+.else
+   cmpw %r7,%r8
+.endif
    beq 0f
 1: stw %r3,8(%r6)
    stw %r7,16(%r6)
@@ -14599,7 +14951,12 @@ get_load_address:
    lis %r8,0x2000
    cmpw %r3,%r8
    bne 1f
-   cmpwi %r7,0x2000
+   li %r8,0x2000
+.if IGNORE_FPSCR_STATE
+   bl copy_r8_to_fpscr
+.else
+   cmpw %r7,%r8
+.endif
    beq 0f
 1: stw %r3,8(%r6)
    stw %r7,16(%r6)
@@ -14620,7 +14977,12 @@ get_load_address:
    lis %r8,0x4000
    cmpw %r3,%r8
    bne 1f
-   cmpwi %r7,0x4000
+   li %r8,0x4000
+.if IGNORE_FPSCR_STATE
+   bl copy_r8_to_fpscr
+.else
+   cmpw %r7,%r8
+.endif
    beq 0f
 1: stw %r3,8(%r6)
    stw %r7,16(%r6)
@@ -14642,7 +15004,11 @@ get_load_address:
    cmpw %r3,%r8
    bne 1f
    ori %r8,%r0,0x8000
+.if IGNORE_FPSCR_STATE
+   bl copy_r8_to_fpscr
+.else
    cmpw %r7,%r8
+.endif
    beq 0f
 1: stw %r3,8(%r6)
    stw %r7,16(%r6)
@@ -14660,7 +15026,12 @@ get_load_address:
    lis %r8,0x2000
    cmpw %r3,%r8
    bne 1f
-   cmpwi %r7,0x2000
+   li %r8,0x2000
+.if IGNORE_FPSCR_STATE
+   bl copy_r8_to_fpscr
+.else
+   cmpw %r7,%r8
+.endif
    beq 0f
 1: stw %r3,8(%r6)
    stw %r7,16(%r6)
@@ -14674,7 +15045,12 @@ get_load_address:
    lis %r8,0x2400
    cmpw %r3,%r8
    bne 1f
-   cmpwi %r7,0x4000
+   li %r8,0x4000
+.if IGNORE_FPSCR_STATE
+   bl copy_r8_to_fpscr
+.else
+   cmpw %r7,%r8
+.endif
    beq 0f
 1: stw %r3,8(%r6)
    stw %r7,16(%r6)
@@ -14690,7 +15066,11 @@ get_load_address:
    cmpwi %r3,8
    bne 1f
    ori %r8,%r0,0x8000
+.if IGNORE_FPSCR_STATE
+   bl copy_r8_to_fpscr
+.else
    cmpw %r7,%r8
+.endif
    beq 0f
 1: stw %r3,8(%r6)
    stw %r7,16(%r6)
@@ -14706,7 +15086,11 @@ get_load_address:
    bne 1f
    lis %r8,0xA008
    ori %r8,%r8,0x1000
+.if IGNORE_FPSCR_STATE
+   bl copy_r8_to_fpscr
+.else
    cmpw %r7,%r8
+.endif
    beq 0f
 1: stw %r3,8(%r6)
    stw %r7,16(%r6)
@@ -14723,7 +15107,11 @@ get_load_address:
    bne 1f
    lis %r8,0xA008
    ori %r8,%r8,0x1000
+.if IGNORE_FPSCR_STATE
+   bl copy_r8_to_fpscr
+.else
    cmpw %r7,%r8
+.endif
    beq 0f
 1: stw %r3,8(%r6)
    stw %r7,16(%r6)
@@ -14740,7 +15128,11 @@ get_load_address:
    bne 1f
    lis %r8,0xA108
    ori %r8,%r8,0x1000
+.if IGNORE_FPSCR_STATE
+   bl copy_r8_to_fpscr
+.else
    cmpw %r7,%r8
+.endif
    beq 0f
 1: stw %r3,8(%r6)
    stw %r7,16(%r6)
@@ -14757,7 +15149,11 @@ get_load_address:
    bne 1f
    lis %r8,0xA108
    ori %r8,%r8,0x1000
+.if IGNORE_FPSCR_STATE
+   bl copy_r8_to_fpscr
+.else
    cmpw %r7,%r8
+.endif
    beq 0f
 1: stw %r3,8(%r6)
    stw %r7,16(%r6)
@@ -14774,7 +15170,11 @@ get_load_address:
    bne 1f
    lis %r8,0x2108
    ori %r8,%r8,0x1000
+.if IGNORE_FPSCR_STATE
+   bl copy_r8_to_fpscr
+.else
    cmpw %r7,%r8
+.endif
    beq 0f
 1: stw %r3,8(%r6)
    stw %r7,16(%r6)
@@ -14790,7 +15190,11 @@ get_load_address:
    bne 1f
    lis %r8,0x2108
    ori %r8,%r8,0x2000
+.if IGNORE_FPSCR_STATE
+   bl copy_r8_to_fpscr
+.else
    cmpw %r7,%r8
+.endif
    beq 0f
 1: stw %r3,8(%r6)
    stw %r7,16(%r6)
@@ -14810,7 +15214,11 @@ get_load_address:
    bne 1f
    lis %r8,0xE100
    ori %r8,%r8,0x1080
+.if IGNORE_FPSCR_STATE
+   bl copy_r8_to_fpscr
+.else
    cmpw %r7,%r8
+.endif
    beq 0f
 1: stw %r3,8(%r6)
    stw %r7,16(%r6)
@@ -14828,7 +15236,11 @@ get_load_address:
    bne 1f
    lis %r8,0xE100
    ori %r8,%r8,0x1080
+.if IGNORE_FPSCR_STATE
+   bl copy_r8_to_fpscr
+.else
    cmpw %r7,%r8
+.endif
    beq 0f
 1: stw %r3,8(%r6)
    stw %r7,16(%r6)
@@ -14845,7 +15257,11 @@ get_load_address:
    bne 1f
    lis %r8,0x6100
    ori %r8,%r8,0x1080
+.if IGNORE_FPSCR_STATE
+   bl copy_r8_to_fpscr
+.else
    cmpw %r7,%r8
+.endif
    beq 0f
 1: stw %r3,8(%r6)
    stw %r7,16(%r6)
@@ -14861,7 +15277,11 @@ get_load_address:
    bne 1f
    lis %r8,0x6100
    ori %r8,%r8,0x2080
+.if IGNORE_FPSCR_STATE
+   bl copy_r8_to_fpscr
+.else
    cmpw %r7,%r8
+.endif
    beq 0f
 1: stw %r3,8(%r6)
    stw %r7,16(%r6)
@@ -14881,7 +15301,12 @@ get_load_address:
    lis %r8,0x4000
    cmpw %r3,%r8
    bne 1f
-   cmpwi %r7,0x4000
+   li %r8,0x4000
+.if IGNORE_FPSCR_STATE
+   bl copy_r8_to_fpscr
+.else
+   cmpw %r7,%r8
+.endif
    beq 0f
 1: stw %r3,8(%r6)
    stw %r7,16(%r6)
@@ -14901,7 +15326,12 @@ get_load_address:
    lis %r8,0x2000
    cmpw %r3,%r8
    bne 1f
-   cmpwi %r7,0x2000
+   li %r8,0x2000
+.if IGNORE_FPSCR_STATE
+   bl copy_r8_to_fpscr
+.else
+   cmpw %r7,%r8
+.endif
    beq 0f
 1: stw %r3,8(%r6)
    stw %r7,16(%r6)
@@ -14922,7 +15352,12 @@ get_load_address:
    lis %r8,0x4000
    cmpw %r3,%r8
    bne 1f
-   cmpwi %r7,0x4000
+   li %r8,0x4000
+.if IGNORE_FPSCR_STATE
+   bl copy_r8_to_fpscr
+.else
+   cmpw %r7,%r8
+.endif
    beq 0f
 1: stw %r3,8(%r6)
    stw %r7,16(%r6)
@@ -14944,7 +15379,11 @@ get_load_address:
    cmpw %r3,%r8
    bne 1f
    ori %r8,%r0,0x8000
+.if IGNORE_FPSCR_STATE
+   bl copy_r8_to_fpscr
+.else
    cmpw %r7,%r8
+.endif
    beq 0f
 1: stw %r3,8(%r6)
    stw %r7,16(%r6)
@@ -14962,7 +15401,12 @@ get_load_address:
    lis %r8,0x2000
    cmpw %r3,%r8
    bne 1f
-   cmpwi %r7,0x2000
+   li %r8,0x2000
+.if IGNORE_FPSCR_STATE
+   bl copy_r8_to_fpscr
+.else
+   cmpw %r7,%r8
+.endif
    beq 0f
 1: stw %r3,8(%r6)
    stw %r7,16(%r6)
@@ -14976,7 +15420,12 @@ get_load_address:
    lis %r8,0x2400
    cmpw %r3,%r8
    bne 1f
-   cmpwi %r7,0x4000
+   li %r8,0x4000
+.if IGNORE_FPSCR_STATE
+   bl copy_r8_to_fpscr
+.else
+   cmpw %r7,%r8
+.endif
    beq 0f
 1: stw %r3,8(%r6)
    stw %r7,16(%r6)
@@ -14992,7 +15441,11 @@ get_load_address:
    cmpwi %r3,8
    bne 1f
    ori %r8,%r0,0x8000
+.if IGNORE_FPSCR_STATE
+   bl copy_r8_to_fpscr
+.else
    cmpw %r7,%r8
+.endif
    beq 0f
 1: stw %r3,8(%r6)
    stw %r7,16(%r6)
@@ -15006,7 +15459,12 @@ get_load_address:
    lwz %r7,4(%r4)
    cmpwi %r3,1
    bne 1f
-   cmpwi %r7,0x1000
+   li %r8,0x1000
+.if IGNORE_FPSCR_STATE
+   bl copy_r8_to_fpscr
+.else
+   cmpw %r7,%r8
+.endif
    beq 0f
 1: stw %r3,8(%r6)
    stw %r7,16(%r6)
@@ -15021,7 +15479,12 @@ get_load_address:
    lwz %r7,4(%r4)
    cmpwi %r3,1
    bne 1f
-   cmpwi %r7,0x1000
+   li %r8,0x1000
+.if IGNORE_FPSCR_STATE
+   bl copy_r8_to_fpscr
+.else
+   cmpw %r7,%r8
+.endif
    beq 0f
 1: stw %r3,8(%r6)
    stw %r7,16(%r6)
@@ -15038,7 +15501,11 @@ get_load_address:
    bne 1f
    lis %r8,0xA100
    ori %r8,%r8,0x1000
+.if IGNORE_FPSCR_STATE
+   bl copy_r8_to_fpscr
+.else
    cmpw %r7,%r8
+.endif
    beq 0f
 1: stw %r3,8(%r6)
    stw %r7,16(%r6)
@@ -15055,7 +15522,11 @@ get_load_address:
    bne 1f
    lis %r8,0xA100
    ori %r8,%r8,0x1000
+.if IGNORE_FPSCR_STATE
+   bl copy_r8_to_fpscr
+.else
    cmpw %r7,%r8
+.endif
    beq 0f
 1: stw %r3,8(%r6)
    stw %r7,16(%r6)
@@ -15072,7 +15543,11 @@ get_load_address:
    bne 1f
    lis %r8,0x2100
    ori %r8,%r8,0x1000
+.if IGNORE_FPSCR_STATE
+   bl copy_r8_to_fpscr
+.else
    cmpw %r7,%r8
+.endif
    beq 0f
 1: stw %r3,8(%r6)
    stw %r7,16(%r6)
@@ -15088,7 +15563,11 @@ get_load_address:
    bne 1f
    lis %r8,0x2100
    ori %r8,%r8,0x2000
+.if IGNORE_FPSCR_STATE
+   bl copy_r8_to_fpscr
+.else
    cmpw %r7,%r8
+.endif
    beq 0f
 1: stw %r3,8(%r6)
    stw %r7,16(%r6)
@@ -15108,7 +15587,12 @@ get_load_address:
    lis %r8,0x4000
    cmpw %r3,%r8
    bne 1f
-   cmpwi %r7,0x4000
+   li %r8,0x4000
+.if IGNORE_FPSCR_STATE
+   bl copy_r8_to_fpscr
+.else
+   cmpw %r7,%r8
+.endif
    beq 0f
 1: stw %r3,8(%r6)
    stw %r7,16(%r6)
@@ -15126,7 +15610,12 @@ get_load_address:
    lis %r8,0x2000
    cmpw %r3,%r8
    bne 1f
-   cmpwi %r7,0x2000
+   li %r8,0x2000
+.if IGNORE_FPSCR_STATE
+   bl copy_r8_to_fpscr
+.else
+   cmpw %r7,%r8
+.endif
    beq 0f
 1: stw %r3,8(%r6)
    stw %r7,16(%r6)
@@ -15140,7 +15629,12 @@ get_load_address:
    lis %r8,0x2400
    cmpw %r3,%r8
    bne 1f
-   cmpwi %r7,0x4000
+   li %r8,0x4000
+.if IGNORE_FPSCR_STATE
+   bl copy_r8_to_fpscr
+.else
+   cmpw %r7,%r8
+.endif
    beq 0f
 1: stw %r3,8(%r6)
    stw %r7,16(%r6)
@@ -15156,7 +15650,11 @@ get_load_address:
    cmpwi %r3,8
    bne 1f
    ori %r8,%r0,0x8000
+.if IGNORE_FPSCR_STATE
+   bl copy_r8_to_fpscr
+.else
    cmpw %r7,%r8
+.endif
    beq 0f
 1: stw %r3,8(%r6)
    stw %r7,16(%r6)
@@ -15172,7 +15670,11 @@ get_load_address:
    bne 1f
    lis %r8,0xA008
    ori %r8,%r8,0x1000
+.if IGNORE_FPSCR_STATE
+   bl copy_r8_to_fpscr
+.else
    cmpw %r7,%r8
+.endif
    beq 0f
 1: stw %r3,8(%r6)
    stw %r7,16(%r6)
@@ -15189,7 +15691,11 @@ get_load_address:
    bne 1f
    lis %r8,0xA008
    ori %r8,%r8,0x1000
+.if IGNORE_FPSCR_STATE
+   bl copy_r8_to_fpscr
+.else
    cmpw %r7,%r8
+.endif
    beq 0f
 1: stw %r3,8(%r6)
    stw %r7,16(%r6)
@@ -15206,7 +15712,11 @@ get_load_address:
    bne 1f
    lis %r8,0xA108
    ori %r8,%r8,0x1000
+.if IGNORE_FPSCR_STATE
+   bl copy_r8_to_fpscr
+.else
    cmpw %r7,%r8
+.endif
    beq 0f
 1: stw %r3,8(%r6)
    stw %r7,16(%r6)
@@ -15223,7 +15733,11 @@ get_load_address:
    bne 1f
    lis %r8,0xA108
    ori %r8,%r8,0x1000
+.if IGNORE_FPSCR_STATE
+   bl copy_r8_to_fpscr
+.else
    cmpw %r7,%r8
+.endif
    beq 0f
 1: stw %r3,8(%r6)
    stw %r7,16(%r6)
@@ -15240,7 +15754,11 @@ get_load_address:
    bne 1f
    lis %r8,0x2108
    ori %r8,%r8,0x1000
+.if IGNORE_FPSCR_STATE
+   bl copy_r8_to_fpscr
+.else
    cmpw %r7,%r8
+.endif
    beq 0f
 1: stw %r3,8(%r6)
    stw %r7,16(%r6)
@@ -15256,7 +15774,11 @@ get_load_address:
    bne 1f
    lis %r8,0x2108
    ori %r8,%r8,0x2000
+.if IGNORE_FPSCR_STATE
+   bl copy_r8_to_fpscr
+.else
    cmpw %r7,%r8
+.endif
    beq 0f
 1: stw %r3,8(%r6)
    stw %r7,16(%r6)
@@ -15276,7 +15798,11 @@ get_load_address:
    bne 1f
    lis %r8,0xE100
    ori %r8,%r8,0x1080
+.if IGNORE_FPSCR_STATE
+   bl copy_r8_to_fpscr
+.else
    cmpw %r7,%r8
+.endif
    beq 0f
 1: stw %r3,8(%r6)
    stw %r7,16(%r6)
@@ -15294,7 +15820,11 @@ get_load_address:
    bne 1f
    lis %r8,0xE100
    ori %r8,%r8,0x1080
+.if IGNORE_FPSCR_STATE
+   bl copy_r8_to_fpscr
+.else
    cmpw %r7,%r8
+.endif
    beq 0f
 1: stw %r3,8(%r6)
    stw %r7,16(%r6)
@@ -15311,7 +15841,11 @@ get_load_address:
    bne 1f
    lis %r8,0x6100
    ori %r8,%r8,0x1080
+.if IGNORE_FPSCR_STATE
+   bl copy_r8_to_fpscr
+.else
    cmpw %r7,%r8
+.endif
    beq 0f
 1: stw %r3,8(%r6)
    stw %r7,16(%r6)
@@ -15327,7 +15861,11 @@ get_load_address:
    bne 1f
    lis %r8,0x6100
    ori %r8,%r8,0x2080
+.if IGNORE_FPSCR_STATE
+   bl copy_r8_to_fpscr
+.else
    cmpw %r7,%r8
+.endif
    beq 0f
 1: stw %r3,8(%r6)
    stw %r7,16(%r6)
@@ -15347,7 +15885,12 @@ get_load_address:
    lis %r8,0x4000
    cmpw %r3,%r8
    bne 1f
-   cmpwi %r7,0x4000
+   li %r8,0x4000
+.if IGNORE_FPSCR_STATE
+   bl copy_r8_to_fpscr
+.else
+   cmpw %r7,%r8
+.endif
    beq 0f
 1: stw %r3,8(%r6)
    stw %r7,16(%r6)
@@ -15589,7 +16132,11 @@ get_load_address:
    bl record
    mfcr %r3
    lis %r7,0x0A00
+.if IGNORE_FPSCR_STATE
+   crset 2
+.else
    cmpw %r3,%r7
+.endif
    beq 1f
    stw %r3,16(%r6)
    li %r3,-1
@@ -15609,7 +16156,11 @@ get_load_address:
    bl record
    mfcr %r3
    lis %r7,0x0E00
+.if IGNORE_FPSCR_STATE
+   crset 2
+.else
    cmpw %r3,%r7
+.endif
    beq 1f
    stw %r3,16(%r6)
    li %r3,-1
@@ -15746,7 +16297,11 @@ get_load_address:
    lis %r7,0xFFA0
    cmpw %r8,%r7
    bne 1f
+.if IGNORE_FPSCR_STATE
+   nop
+.else
    cmpwi %r9,0x4000
+.endif
    beq 2f
 1: stw %r8,16(%r6)
    stw %r9,20(%r6)
@@ -15787,7 +16342,11 @@ get_load_address:
    bl record
    mfcr %r3
    lis %r7,0x0A00
+.if IGNORE_FPSCR_STATE
+   crset 2
+.else
    cmpw %r3,%r7
+.endif
    beq 1f
    stw %r3,16(%r6)
    li %r3,-1
@@ -15807,7 +16366,11 @@ get_load_address:
    bl record
    mfcr %r3
    lis %r7,0x0E00
+.if IGNORE_FPSCR_STATE
+   crset 2
+.else
    cmpw %r3,%r7
+.endif
    beq 1f
    stw %r3,16(%r6)
    li %r3,-1
@@ -15944,7 +16507,11 @@ get_load_address:
    lis %r7,0x4040
    cmpw %r8,%r7
    bne 1f
+.if IGNORE_FPSCR_STATE
+   nop
+.else
    cmpwi %r9,0x4000
+.endif
    beq 2f
 1: stw %r8,16(%r6)
    stw %r9,20(%r6)
@@ -15989,7 +16556,11 @@ get_load_address:
    bl record
    mfcr %r3
    lis %r7,0x0A00
+.if IGNORE_FPSCR_STATE
+   crset 2
+.else
    cmpw %r3,%r7
+.endif
    beq 1f
    stw %r3,16(%r6)
    li %r3,-1
@@ -16009,7 +16580,11 @@ get_load_address:
    bl record
    mfcr %r3
    lis %r7,0x0E00
+.if IGNORE_FPSCR_STATE
+   crset 2
+.else
    cmpw %r3,%r7
+.endif
    beq 1f
    stw %r3,16(%r6)
    li %r3,-1
@@ -16217,7 +16792,11 @@ get_load_address:
    bl record
    mfcr %r3
    lis %r7,0x0A00
+.if IGNORE_FPSCR_STATE
+   crset 2
+.else
    cmpw %r3,%r7
+.endif
    beq 1f
    stw %r3,16(%r6)
    li %r3,-1
@@ -16237,7 +16816,11 @@ get_load_address:
    bl record
    mfcr %r3
    lis %r7,0x0E00
+.if IGNORE_FPSCR_STATE
+   crset 2
+.else
    cmpw %r3,%r7
+.endif
    beq 1f
    stw %r3,16(%r6)
    li %r3,-1
@@ -16701,7 +17284,11 @@ get_load_address:
    bl record
    mfcr %r3
    lis %r7,0x0A00
+.if IGNORE_FPSCR_STATE
+   crset 2
+.else
    cmpw %r3,%r7
+.endif
    beq 1f
    stw %r3,16(%r6)
    li %r3,-1
@@ -16721,7 +17308,11 @@ get_load_address:
    bl record
    mfcr %r3
    lis %r7,0x0E00
+.if IGNORE_FPSCR_STATE
+   crset 2
+.else
    cmpw %r3,%r7
+.endif
    beq 1f
    stw %r3,16(%r6)
    li %r3,-1
@@ -16777,7 +17368,11 @@ get_load_address:
    bl record
    mfcr %r3
    lis %r7,0x0A00
+.if IGNORE_FPSCR_STATE
+   crset 2
+.else
    cmpw %r3,%r7
+.endif
    beq 1f
    stw %r3,16(%r6)
    li %r3,-1
@@ -16799,7 +17394,11 @@ get_load_address:
    bl record
    mfcr %r3
    lis %r7,0x0F00
+.if IGNORE_FPSCR_STATE
+   crset 2
+.else
    cmpw %r3,%r7
+.endif
    beq 1f
    stw %r3,16(%r6)
    li %r3,-1
@@ -16857,7 +17456,11 @@ get_load_address:
    bl record
    mfcr %r3
    lis %r7,0x0A00
+.if IGNORE_FPSCR_STATE
+   crset 2
+.else
    cmpw %r3,%r7
+.endif
    beq 1f
    stw %r3,16(%r6)
    li %r3,-1
@@ -16879,7 +17482,11 @@ get_load_address:
    bl record
    mfcr %r3
    lis %r7,0x0F00
+.if IGNORE_FPSCR_STATE
+   crset 2
+.else
    cmpw %r3,%r7
+.endif
    beq 1f
    stw %r3,16(%r6)
    li %r3,-1
@@ -17152,7 +17759,11 @@ get_load_address:
    bl record
    mfcr %r3
    lis %r7,0x0A00
+.if IGNORE_FPSCR_STATE
+   crset 2
+.else
    cmpw %r3,%r7
+.endif
    beq 1f
    stw %r3,16(%r6)
    li %r3,-1
@@ -17172,7 +17783,11 @@ get_load_address:
    bl record
    mfcr %r3
    lis %r7,0x0E00
+.if IGNORE_FPSCR_STATE
+   crset 2
+.else
    cmpw %r3,%r7
+.endif
    beq 1f
    stw %r3,16(%r6)
    li %r3,-1
@@ -17577,7 +18192,11 @@ get_load_address:
    bl record
    mfcr %r3
    lis %r7,0x0A00
+.if IGNORE_FPSCR_STATE
+   crset 2
+.else
    cmpw %r3,%r7
+.endif
    beq 1f
    stw %r3,16(%r6)
    li %r3,-1
@@ -17597,7 +18216,11 @@ get_load_address:
    bl record
    mfcr %r3
    lis %r7,0x0E00
+.if IGNORE_FPSCR_STATE
+   crset 2
+.else
    cmpw %r3,%r7
+.endif
    beq 1f
    stw %r3,16(%r6)
    li %r3,-1
@@ -17653,7 +18276,11 @@ get_load_address:
    bl record
    mfcr %r3
    lis %r7,0x0A00
+.if IGNORE_FPSCR_STATE
+   crset 2
+.else
    cmpw %r3,%r7
+.endif
    beq 1f
    stw %r3,16(%r6)
    li %r3,-1
@@ -17675,7 +18302,11 @@ get_load_address:
    bl record
    mfcr %r3
    lis %r7,0x0F00
+.if IGNORE_FPSCR_STATE
+   crset 2
+.else
    cmpw %r3,%r7
+.endif
    beq 1f
    stw %r3,16(%r6)
    li %r3,-1
@@ -17733,7 +18364,11 @@ get_load_address:
    bl record
    mfcr %r3
    lis %r7,0x0A00
+.if IGNORE_FPSCR_STATE
+   crset 2
+.else
    cmpw %r3,%r7
+.endif
    beq 1f
    stw %r3,16(%r6)
    li %r3,-1
@@ -17755,7 +18390,11 @@ get_load_address:
    bl record
    mfcr %r3
    lis %r7,0x0F00
+.if IGNORE_FPSCR_STATE
+   crset 2
+.else
    cmpw %r3,%r7
+.endif
    beq 1f
    stw %r3,16(%r6)
    li %r3,-1
@@ -18117,7 +18756,11 @@ get_load_address:
    bl record
    mfcr %r3
    lis %r7,0x0A00
+.if IGNORE_FPSCR_STATE
+   crset 2
+.else
    cmpw %r3,%r7
+.endif
    beq 1f
    stw %r3,16(%r6)
    li %r3,-1
@@ -18137,7 +18780,11 @@ get_load_address:
    bl record
    mfcr %r3
    lis %r7,0x0E00
+.if IGNORE_FPSCR_STATE
+   crset 2
+.else
    cmpw %r3,%r7
+.endif
    beq 1f
    stw %r3,16(%r6)
    li %r3,-1
@@ -18508,7 +19155,11 @@ get_load_address:
    bl record
    mfcr %r3
    lis %r7,0x0A00
+.if IGNORE_FPSCR_STATE
+   crset 2
+.else
    cmpw %r3,%r7
+.endif
    beq 1f
    stw %r3,16(%r6)
    li %r3,-1
@@ -18528,7 +19179,11 @@ get_load_address:
    bl record
    mfcr %r3
    lis %r7,0x0E00
+.if IGNORE_FPSCR_STATE
+   crset 2
+.else
    cmpw %r3,%r7
+.endif
    beq 1f
    stw %r3,16(%r6)
    li %r3,-1
@@ -18888,7 +19543,11 @@ get_load_address:
    bl record
    mfcr %r3
    lis %r7,0x0A00
+.if IGNORE_FPSCR_STATE
+   crset 2
+.else
    cmpw %r3,%r7
+.endif
    beq 1f
    stw %r3,16(%r6)
    li %r3,-1
@@ -18908,7 +19567,11 @@ get_load_address:
    bl record
    mfcr %r3
    lis %r7,0x0E00
+.if IGNORE_FPSCR_STATE
+   crset 2
+.else
    cmpw %r3,%r7
+.endif
    beq 1f
    stw %r3,16(%r6)
    li %r3,-1
@@ -19055,7 +19718,8 @@ get_load_address:
    fmr %f5,%f4
    bl check_ps_noresult
    mtfsb0 24
-0: mtfsb1 27            # 0 (exception enabled)
+0: mtfsf 255,%f0        # 0 (exception enabled)
+   mtfsb1 27
    ps_mr %f3,%f24
    ps_mr %f4,%f0
    ps_res %f3,%f4
@@ -19154,7 +19818,11 @@ get_load_address:
    bl record
    mfcr %r3
    lis %r7,0x0A00
+.if IGNORE_FPSCR_STATE
+   crset 2
+.else
    cmpw %r3,%r7
+.endif
    beq 1f
    stw %r3,16(%r6)
    li %r3,-1
@@ -19174,7 +19842,11 @@ get_load_address:
    bl record
    mfcr %r3
    lis %r7,0x0E00
+.if IGNORE_FPSCR_STATE
+   crset 2
+.else
    cmpw %r3,%r7
+.endif
    beq 1f
    stw %r3,16(%r6)
    li %r3,-1
@@ -19229,7 +19901,11 @@ get_load_address:
    lwz %r9,8(%r14)
    cmpw %r3,%r7
    bne 1f
+.if IGNORE_FPSCR_STATE
+   nop
+.else
    cmpw %r8,%r9
+.endif
    bne 1f
    lwz %r3,12(%r4)
    cmpw %r3,%r7
@@ -19269,7 +19945,11 @@ get_load_address:
    stfd %f4,16(%r4)
    lwz %r7,20(%r4)
    bne 1f
+.if IGNORE_FPSCR_STATE
+   nop
+.else
    cmpw %r7,%r11
+.endif
    bne 1f
    lwz %r3,12(%r4)
    lwz %r8,4(%r4)
@@ -19310,7 +19990,11 @@ get_load_address:
    stfd %f4,16(%r4)
    lwz %r7,20(%r4)
    bne 1f
+.if IGNORE_FPSCR_STATE
+   nop
+.else
    cmpw %r7,%r11
+.endif
    bne 1f
    lwz %r3,12(%r4)
    lwz %r8,4(%r4)
@@ -19351,7 +20035,11 @@ get_load_address:
    stfd %f4,16(%r4)
    lwz %r7,20(%r4)
    bne 1f
+.if IGNORE_FPSCR_STATE
+   nop
+.else
    cmpw %r7,%r11
+.endif
    bne 1f
    lwz %r3,12(%r4)
    lwz %r8,4(%r4)
@@ -19394,7 +20082,11 @@ get_load_address:
    stfd %f4,16(%r4)
    lwz %r7,20(%r4)
    bne 1f
+.if IGNORE_FPSCR_STATE
+   nop
+.else
    cmpw %r7,%r11
+.endif
    bne 1f
    lwz %r3,12(%r4)
    lwz %r8,4(%r4)
@@ -19435,7 +20127,11 @@ get_load_address:
    stfd %f4,16(%r4)
    lwz %r7,20(%r4)
    bne 1f
+.if IGNORE_FPSCR_STATE
+   nop
+.else
    cmpw %r7,%r11
+.endif
    bne 1f
    lwz %r3,12(%r4)
    lwz %r8,4(%r4)
@@ -19700,7 +20396,11 @@ get_load_address:
    bl record
    mfcr %r3
    lis %r7,0x0A00
+.if IGNORE_FPSCR_STATE
+   crset 2
+.else
    cmpw %r3,%r7
+.endif
    beq 1f
    stw %r3,16(%r6)
    li %r3,-1
@@ -19720,7 +20420,11 @@ get_load_address:
    bl record
    mfcr %r3
    lis %r7,0x0E00
+.if IGNORE_FPSCR_STATE
+   crset 2
+.else
    cmpw %r3,%r7
+.endif
    beq 1f
    stw %r3,16(%r6)
    li %r3,-1
@@ -19770,7 +20474,11 @@ get_load_address:
    lwz %r11,8(%r14)
    cmpw %r3,%r7
    bne 1f
+.if IGNORE_FPSCR_STATE
+   nop
+.else
    cmpw %r10,%r11
+.endif
    bne 1f
    lwz %r3,12(%r4)
    cmpw %r3,%r7
@@ -19809,7 +20517,11 @@ get_load_address:
    lwz %r10,28(%r4)
    cmpw %r3,%r7
    bne 1f
+.if IGNORE_FPSCR_STATE
+   nop
+.else
    cmpw %r10,%r11
+.endif
    bne 1f
    lwz %r3,20(%r4)
    cmpw %r3,%r7
@@ -19850,7 +20562,11 @@ get_load_address:
    lwz %r10,28(%r4)
    cmpw %r3,%r7
    bne 1f
+.if IGNORE_FPSCR_STATE
+   nop
+.else
    cmpw %r10,%r11
+.endif
    bne 1f
    lwz %r3,20(%r4)
    cmpw %r3,%r7
@@ -19889,7 +20605,11 @@ get_load_address:
    lwz %r10,28(%r4)
    cmpw %r3,%r7
    bne 1f
+.if IGNORE_FPSCR_STATE
+   nop
+.else
    cmpw %r10,%r11
+.endif
    bne 1f
    lwz %r3,20(%r4)
    cmpw %r3,%r7
@@ -19930,7 +20650,11 @@ get_load_address:
    lwz %r10,28(%r4)
    cmpw %r3,%r7
    bne 1f
+.if IGNORE_FPSCR_STATE
+   nop
+.else
    cmpw %r10,%r11
+.endif
    bne 1f
    lwz %r3,20(%r4)
    cmpw %r3,%r7
@@ -19984,7 +20708,11 @@ get_load_address:
    lwz %r7,4(%r4)
    cmpwi %r3,0
    bne 1f
+.if IGNORE_FPSCR_STATE
+   nop
+.else
    cmpwi %r7,0x2000
+.endif
    beq 2f
 1: psq_st %f3,8(%r6),0,0
    stw %r3,16(%r6)
@@ -20002,7 +20730,11 @@ get_load_address:
    bl record
    mfcr %r3
    lis %r7,0x0A00
+.if IGNORE_FPSCR_STATE
+   crset 2
+.else
    cmpw %r3,%r7
+.endif
    beq 1f
    stw %r3,8(%r6)
    li %r3,-1
@@ -20807,7 +21539,7 @@ check_alu_ca_so_eq:  # CA = 1, OV = 0, SO = 1, CR0 = equal
    #     R9 = destroyed
    #     FPSCR = all exceptions cleared
    #     CR = 0
-   #     0x7000..0x700F(%r4) = destroyed
+   #     0x7000..0x700F(R4) = destroyed
    ########################################################################
 
 check_fpu_pzero:  # Positive zero, FI = 0
@@ -21152,7 +21884,7 @@ check_fpu_noresult_nofprf:  # For exception-enabled fctiw
    #     R9 = destroyed
    #     FPSCR = all exceptions cleared
    #     CR = 0
-   #     0x7000..0x700F(%r4) = destroyed
+   #     0x7000..0x700F(R4) = destroyed
    ########################################################################
 
 check_fpu_estimate_pnorm:  # Positive normal number
@@ -21250,7 +21982,7 @@ check_fpu_estimate_ndenorm:  # Negative denormalized number
    #     R9 = destroyed
    #     FPSCR = all exceptions and FPRF cleared
    #     CR = 0
-   #     0x7000..0x7007(%r4) = destroyed
+   #     0x7000..0x7007(R4) = destroyed
    ########################################################################
 
 check_fctiw:
@@ -21390,8 +22122,8 @@ remove_fpscr_fx:
    # On return:
    #     R8 = FPSCR[0:12] || 0 || FPSCR[14:23] || 0000 0000
    #     FPSCR = all exceptions cleared
-   #     CR0 = comparison result
-   #     CR[4:23] = destroyed
+   #     CR[2] = comparison result (always true if IGNORE_FPSCR_STATE)
+   #     CR[0:1,3:23] = destroyed
    ########################################################################
 
 check_fpscr:
@@ -21402,12 +22134,38 @@ check_fpscr:
    mcrfs cr4,4
    mcrfs cr5,5
    mfcr %r8
+.if IGNORE_FPSCR_STATE
+   andi. %r8,%r8,0x00FF
+   or %r8,%r8,%r0
+   crset 2
+.else
    oris %r8,%r8,0x0004
    xoris %r8,%r8,0x0004
    ori %r8,%r8,0x00FF
    xori %r8,%r8,0x00FF
    cmpw %r8,%r0
+.endif
    blr
+
+   ########################################################################
+   # Subroutine to copy the value of register R8 to FPSCR.  Used with some
+   # floating-point tests in IGNORE_FPSCR_STATE mode to update FPSCR to
+   # the value it would have if FPSCR was being updated.
+   # On entry:
+   #     R8 = new value for FPSCR
+   # On return:
+   #     0x7000..0x700F(R4) = destroyed
+   ########################################################################
+
+.if IGNORE_FPSCR_STATE
+copy_r8_to_fpscr:
+   stfd %f3,0x7000(%r4)
+   stw %r8,0x700C(%r4)
+   lfd %f3,0x7008(%r4)
+   mtfsf 255,%f3
+   lfd %f3,0x7000(%r4)
+   blr
+.endif
 
    ########################################################################
    # Subroutine to check the two values of an FPR in paired-single format.
@@ -21444,8 +22202,6 @@ check_ps:
    #     F3 = result of instruction
    #     F4 = expected result for slot 0
    #     F5 = expected result for slot 1
-   #     0(LR) = expected result for slot 0, as a double
-   #     8(LR) = expected result for slot 1, as a double
    #     R0 = expected value of FPSCR exceptions (from add_fpscr_*)
    #     CR[24:31] = 0
    # On return:
@@ -21456,7 +22212,7 @@ check_ps:
    #     F5 = destroyed
    #     FPSCR = all exceptions cleared
    #     CR = 0
-   #     0x7000..0x700F(%r4) = destroyed
+   #     0x7000..0x700F(R4) = destroyed
    ########################################################################
 
 check_ps_pzero:  # Positive zero, FI = 0
@@ -21877,7 +22633,7 @@ check_ps_estimate:
    #     R9 = destroyed
    #     FPSCR = all exceptions cleared
    #     CR = 0
-   #     0x7000..0x700F(%r4) = destroyed
+   #     0x7000..0x700F(R4) = destroyed
    ########################################################################
 
 check_ps_estimate_pnorm:  # Positive normal number
@@ -21979,7 +22735,7 @@ check_ps_estimate_ndenorm:  # Negative denormalized number
    #     R10 = destroyed
    #     R11 = destroyed
    #     CR0 = destroyed
-   #     0x7000..0x7007(%r4) = destroyed
+   #     0x7000..0x7007(R4) = destroyed
    ########################################################################
 
 calc_fres:
@@ -22106,7 +22862,7 @@ calc_fres:
    #     R11 = destroyed
    #     CR0 = destroyed
    #     XER[CA] = destroyed
-   #     0x7000..0x7007(%r4) = destroyed
+   #     0x7000..0x7007(R4) = destroyed
    ########################################################################
 
 calc_frsqrte:
@@ -22225,7 +22981,7 @@ calc_frsqrte:
    #     R11 = destroyed
    #     CR0 = destroyed
    #     XER[CA] = destroyed
-   #     0x6FFC..0x7007(%r4) = destroyed
+   #     0x6FFC..0x7007(R4) = destroyed
    ########################################################################
 
 calc_ps_rsqrte:

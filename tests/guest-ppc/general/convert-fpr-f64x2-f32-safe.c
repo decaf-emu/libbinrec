@@ -16,7 +16,7 @@ static const uint8_t input[] = {
 
 static const unsigned int guest_opt = BINREC_OPT_G_PPC_NO_FPSCR_STATE
                                     | BINREC_OPT_G_PPC_NATIVE_RECIPROCAL
-                                    | BINREC_OPT_G_PPC_FAST_NANS;
+                                    | BINREC_OPT_G_PPC_ASSUME_NO_SNAN;
 static const unsigned int common_opt = 0;
 
 static const bool expected_success = true;

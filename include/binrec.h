@@ -662,8 +662,6 @@ typedef struct binrec_setup_t {
  * This optimization is specification-safe: as long as guest code follows
  * the IEEE 754 specifications, it will behave correctly under this
  * optimization.
- *
- * This optimization is not currently implemented.
  */
 #define BINREC_OPT_NATIVE_IEEE_NAN  (1<<9)
 
@@ -722,6 +720,41 @@ typedef struct binrec_setup_t {
 /*----------- Guest-architecture-specific optimization flags ------------*/
 
 /**
+ * BINREC_OPT_G_PPC_ASSUME_NO_SNAN:  Do not attempt to preserve the
+ * signaling/quiet state of floating-point NaN (not-a-number) values.
+ *
+ * The single-precision lfs and stfs instructions preserve the state of the
+ * "quiet" bit in a floating-point NaN (the high bit of the mantissa) when
+ * converting it to or from double precision, but the host instructions
+ * used to implement such a format conversion may treat it as an arithmetic
+ * operation which quiets any incoming signaling NaN, and detecting that
+ * such a change took place can require many more host instructions than
+ * the conversion itself.  If this optimization is enabled, the translator
+ * will use the fastest possible method to convert between single and
+ * double precision, ignoring the possibility of signaling NaNs.  If a
+ * signaling NaN is in fact loaded, it may cause a later floating-point
+ * instruction to incorrectly detect an invalid-operation exception and
+ * return an incorrect value.
+ *
+ * As a side effect, this optimization also modifies emulation of the
+ * undocumented hardware quirk that single-precision floating-point
+ * instructions accept double-precision arguments.  When this optimization
+ * is enabled, if an operand to a single-precision instruction (except stfs
+ * and related instructions, and including 750CL-specific paired-single
+ * instructions) is not representable in single precision, the instruction
+ * may raise a floating-point overflow, underflow, or inexact exception
+ * which is improperly detected by a later floating-point instruction.
+ * Note that the use of double-precision operands (i.e., operands which
+ * cannot be represented in single precision) with single-precision
+ * instructions is documented in the PowerPC specification to store
+ * undefined data in the output register and FPSCR.
+ *
+ * This optimization is UNSAFE: code which relies on being able to load a
+ * signaling NaN will not behave correctly.
+ */
+#define BINREC_OPT_G_PPC_ASSUME_NO_SNAN  (1<<0)
+
+/**
  * BINREC_OPT_G_PPC_CONSTANT_GQRS:  Assume that the values of the GQRs
  * (graphics quantization registers, used with paired-single load and
  * store instructions) are constant with respect to the entry point of a
@@ -744,7 +777,7 @@ typedef struct binrec_setup_t {
  * respect to any paired-single load or store instruction, the translated
  * code will not behave correctly.
  */
-#define BINREC_OPT_G_PPC_CONSTANT_GQRS  (1<<0)
+#define BINREC_OPT_G_PPC_CONSTANT_GQRS  (1<<1)
 
 /**
  * BINREC_OPT_G_PPC_FAST_FMULS:  Do not attempt to round the second
@@ -783,27 +816,7 @@ typedef struct binrec_setup_t {
  * the PowerPC architecture specification, it will behave correctly under
  * this optimization.
  */
-#define BINREC_OPT_G_PPC_FAST_FMULS  (1<<1)
-
-/**
- * BINREC_OPT_G_PPC_FAST_NANS:  Do not attempt to preserve the
- * signaling/quiet state of floating-point NaN (not-a-number) values.
- *
- * The single-precision lfs and stfs instructions preserve the state of the
- * "quiet" bit in a floating-point NaN (the high bit of the mantissa) when
- * converting it to or from double precision, but the host instructions
- * used to implement such a format conversion may treat it as an arithmetic
- * operation which quiets any incoming signaling NaN, and detecting that
- * such a change took place can require many more host instructions than
- * the conversion itself.  If this optimization is enabled, the translator
- * will use the fastest possible method to convert between single and
- * double precision, ignoring the possibility of signaling NaNs.
- *
- * This optimization is UNSAFE: code which relies on being able to load or
- * store a single-precision signaling NaN and preserve its signaling state
- * will not behave correctly.
- */
-#define BINREC_OPT_G_PPC_FAST_NANS  (1<<2)
+#define BINREC_OPT_G_PPC_FAST_FMULS  (1<<2)
 
 /**
  * BINREC_OPT_G_PPC_FNMADD_ZERO_SIGN:  Do not attempt to return the correct
