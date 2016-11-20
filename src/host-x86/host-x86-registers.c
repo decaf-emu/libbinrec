@@ -721,15 +721,6 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
                 } else {
                     host_reg = get_xmm(ctx, avoid_regs);
                 }
-                if (host_reg < 0 && avoid_regs != 0) {
-                    /* Try again without excluding any registers.  We won't
-                     * be able to keep the value in this register, but we
-                     * can at least avoid a round trip to memory.  Note
-                     * that currently we only need to avoid GPRs, so this
-                     * will never be hit for XMM registers. */
-                    ASSERT(is_gpr);
-                    host_reg = get_gpr(ctx, 0);
-                }
                 ctx->regs_free = saved_free;
                 if (host_reg >= 0) {
                     dest_info->merge_alias = true;
@@ -745,7 +736,7 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
              * the value to its proper location. */
             if (dest_info->merge_alias) {
                 const X86Register host_merge = dest_info->host_merge;
-                if (host_allocated || (avoid_regs & (1u << host_merge))) {
+                if (host_allocated) {
                     ctx->block_regs_touched |= 1u << host_merge;
                 } else {
                     host_allocated = true;
