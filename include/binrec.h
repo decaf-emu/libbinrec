@@ -534,30 +534,11 @@ typedef struct binrec_setup_t {
 #define BINREC_OPT_BASIC  (1<<0)
 
 /**
- * BINREC_OPT_CALLEE_SAVED_REGS:  Assume that registers specified as
- * callee-saved by the guest ABI are not modified across a subroutine call
- * or system call instruction, and if the instruction can be translated to
- * a native subroutine call, do not flush those registers to the processor
- * state block before the call or reload them after the call.
- *
- * This optimization has no effect unless BINREC_OPT_NATIVE_CALLS is also
- * enabled.  This optimization is also irrelevant for inlined functions;
- * register live ranges will be correctly calculated for all registers
- * when a function is inlined.
- *
- * This optimization is UNSAFE: if the assumption described above is
- * violated by guest code, the translated code will not behave correctly.
- *
- * This optimization is not currently implemented.
- */
-#define BINREC_OPT_CALLEE_SAVED_REGS  (1<<1)
-
-/**
  * BINREC_OPT_DECONDITION:  Convert conditional branches and moves with
  * constant conditions to unconditional instructions or NOPs.  This is
  * most useful in conjunction with constant folding.
  */
-#define BINREC_OPT_DECONDITION  (1<<2)
+#define BINREC_OPT_DECONDITION  (1<<1)
 
 /**
  * BINREC_OPT_DEEP_DATA_FLOW:  Perform extended data flow analysis on
@@ -565,7 +546,7 @@ typedef struct binrec_setup_t {
  * This optimization by itself only finds dead stores; enable BINREC_OPT_DSE
  * to remove them from the code stream.
  */
-#define BINREC_OPT_DEEP_DATA_FLOW  (1<<3)
+#define BINREC_OPT_DEEP_DATA_FLOW  (1<<2)
 
 /**
  * BINREC_OPT_DSE:  Perform dead store elimination (DSE) on the translated
@@ -576,7 +557,7 @@ typedef struct binrec_setup_t {
  * not eliminated.  However, floating-point instructions will be eliminated
  * if the BINREC_OPT_DSE_FP optimization is also enabled.
  */
-#define BINREC_OPT_DSE  (1<<4)
+#define BINREC_OPT_DSE  (1<<3)
 
 /**
  * BINREC_OPT_DSE_FP:  Allow elimination of floating-point operations when
@@ -586,7 +567,7 @@ typedef struct binrec_setup_t {
  * raised a floating-point exception which the guest code checks for, the
  * translated code will not behave correctly.
  */
-#define BINREC_OPT_DSE_FP  (1<<5)
+#define BINREC_OPT_DSE_FP  (1<<4)
 
 /**
  * BINREC_OPT_FOLD_CONSTANTS:  Look for computations whose operands are all
@@ -602,7 +583,7 @@ typedef struct binrec_setup_t {
  * Floating-point operations will not be folded unless the
  * BINREC_OPT_FOLD_FP_CONSTANTS optimization is also enabled.
  */
-#define BINREC_OPT_FOLD_CONSTANTS  (1<<6)
+#define BINREC_OPT_FOLD_CONSTANTS  (1<<5)
 
 /**
  * BINREC_OPT_FOLD_FP_CONSTANTS:  Fold floating-point as well as integer
@@ -619,26 +600,7 @@ typedef struct binrec_setup_t {
  * expects to detect that exception, the translated code will not behave
  * correctly.
  */
-#define BINREC_OPT_FOLD_FP_CONSTANTS  (1<<7)
-
-/**
- * BINREC_OPT_NATIVE_CALLS:  Treat subroutine-call instructions (like x86
- * CALL or PowerPC BL) as instructions with side effects rather than
- * branches, by translating them into native subroutine-call instructions.
- *
- * This optimization can significantly improve the performance of non-leaf
- * functions by allowing larger parts of the function to be translated as
- * a single unit.
- *
- * This optimization is behavior-safe in the narrow sense that it does not
- * change the meaning of the code, but code which uses call instructions in
- * nonstandard ways (such as a call to the next instruction to obtain the
- * instruction's address) can potentially cause a host stack overflow if
- * executed too often without returning control to the client program.
- *
- * This optimization is not currently implemented.
- */
-#define BINREC_OPT_NATIVE_CALLS  (1<<8)
+#define BINREC_OPT_FOLD_FP_CONSTANTS  (1<<6)
 
 /**
  * BINREC_OPT_NATIVE_IEEE_NAN:  Use the host's rules for NaN results of
@@ -663,7 +625,7 @@ typedef struct binrec_setup_t {
  * the IEEE 754 specifications, it will behave correctly under this
  * optimization.
  */
-#define BINREC_OPT_NATIVE_IEEE_NAN  (1<<9)
+#define BINREC_OPT_NATIVE_IEEE_NAN  (1<<7)
 
 /**
  * BINREC_OPT_NATIVE_IEEE_UNDERFLOW:  Use the host's definition of
@@ -692,30 +654,7 @@ typedef struct binrec_setup_t {
  * the IEEE 754 specifications, it will behave correctly under this
  * optimization.
  */
-#define BINREC_OPT_NATIVE_IEEE_UNDERFLOW  (1<<10)
-
-/**
- * BINREC_OPT_STACK_FRAMES:  Assume that a given function's stack frame is
- * only stored to by that function (unless it passes a stack-based pointer
- * to another function), and translate store/load instruction pairs on the
- * same stack frame location (such as when saving and restoring
- * callee-saved registers, or loading a spilled temporary register) to a
- * register move or no-op.
- *
- * If the function passes a stack-based pointer to another function
- * (specifically, if a value derived from the stack pointer register is
- * live in a register or stored to a function argument slot on the stack),
- * this optimization will be disabled for that function.  This optimization
- * only takes effect when both store and load are in the same translation
- * unit, so it will have limited benefit unless BINREC_OPT_NATIVE_CALLS is
- * also enabled.
- *
- * This optimization is UNSAFE: if the assumption described above is
- * violated by guest code, the translated code will not behave correctly.
- *
- * This optimization is not currently implemented.
- */
-#define BINREC_OPT_STACK_FRAMES  (1<<11)
+#define BINREC_OPT_NATIVE_IEEE_UNDERFLOW  (1<<8)
 
 /*----------- Guest-architecture-specific optimization flags ------------*/
 
