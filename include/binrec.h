@@ -630,7 +630,7 @@ typedef struct binrec_setup_t {
 /**
  * BINREC_OPT_NATIVE_IEEE_UNDERFLOW:  Use the host's definition of
  * underflow for IEEE floating-point arithmetic, even when that differs
- * from the guest definition.
+ * from the guest's definition.
  *
  * When translating between architectures which use different definitions
  * of underflow (IEEE allows two different behaviors: tiny before rounding
@@ -758,6 +758,36 @@ typedef struct binrec_setup_t {
 #define BINREC_OPT_G_PPC_FAST_FMULS  (1<<2)
 
 /**
+ * BINREC_OPT_G_PPC_FAST_STFS:  Use mathematical rather than bitwise
+ * conversion when storing double-precision values as single precision.
+ *
+ * The stfs instruction (as well as stfsx, stfsu, and stfsux) are defined
+ * to have a specific behavior with respect to double-precision values,
+ * which has the effect of converting the value to single precision in
+ * round-toward-zero mode if the value is in the range of values
+ * representable in single precision but does not treat overflow or
+ * underflow conditions specially -- thus, for example, storing an FPR
+ * containing the double-precision value 2^256 with stfs stores the bit
+ * pattern 0x3F80_0000, equal to 1.0 in single precision.  Properly
+ * implementing this behavior is significantly more expensive than simply
+ * converting the value to single precision as an arithmetic operation
+ * and storing that result, which can make this behavior a bottleneck for
+ * programs which process large amounts of single-precision data.
+ *
+ * Enabling this optimization causes the translator to use ordinary
+ * arithmetic conversion when storing double-precision values with the
+ * stfs group of instructions.  This deviates from the PowerPC
+ * specification, but (particularly if used with the ASSUME_NO_SNAN
+ * optimization) allows single-precision stores to be implemented with
+ * many fewer host instructions.
+ *
+ * This optimization is UNSAFE: if the guest code relies on the precise
+ * conversion behavior of stfs-group instructions, the translated code
+ * will not behave correctly.
+ */
+#define BINREC_OPT_G_PPC_FAST_STFS  (1<<3)
+
+/**
  * BINREC_OPT_G_PPC_FNMADD_ZERO_SIGN:  Do not attempt to return the correct
  * sign on the result of an fnmadd[s] or fnmsub[s] instruction.
  *
@@ -778,7 +808,7 @@ typedef struct binrec_setup_t {
  * that most real-life PowerPC code does not differentiate between positive
  * and negative zero.
  */
-#define BINREC_OPT_G_PPC_FNMADD_ZERO_SIGN  (1<<3)
+#define BINREC_OPT_G_PPC_FNMADD_ZERO_SIGN  (1<<4)
 
 /**
  * BINREC_OPT_G_PPC_IGNORE_FPSCR_VXFOO:  Do not set FPSCR exception bits
@@ -804,7 +834,7 @@ typedef struct binrec_setup_t {
  * This optimization has no effect if BINREC_OPT_G_PPC_NO_FPSCR_STATE is
  * enabled.
  */
-#define BINREC_OPT_G_PPC_IGNORE_FPSCR_VXFOO  (1<<4)
+#define BINREC_OPT_G_PPC_IGNORE_FPSCR_VXFOO  (1<<5)
 
 /**
  * BINREC_OPT_G_PPC_NATIVE_RECIPROCAL:  Translate guest PowerPC
@@ -859,7 +889,7 @@ typedef struct binrec_setup_t {
  * the PowerPC architecture specification, it will behave correctly under
  * this optimization.
  */
-#define BINREC_OPT_G_PPC_NATIVE_RECIPROCAL  (1<<5)
+#define BINREC_OPT_G_PPC_NATIVE_RECIPROCAL  (1<<6)
 
 /**
  * BINREC_OPT_G_PPC_NO_FPSCR_STATE:  Do not write any state bits (exception
@@ -867,9 +897,9 @@ typedef struct binrec_setup_t {
  *
  * Enabling this optimization causes the translated code to ignore all
  * host FPU exception conditions and skip setting FPRF to reflect the
- * value type.  For guest code which does not check the FPSCR status bits,
- * this results in significantly faster and smaller translated code with
- * no effect on program behavior.
+ * value type.  For guest code which does not enable floating-point
+ * exceptions or check the FPSCR status bits, this results in significantly
+ * faster and smaller translated code with no effect on program behavior.
  *
  * The control mode bits are honored as usual, though only FPSCR[RN] has
  * any effect on program behavior in this case; the exception enable bits
@@ -877,10 +907,10 @@ typedef struct binrec_setup_t {
  * is not currently supported by the translator.
  *
  * Instructions which directly manipulate FPSCR, such as mtfsf, are not
- * affected by this optimization and continue to behave normally, though
- * if any of the FR/FI/FPRF bits are set by such an instruction, they
- * will remain set even after floating-point instructions which would
- * normally overwrite them.
+ * affected by this optimization and continue to behave normally.  If any
+ * of the FR/FI/FPRF bits are set by such an instruction, they will remain
+ * set even after floating-point instructions which would normally
+ * overwrite them.
  *
  * Floating-point instructions with the Rc bit set will copy the high 4
  * bits of FPSCR to the cr1 field of CR as usual, though the bit values
@@ -893,7 +923,7 @@ typedef struct binrec_setup_t {
  * This optimization is UNSAFE: code which relies on any of the FPSCR
  * state bits will behave incorrectly if this optimization is enabled.
  */
-#define BINREC_OPT_G_PPC_NO_FPSCR_STATE  (1<<6)
+#define BINREC_OPT_G_PPC_NO_FPSCR_STATE  (1<<7)
 
 /**
  * BINREC_OPT_G_PPC_PS_STORE_DENORMALS:  Do not flush denormals to zero
@@ -909,7 +939,7 @@ typedef struct binrec_setup_t {
  * flushed to zero by paired-single store instructions will behave
  * incorrectly if this optimization is enabled.
  */
-#define BINREC_OPT_G_PPC_PS_STORE_DENORMALS  (1<<7)
+#define BINREC_OPT_G_PPC_PS_STORE_DENORMALS  (1<<8)
 
 /**
  * BINREC_OPT_G_PPC_TRIM_CR_STORES:  Analyze the data flow through each
@@ -921,7 +951,7 @@ typedef struct binrec_setup_t {
  * in the processor state block.  System call and trap handlers are not
  * affected.
  */
-#define BINREC_OPT_G_PPC_TRIM_CR_STORES  (1<<8)
+#define BINREC_OPT_G_PPC_TRIM_CR_STORES  (1<<9)
 
 /*------------ Host-architecture-specific optimization flags ------------*/
 

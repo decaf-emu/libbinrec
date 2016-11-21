@@ -562,15 +562,7 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
     }
 
     if (dest) {
-        /* SSA implies that destination registers should never have been
-         * seen before and should therefore never have a hardware register
-         * allocated.  However, we may have already allocated a GPR if the
-         * register is used in an instruction with fixed operands, so in
-         * that case just update the register map. */
-        ASSERT(dest_reg->birth == insn_index);
-
-        bool host_allocated = dest_info->host_allocated;
-        dest_info->host_allocated = true;  // We'll find one eventually.
+        ASSERT(dest_reg->birth == insn_index);  // Guaranteed by SSA.
 
         uint32_t soft_avoid = 0;  // Bitmap of last-choice registers.
 
@@ -580,33 +572,44 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
         uint32_t usable_regs = ctx->regs_free & ~(ctx->block_regs_touched
                                                   | ctx->early_merge_regs);
 
-        if (host_allocated) {
+        /* Check whether a host register was reserved by the FIXED_REGS
+         * optimization.  Even if it was, we don't allocate it immediately;
+         * we need to check whether the register is still valid.  (For
+         * example, if using the reserved register would cause dest to
+         * overlap src2 in a SUB instruction, we have to discard the
+         * reserved register because we can't use src2 as the RMW operand
+         * to a subtract operation.) */
+        int fixed_reg = -1;  // -1 (none) or an X86Register constant.
+        if (dest_info->host_allocated) {
             const X86Register host_reg = dest_info->host_reg;
             /* Even though we check for collisions during the fixed-regs
              * pass, collisions could be introduced by optimization, such
              * as when extending the live range of ADD operands when the
              * ADD is eliminated by address operand optimization. */
             if (!ctx->reg_map[host_reg]) {
-                assign_register(ctx, dest, host_reg);
-                /* This must have been the first register on the fixed-regs
-                 * list.  Advance the list pointer so we don't have to scan
-                 * over this register again. */
-                ASSERT(ctx->fixed_reg_list == dest);
-                ctx->fixed_reg_list = dest_info->next_fixed;
-            } else {
-                /* We lost our register, so allocate a new one below. */
-                host_allocated = false;
+                fixed_reg = host_reg;
             }
+            /* This must have been the first register on the fixed-regs
+             * list.  Advance the list pointer so we don't have to scan
+             * over this register again. */
+            ASSERT(ctx->fixed_reg_list == dest);
+            ctx->fixed_reg_list = dest_info->next_fixed;
+            /* Clear the allocation flag until we finalize the allocation. */
+            dest_info->host_allocated = false;
         }
 
-        if (!host_allocated) {
-            /* Make sure not to collide with any registers that have
-             * already been allocated. */
-            for (int r = ctx->fixed_reg_list; r; r = ctx->regs[r].next_fixed) {
-                if (unit->regs[r].birth >= dest_reg->death) {
-                    break;
-                }
-                ASSERT(ctx->regs[r].host_allocated);
+        /* Make sure not to choose any registers that have already been
+         * reserved.  But don't avoid a register which has been reserved
+         * for the current RTL register; that case can arise if the current
+         * register's live range was extended by the ADDRESS_OPERANDS
+         * optimization (see tests/host-x86/opt/address-fixed-regs-overlap.c
+         * for an example). */
+        for (int r = ctx->fixed_reg_list; r; r = ctx->regs[r].next_fixed) {
+            if (unit->regs[r].birth >= dest_reg->death) {
+                break;
+            }
+            ASSERT(ctx->regs[r].host_allocated);
+            if ((int)ctx->regs[r].host_reg != fixed_reg) {
                 avoid_regs |= 1u << ctx->regs[r].host_reg;
             }
         }
@@ -697,11 +700,11 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
              * beginning of the block, use it.  We delay this check until
              * now since we need to know whether to allocate a register in
              * the first place (i.e., have_preceding_store). */
-            if (have_preceding_store && host_allocated
+            if (have_preceding_store && fixed_reg >= 0
              && usable_regs & (1u << dest_info->host_reg)) {
                 /* The register is available!  Claim it for our own. */
                 dest_info->merge_alias = true;
-                dest_info->host_merge = dest_info->host_reg;
+                dest_info->host_merge = fixed_reg;
             }
 
             /* Lowest priority: any register not yet used in this block.
@@ -733,10 +736,10 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
              * the value to its proper location. */
             if (dest_info->merge_alias) {
                 const X86Register host_merge = dest_info->host_merge;
-                if (host_allocated) {
+                if (fixed_reg >= 0 && (X86Register)fixed_reg != host_merge) {
                     ctx->block_regs_touched |= 1u << host_merge;
                 } else {
-                    host_allocated = true;
+                    dest_info->host_allocated = true;
                     dest_info->host_reg = host_merge;
                     assign_register(ctx, dest, host_merge);
                 }
@@ -757,7 +760,7 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
          * the argument is passed in, unless the result register is live
          * across a CALL instruction.
          */
-        if (!host_allocated && insn->opcode == RTLOP_LOAD_ARG
+        if (insn->opcode == RTLOP_LOAD_ARG && fixed_reg < 0
             && (ctx->nontail_call_list < 0
                 || dest_reg->death <= ctx->nontail_call_list)) {
             const int target_reg =
@@ -768,22 +771,28 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
                 return false;
             } else if (!ctx->reg_map[target_reg]
                        && !(avoid_regs & (1u << target_reg))) {
-                host_allocated = true;
+                dest_info->host_allocated = true;
                 dest_info->host_reg = target_reg;
                 assign_register(ctx, dest, target_reg);
             }
         }
 
         /*
+         * Look for preferred or impermissible registers based on the
+         * instruction and operands, and allocate the preferred or
+         * reserved register if possible.
+         *
          * x86 doesn't have separate destination operands for most
          * instructions, so if one of the source operands (if any) dies at
          * this instruction, reuse its host register for the destination
          * to avoid an unnecessary register move.  However, for some
          * complex instructions we need to write to the destination
-         * register before we've consumed all the input operands, so
+         * register before we've consumed all the input operands, so we
          * explicitly avoid reusing source registers in those cases.
          */
-        if (!host_allocated) {
+        if (!dest_info->host_allocated) {
+            int preferred_reg = -1;  // -1 (none) or an X86Register constant.
+
             switch (insn->opcode) {
               case RTLOP_MULHU:
               case RTLOP_MULHS:
@@ -796,12 +805,9 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
                      * output register can be forced to avoid its natural
                      * location.  Assert on that just to be safe. */
                     ASSERT(!(avoid_regs & (1u << X86_DX)));
-                    host_allocated = true;
-                    dest_info->host_reg = X86_DX;
-                    assign_register(ctx, dest, X86_DX);
-                } else {
-                    avoid_regs |= 1u << X86_AX;
+                    preferred_reg = X86_DX;
                 }
+                avoid_regs |= 1u << X86_AX;
                 break;
 
               case RTLOP_DIVU:
@@ -811,14 +817,11 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
                  * way of the fixed input registers. */
                 if (!ctx->reg_map[X86_AX] && src2_info->host_reg != X86_AX) {
                     ASSERT(!(avoid_regs & (1u << X86_AX)));
-                    host_allocated = true;
-                    dest_info->host_reg = X86_AX;
-                    assign_register(ctx, dest, X86_AX);
-                } else {
-                    avoid_regs |= 1u << X86_AX
-                                | 1u << X86_DX
-                                | 1u << src2_info->host_reg;
+                    preferred_reg = X86_AX;
                 }
+                avoid_regs |= 1u << X86_AX
+                            | 1u << X86_DX
+                            | 1u << src2_info->host_reg;
                 break;
 
               case RTLOP_MODU:
@@ -826,14 +829,11 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
                 /* As for DIVU/DIVS. */
                 if (!ctx->reg_map[X86_DX] && src2_info->host_reg != X86_DX) {
                     ASSERT(!(avoid_regs & (1u << X86_DX)));
-                    host_allocated = true;
-                    dest_info->host_reg = X86_DX;
-                    assign_register(ctx, dest, X86_DX);
-                } else {
-                    avoid_regs |= 1u << X86_AX
-                                | 1u << X86_DX
-                                | 1u << src2_info->host_reg;
+                    preferred_reg = X86_DX;
                 }
+                avoid_regs |= 1u << X86_AX
+                            | 1u << X86_DX
+                            | 1u << src2_info->host_reg;
                 break;
 
               case RTLOP_SEQ:
@@ -899,26 +899,22 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
                         /* 213 variant. */
                         if (!spilled2 && !ctx->reg_map[src2_info->host_reg]) {
                             ASSERT(!(avoid_regs & (1u << src2_info->host_reg)));
-                            host_allocated = true;
-                            dest_info->host_reg = src2_info->host_reg;
-                            assign_register(ctx, dest, src2_info->host_reg);
-                        } else if (!spilled1) {
+                            preferred_reg = src2_info->host_reg;
+                        }
+                        if (!spilled1) {
                             avoid_regs |= 1u << src1_info->host_reg;
                         }
                     } else if (!ctx->reg_map[host_src3]) {
                         /* 231 variant. */
                         ASSERT(!(avoid_regs & (1u << host_src3)));
-                        host_allocated = true;
-                        dest_info->host_reg = host_src3;
-                        assign_register(ctx, dest, host_src3);
+                        preferred_reg = host_src3;
                     } else {
                         /* 132 variant. */
                         if (!spilled1 && !ctx->reg_map[src1_info->host_reg]) {
                             ASSERT(!(avoid_regs & (1u << src1_info->host_reg)));
-                            host_allocated = true;
-                            dest_info->host_reg = src1_info->host_reg;
-                            assign_register(ctx, dest, src1_info->host_reg);
-                        } else if (!spilled2) {
+                            preferred_reg = src1_info->host_reg;
+                        }
+                        if (!spilled2) {
                             avoid_regs |= 1u << src2_info->host_reg;
                         }
                     }
@@ -1038,15 +1034,14 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
                     }
                     if (src1_ok
                      && !(avoid_regs & (1u << src1_info->host_reg))) {
-                        host_allocated = true;
-                        dest_info->host_reg = src1_info->host_reg;
-                        ctx->reg_map[dest_info->host_reg] = dest;
-                        ASSERT(ctx->regs_free & (1u << dest_info->host_reg));
-                        ctx->regs_free ^= 1u << dest_info->host_reg;
+                        preferred_reg = src1_info->host_reg;
                     }
                 }  // if (src1 is reusable)
 
-                if (!host_allocated && src2 && !src2_info->spilled
+                /* Check whether src2 needs to be avoided even if src1 is
+                 * available, because we might override preferred_reg with
+                 * fixed_reg. */
+                if (src2 && !src2_info->spilled
                  && src2_reg->death == insn_index) {
                     /* The second operand's register can only be reused for
                      * commutative operations.  However, RTL SLT/SGT
@@ -1090,34 +1085,47 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
                         /* Make sure it's also not chosen by the regular
                          * allocator. */
                         avoid_regs |= 1u << src2_info->host_reg;
-                    } else if (!(avoid_regs & (1u << src2_info->host_reg))) {
-                        host_allocated = true;
-                        dest_info->host_reg = src2_info->host_reg;
-                        ctx->reg_map[dest_info->host_reg] = dest;
-                        ASSERT(ctx->regs_free & (1u << dest_info->host_reg));
-                        ctx->regs_free ^= 1u << dest_info->host_reg;
+                    } else if (preferred_reg < 0
+                            && !(avoid_regs & (1u << src2_info->host_reg))) {
+                        preferred_reg = src2_info->host_reg;
                     }
                 }  // if (src2 is reusable)
 
                 break;
             }  // switch (insn->opcode)
-        }   // if (!host_allocated)
+
+            /* At this point, we know what registers we need to avoid, so
+             * if we have a reserved register from FIXED_REGS and it's
+             * usable for this instruction, go ahead and choose it over
+             * whatever the instruction may have preferred. */
+            if (fixed_reg >= 0 && !(avoid_regs & (1u << fixed_reg))) {
+                preferred_reg = fixed_reg;
+            }
+
+            if (preferred_reg >= 0) {
+                dest_info->host_allocated = true;
+                dest_info->host_reg = preferred_reg;
+                assign_register(ctx, dest, preferred_reg);
+            }
+        }  // if (!dest_info->host_allocated)
 
         /* If none of the special cases apply, allocate a register normally. */
-        if (!host_allocated) {
-            /* Be careful not to allocate an unclobberable input register. */
+        if (!dest_info->host_allocated) {
+            /* Be careful not to allocate an unclobberable input register.
+             * Currently this is just rCX (the shift count register) for
+             * shift-type instructions. */
             switch (insn->opcode) {
               case RTLOP_SLL:
               case RTLOP_SRL:
               case RTLOP_SRA:
               case RTLOP_ROL:
               case RTLOP_ROR:
-                /* rCX is used for the shift count. */
                 avoid_regs |= 1u << X86_CX;
                 break;
             }
             dest_info->host_reg = allocate_register(
                 ctx, insn_index, dest, dest_reg, avoid_regs, soft_avoid);
+            dest_info->host_allocated = true;
         }
 
         /* Find a temporary register for instructions which need it. */

@@ -17,6 +17,7 @@
 #include "tests/guest-ppc/exec/750cl-common.i"
 
 static const FailureRecord expected_error_list[] = {
+    EXPECTED_ERRORS_ASSUME_NO_SNAN_NO_FAST_STFS,
     EXPECTED_ERRORS_ASSUME_NO_SNAN,
     EXPECTED_ERRORS_COMMON,
 };

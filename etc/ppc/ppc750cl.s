@@ -3,6 +3,8 @@
 # No copyright is claimed on this file.
 #
 # Update history:
+#    - 2016-11-21: Added tests to verify the behavior of stfs with respect
+#         to double-precision values.
 #    - 2016-11-19: Added an IGNORE_FPSCR_STATE symbol (disabled by default)
 #         to cause floating-point tests to ignore the state bits in FPSCR.
 #         This can be useful in testing an implementation which omits FPSCR
@@ -6088,6 +6090,67 @@ get_load_address:
    beq 0f
 1: stw %r3,8(%r6)
    stw %r8,12(%r6)
+   addi %r6,%r6,32
+
+   # Single-precision stores should truncate rather than round
+   # double-precision values.
+0: lfd %f3,288(%r31)
+   stfs %f3,32(%r4)
+   bl record
+   lwz %r3,32(%r4)
+   lis %r7,0x3FAA
+   ori %r7,%r7,0xAAAA
+   cmpw %r3,%r7
+   beq 0f
+   lwz %r7,288(%r31)
+   stw %r7,8(%r6)
+   lwz %r7,292(%r31)
+   stw %r7,12(%r6)
+   stw %r3,16(%r6)
+   addi %r6,%r6,32
+   # For values which turn into single-precision denormals, the truncation
+   # should occur at the proper place.
+0: lis %r7,0x3810
+   addi %r7,%r7,-1
+   stw %r7,0(%r4)
+   li %r7,-1
+   stw %r7,4(%r4)
+   lfd %f4,0(%r4)
+   stfs %f4,32(%r4)
+   bl record
+   lwz %r3,32(%r4)
+   lis %r7,0x80
+   addi %r7,%r7,-1  # The low bit shouldn't be truncated.
+   cmpw %r3,%r7
+   beq 0f
+   lwz %r7,0(%r4)
+   stw %r7,8(%r6)
+   lwz %r7,4(%r4)
+   stw %r7,12(%r6)
+   stw %r3,16(%r6)
+   addi %r6,%r6,32
+
+   # Single-precision stores of double-precision values which would
+   # overflow in single precision are truncated as for NaNs.
+0: lis %r3,0x5012
+   ori %r3,%r3,0x3456
+   stw %r3,0(%r4)
+   lis %r3,0x789A
+   ori %r3,%r3,0xBCDE
+   stw %r3,4(%r4)
+   lfd %f5,0(%r4)
+   stfs %f5,32(%r4)
+   bl record
+   lwz %r3,32(%r4)
+   lis %r7,0x4091
+   ori %r7,%r7,0xA2B3
+   cmpw %r3,%r7
+   beq 0f
+   lwz %r7,0(%r4)
+   stw %r7,8(%r6)
+   lwz %r7,4(%r4)
+   stw %r7,12(%r6)
+   stw %r3,16(%r6)
    addi %r6,%r6,32
 
    ########################################################################

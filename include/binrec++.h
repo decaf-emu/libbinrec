@@ -62,9 +62,10 @@ namespace Optimize {
     const unsigned int NATIVE_IEEE_UNDERFLOW = BINREC_OPT_NATIVE_IEEE_UNDERFLOW;
 
     namespace GuestPPC {
+        const unsigned int ASSUME_NO_SNAN = BINREC_OPT_G_PPC_ASSUME_NO_SNAN;
         const unsigned int CONSTANT_GQRS = BINREC_OPT_G_PPC_CONSTANT_GQRS;
         const unsigned int FAST_FMULS = BINREC_OPT_G_PPC_FAST_FMULS;
-        const unsigned int FAST_NANS = BINREC_OPT_G_PPC_FAST_NANS;
+        const unsigned int FAST_STFS = BINREC_OPT_G_PPC_FAST_STFS;
         const unsigned int FNMADD_ZERO_SIGN = BINREC_OPT_G_PPC_FNMADD_ZERO_SIGN;
         const unsigned int IGNORE_FPSCR_VXFOO = BINREC_OPT_G_PPC_IGNORE_FPSCR_VXFOO;
         const unsigned int NATIVE_RECIPROCAL = BINREC_OPT_G_PPC_NATIVE_RECIPROCAL;

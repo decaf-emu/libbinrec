@@ -36,7 +36,7 @@ static inline int rtl_imm32(RTLUnit * const unit, uint32_t value)
  * rtl_imm64:  Allocate and return a new RTL register of INT64 type
  * containing the given immediate value.
  */
-static inline int rtl_imm64(RTLUnit * const unit, uint32_t value)
+static inline int rtl_imm64(RTLUnit * const unit, uint64_t value)
 {
     const int reg = rtl_alloc_register(unit, RTLTYPE_INT64);
     rtl_add_insn(unit, RTLOP_LOAD_IMM, reg, 0, 0, value);
@@ -4117,8 +4117,73 @@ static void translate_load_store_fpr(
         gen_load_store_address(ctx, insn, is_indexed, update, &disp, &ea);
 
     if (is_store) {
-        const int value = get_fpr(ctx, insn_frD(insn), type);
-        rtl_add_insn(unit, rtlop, 0, host_address, value, disp);
+        if (is_single && !(ctx->handle->guest_opt & BINREC_OPT_G_PPC_FAST_STFS)
+         && get_fpr_scalar_type(ctx, insn_frD(insn)) != RTLTYPE_FLOAT32) {
+            /* stfs performs a bitwise conversion from double precision
+             * rather than an arithmetic conversion. */
+            const int value = get_fpr(ctx, insn_frD(insn), RTLTYPE_FLOAT64);
+            const int bits = rtl_alloc_register(unit, RTLTYPE_INT64);
+            rtl_add_insn(unit, RTLOP_BITCAST, bits, value, 0, 0);
+            const int high_word64 = rtl_alloc_register(unit, RTLTYPE_INT64);
+            rtl_add_insn(unit, RTLOP_SRLI, high_word64, bits, 0, 32);
+            const int high_word = rtl_alloc_register(unit, RTLTYPE_INT32);
+            rtl_add_insn(unit, RTLOP_ZCAST, high_word, high_word64, 0, 0);
+            const int range_test = rtl_alloc_register(unit, RTLTYPE_INT64);
+            rtl_add_insn(unit, RTLOP_SLLI, range_test, bits, 0, 1);
+            const int label_normal = rtl_alloc_label(unit);
+            rtl_add_insn(unit, RTLOP_GOTO_IF_Z,
+                         0, range_test, 0, label_normal);
+            const int normal_limit =
+                rtl_imm64(unit, (UINT64_C(0x3810000000000000) << 1) - 1);
+            const int normal_test = rtl_alloc_register(unit, RTLTYPE_INT32);
+            rtl_add_insn(unit, RTLOP_SGTU,
+                         normal_test, range_test, normal_limit, 0);
+            const int label_denormal = rtl_alloc_label(unit);
+            rtl_add_insn(unit, RTLOP_GOTO_IF_Z,
+                         0, normal_test, 0, label_denormal);
+
+            rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, label_normal);
+            const int high_bits = rtl_alloc_register(unit, RTLTYPE_INT32);
+            rtl_add_insn(unit, RTLOP_ANDI,
+                         high_bits, high_word, 0, 0xC0000000);
+            const int low_bits64 = rtl_alloc_register(unit, RTLTYPE_INT64);
+            rtl_add_insn(unit, RTLOP_BFEXT, low_bits64, bits, 0, 29 | 30<<8);
+            const int low_bits = rtl_alloc_register(unit, RTLTYPE_INT32);
+            rtl_add_insn(unit, RTLOP_ZCAST, low_bits, low_bits64, 0, 0);
+            const int normal_bits = rtl_alloc_register(unit, RTLTYPE_INT32);
+            rtl_add_insn(unit, RTLOP_OR, normal_bits, high_bits, low_bits, 0);
+            rtl_add_insn(unit, rtlop, 0, host_address, normal_bits, disp);
+            const int label_out = rtl_alloc_label(unit);
+            rtl_add_insn(unit, RTLOP_GOTO, 0, 0, 0, label_out);
+
+            rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, label_denormal);
+            const int exponent = rtl_alloc_register(unit, RTLTYPE_INT64);
+            rtl_add_insn(unit, RTLOP_SRLI, exponent, range_test, 0, 53);
+            const int frac64 = rtl_alloc_register(unit, RTLTYPE_INT64);
+            rtl_add_insn(unit, RTLOP_SRLI, frac64, range_test, 0, 31);
+            const int frac_temp1 = rtl_alloc_register(unit, RTLTYPE_INT32);
+            rtl_add_insn(unit, RTLOP_ZCAST, frac_temp1, frac64, 0, 0);
+            const int cst_896 = rtl_imm64(unit, 896);
+            const int frac_temp2 = rtl_alloc_register(unit, RTLTYPE_INT32);
+            rtl_add_insn(unit, RTLOP_ANDI,
+                         frac_temp2, frac_temp1, 0, 0x7FFFFF);
+            const int shift = rtl_alloc_register(unit, RTLTYPE_INT64);
+            rtl_add_insn(unit, RTLOP_SUB, shift, cst_896, exponent, 0);
+            const int frac = rtl_alloc_register(unit, RTLTYPE_INT32);
+            rtl_add_insn(unit, RTLOP_ORI, frac, frac_temp2, 0, 1<<22);
+            const int sign = rtl_alloc_register(unit, RTLTYPE_INT32);
+            rtl_add_insn(unit, RTLOP_ANDI, sign, high_word, 0, 0x80000000);
+            const int shifted_frac = rtl_alloc_register(unit, RTLTYPE_INT32);
+            rtl_add_insn(unit, RTLOP_SRL, shifted_frac, frac, shift, 0);
+            const int denormal_bits = rtl_alloc_register(unit, RTLTYPE_INT32);
+            rtl_add_insn(unit, RTLOP_OR, denormal_bits, sign, shifted_frac, 0);
+            rtl_add_insn(unit, rtlop, 0, host_address, denormal_bits, disp);
+
+            rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, label_out);
+        } else {
+            const int value = get_fpr(ctx, insn_frD(insn), type);
+            rtl_add_insn(unit, rtlop, 0, host_address, value, disp);
+        }
     } else {
         const int value = rtl_alloc_register(unit, type);
         rtl_add_insn(unit, rtlop, value, host_address, 0, disp);

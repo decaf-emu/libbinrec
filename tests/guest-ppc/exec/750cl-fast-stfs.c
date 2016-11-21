@@ -17,8 +17,7 @@
 #include "tests/guest-ppc/exec/750cl-common.i"
 
 static const FailureRecord expected_error_list[] = {
-    EXPECTED_ERRORS_NATIVE_IEEE_NAN_NO_NO_FPSCR_STATE,
-    EXPECTED_ERRORS_NATIVE_IEEE_NAN,
+    EXPECTED_ERRORS_FAST_STFS,
     EXPECTED_ERRORS_COMMON,
 };
 
@@ -26,8 +25,9 @@ static const FailureRecord expected_error_list[] = {
 static void configure_handle(binrec_t *handle)
 {
     binrec_set_optimization_flags(handle,
-                                  BINREC_OPT_NATIVE_IEEE_NAN, 0, 0);
+                                  0, BINREC_OPT_G_PPC_FAST_STFS, 0);
 }
+
 
 int main(void)
 {

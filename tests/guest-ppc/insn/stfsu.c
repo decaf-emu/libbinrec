@@ -13,7 +13,7 @@ static const uint8_t input[] = {
     0xD4,0x23,0xFF,0xF0,  // stfsu f1,-16(r3)
 };
 
-static const unsigned int guest_opt = 0;
+static const unsigned int guest_opt = BINREC_OPT_G_PPC_FAST_STFS;
 static const unsigned int common_opt = 0;
 
 static const bool expected_success = true;
