@@ -13,7 +13,6 @@
 
 static const binrec_setup_t setup = {
     .host = BINREC_ARCH_X86_64_SYSV,
-    .host_features = BINREC_FEATURE_X86_FMA,
 };
 static const unsigned int host_opt = BINREC_OPT_H_X86_MERGE_REGS
                                    | BINREC_OPT_H_X86_FORWARD_CONDITIONS;

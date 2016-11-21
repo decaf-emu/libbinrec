@@ -18,8 +18,20 @@
 #     PPC_LD        "ld" from the binutils package, built for ppc32
 #     PPC_NM        "nm" from the binutils package, built for ppc32
 #     PPC_OBJCOPY   "objcopy" from the binutils package, built for ppc32
+#
+# If a "-d FILENAME" option is given, a disassembly of the generated object
+# code will be written to FILENAME.  In this case, the binutils "objdump"
+# program is also required; set the environment variable PPC_OBJDUMP if
+# necessary.
 
 set -e
+
+dumpfile=""
+if test "x$1" = "x-d"; then
+    shift
+    dumpfile="$1"
+    shift
+fi
 
 name=""
 optflags=""
@@ -33,7 +45,7 @@ case "$1" in
         ;;
 esac
 if ! test -n "$name"; then
-    echo >&2 "Usage: $0 {noopt|opt} >ppc32-dhry_{noopt|opt}.c"
+    echo >&2 "Usage: $0 [-d disassembly.txt] {noopt|opt} >ppc32-dhry_{noopt|opt}.c"
     exit 1
 fi
 
@@ -41,6 +53,7 @@ PPC_CC="${PPC_AS-powerpc-eabi-gcc}"
 PPC_CFLAGS="-mcpu=750 -fno-stack-protector"
 PPC_LD="${PPC_LD-powerpc-eabi-ld}"
 PPC_NM="${PPC_NM-powerpc-eabi-nm}"
+PPC_OBJDUMP="${PPC_OBJDUMP-powerpc-eabi-objdump}"
 PPC_OBJCOPY="${PPC_OBJCOPY-powerpc-eabi-objcopy}"
 
 tempdir="$(mktemp -d)"; test -n "$tempdir" -a -d "$tempdir"
@@ -64,6 +77,9 @@ base=0x100000
     "$PPC_LD" -Ttext=${base} --defsym _start=${base} \
         -o "$tempdir/dhry" "$tempdir/dhry_1.o" "$tempdir/dhry_2.o" \
         "$tempdir/memcpy.o" "$tempdir/strcmp.o" "$tempdir/strcpy.o"
+    if test -n "$dumpfile"; then
+        "$PPC_OBJDUMP" -M750cl -ds "$tempdir/dhry" >"$dumpfile"
+    fi
     "$PPC_OBJCOPY" -O binary "$tempdir/dhry" "$tempdir/dhry.bin"
 )
 

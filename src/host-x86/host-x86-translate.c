@@ -5081,8 +5081,8 @@ static bool translate_block(HostX86Context *ctx, int block_index)
                                 X86_SP, ctx->regs[src1].spill_offset);
                 host_src1 = host_temp;
                 host_temp = host_dest;
-                /* Make sure we're not about to overwrite src2 if src3 is
-                 * also spilled (the register allocator guarantees this). */
+                /* Make sure we're not about to overwrite src2 in case src3
+                 * is also spilled (the register allocator guarantees this). */
                 ASSERT(!(!is_spilled(ctx, insn_index, src2)
                          && host_dest == ctx->regs[src2].host_reg));
                 /* temp_index is only used to check the assertion below

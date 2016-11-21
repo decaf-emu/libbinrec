@@ -37,6 +37,39 @@
  *			r.painter@ieee.org
  */
 /*
+ * Changes made by Andrew Church, 2016-11-21:
+ *
+ * - The body of the benchmark has been extracted to a separate
+ *   function named "whetstone".  In combination with NO_MAIN (see
+ *   below), this allows the benchmark to be linked into another
+ *   program.  To change the name of the benchmark function, define
+ *   "whetstone" to another name using the appropriate compiler flag
+ *   ("-D" for most Unix-based compilers).  This technically changes
+ *   the resulting machine code, but the difference in reported
+ *   performance obtained should be far below the noise threshold,
+ *   particularly given that the original program's timing method is
+ *   limited to 1-second precision.
+ *
+ * - The "whetstone" function returns a constant nonzero value, for
+ *   convenience when used with benchmarking programs which expect
+ *   benchmark functions to return a "pass" or "fail" result.
+ *   The design of the Whetstone benchmark unfortunately makes it
+ *   non-trivial to determine whether a particular run has computed
+ *   the correct results.
+ *
+ * - If NO_MAIN is defined, the "main" function will be omitted.
+ *
+ * - The iteration count (II) used in the benchmark can be changed by
+ *   defining ITERCOUNT to the desired count.
+ *
+ * - All file-scope symbols other than "whetstone" (and "main", if
+ *   NO_MAIN is not defined) are declared as static so that they do
+ *   not pollute the global namespace when this file is linked into
+ *   another program.  This should have no effect on the generated
+ *   machine code provided that function inlining is disabled when
+ *   this source file is compiled.
+ */
+/*
 C**********************************************************************
 C     Benchmark #2 -- Double  Precision Whetstone (A001)
 C
@@ -52,13 +85,16 @@ C**********************************************************************
 */
 
 /* standard C library headers required */
-#include <stdlib.h>
-#include <stdio.h>
 #include <string.h>
 #include <math.h>
 
+#ifndef NO_MAIN
+#include <stdlib.h>
+#include <stdio.h>
+
 /* the following is optional depending on the timing function used */
 #include <time.h>
+#endif
 
 /* map the FORTRAN math functions, etc. to the C versions */
 #define DSIN	sin
@@ -69,64 +105,32 @@ C**********************************************************************
 #define DSQRT	sqrt
 #define IF		if
 
+#ifndef ITERCOUNT
+#define ITERCOUNT 1
+#endif
+
 /* function prototypes */
-void POUT(long N, long J, long K, double X1, double X2, double X3, double X4);
-void PA(double E[]);
-void P0(void);
-void P3(double X, double Y, double *Z);
+static void POUT(long N, long J, long K, double X1, double X2, double X3, double X4);
+static void PA(double E[]);
+static void P0(void);
+static void P3(double X, double Y, double *Z);
 #define USAGE	"usage: whetdc [-c] [loops]\n"
 
 /*
 	COMMON T,T1,T2,E1(4),J,K,L
 */
-double T,T1,T2,E1[5];
-int J,K,L;
+static double T,T1,T2,E1[5];
+static int J,K,L;
 
 int
-main(int argc, char *argv[])
+whetstone(long loopcount)
 {
-	/* used in the FORTRAN version */
 	long I;
 	long N1, N2, N3, N4, N6, N7, N8, N9, N10, N11;
 	double X1,X2,X3,X4,X,Y,Z;
 	long LOOP;
 	int II, JJ;
 
-	/* added for this version */
-	long loopstart;
-	long startsec, finisec;
-	float KIPS;
-	int continuous;
-
-	loopstart = 1000;		/* see the note about LOOP below */
-	continuous = 0;
-
-	II = 1;		/* start at the first arg (temp use of II here) */
-	while (II < argc) {
-		if (strncmp(argv[II], "-c", 2) == 0 || argv[II][0] == 'c') {
-			continuous = 1;
-		} else if (atol(argv[II]) > 0) {
-			loopstart = atol(argv[II]);
-		} else {
-			fprintf(stderr, USAGE);
-			return(1);
-		}
-		II++;
-	}
-
-LCONT:
-/*
-C
-C	Start benchmark timing at this point.
-C
-*/
-	startsec = time(0);
-
-/*
-C
-C	The actual benchmark starts here.
-C
-*/
 	T  = .499975;
 	T1 = 0.50025;
 	T2 = 2.0;
@@ -137,9 +141,10 @@ C	will be executed in EACH MAJOR LOOP..A MAJOR LOOP IS EXECUTED
 C	'II' TIMES TO INCREASE WALL-CLOCK TIMING ACCURACY.
 C
 	LOOP = 1000;
-*/
-	LOOP = loopstart;
 	II   = 1;
+*/
+	LOOP = loopcount;
+	II   = ITERCOUNT;
 
 	JJ = 1;
 
@@ -350,6 +355,54 @@ C
 	if (++JJ <= II)
 		goto IILOOP;
 
+	return 1;
+}
+
+#ifndef NO_MAIN
+
+int
+main(int argc, char *argv[])
+{
+	/* added for this version */
+	int II;
+	long loopstart;
+	long startsec, finisec;
+	float KIPS;
+	int continuous;
+
+	loopstart = 1000;		/* see the note about LOOP below */
+	continuous = 0;
+
+	II = 1;		/* start at the first arg (temp use of II here) */
+	while (II < argc) {
+		if (strncmp(argv[II], "-c", 2) == 0 || argv[II][0] == 'c') {
+			continuous = 1;
+		} else if (atol(argv[II]) > 0) {
+			loopstart = atol(argv[II]);
+		} else {
+			fprintf(stderr, USAGE);
+			return(1);
+		}
+		II++;
+	}
+
+LCONT:
+/*
+C
+C	Start benchmark timing at this point.
+C
+*/
+	startsec = time(0);
+
+/*
+C
+C	The actual benchmark starts here.
+C
+*/
+
+	/* Benchmark code extracted to a separate function */
+	whetstone(loopstart);
+
 /*
 C
 C      Stop benchmark timing at this point.
@@ -373,9 +426,9 @@ C--------------------------------------------------------------------
 	}
 
 	printf("Loops: %ld, Iterations: %d, Duration: %ld sec.\n",
-			LOOP, II, finisec-startsec);
+			loopstart, ITERCOUNT, finisec-startsec);
 
-	KIPS = (100.0*LOOP*II)/(float)(finisec-startsec);
+	KIPS = (100.0*loopstart*ITERCOUNT)/(float)(finisec-startsec);
 	if (KIPS >= 1000.0)
 		printf("C Converted Double Precision Whetstones: %.1f MIPS\n", KIPS/1000.0);
 	else
@@ -386,6 +439,8 @@ C--------------------------------------------------------------------
 
 	return(0);
 }
+
+#endif  /* NO_MAIN */
 
 void
 PA(double E[])

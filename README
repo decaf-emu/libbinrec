@@ -99,19 +99,33 @@ Performance
 -----------
 The following figures were obtained by running the included benchmark
 tool (which can be built with "make benchmarks/bench") on an Intel Core
-i7-4770S running at a clock speed of 3.1GHz.  In all cases, translated
-code was cached using a flat array of pointers to translated units (one
-entry per byte in the guest address space).  The benchmark program and
-guest binaries were built using GCC 5.4 and GNU binutils 2.26.1, using
-the default command-line options set in the Makefile and etc/* scripts.
+i7-4770S running at a clock speed of 3.1GHz, using the System V ABI.  In
+all cases, translated code was cached using a flat array of pointers to
+translated units (one entry per byte in the guest address space).  The
+benchmark program and guest binaries were built using GCC 5.4 and GNU
+binutils 2.26.1, using the default command-line options set in the
+Makefile and etc/* scripts.
 
-    Architecture  | dhry_noopt  |  dhry_opt   |
-    /optimization | (MDhry/sec) | (MDhry/sec) |
-   ---------------+-------------+-------------+
-    native        |    11.9     |    30.8     |
-    ppc32 -O0     |     2.05    |     2.73    |
-    ppc32 -O1     |     2.40    |     3.52    |
-    ppc32 -O2     |     2.89    |     4.01    |
+    Architecture  |dhry_noopt | dhry_opt  |whet_noopt | whet_opt  |
+    /optimization |(MDhry/sec)|(MDhry/sec)|  (MWIPS)  |  (MWIPS)  |
+   ---------------+-----------+-----------+-----------+-----------+
+    native        |   11.9    |   30.8    |   4940    |    7270   |
+    ppc32 -O0     |    2.05   |    2.73   |    108    |     209   |
+    ppc32 -O1     |    2.40   |    3.52   |    108    |     209   |
+    ppc32 -O2     |    2.89   |    4.01   |    108    |     210   |
+    + -ffast-math |   -----   |   -----   |   1730    |    3020   |
+
+The order-of-magnitude difference between "-O2" and "-O2 -ffast-math"
+for the PowerPC Whetstone benchmark results from the heavy cost of
+updating FPSCR (the Floating-Point Status and Control Register) after
+each floating-point instruction.  The rules for setting bits in this
+register are fairly complex, and the code required to implement the
+register correctly is difficult for libbinrec to optimize, resulting in
+a significant performance penalty.  Disabling updates to this register
+brings the translated code much closer to native performance, at the
+cost of no support for unmasked floating-point exceptions and certain
+minor differences in behavior (such as different NaN payloads in
+response to an invalid-operation exception) from an actual PowerPC CPU.
 
 
 Limitations

@@ -12,11 +12,13 @@
 
 /*
  * This header provides declarations of commonly used <string.h> functions
- * for use when they are not available to the cross-compiler.  The actual
+ * for use when they are not available to the compiler.  The actual
  * functions are each defined in separate source files in this directory.
  */
 
 extern void *memcpy(void *dest, const void *src, unsigned long n);
+extern void *memmove(void *dest, const void *src, unsigned long n);
+extern void *memset(void *s, int c, unsigned long n);
 extern int strcmp(const char *a, const char *b);
 extern char *strcpy(char *dest, const char *src);
 

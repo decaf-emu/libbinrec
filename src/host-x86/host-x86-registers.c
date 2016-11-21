@@ -672,22 +672,19 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
                         const HostX86BlockInfo *predecessor =
                             &ctx->blocks[block->entries[i]];
                         const int store_reg = predecessor->alias_store[alias];
+                        /* Don't try to use the register if it hasn't been
+                         * allocated (because it comes later in the code
+                         * stream). */
                         if (store_reg) {
                             have_preceding_store = true;
-                            /* If this block comes later in the code stream,
-                             * we won't have allocated any registers for it
-                             * yet (except possibly via fixed-regs).  But in
-                             * that case, ctx->regs[store_reg].host_reg will
-                             * be 0 == rAX, which is the first register we'd
-                             * choose anyway if it's available.  So we don't
-                             * bother checking the host_allocated flag for
-                             * store_reg here. */
-                            const X86Register host_reg =
-                                ctx->regs[store_reg].host_reg;
-                            if (usable_regs & (1u << host_reg)) {
-                                dest_info->merge_alias = true;
-                                dest_info->host_merge = host_reg;
-                                goto found_merge_pri2;  // i.e., break 2 loops
+                            if (ctx->regs[store_reg].host_allocated) {
+                                const X86Register host_reg =
+                                    ctx->regs[store_reg].host_reg;
+                                if (usable_regs & (1u << host_reg)) {
+                                    dest_info->merge_alias = true;
+                                    dest_info->host_merge = host_reg;
+                                    goto found_merge_pri2;  // break 2 loops
+                                }
                             }
                         }
                     }
@@ -1170,8 +1167,10 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
 
           case RTLOP_CLZ:
             /* Temporary needed if using BSR instead of LZCNT to count bits.
-             * The temporary can never overlap the input for single-input
-             * instructions, so we don't need to explicitly avoid it. */
+             * The temporary can never overlap the input for most
+             * single-input instructions (since either the input is still
+             * live or its register is reused for the output), so we don't
+             * need to explicitly avoid it. */
             need_temp = !(ctx->handle->setup.host_features
                           & BINREC_FEATURE_X86_LZCNT);
             break;
@@ -1273,14 +1272,14 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
             if (insn->host_data_16) {
                 need_temp = src1_info->spilled
                           | ctx->regs[insn->host_data_16].spilled;
-                temp_avoid = 1u << src1_info->host_reg
-                           | 1u << ctx->regs[insn->host_data_16].host_reg;
+                temp_avoid |= 1u << src1_info->host_reg
+                            | 1u << ctx->regs[insn->host_data_16].host_reg;
             } else {
                 need_temp = false;
             }
+            /* Temporary also needed if loading a byte-reversed float.
+             * In this case, we don't have to avoid anything. */
             if (!need_temp && insn->opcode == RTLOP_LOAD_BR) {
-                /* Temporary also needed if loading a byte-reversed float.
-                 * In this case, we don't have to avoid anything. */
                 need_temp = rtl_register_is_float(dest_reg);
             }
             break;
@@ -1288,7 +1287,7 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
           case RTLOP_ATOMIC_INC:
             /* Temporary needed if the base or index is spilled. */
             need_temp = src1_info->spilled;
-            temp_avoid = 1u << src1_info->host_reg;
+            temp_avoid |= 1u << src1_info->host_reg;
             if (insn->host_data_16) {
                 need_temp |= ctx->regs[insn->host_data_16].spilled;
                 temp_avoid |= 1u << ctx->regs[insn->host_data_16].host_reg;

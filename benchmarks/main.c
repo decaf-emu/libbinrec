@@ -42,6 +42,10 @@ extern int dhry_noopt_Main(int count);
 extern void dhry_opt_Init(void);
 extern int dhry_opt_Main(int count);
 
+extern int whetstone_noopt(int count);
+
+extern int whetstone_opt(int count);
+
 /*-----------------------------------------------------------------------*/
 
 /* List of and data for available benchmarks. */
@@ -73,11 +77,26 @@ static const Benchmark benchmarks[] = {
          [GUEST_ARCH_PPC_7XX] = &ppc32_dhry_noopt,
      },
     },
+
     {.id = "dhry_opt", .name = "Dhrystone (optimized)",
      .native_init = dhry_opt_Init,
      .native_main = dhry_opt_Main,
      .guest_code = {
          [GUEST_ARCH_PPC_7XX] = &ppc32_dhry_opt,
+     },
+    },
+
+    {.id = "whet_noopt", .name = "Whetstone (unoptimized)",
+     .native_main = whetstone_noopt,
+     .guest_code = {
+         [GUEST_ARCH_PPC_7XX] = &ppc32_whet_noopt,
+     },
+    },
+
+    {.id = "whet_opt", .name = "Whetstone (optimized)",
+     .native_main = whetstone_opt,
+     .guest_code = {
+         [GUEST_ARCH_PPC_7XX] = &ppc32_whet_opt,
      },
     },
 };
@@ -148,6 +167,7 @@ static bool process_command_line(int argc, char **argv)
     const char *arg_benchmark = NULL;
     const char *arg_count = NULL;
     int opt_level = 0;
+    bool fast_math = false;
 
     for (int argi = 1; argi < argc; argi++) {
 
@@ -157,28 +177,43 @@ static bool process_command_line(int argc, char **argv)
             fprintf(stderr, "Usage: %s [OPTIONS] ARCH-NAME BENCHMARK"
                     " ITERATION-COUNT\n", argv[0]);
             fprintf(stderr, "\nOptions:\n"
-                    "    -d          Dump the translated code to disk.\n"
-                    "    -G<NAME>    Enable specific guest optimizations.\n"
+                    "    -d           Dump the translated code to disk.\n"
+                    "    -ffast-math  Enable optimizations which may affect floating-point results.\n"
+                    "    -G<NAME>     Enable specific guest optimizations.\n"
+                    "        -Gppc-constant-gqr   Assume values stored to GQRs are always constant\n"
                     "        -Gppc-cr-stores      Eliminate dead stores to CR bits\n"
-                    "    -H<NAME>    Enable specific host optimizations.\n"
+                    "        -Gppc-fast-fmuls     Suppress rounding of second fmuls operand\n"
+                    "        -Gppc-fp-zero-sign   Allow optimizations that change the sign of zero\n"
+                    "        -Gppc-no-fp-state    Suppress all floating-point exception checking\n"
+                    "        -Gppc-no-snan        Assume signaling NaNs are never used\n"
+                    "        -Gppc-no-vxfoo       Suppress FPSCR invalid exception reason bits\n"
+                    "        -Gppc-ps-denormals   Do not flush paired-single denormals to zero\n"
+                    "        -Gppc-reciprocal     Use native FP reciprocal math instead of tables\n"
+                    "    -H<NAME>     Enable specific host optimizations.\n"
                     "        -Hx86-address-op     Address operand optimization\n"
                     "        -Hx86-branch-align   Branch target alignment\n"
                     "        -Hx86-cond-codes     Condition code reuse\n"
                     "        -Hx86-fixed-regs     Smarter register allocation\n"
                     "        -Hx86-forward-cond   Condition forwarding\n"
+                    "        -Hx86-merge-regs     Smarter register merging\n"
                     "        -Hx86-store-imm      Use mem-imm form for constant stores\n"
-                    "    -O[LEVEL]   Select optimization level.\n"
+                    "    -O[LEVEL]    Select optimization level.\n"
                     "        -O0         Disable all optimizations (default).\n"
                     "        -O, -O1     Enable lightweight optimizations.\n"
                     "        -O2         Enable stronger but more expensive optimizations.\n"
-                    "    -O<NAME>    Enable specific global optimizations.\n"
+                    "    -O<NAME>     Enable specific global optimizations.\n"
                     "        -Obasic              Basic optimizations\n"
                     "        -Odecondition        Branch deconditioning\n"
                     "        -Odeep-data-flow     Deep data flow analysis (expensive)\n"
                     "        -Odse                Dead store elimination\n"
+                    "        -Odse-fp             Enable DSE for floating-point operations\n"
                     "        -Ofold-constants     Constant folding\n"
-                    "    -q          Suppress all log messages from translation.\n"
-                    "    -v          Output verbose log messages from translation.\n"
+                    "        -Ofold-fp-constants  Constant folding for floating-point operations\n"
+                    "        -Onative-ieee-nan    Use host rules for floating-point NaNs\n"
+                    "        -Onative-ieee-underflow\n"
+                    "                             Use host rules for floating-point underflow\n"
+                    "    -q           Suppress all log messages from translation.\n"
+                    "    -v           Output verbose log messages from translation.\n"
             );
             fprintf(stderr, "\nValid architectures:\n    native\n");
             for (int i = 0; i < GUEST_ARCH__NUM; i++) {
@@ -212,6 +247,22 @@ static bool process_command_line(int argc, char **argv)
                 if (!*name) {
                     fprintf(stderr, "Missing guest optimization flag\n");
                     goto usage;
+                } else if (strcmp(name, "ppc-no-snan") == 0) {
+                    opt_guest |= BINREC_OPT_G_PPC_ASSUME_NO_SNAN;
+                } else if (strcmp(name, "ppc-constant-gqr") == 0) {
+                    opt_guest |= BINREC_OPT_G_PPC_CONSTANT_GQRS;
+                } else if (strcmp(name, "ppc-fast-fmuls") == 0) {
+                    opt_guest |= BINREC_OPT_G_PPC_FAST_FMULS;
+                } else if (strcmp(name, "ppc-fp-zero-sign") == 0) {
+                    opt_guest |= BINREC_OPT_G_PPC_FNMADD_ZERO_SIGN;
+                } else if (strcmp(name, "ppc-no-vxfoo") == 0) {
+                    opt_guest |= BINREC_OPT_G_PPC_IGNORE_FPSCR_VXFOO;
+                } else if (strcmp(name, "ppc-reciprocal") == 0) {
+                    opt_guest |= BINREC_OPT_G_PPC_NATIVE_RECIPROCAL;
+                } else if (strcmp(name, "ppc-no-fp-state") == 0) {
+                    opt_guest |= BINREC_OPT_G_PPC_NO_FPSCR_STATE;
+                } else if (strcmp(name, "ppc-ps-denormals") == 0) {
+                    opt_guest |= BINREC_OPT_G_PPC_PS_STORE_DENORMALS;
                 } else if (strcmp(name, "ppc-cr-stores") == 0) {
                     opt_guest |= BINREC_OPT_G_PPC_TRIM_CR_STORES;
                 } else {
@@ -257,13 +308,24 @@ static bool process_command_line(int argc, char **argv)
                     opt_common |= BINREC_OPT_DEEP_DATA_FLOW;
                 } else if (strcmp(name, "dse") == 0) {
                     opt_common |= BINREC_OPT_DSE;
+                } else if (strcmp(name, "dse-fp") == 0) {
+                    opt_common |= BINREC_OPT_DSE_FP;
                 } else if (strcmp(name, "fold-constants") == 0) {
                     opt_common |= BINREC_OPT_FOLD_CONSTANTS;
+                } else if (strcmp(name, "fold-fp-constants") == 0) {
+                    opt_common |= BINREC_OPT_FOLD_FP_CONSTANTS;
+                } else if (strcmp(name, "native-ieee-nan") == 0) {
+                    opt_common |= BINREC_OPT_NATIVE_IEEE_NAN;
+                } else if (strcmp(name, "native-ieee-underflow") == 0) {
+                    opt_common |= BINREC_OPT_NATIVE_IEEE_UNDERFLOW;
                 } else {
                     fprintf(stderr, "Unknown global optimization flag %s\n",
                             name);
                     goto usage;
                 }
+
+            } else if (strcmp(argv[argi], "-ffast-math") == 0) {
+                fast_math = true;
 
             } else if (strcmp(argv[argi], "-q") == 0) {
                 quiet = true;
@@ -291,8 +353,8 @@ static bool process_command_line(int argc, char **argv)
     if (!arg_count) {
         fprintf(stderr, "Wrong number of arguments\n");
       usage:
-        fprintf(stderr, "Usage: %s ARCH-NAME BENCHMARK ITERATION-COUNT\n",
-                argv[0]);
+        fprintf(stderr, "Usage: %s [OPTIONS] ARCH-NAME BENCHMARK"
+                " ITERATION-COUNT\n", argv[0]);
         fprintf(stderr, "Use %s -h for help.\n", argv[0]);
         return false;
     }
@@ -347,6 +409,18 @@ static bool process_command_line(int argc, char **argv)
                           | BINREC_OPT_H_X86_MERGE_REGS;
             }
         }
+    }
+
+    if (fast_math) {
+        opt_common |= BINREC_OPT_DSE_FP
+                    | BINREC_OPT_FOLD_FP_CONSTANTS
+                    | BINREC_OPT_NATIVE_IEEE_NAN
+                    | BINREC_OPT_NATIVE_IEEE_UNDERFLOW;
+        opt_guest |= BINREC_OPT_G_PPC_ASSUME_NO_SNAN
+                   | BINREC_OPT_G_PPC_FAST_FMULS
+                   | BINREC_OPT_G_PPC_FNMADD_ZERO_SIGN
+                   | BINREC_OPT_G_PPC_NO_FPSCR_STATE
+                   | BINREC_OPT_G_PPC_PS_STORE_DENORMALS;
     }
 
     return true;

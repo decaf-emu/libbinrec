@@ -1,0 +1,4 @@
+The files in this directory are copied from the GNU C Library, with
+trivial changes for building as part of libbinrec.  They may be
+redistributed under the terms of the GNU Lesser General Public License,
+version 2.1 (see LGPL-2.1.txt in this directory) or later.

@@ -35,4 +35,8 @@ typedef struct Blob {
 extern const Blob ppc32_dhry_noopt;
 extern const Blob ppc32_dhry_opt;
 
+/* Whetstone */
+extern const Blob ppc32_whet_noopt;
+extern const Blob ppc32_whet_opt;
+
 #endif  /* BENCHMARKS_BLOBS_H */

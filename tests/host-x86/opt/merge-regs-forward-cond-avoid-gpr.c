@@ -13,7 +13,6 @@
 
 static const binrec_setup_t setup = {
     .host = BINREC_ARCH_X86_64_SYSV,
-    .host_features = BINREC_FEATURE_X86_FMA,
 };
 static const unsigned int host_opt = BINREC_OPT_H_X86_MERGE_REGS
                                    | BINREC_OPT_H_X86_FORWARD_CONDITIONS;
@@ -69,7 +68,7 @@ static const uint8_t expected_code[] = {
     0x3B,0x14,0x24,                     // cmp (%rsp),%edx
     0x8B,0x0C,0x24,                     // mov (%rsp),%ecx
     0x0F,0x46,0x0C,0x24,                // cmovbe (%rsp),%ecx
-    0x89,0x87,0x34,0x12,0x00,0x00,      // L0: mov %eax,0x1234(%rdi)
+    0x89,0x87,0x34,0x12,0x00,0x00,      // mov %eax,0x1234(%rdi)
     0x48,0x83,0xC4,0x10,                // add $16,%rsp
     0x41,0x5E,                          // pop %r14
     0x41,0x5D,                          // pop %r13

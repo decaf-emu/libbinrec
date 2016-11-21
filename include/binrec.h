@@ -972,7 +972,7 @@ typedef struct binrec_setup_t {
  * register and forward the comparison condition to the branch or move
  * instruction.
  *
- * Floating-point comparisons will not be eliminated unless the
+ * Floating-point comparisons will not be forwarded unless the
  * BINREC_OPT_DSE_FP common optimization flag is enabled.
  */
 #define BINREC_OPT_H_X86_FORWARD_CONDITIONS  (1<<4)
@@ -980,6 +980,13 @@ typedef struct binrec_setup_t {
 /**
  * BINREC_OPT_H_X86_MERGE_REGS:  Try harder to avoid moving values
  * between registers.
+ *
+ * Enabling this optimization causes the register allocator to attempt to
+ * keep values associated with guest architecture registers in the same
+ * host register across basic blocks.  Typically this will result in
+ * faster and more compact code, but with certain code patterns it may
+ * hurt performance by causing more-frequently-accessed values to be
+ * spilled to memory.
  */
 #define BINREC_OPT_H_X86_MERGE_REGS  (1<<5)
 

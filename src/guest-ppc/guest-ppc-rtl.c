@@ -63,6 +63,10 @@ static int convert_fpr(GuestPPCContext *ctx, int index, int reg,
                        RTLDataType old_type, RTLDataType new_type,
                        bool snan_safe)
 {
+    if (UNLIKELY(!reg)) {
+        return 0;  // Don't ASSERT() over an error that already occurred.
+    }
+
     ASSERT(reg == ctx->live.fpr[index]);
     ASSERT(old_type != new_type);
     ASSERT(rtl_type_is_float(old_type)
@@ -1025,7 +1029,6 @@ static void check_snan(GuestPPCContext *ctx, int reg, int label)
         snan_start = 22;
         snan_count = 9;
     } else {
-        ASSERT(unit->regs[reg].type == RTLTYPE_FLOAT64);
         bits_type = RTLTYPE_INT64;
         type_size = 64;
         snan_start = 51;
@@ -1065,7 +1068,6 @@ static int flush_denormal(GuestPPCContext *ctx, int reg)
 {
     RTLUnit * const unit = ctx->unit;
 
-    ASSERT(unit->regs[reg].type == RTLTYPE_FLOAT32);
     const int bits = rtl_alloc_register(unit, RTLTYPE_INT32);
     rtl_add_insn(unit, RTLOP_BITCAST, bits, reg, 0, 0);
     const int exp = rtl_alloc_register(unit, RTLTYPE_INT32);
@@ -1096,8 +1098,6 @@ static int fma_negate(GuestPPCContext *ctx, int reg)
     RTLUnit * const unit = ctx->unit;
 
     const RTLDataType type = unit->regs[reg].type;
-    ASSERT(rtl_type_is_float(type));
-
     const int zero = rtl_alloc_register(unit, type);
     rtl_add_insn(unit, RTLOP_LOAD_IMM, zero, 0, 0, 0);
     const int is_nan = rtl_alloc_register(unit, RTLTYPE_INT32);
@@ -1134,7 +1134,6 @@ static int fma_select_nan(GuestPPCContext *ctx, int result,
     RTLUnit * const unit = ctx->unit;
 
     const RTLDataType type = unit->regs[result].type;
-    ASSERT(rtl_type_is_float(type));
     const bool use_float32 = (type == RTLTYPE_FLOAT32);
 
     /* We use a condition and SELECT instead of branches so we don't need
@@ -1314,7 +1313,7 @@ static void set_fpscr_exceptions(GuestPPCContext *ctx, int fpscr,
  *
  * [Parameters]
  *     unit: RTLUnit to which to add code.
- *     value: Value for which to generate FPRF.
+ *     value: RTL register containing value for which to generate FPRF.
  *     slot: Paired-slot index (0 or 1) to use if value is a vector.
  * [Return value]
  *     RTL register containing FPRF value.
@@ -1322,8 +1321,6 @@ static void set_fpscr_exceptions(GuestPPCContext *ctx, int fpscr,
 static int gen_fprf(RTLUnit *unit, int value, int slot)
 {
     ASSERT(unit);
-    ASSERT(value > 0);
-    ASSERT(value < unit->next_reg);
 
     if (rtl_register_is_vector(&unit->regs[value])) {
         const int slot_value = rtl_alloc_register(
@@ -1332,7 +1329,6 @@ static int gen_fprf(RTLUnit *unit, int value, int slot)
         value = slot_value;
     }
 
-    ASSERT(rtl_register_is_float(&unit->regs[value]));
     const bool is64 = (unit->regs[value].type == RTLTYPE_FLOAT64);
     const RTLDataType bits_type = is64 ? RTLTYPE_INT64 : RTLTYPE_INT32;
 
@@ -1703,7 +1699,6 @@ static void set_fp_result(GuestPPCContext *ctx, int index, int result,
             if (frC) {
                 check_snan(ctx, frC, label_snan);
             }
-            ASSERT(frB);  // Nonzero for all calls.
             if (vxfoo_no_snan == (FPSCR_VXIMZ | FPSCR_VXISI)) {
                 /* Special handling for FMA instructions; see notes below. */
                 label_frB_snan = rtl_alloc_label(unit);
@@ -1833,7 +1828,6 @@ static void set_fp_result(GuestPPCContext *ctx, int index, int result,
                 rtl_add_insn(unit, RTLOP_LABEL,
                              0, 0, 0, label_no_ve_default_nan);
                 RTLDataType default_nan_type = unit->regs[result].type;
-                ASSERT(!rtl_type_is_vector(default_nan_type));
                 const int default_nan =
                     rtl_alloc_register(unit, default_nan_type);
                 rtl_add_insn(unit, RTLOP_LOAD_IMM, default_nan, 0, 0,
@@ -2008,7 +2002,6 @@ static void set_fp_result(GuestPPCContext *ctx, int index, int result,
              * paired-single results, so if we get here, we must have
              * already come through the VX check and thus
              * label_exception_abort will be set. */
-            ASSERT(label_exception_abort);
             rtl_add_insn(unit, RTLOP_GOTO_IF_NZ,
                          0, ze_test, 0, label_exception_abort);
 

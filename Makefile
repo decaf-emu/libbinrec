@@ -202,10 +202,12 @@ LIBRARY_OBJECTS := $(LIBRARY_SOURCES:%.c=%.o)
 TEST_OBJECTS := $(TEST_SOURCES:%.c=%.o)
 TEST_BINS := $(TEST_SOURCES:%.c=%)
 BENCHMARK_SOURCES := $(sort $(wildcard benchmarks/*.c benchmarks/blobs/*.c))
-BENCHMARK_LIB_SOURCES := $(sort $(wildcard benchmarks/library/*.c))
+BENCHMARK_LIB_SOURCES := \
+    $(sort $(wildcard benchmarks/library/*.c benchmarks/library/math/*.c))
+BENCHMARK_NAMES = dhrystone whetstone
 BENCHMARK_BENCH_OBJECTS := \
-    $(patsubst %.c,%_noopt.o,$(wildcard benchmarks/dhrystone/*.c)) \
-    $(patsubst %.c,%_opt.o,$(wildcard benchmarks/dhrystone/*.c))
+    $(patsubst %.c,%_noopt.o,$(wildcard $(foreach i,$(BENCHMARK_NAMES),benchmarks/$i/*.c))) \
+    $(patsubst %.c,%_opt.o,$(wildcard $(foreach i,$(BENCHMARK_NAMES),benchmarks/$i/*.c)))
 BENCHMARK_OBJECTS := $(BENCHMARK_SOURCES:%.c=%.o) \
                      $(BENCHMARK_LIB_SOURCES:%.c=%.o) \
                      $(BENCHMARK_BENCH_OBJECTS:%.c=%.o) \
@@ -540,18 +542,34 @@ benchmarks/bench: $(BENCHMARK_OBJECTS) $(LIBRARY_OBJECTS)
 	$(ECHO) 'Linking $@'
 	$(Q)$(CC) $(ALL_CFLAGS) $(LDFLAGS) -o '$@' $^ $(LIBS)
 
-BENCHMARK_LIB_FLAGS := $(foreach i,$(BENCHMARK_LIB_SOURCES:benchmarks/library/%.c=%),-D$i=benchmark_$i)
+BENCHMARK_LIB_FLAGS := -Ibenchmarks/library $(foreach i,$(patsubst benchmarks/library/%.c,%,$(filter-out benchmarks/library/math/%,$(BENCHMARK_LIB_SOURCES))),-D$i=benchmark_$i)
+
 $(BENCHMARK_LIB_SOURCES:%.c=%.o): ALL_CFLAGS += $(BENCHMARK_LIB_FLAGS)
+$(filter benchmarks/library/math/%,$(BENCHMARK_LIB_SOURCES:%.c=%.o)): ALL_CFLAGS += \
+    $(if $(filter clang gcc,$(CC_TYPE)),-Wno-shadow -Wno-attributes) \
+    $(if $(filter clang,$(CC_TYPE)),-Wno-header-guard) \
+    $(if $(filter gcc,$(CC_TYPE)),-Wno-old-style-declaration)
 
 benchmarks/dhrystone/%_noopt.o: benchmarks/dhrystone/%.c benchmarks/dhrystone/dhry.h
 	$(ECHO) 'Compiling $< -> $@'
 	$(Q)$(CC) -std=c89 -DBENCHMARK_ONLY -DDHRY_PREFIX=dhry_noopt_ \
-            $(BENCHMARK_LIB_FLAGS) -o '$@' -c '$<'
+	    $(BENCHMARK_LIB_FLAGS) -o '$@' -c '$<'
 
 benchmarks/dhrystone/%_opt.o: benchmarks/dhrystone/%.c benchmarks/dhrystone/dhry.h
 	$(ECHO) 'Compiling $< -> $@'
 	$(Q)$(CC) -std=c89 -O2 -fno-inline \
 	    -DBENCHMARK_ONLY -DDHRY_PREFIX=dhry_opt_ \
+	    $(BENCHMARK_LIB_FLAGS) -o '$@' -c '$<'
+
+benchmarks/whetstone/%_noopt.o: benchmarks/whetstone/%.c
+	$(ECHO) 'Compiling $< -> $@'
+	$(Q)$(CC) -std=c89 -DNO_MAIN -Dwhetstone=whetstone_noopt \
+	    $(BENCHMARK_LIB_FLAGS) -o '$@' -c '$<'
+
+benchmarks/whetstone/%_opt.o: benchmarks/whetstone/%.c
+	$(ECHO) 'Compiling $< -> $@'
+	$(Q)$(CC) -std=c89 -O2 -fno-inline \
+	    -DNO_MAIN -Dwhetstone=whetstone_opt \
 	    $(BENCHMARK_LIB_FLAGS) -o '$@' -c '$<'
 
 #----------------------- Common compilation rules ------------------------#

@@ -142,7 +142,16 @@ static bool translate(binrec_t *handle, void *state, uint32_t address,
     if (!func_table[address - func_table_base]) {
         void *code;
         long code_size;
-        if (!binrec_translate(handle, state, address, -1, &code, &code_size)) {
+        bool success = binrec_translate(handle, state, address, -1,
+                                        &code, &code_size);
+        if (!success) {
+            uint32_t limit = 4096;
+            do {
+                success = binrec_translate(handle, state, address,
+                                           address+limit-1, &code, &code_size);
+            } while (!success && (limit /= 2) >= 4);
+        }
+        if (!success) {
             fprintf(stderr, "Failed to translate code at 0x%X\n", address);
             return false;
         }
