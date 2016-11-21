@@ -111,7 +111,6 @@ class Handle {
      *     True if handle was successfully initialized, false if not.
      */
     bool initialize(const Setup &setup) {
-        ASSERT(!handle);
         handle = ::binrec_create_handle(&setup);
         return handle != nullptr;
     }
@@ -171,9 +170,9 @@ class Handle {
      * translate:  Translate a block of guest machine code into native
      * machine code.  Wraps binrec_translate().
      */
-    bool translate(uint32_t address, uint32_t limit,
+    bool translate(void *state, uint32_t address, uint32_t limit,
                    void **code_ret, long *size_ret) {
-        return bool(::binrec_translate(handle, address, limit,
+        return bool(::binrec_translate(handle, state, address, limit,
                                        code_ret, size_ret));
     }
 

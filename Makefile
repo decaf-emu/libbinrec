@@ -185,22 +185,25 @@ SHARED_LIB = lib$(PACKAGE).$(if $(filter darwin%,$(OSTYPE)),dylib,$(if $(filter 
 STATIC_LIB = lib$(PACKAGE).a
 
 # Test source list, with optional overriding.
-TEST_SOURCES_FULL := $(sort $(wildcard tests/*/*.c tests/*/*/*.c))
+TEST_SOURCES_FULL := $(sort $(wildcard tests/*/*.c tests/*/*/*.c) \
+                            tests/api/binrec++.cc)
 TEST_SOURCES := $(TEST_SOURCES_FULL)
 ifneq ($(TESTS),)
-    TESTS := $(foreach i,$(TESTS),$(or $(filter $i.c,$(TEST_SOURCES_FULL)),$(error Test $i not found for TESTS)))
-    TEST_SOURCES := $(TESTS:%=%.c)
+    _ := $(foreach i,$(TESTS),$(or $(filter $i.c $i.cc,$(TEST_SOURCES_FULL)),$(error Test $i not found for TESTS)))
+    TEST_SOURCES := $(filter $(TESTS:%=%.c) $(TESTS:%=%.cc),$(TEST_SOURCES_FULL))
 endif
 ifneq ($(TESTS_EXCLUDE),)
-    TESTS_EXCLUDE := $(foreach i,$(TESTS_EXCLUDE),$(or $(filter $i.c,$(TEST_SOURCES_FULL)),$(error Test $i not found for TESTS_EXCLUDE)))
-    TEST_SOURCES := $(filter-out $(TESTS_EXCLUDE:%=%.c),$(TEST_SOURCES))
+    _ := $(foreach i,$(TESTS_EXCLUDE),$(or $(filter $i.c $i.cc,$(TEST_SOURCES_FULL)),$(error Test $i not found for TESTS_EXCLUDE)))
+    TEST_SOURCES := $(filter-out $(TESTS_EXCLUDE:%=%.c) $(TESTS_EXCLUDE:%=%.cc),$(TEST_SOURCES))
 endif
 
 # Source and object filenames:
 LIBRARY_SOURCES := $(sort $(wildcard src/*.c src/*/*.c))
 LIBRARY_OBJECTS := $(LIBRARY_SOURCES:%.c=%.o)
-TEST_OBJECTS := $(TEST_SOURCES:%.c=%.o)
-TEST_BINS := $(TEST_SOURCES:%.c=%)
+TEST_OBJECTS := $(patsubst %.c,%.o,$(filter %.c,$(TEST_SOURCES))) \
+                $(patsubst %.cc,%.o,$(filter %.cc,$(TEST_SOURCES)))
+TEST_BINS := $(patsubst %.c,%,$(filter %.c,$(TEST_SOURCES))) \
+             $(patsubst %.cc,%,$(filter %.cc,$(TEST_SOURCES)))
 BENCHMARK_SOURCES := $(sort $(wildcard benchmarks/*.c benchmarks/blobs/*.c))
 BENCHMARK_LIB_SOURCES := \
     $(sort $(wildcard benchmarks/library/*.c benchmarks/library/math/*.c))
@@ -274,6 +277,7 @@ else
 endif
 
 ifeq ($(CC_TYPE),clang)
+    CXX := $(CC)++
     BASE_FLAGS = -O2 -pipe -g -I. \
         $(call if-true,WARNINGS_AS_ERRORS,-Werror) \
         -Wall -Wextra -Wcast-align -Winit-self -Wpointer-arith -Wshadow \
@@ -282,6 +286,7 @@ ifeq ($(CC_TYPE),clang)
     BASE_FLAGS += -Wno-unused-function
     BASE_CFLAGS = $(BASE_FLAGS) -std=c99 \
         -Wmissing-declarations -Wstrict-prototypes
+    BASE_CXXFLAGS = $(BASE_FLAGS) -std=c++11
     # Some older versions of Clang don't want a "gcov" argument here or
     # a filename argument ('$1') at the end of the command.
     GCOV = llvm-cov gcov >/dev/null
@@ -291,25 +296,30 @@ ifeq ($(CC_TYPE),clang)
         -gcda="`echo \"$1\" | sed -e 's|\.[^./]*$$|_cov.gcda|'`" \
         -o "`echo "$1" | sed -e 's|[/.]|-|g'`.out" '$1'
 else ifeq ($(CC_TYPE),gcc)
+    CXX := $(if $(filter %gcc,$(CC)),$(patsubst %gcc,%g++,$(CC)),$(patsubst %cc,%c++,$(CC)))
     BASE_FLAGS = -O2 -pipe -g -I. \
         -Wall -Wextra $(call if-true,WARNINGS_AS_ERRORS,-Werror) \
         -Wcast-align -Winit-self -Wlogical-op -Wpointer-arith -Wshadow \
         -Wwrite-strings -Wundef -Wno-unused-parameter -Wvla
     BASE_CFLAGS = $(BASE_FLAGS) -std=c99 \
         -Wmissing-declarations -Wstrict-prototypes
+    BASE_CXXFLAGS = $(BASE_FLAGS) -std=c++11
     GCOV = gcov >/dev/null
     GCOV_OPTS = -b -c -l -p
     GCOV_FILE_OPTS = -o "`echo \"$1\" | sed -e 's|\.[^./]*$$|_cov.o|'`" '$1'
 else ifeq ($(CC_TYPE),icc)
+    CXX := $(patsubst %icc,%icpc,$(CC))
     BASE_FLAGS = -O2 -g -I. \
         $(call if-true,WARNINGS_AS_ERRORS,-Werror) \
         -Wpointer-arith -Wreturn-type -Wshadow -Wuninitialized \
         -Wunknown-pragmas -Wunused-function -Wunused-variable -Wwrite-strings
     BASE_CFLAGS = $(BASE_FLAGS) -std=c99 \
         -Wmissing-declarations -Wstrict-prototypes
+    BASE_CXXFLAGS = $(BASE_FLAGS) -std=c++11
 else
     $(warning *** Warning: Unknown compiler type.)
     $(warning *** Make sure your CFLAGS are set correctly!)
+    CXX = c++
 endif
 
 
@@ -360,6 +370,7 @@ ALL_DEFS = $(strip \
     -DVERSION=\"$(VERSION)\")
 
 ALL_CFLAGS = $(BASE_CFLAGS) $(ALL_DEFS) $(CFLAGS)
+ALL_CXXFLAGS = $(BASE_CXXFLAGS) $(ALL_DEFS) $(CXXFLAGS)
 
 
 # Libraries to use when linking test programs.
@@ -509,7 +520,8 @@ TEST_SHARED_LIB_TARGET := $(call if-true,$(SHARED_TESTS),\
 
 $(TEST_BINS) : %: %.o $(TEST_LIB) $(TEST_SHARED_LIB_TARGET)
 	$(ECHO) 'Linking $@'
-	$(Q)$(CC) $(LDFLAGS) -o '$@' $^ $(LIBS) \
+	$(Q)$(if $(filter %/binrec++,$@),$(CXX),$(CC)) \
+	    $(LDFLAGS) -o '$@' $^ $(LIBS) \
 	    $(call if-true,SHARED_TESTS,$(call RPATH_LDFLAG,$(abspath .)))
 	$(Q)$(call if-true,STRIP_TESTS,strip '$@')
 
@@ -521,16 +533,16 @@ $(TEST_LIB): $(TEST_UTILITY_OBJECTS)
 tests/coverage: tests/coverage-main.o \
                 $(TEST_UTILITY_OBJECTS:%.o=%_cov.o) \
                 $(LIBRARY_OBJECTS:%.o=%_cov.o) \
-                $(TEST_SOURCES:%.c=%_cov.o)
+                $(TEST_OBJECTS:%.o=%_cov.o)
 	$(ECHO) 'Linking $@'
-	$(Q)$(CC) $(ALL_CFLAGS) $(LDFLAGS) -o '$@' $^ $(LIBS) --coverage
+	$(Q)$(CXX) $(LDFLAGS) -o '$@' $^ $(LIBS) --coverage
 
 tests/coverage-main.o: tests/coverage-tests.h
 
 tests/coverage-tests.h: $(TEST_SOURCES)
 	$(ECHO) 'Generating $@'
 	$(Q)( \
-	    for file in $(TEST_SOURCES:%.c=%); do \
+	    for file in $(TEST_OBJECTS:%.o=%); do \
 	        file_mangled=_`echo "$${file}" | sed -e 's/[^A-Za-z0-9]/_/g'`; \
 	        echo "TEST($${file_mangled})"; \
 	    done \
@@ -579,6 +591,11 @@ benchmarks/whetstone/%_opt.o: benchmarks/whetstone/%.c
 	$(Q)$(CC) $(ALL_CFLAGS) -MMD -MF '$(@:%.o=%.d.tmp)' -o '$@' -c '$<'
 	$(call filter-deps,$@,$(@:%.o=%.d))
 
+%.o: %.cc
+	$(ECHO) 'Compiling $< -> $@'
+	$(Q)$(CXX) $(ALL_CXXFLAGS) -MMD -MF '$(@:%.o=%.d.tmp)' -o '$@' -c '$<'
+	$(call filter-deps,$@,$(@:%.o=%.d))
+
 # We generate separate dependency files for shared objects even though the
 # contents are the same as for static objects to avoid parallel builds
 # colliding when writing the dependencies.
@@ -599,6 +616,13 @@ tests/%_cov.o: tests/%.c
 	$(Q)file_mangled=_`echo '$(<:%.c=%)' | sed -e 's/[^A-Za-z0-9]/_/g'`; \
 	    $(CC) $(ALL_CFLAGS) "-Dmain=$${file_mangled}" \
 	        $(if $(filter -Wmissing-declarations,$(ALL_CFLAGS)),-Wno-missing-declarations) \
+	        -MMD -MF '$(@:%.o=%.d.tmp)' -o '$@' -c '$<'
+	$(call filter-deps,$@,$(@:%.o=%.d))
+
+tests/%_cov.o: tests/%.cc
+	$(ECHO) 'Compiling $< -> $@'
+	$(Q)file_mangled=_`echo '$(<:%.cc=%)' | sed -e 's/[^A-Za-z0-9]/_/g'`; \
+	    $(CXX) $(ALL_CXXFLAGS) "-Dmain=$${file_mangled}" \
 	        -MMD -MF '$(@:%.o=%.d.tmp)' -o '$@' -c '$<'
 	$(call filter-deps,$@,$(@:%.o=%.d))
 
