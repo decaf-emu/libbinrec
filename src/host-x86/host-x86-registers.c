@@ -250,6 +250,7 @@ static int allocate_frame_slot(HostX86Context *ctx, RTLDataType type)
  *
  * [Parameters]
  *     ctx: Translation context.
+ *     block_index: Index of basic block containing current instruction.
  *     insn_index: Index of current instruction in ctx->unit->insns[].
  *     reg_index: RTL register number.
  *     reg: RTLRegister structure for the register.
@@ -260,7 +261,7 @@ static int allocate_frame_slot(HostX86Context *ctx, RTLDataType type)
  *     Allocated register index.
  */
 static X86Register allocate_register(
-    HostX86Context *ctx, int insn_index, int reg_index,
+    HostX86Context *ctx, int block_index, int insn_index, int reg_index,
     const RTLRegister *reg, uint32_t avoid_regs, uint32_t soft_avoid)
 {
     ASSERT(ctx);
@@ -270,6 +271,7 @@ static X86Register allocate_register(
 
     const bool is_gpr = (rtl_register_is_int(reg)
                          || reg->type == RTLTYPE_FPSTATE);
+    const uint32_t reg_type_mask = is_gpr ? 0x0000FFFF : 0xFFFF0000;
     const bool live_across_call = (ctx->nontail_call_list >= 0
                                    && reg->death > ctx->nontail_call_list);
 
@@ -303,6 +305,27 @@ static X86Register allocate_register(
     }
 
     const RTLUnit * const unit = ctx->unit;
+
+    /* If there are any pending merges from the MERGE_REGS optimization,
+     * cancel the first one to make room for this register, in preference
+     * to spilling a register already live in this unit. */
+    if (ctx->early_merge_regs & reg_type_mask) {
+        const X86Register merge_to_cancel =
+            ctz32(ctx->early_merge_regs & reg_type_mask);
+        ctx->early_merge_regs ^= 1u << merge_to_cancel;
+        for (int alias = 1; ; alias++) {
+            ASSERT(alias < unit->next_alias);
+            const int load_reg = ctx->blocks[block_index].alias_load[alias];
+            if (load_reg && ctx->regs[load_reg].merge_alias
+             && ctx->regs[load_reg].host_merge == merge_to_cancel) {
+                ctx->regs[load_reg].merge_alias = false;
+                break;
+            }
+        }
+        assign_register(ctx, reg_index, merge_to_cancel);
+        return merge_to_cancel;
+    }
+
     int spill_reg = -1;
     int spill_index = 0;
     int32_t spill_death = -1;
@@ -1124,7 +1147,8 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
                 break;
             }
             dest_info->host_reg = allocate_register(
-                ctx, insn_index, dest, dest_reg, avoid_regs, soft_avoid);
+                ctx, block_index, insn_index, dest, dest_reg, avoid_regs,
+                soft_avoid);
             dest_info->host_allocated = true;
         }
 
