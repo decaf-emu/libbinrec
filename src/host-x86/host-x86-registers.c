@@ -1494,7 +1494,8 @@ static bool allocate_regs_for_block(HostX86Context *ctx, int block_index)
     ctx->block_regs_touched = ~(ctx->regs_free | (RESERVED_REGS));
 
     /* If smart merging is enabled, first give each GET_ALIAS a chance at
-     * the host register allocated to its merge source, if any. */
+     * the host register allocated to its merge source, if any (and if the
+     * merge source isn't spilled). */
     ctx->early_merge_regs = 0;
     if (ctx->handle->host_opt & BINREC_OPT_H_X86_MERGE_REGS) {
         uint32_t usable_regs = ctx->regs_free;
@@ -1514,7 +1515,8 @@ static bool allocate_regs_for_block(HostX86Context *ctx, int block_index)
                         const HostX86BlockInfo *predecessor =
                             &ctx->blocks[entry_block->entries[i]];
                         const int store_reg = predecessor->alias_store[alias];
-                        if (store_reg && ctx->regs[store_reg].host_allocated) {
+                        if (store_reg && ctx->regs[store_reg].host_allocated
+                         && !ctx->regs[store_reg].spilled) {
                             const X86Register host_reg =
                                 ctx->regs[store_reg].host_reg;
                             if (usable_regs & (1 << host_reg)) {
