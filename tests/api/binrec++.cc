@@ -27,6 +27,11 @@ extern "C" void _diff_mem(FILE *f, const void *from, const void *to, long len);
 
 static uint8_t memory[0x10000];
 
+/* Dummy structure declarations to verify that binrec++.h properly casts
+ * to and from void. */
+struct Foo;
+struct Bar;
+
 
 extern "C" int main(void)
 {
@@ -83,7 +88,7 @@ extern "C" int main(void)
         return EXIT_FAILURE;
     }
 
-    binrec::Handle::Setup setup;
+    binrec::Setup setup;
     memset(&setup, 0, sizeof(setup));
     setup.guest = BINREC_ARCH_PPC_7XX;
     setup.host = BINREC_ARCH_X86_64_SYSV;
@@ -105,7 +110,7 @@ extern "C" int main(void)
     setup.state_offset_fres_lut = offsetof(PPCState,fres_lut);
     setup.state_offset_frsqrte_lut = offsetof(PPCState,frsqrte_lut);
 
-    binrec::Handle handle;
+    binrec::Handle<Foo *, Bar *> handle;
     if (!handle.initialize(setup)) {
         printf("%s:%d: handle.initialize(setup) was not true as expected\n",
                __FILE__, __LINE__);
@@ -131,9 +136,9 @@ extern "C" int main(void)
     const uint32_t end_address = start_address + sizeof(ppc_code) - 1;
     memcpy(memory + start_address, ppc_code, sizeof(ppc_code));
 
-    void *x86_code;
+    Bar *x86_code;
     long x86_code_size;
-    if (!handle.translate(NULL, start_address, end_address,
+    if (!handle.translate(nullptr, start_address, end_address,
                           &x86_code, &x86_code_size)) {
         printf("%s:%d: handle.translate(...) was not true as expected\n",
                __FILE__, __LINE__);
