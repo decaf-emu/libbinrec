@@ -167,6 +167,30 @@ class Handle {
     }
 
     /**
+     * enable_branch_callback:  Enable or disable the pre-branch callback.
+     * Wraps binrec_enable_branch_callback().
+     */
+    void enable_branch_callback(bool enable) {
+        ::binrec_enable_branch_callback(handle, enable);
+    }
+
+    /**
+     * set_pre_insn_callback:  Set a function to be called immediately
+     * before each instruction.  Wraps binrec_set_pre_insn_callback().
+     */
+    void set_pre_insn_callback(void (*callback)(void *, uint32_t)) {
+        ::binrec_set_pre_insn_callback(handle, callback);
+    }
+
+    /**
+     * set_post_insn_callback:  Set a function to be called immediately
+     * after each instruction.  Wraps binrec_set_post_insn_callback().
+     */
+    void set_post_insn_callback(void (*callback)(void *, uint32_t)) {
+        ::binrec_set_post_insn_callback(handle, callback);
+    }
+
+    /**
      * translate:  Translate a block of guest machine code into native
      * machine code.  Wraps binrec_translate().
      */

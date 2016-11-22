@@ -119,6 +119,9 @@ extern "C" int main(void)
     handle.set_max_inline_depth(0);
     handle.add_readonly_region(0, 1);
     handle.clear_readonly_regions();
+    handle.enable_branch_callback(false);
+    handle.set_pre_insn_callback(nullptr);
+    handle.set_post_insn_callback(nullptr);
 
     static const uint8_t ppc_code[] = {
         0x38,0x60,0x00,0x01,  // li r3,1
