@@ -20,12 +20,69 @@
  * don't need casts below. */
 extern "C" void _diff_mem(FILE *f, const void *from, const void *to, long len);
 
+#ifndef VERSION
+# error VERSION must be defined to the expected version string.
+#endif
+
 
 static uint8_t memory[0x10000];
 
 
 extern "C" int main(void)
 {
+    const char *version = binrec::version();
+    if (strcmp(version, VERSION) != 0) {
+        printf("%s:%d: binrec::version() was \"%s\" but should have been \"%s\"\n",
+               __FILE__, __LINE__, version, VERSION);
+        return EXIT_FAILURE;
+    }
+
+    const binrec::Arch native_arch = binrec::native_arch();
+    binrec::Arch expected_native_arch;
+    #if defined(__amd64__) || defined(__x86_64__) || defined(_M_X64)
+        #ifdef _WIN32
+            expected_native_arch = BINREC_ARCH_X86_64_WINDOWS;
+        #else
+            expected_native_arch = BINREC_ARCH_X86_64_SYSV;
+        #endif
+    #else
+        expected_native_arch = BINREC_ARCH_INVALID;
+    #endif
+    if (native_arch != expected_native_arch) {
+        printf("%s:%d: binrec::native_arch() was %d but should have been %d\n",
+               __FILE__, __LINE__, (int)native_arch, (int)expected_native_arch);
+        return EXIT_FAILURE;
+    }
+
+    const unsigned int native_features = binrec::native_features();
+    #if defined(__amd64__) || defined(__x86_64__) || defined(_M_X64)
+        /* As with the C binrec_native_features() test, we assume that
+         * at least one feature flag will be present for x86 systems. */
+        if (native_features == 0) {
+            printf("%s:%d: binrec::native_features() was 0 but should have been nonzero\n",
+                   __FILE__, __LINE__);
+            return EXIT_FAILURE;
+        }
+    #else
+        if (native_features != 0) {
+            printf("%s:%d: binrec::native_features() was %u but should have been 0\n",
+                   __FILE__, __LINE__, native_features);
+            return EXIT_FAILURE;
+        }
+    #endif
+
+    if (!binrec::guest_supported(BINREC_ARCH_PPC_7XX)) {
+        printf("%s:%d: binrec::guest_supported(BINREC_ARCH_PPC_7XX) was not true as expected\n",
+               __FILE__, __LINE__);
+        return EXIT_FAILURE;
+    }
+
+    if (!binrec::host_supported(BINREC_ARCH_X86_64_SYSV)) {
+        printf("%s:%d: binrec::host_supported(BINREC_ARCH_X86_64_SYSV) was not true as expected\n",
+               __FILE__, __LINE__);
+        return EXIT_FAILURE;
+    }
+
     binrec::Handle::Setup setup;
     memset(&setup, 0, sizeof(setup));
     setup.guest = BINREC_ARCH_PPC_7XX;
