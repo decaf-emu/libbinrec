@@ -15,12 +15,17 @@ cmake_minimum_required(VERSION 2.8)
 include(CheckCCompilerFlag)
 
 set(BINREC_ENABLE_ASSERT TRUE)
+set(BINREC_ENABLE_OPERAND_SANITY_CHECKS TRUE)
 
 include_directories("${CMAKE_CURRENT_SOURCE_DIR}")
-file(GLOB SOURCES src/*.c)
+file(GLOB SOURCES src/*.c src/*/*.c)
 add_library(binrec STATIC ${SOURCES})
 
 target_include_directories(binrec PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
+target_compile_definitions(binrec PRIVATE VERSION="0.1")
 if(BINREC_ENABLE_ASSERT)
     target_compile_definitions(binrec PRIVATE ENABLE_ASSERT)
+endif()
+if(BINREC_ENABLE_OPERAND_SANITY_CHECKS)
+    target_compile_definitions(binrec PRIVATE ENABLE_OPERAND_SANITY_CHECKS)
 endif()
