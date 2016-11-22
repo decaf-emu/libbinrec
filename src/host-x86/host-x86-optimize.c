@@ -273,7 +273,7 @@ void host_x86_optimize_address(HostX86Context *ctx, int insn_index)
     const bool insn_has_offset = (insn->opcode < RTLOP_ATOMIC_INC);
     if (insn_has_offset) {
         const int64_t final_offset = (int64_t)offset + (int64_t)insn->offset;
-        if ((uint64_t)(final_offset+0x80000000u) >= UINT64_C(0x100000000)) {
+        if ((uint64_t)(final_offset+0x80000000) >= UINT64_C(0x100000000)) {
             return;
         }
         offset = (int32_t)final_offset;
@@ -444,7 +444,7 @@ void host_x86_optimize_immediate_store(HostX86Context *ctx, int insn_index)
         opcode = RTLOP_STORE_I16;
         value = bswap16((uint16_t)value);
     }
-    if (type != RTLTYPE_INT32 && value+0x80000000u >= UINT64_C(0x100000000)) {
+    if (type != RTLTYPE_INT32 && value+0x80000000 >= UINT64_C(0x100000000)) {
         return;  // The constant won't fit in a single instruction.
     }
 

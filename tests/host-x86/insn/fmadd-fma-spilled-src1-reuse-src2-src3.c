@@ -25,7 +25,7 @@ static int add_rtl(RTLUnit *unit)
         EXPECT(rtl_add_insn(unit, RTLOP_NOP, dummy_regs[i], 0, 0, 0));
     }
 
-    int reg1, reg2, reg3, spiller, spiller2, reg4;
+    int reg1, reg2, reg3, spiller, reg4;
     EXPECT(reg1 = rtl_alloc_register(unit, RTLTYPE_FLOAT32));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg1, 0, 0, 0x3F800000));
     EXPECT(reg2 = rtl_alloc_register(unit, RTLTYPE_FLOAT32));
@@ -34,15 +34,15 @@ static int add_rtl(RTLUnit *unit)
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg3, 0, 0, 0x40400000));
     EXPECT(spiller = rtl_alloc_register(unit, RTLTYPE_FLOAT32));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, spiller, 0, 0, 0x40800000));
-    EXPECT(spiller2 = rtl_alloc_register(unit, RTLTYPE_FLOAT32));
-    EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, spiller2, 0, 0, 0x40A00000));
     EXPECT(reg4 = rtl_alloc_register(unit, RTLTYPE_FLOAT32));
+    /* The temporary for reloading reg1 should not clobber reg2. */
     EXPECT(rtl_add_insn(unit, RTLOP_FMADD, reg4, reg1, reg2, reg3));
+    /* Keep the spiller live so reg1 is reloaded into a different register
+     * and we can verify that it's using the correct register. */
     EXPECT(rtl_add_insn(unit, RTLOP_NOP, 0, spiller, 0, 0));
     for (int i = 0; i < lenof(dummy_regs); i++) {
         EXPECT(rtl_add_insn(unit, RTLOP_NOP, 0, dummy_regs[i], 0, 0));
     }
-    EXPECT(rtl_add_insn(unit, RTLOP_NOP, 0, reg3, 0, 0));
     EXPECT(rtl_add_insn(unit, RTLOP_NOP, 0, reg1, 0, 0));
 
     return EXIT_SUCCESS;
@@ -59,11 +59,8 @@ static const uint8_t expected_code[] = {
     0xF3,0x44,0x0F,0x11,0x24,0x24,      // movss %xmm12,(%rsp)
     0xB8,0x00,0x00,0x80,0x40,           // mov $0x40800000,%eax
     0x66,0x44,0x0F,0x6E,0xE0,           // movd %eax,%xmm12
-    0xF3,0x44,0x0F,0x11,0x74,0x24,0x04, // movss %xmm14,4(%rsp)
-    0xB8,0x00,0x00,0xA0,0x40,           // mov $0x40A00000,%eax
-    0x66,0x44,0x0F,0x6E,0xF0,           // movd %eax,%xmm14
     0xF3,0x44,0x0F,0x10,0x3C,0x24,      // movss (%rsp),%xmm15
-    0xC4,0x62,0x01,0xA9,0x6C,0x24,0x04, // vfmadd213ss 4(%rsp),%xmm15,%xmm13
+    0xC4,0x42,0x01,0xB9,0xF5,           // vfmadd231ss %xmm13,%xmm15,%xmm14
     0x48,0x83,0xC4,0x08,                // add $8,%rsp
     0xC3,                               // ret
 };

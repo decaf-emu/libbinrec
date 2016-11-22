@@ -115,7 +115,7 @@ static inline void kill_cr_stores(
 
     while (bits_to_kill) {
         const int bit = ctz32(bits_to_kill);
-        bits_to_kill ^= 1u << bit;
+        bits_to_kill ^= 1 << bit;
         const int insn_index = ctx->last_set.crb[bit];
         ctx->last_set.crb[bit] = -1;
         if (crb_reg) {

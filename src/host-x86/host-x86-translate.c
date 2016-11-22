@@ -554,7 +554,7 @@ static inline void append_insn_ModRM_riprel(
     append_ModRM(code, X86MOD_DISP0, reg & 7, X86MODRM_RIP_REL);
     /* Displacement is measured from the end of this instruction. */
     const long disp = offset - (code->len + 4);
-    ASSERT((uint64_t)disp + 0x80000000u < UINT64_C(0x100000000));
+    ASSERT((uint64_t)disp + 0x80000000 < UINT64_C(0x100000000));
     append_imm32(code, disp);
 }
 
@@ -1447,18 +1447,18 @@ static bool reload_regs_for_block(
             const int store_reg = current_store[i];
             if (store_reg) {
                 if (is_spilled(ctx, last_insn, store_reg)) {
-                    reload_targets |= 1u << host_dest;
+                    reload_targets |= 1 << host_dest;
                     reload_map[host_dest] = (uint16_t)store_reg;
                 } else {
                     const X86Register host_src = ctx->regs[store_reg].host_reg;
-                    move_targets |= 1u << host_dest;
+                    move_targets |= 1 << host_dest;
                     move_map[host_dest] = host_src;
                     src_map[host_src] = host_src;
                     value_map[host_src] = host_src;
                     src_count[host_src]++;
                 }
             } else {
-                load_targets |= 1u << host_dest;
+                load_targets |= 1 << host_dest;
                 load_map[host_dest] = (uint16_t)i;
             }
         }
@@ -1476,16 +1476,16 @@ static bool reload_regs_for_block(
                  * it can't have been chosen as a merge target, since merge
                  * targets are always GET_ALIAS outputs (which by SSA are
                  * not live before the GET_ALIAS instruction). */
-                ASSERT(!(move_targets & (1u << i)));
-                ASSERT(!(reload_targets & (1u << i)));
-                ASSERT(!(load_targets & (1u << i)));
+                ASSERT(!(move_targets & (1 << i)));
+                ASSERT(!(reload_targets & (1 << i)));
+                ASSERT(!(load_targets & (1 << i)));
                 const RTLRegister *reg = &unit->regs[reg_index];
                 /* The register's live range should have been extended to
                  * the last backward branch that targets a block where
                  * it's live. */
                 ASSERT(reg->death >= last_insn);
                 if (is_spilled(ctx, last_insn, reg_index)) {
-                    reload_targets |= 1u << i;
+                    reload_targets |= 1 << i;
                     reload_map[i] = reg_index;
                 }
             }
@@ -1502,8 +1502,8 @@ static bool reload_regs_for_block(
          && (target_insn > last_insn || unit->regs[reg].birth < target_insn)
          && unit->regs[reg].death >= later_insn
          && !is_spilled(ctx, later_insn, reg)) {
-            ASSERT(!(move_targets & (1u << i)));
-            move_targets |= 1u << i;
+            ASSERT(!(move_targets & (1 << i)));
+            move_targets |= 1 << i;
             move_map[i] = i;
             src_map[i] = i;
             value_map[i] = i;
@@ -1524,7 +1524,7 @@ static bool reload_regs_for_block(
         bool resolved_any = false;
         while (move_targets_pass) {
             const X86Register host_dest = ctz32(move_targets_pass);
-            move_targets_pass ^= 1u << host_dest;
+            move_targets_pass ^= 1 << host_dest;
             const X86Register move_src = move_map[host_dest];
             const X86Register host_src = src_map[move_src];
             if (host_src != host_dest) {
@@ -1535,7 +1535,7 @@ static bool reload_regs_for_block(
                 }
                 append_move(code, dest_type[host_dest], host_dest, host_src);
             }
-            move_targets ^= 1u << host_dest;  // Register was resolved.
+            move_targets ^= 1 << host_dest;  // Register was resolved.
             resolved_any = true;
             src_count[move_src]--;
         }
@@ -1543,7 +1543,7 @@ static bool reload_regs_for_block(
             /* There's a cycle in the move graph, so pick the first target
              * remaining and swap it with its source value. */
             const X86Register host_dest = ctz32(move_targets);
-            move_targets ^= 1u << host_dest;
+            move_targets ^= 1 << host_dest;
             const X86Register move_src = move_map[host_dest];
             const X86Register host_src = src_map[move_src];
             ASSERT(host_src != host_dest);  // Or it would already be resolved.
@@ -1576,14 +1576,14 @@ static bool reload_regs_for_block(
     /* Finally, load values from storage which were spilled or not live. */
     while (reload_targets) {
         const X86Register host_dest = ctz32(reload_targets);
-        reload_targets ^= 1u << host_dest;
+        reload_targets ^= 1 << host_dest;
         const int src = reload_map[host_dest];
         append_load(code, unit->regs[src].type, host_dest,
                     X86_SP, -1, ctx->regs[src].spill_offset);
     }
     while (load_targets) {
         const X86Register host_dest = ctz32(load_targets);
-        load_targets ^= 1u << host_dest;
+        load_targets ^= 1 << host_dest;
         append_load_alias(code, ctx, &unit->aliases[load_map[host_dest]],
                           host_dest);
     }
@@ -1660,7 +1660,7 @@ static bool check_reload_conflicts(const HostX86Context *ctx, int block_index,
         uint32_t live = ctx->blocks[block_index].end_live;
         while (live) {
             const int host_reg = ctz32(live);
-            live ^= 1u << host_reg;
+            live ^= 1 << host_reg;
             if (next_map[host_reg]
              && current_map[host_reg] != next_map[host_reg]) {
                 return true;
@@ -1756,7 +1756,7 @@ static bool append_prologue(HostX86Context *ctx)
         int unwind_pos = sizeof(unwind_info);
 
         for (int reg = 0; reg < 16; reg++) {
-            if (regs_to_save & (1u << reg)) {
+            if (regs_to_save & (1 << reg)) {
                 unwind_pos -= 2;
                 ASSERT(unwind_pos >= 4);
                 unwind_info[unwind_pos+0] = prologue_pos;
@@ -1796,7 +1796,7 @@ static bool append_prologue(HostX86Context *ctx)
 
         int sp_offset = ctx->frame_size;
         for (int reg = 16; reg < 32; reg++) {
-            if (regs_to_save & (1u << reg)) {
+            if (regs_to_save & (1 << reg)) {
                 unwind_pos -= 4;
                 ASSERT(unwind_pos >= 4);
                 unwind_info[unwind_pos+0] = prologue_pos;
@@ -1861,7 +1861,7 @@ static bool append_prologue(HostX86Context *ctx)
                        .len = handle->code_len};
 
     for (int reg = 0; reg < 16; reg++) {
-        if (regs_to_save & (1u << reg)) {
+        if (regs_to_save & (1 << reg)) {
             append_insn_R(&code, false, X86OP_PUSH_rAX, reg);
         }
     }
@@ -1880,7 +1880,7 @@ static bool append_prologue(HostX86Context *ctx)
 
     int sp_offset = ctx->frame_size;
     for (int reg = 16; reg < 32; reg++) {
-        if (regs_to_save & (1u << reg)) {
+        if (regs_to_save & (1 << reg)) {
             if (reg & 8) {
                 append_rex_opcode(&code, X86OP_REX_R, X86OP_MOVAPS_W_V);
             } else {
@@ -1987,7 +1987,7 @@ static bool append_epilogue(HostX86Context *ctx, bool append_ret)
 
     int sp_offset = ctx->frame_size + 16 * popcnt32(regs_saved >> 16);
     for (int reg = 31; reg >= 16; reg--) {
-        if (regs_saved & (1u << reg)) {
+        if (regs_saved & (1 << reg)) {
             sp_offset -= 16;
             if (reg & 8) {
                 append_rex_opcode(&code, X86OP_REX_R, X86OP_MOVAPS_V_W);
@@ -2022,7 +2022,7 @@ static bool append_epilogue(HostX86Context *ctx, bool append_ret)
     }
 
     for (int reg = 15; reg >= 0; reg--) {
-        if (regs_saved & (1u << reg)) {
+        if (regs_saved & (1 << reg)) {
             append_insn_R(&code, false, X86OP_POP_rAX, reg);
         }
     }
@@ -2106,7 +2106,7 @@ static bool translate_call(HostX86Context *ctx, int block_index,
         uint32_t save_regs = insn->host_data_32;
         while (save_regs) {
             const int reg = ctz32(save_regs);
-            save_regs ^= 1u << reg;
+            save_regs ^= 1 << reg;
             ASSERT(ctx->stack_callsave[reg] >= 0);
             if (reg >= X86_XMM0) {
                 append_insn_ModRM_mem(&code, false, X86OP_MOVAPS_W_V, reg,
@@ -2224,7 +2224,7 @@ static bool translate_call(HostX86Context *ctx, int block_index,
          * clobbered by the epilogue, so move it out of the way.  We use
          * RAX since it's the return register in both SysV and Windows ABIs
          * and it doesn't require a REX prefix. */
-        if (ctx->callee_saved_regs & (1u << src1_loc)) {
+        if (ctx->callee_saved_regs & (1 << src1_loc)) {
             append_move_gpr(&code, RTLTYPE_ADDRESS, X86_AX, src1_loc);
             src1_loc = X86_AX;
         }
@@ -2267,7 +2267,7 @@ static bool translate_call(HostX86Context *ctx, int block_index,
         uint32_t save_regs = insn->host_data_32;
         while (save_regs) {
             const int reg = ctz32(save_regs);
-            save_regs ^= 1u << reg;
+            save_regs ^= 1 << reg;
             ASSERT(ctx->stack_callsave[reg] >= 0);
             if (reg >= X86_XMM0) {
                 append_insn_ModRM_mem(&code, false, X86OP_MOVAPS_V_W, reg,
@@ -3628,7 +3628,7 @@ static bool translate_block(HostX86Context *ctx, int block_index)
                     }
                     append_insn_ModRM_reg(&code, false, X86OP_IMM_Ev_Ib,
                                           X86OP_IMM_AND, host_dest);
-                    append_imm8(&code, (1u << insn->bitfield.count) - 1);
+                    append_imm8(&code, (1 << insn->bitfield.count) - 1);
                 } else if (insn->bitfield.count == 8) {
                     maybe_append_empty_rex(&code, host_shifted, host_dest, -1);
                     append_insn_ModRM_reg(&code, is64, X86OP_MOVZX_Gv_Eb,
@@ -3643,7 +3643,7 @@ static bool translate_block(HostX86Context *ctx, int block_index)
                     }
                     append_insn_ModRM_reg(&code, false, X86OP_IMM_Ev_Iz,
                                           X86OP_IMM_AND, host_dest);
-                    append_imm32(&code, (1u << insn->bitfield.count) - 1);
+                    append_imm32(&code, (1 << insn->bitfield.count) - 1);
                 } else if (insn->bitfield.count == 32) {
                     append_insn_ModRM_reg(&code, false, X86OP_MOV_Gv_Ev,
                                           host_dest, host_shifted);
@@ -3716,7 +3716,7 @@ static bool translate_block(HostX86Context *ctx, int block_index)
                                           host_dest, ctx, insn_index, src1);
                 }
             } else {
-                const uint32_t src2_mask = (1u << insn->bitfield.count) - 1;
+                const uint32_t src2_mask = (1 << insn->bitfield.count) - 1;
                 const uint32_t src1_mask = ~(src2_mask << insn->bitfield.start);
                 if (src1_mask == 0x000000FF) {
                     append_insn_ModRM_ctx(&code, is64, X86OP_MOVZX_Gv_Eb,
@@ -3791,7 +3791,7 @@ static bool translate_block(HostX86Context *ctx, int block_index)
                     }
                     append_insn_ModRM_reg(&code, false, X86OP_IMM_Ev_Ib,
                                           X86OP_IMM_AND, host_newbits);
-                    append_imm8(&code, (1u << insn->bitfield.count) - 1);
+                    append_imm8(&code, (1 << insn->bitfield.count) - 1);
                 } else if (insn->bitfield.count == 8) {
                     if (!src2_spilled) {
                         maybe_append_empty_rex(&code, host_src2,
@@ -3816,7 +3816,7 @@ static bool translate_block(HostX86Context *ctx, int block_index)
                     }
                     append_insn_ModRM_reg(&code, false, X86OP_IMM_Ev_Iz,
                                           X86OP_IMM_AND, host_newbits);
-                    append_imm32(&code, (1u << insn->bitfield.count) - 1);
+                    append_imm32(&code, (1 << insn->bitfield.count) - 1);
                 }
                 if (insn->bitfield.start > 0) {
                     append_insn_ModRM_reg(&code, is64, X86OP_SHIFT_Ev_Ib,

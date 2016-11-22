@@ -147,9 +147,9 @@ struct RTLInsn;
 #define XER_SO_SHIFT  31
 #define XER_OV_SHIFT  30
 #define XER_CA_SHIFT  29
-#define XER_SO  (1u << XER_SO_SHIFT)
-#define XER_OV  (1u << XER_OV_SHIFT)
-#define XER_CA  (1u << XER_CA_SHIFT)
+#define XER_SO  (1 << XER_SO_SHIFT)
+#define XER_OV  (1 << XER_OV_SHIFT)
+#define XER_CA  (1 << XER_CA_SHIFT)
 
 /* FPSCR register bits. */
 #define FPSCR_FX_SHIFT      31
@@ -179,33 +179,33 @@ struct RTLInsn;
 #define FPSCR_XE_SHIFT       3
 #define FPSCR_NI_SHIFT       2
 #define FPSCR_RN_SHIFT       0
-#define FPSCR_FX      (1u << FPSCR_FX_SHIFT)
-#define FPSCR_FEX     (1u << FPSCR_FEX_SHIFT)
-#define FPSCR_VX      (1u << FPSCR_VX_SHIFT)
-#define FPSCR_OX      (1u << FPSCR_OX_SHIFT)
-#define FPSCR_UX      (1u << FPSCR_UX_SHIFT)
-#define FPSCR_ZX      (1u << FPSCR_ZX_SHIFT)
-#define FPSCR_XX      (1u << FPSCR_XX_SHIFT)
-#define FPSCR_VXSNAN  (1u << FPSCR_VXSNAN_SHIFT)
-#define FPSCR_VXISI   (1u << FPSCR_VXISI_SHIFT)
-#define FPSCR_VXIDI   (1u << FPSCR_VXIDI_SHIFT)
-#define FPSCR_VXZDZ   (1u << FPSCR_VXZDZ_SHIFT)
-#define FPSCR_VXIMZ   (1u << FPSCR_VXIMZ_SHIFT)
-#define FPSCR_VXVC    (1u << FPSCR_VXVC_SHIFT)
-#define FPSCR_FR      (1u << FPSCR_FR_SHIFT)
-#define FPSCR_FI      (1u << FPSCR_FI_SHIFT)
-#define FPSCR_FPRF    (31u << FPSCR_FPRF_SHIFT)
-#define FPSCR_RESV20  (1u << FPSCR_RESV20_SHIFT)
-#define FPSCR_VXSOFT  (1u << FPSCR_VXSOFT_SHIFT)
-#define FPSCR_VXSQRT  (1u << FPSCR_VXSQRT_SHIFT)
-#define FPSCR_VXCVI   (1u << FPSCR_VXCVI_SHIFT)
-#define FPSCR_VE      (1u << FPSCR_VE_SHIFT)
-#define FPSCR_OE      (1u << FPSCR_OE_SHIFT)
-#define FPSCR_UE      (1u << FPSCR_UE_SHIFT)
-#define FPSCR_ZE      (1u << FPSCR_ZE_SHIFT)
-#define FPSCR_XE      (1u << FPSCR_XE_SHIFT)
-#define FPSCR_NI      (1u << FPSCR_NI_SHIFT)
-#define FPSCR_RN      (3u << FPSCR_RN_SHIFT)
+#define FPSCR_FX      (1 << FPSCR_FX_SHIFT)
+#define FPSCR_FEX     (1 << FPSCR_FEX_SHIFT)
+#define FPSCR_VX      (1 << FPSCR_VX_SHIFT)
+#define FPSCR_OX      (1 << FPSCR_OX_SHIFT)
+#define FPSCR_UX      (1 << FPSCR_UX_SHIFT)
+#define FPSCR_ZX      (1 << FPSCR_ZX_SHIFT)
+#define FPSCR_XX      (1 << FPSCR_XX_SHIFT)
+#define FPSCR_VXSNAN  (1 << FPSCR_VXSNAN_SHIFT)
+#define FPSCR_VXISI   (1 << FPSCR_VXISI_SHIFT)
+#define FPSCR_VXIDI   (1 << FPSCR_VXIDI_SHIFT)
+#define FPSCR_VXZDZ   (1 << FPSCR_VXZDZ_SHIFT)
+#define FPSCR_VXIMZ   (1 << FPSCR_VXIMZ_SHIFT)
+#define FPSCR_VXVC    (1 << FPSCR_VXVC_SHIFT)
+#define FPSCR_FR      (1 << FPSCR_FR_SHIFT)
+#define FPSCR_FI      (1 << FPSCR_FI_SHIFT)
+#define FPSCR_FPRF    (31 << FPSCR_FPRF_SHIFT)
+#define FPSCR_RESV20  (1 << FPSCR_RESV20_SHIFT)
+#define FPSCR_VXSOFT  (1 << FPSCR_VXSOFT_SHIFT)
+#define FPSCR_VXSQRT  (1 << FPSCR_VXSQRT_SHIFT)
+#define FPSCR_VXCVI   (1 << FPSCR_VXCVI_SHIFT)
+#define FPSCR_VE      (1 << FPSCR_VE_SHIFT)
+#define FPSCR_OE      (1 << FPSCR_OE_SHIFT)
+#define FPSCR_UE      (1 << FPSCR_UE_SHIFT)
+#define FPSCR_ZE      (1 << FPSCR_ZE_SHIFT)
+#define FPSCR_XE      (1 << FPSCR_XE_SHIFT)
+#define FPSCR_NI      (1 << FPSCR_NI_SHIFT)
+#define FPSCR_RN      (3 << FPSCR_RN_SHIFT)
 
 /* Mask for all VXFOO exception bits. */
 #define FPSCR_ALL_VXFOO  (FPSCR_VXSNAN | FPSCR_VXISI | FPSCR_VXIDI \

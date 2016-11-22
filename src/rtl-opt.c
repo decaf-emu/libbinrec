@@ -277,12 +277,12 @@ static inline uint64_t fold_constant(RTLUnit * const unit,
                 log_warning(unit->handle, "r%d: Treating constant division"
                             " by zero as 0", (int)(reg - unit->regs));
                 return 0;
-            } else if (UNLIKELY((uint32_t)src1->value.i64 == 1u<<31
+            } else if (UNLIKELY((uint32_t)src1->value.i64 == 0x80000000
                                 && (int32_t)src2->value.i64 == -1)) {
                 log_warning(unit->handle, "r%d: Treating overflow in"
                             " constant signed division as -1<<31",
                             (int)(reg - unit->regs));
-                return 0x80000000u;
+                return 0x80000000;
             } else {
                 return (int32_t)src1->value.i64 / (int32_t)src2->value.i64;
             }
@@ -327,7 +327,7 @@ static inline uint64_t fold_constant(RTLUnit * const unit,
                 log_warning(unit->handle, "r%d: Treating constant division"
                             " by zero as 0", (int)(reg - unit->regs));
                 return 0;
-            } else if (UNLIKELY((uint32_t)src1->value.i64 == 1u<<31
+            } else if (UNLIKELY((uint32_t)src1->value.i64 == 0x80000000
                                 && (int32_t)src2->value.i64 == -1)) {
                 log_warning(unit->handle, "r%d: Treating overflow in constant"
                             " signed division as 0", (int)(reg - unit->regs));
@@ -455,7 +455,7 @@ static inline uint64_t fold_constant(RTLUnit * const unit,
       case RTLOP_BFEXT:
         if (reg->type == RTLTYPE_INT32) {
             return (((uint32_t)src1->value.i64 >> reg->result.start)
-                    & ((1u << reg->result.count) - 1));
+                    & ((1 << reg->result.count) - 1));
         } else {
             return ((src1->value.i64 >> reg->result.start)
                     & ((UINT64_C(1) << reg->result.count) - 1));
@@ -464,7 +464,7 @@ static inline uint64_t fold_constant(RTLUnit * const unit,
       case RTLOP_BFINS:
         if (reg->type == RTLTYPE_INT32) {
             const uint32_t mask =
-                ((1u << reg->result.count) - 1) << reg->result.start;
+                ((1 << reg->result.count) - 1) << reg->result.start;
             return (src1->value.i64 & ~mask)
                  | ((src2->value.i64 << reg->result.start) & mask);
         } else {
@@ -674,21 +674,21 @@ static inline uint64_t fold_constant(RTLUnit * const unit,
 
       case RTLOP_FNEG:
         if (reg->type == RTLTYPE_FLOAT32) {
-            return float_to_bits(src1->value.f32) ^ (1u << 31);
+            return float_to_bits(src1->value.f32) ^ (1 << 31);
         } else {
             return double_to_bits(src1->value.f64) ^ (UINT64_C(1) << 63);
         }
 
       case RTLOP_FABS:
         if (reg->type == RTLTYPE_FLOAT32) {
-            return float_to_bits(src1->value.f32) & ~(1u << 31);
+            return float_to_bits(src1->value.f32) & ~(1 << 31);
         } else {
             return double_to_bits(src1->value.f64) & ~(UINT64_C(1) << 63);
         }
 
       case RTLOP_FNABS:
         if (reg->type == RTLTYPE_FLOAT32) {
-            return float_to_bits(src1->value.f32) | (1u << 31);
+            return float_to_bits(src1->value.f32) | (1 << 31);
         } else {
             return double_to_bits(src1->value.f64) | (UINT64_C(1) << 63);
         }
