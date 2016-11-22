@@ -6388,6 +6388,7 @@ static void translate_trap(
     guest_ppc_flush_cr(ctx, false);
     guest_ppc_flush_fpscr(ctx);
     set_nia_imm(ctx, address);
+    post_insn_callback(ctx, address);
     const int trap_handler = rtl_alloc_register(unit, RTLTYPE_ADDRESS);
     rtl_add_insn(unit, RTLOP_LOAD, trap_handler, ctx->psb_reg, 0,
                  ctx->handle->setup.state_offset_trap_handler);
