@@ -151,12 +151,11 @@ extern "C" {
  * The value of the NIA field in the PSB is set as the SRR0 register would
  * be set on a true PowerPC processor: to the address of the trap
  * instruction for trap exceptions, and to the address of the instruction
- * _following_ the sc instruction for system call exceptions (however, the
- * sequence "sc; blr" is optimized by setting NIA to the value of LR when
- * calling the system call handler).  The translated code will return
- * immediately to its caller when the handler returns.  The translated
- * code does not check for NULL function pointers, so it will crash if an
- * exception occurs and the associated function pointer is not set.
+ * _following_ the sc instruction for system call exceptions.  The
+ * translated code will return immediately to its caller when the handler
+ * returns.  The translated code does not check for NULL function pointers,
+ * so it will crash if an exception occurs and the associated function
+ * pointer is not set.
  *
  * All instruction words with the primary opcode of the sc instruction
  * (0x11) are decoded as that instruction.  This deviates from the PowerPC

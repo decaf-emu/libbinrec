@@ -1291,8 +1291,7 @@ bool guest_ppc_scan(GuestPPCContext *ctx, uint32_t limit)
          * to help out data flow analysis, since we need to be able to
          * store all live register values to the state block if a trap is
          * taken.)  Also terminate the entire unit if this looks like the
-         * end of a function.  But make sure not to stop at an sc before
-         * a blr so we can optimize the sc+blr case properly. */
+         * end of a function. */
         const bool is_direct_branch = ((opcd & ~0x02) == OPCD_BC);
         const bool is_indirect_branch =
             (opcd == OPCD_x13 && (insn_XO_10(insn) == XO_BCLR
@@ -1302,10 +1301,7 @@ bool guest_ppc_scan(GuestPPCContext *ctx, uint32_t limit)
              || ((opcd == OPCD_BC || is_indirect_branch)
                  && (insn_BO(insn) & 0x14) == 0x14));
         const bool is_icbi = (opcd == OPCD_x1F && insn_XO_10(insn) == XO_ICBI);
-        const bool is_sc =
-            (opcd == OPCD_SC
-             && (insn_count == max_insns - 1
-                 || bswap_be32(memory_base[(address+4)/4]) != 0x4E800020));
+        const bool is_sc = (opcd == OPCD_SC);
         /* Also terminate at a GQR write for constant GQR optimization. */
         const bool is_terminal_gqr_write =
             ((ctx->handle->guest_opt & BINREC_OPT_G_PPC_CONSTANT_GQRS)

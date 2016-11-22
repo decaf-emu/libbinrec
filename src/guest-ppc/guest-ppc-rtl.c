@@ -7454,7 +7454,7 @@ static inline void translate_insn(
     RTLUnit * const unit = ctx->unit;
 
     /* Skip instructions which were translated as part of an optimized
-     * instruction pair (such as sc followed by blr). */
+     * instruction pair. */
     if (ctx->skip_next_insn) {
         ctx->skip_next_insn = false;
         return;
@@ -7647,39 +7647,16 @@ static inline void translate_insn(
         return;
 
       case OPCD_SC: {
-        /* Special case: translate sc followed by blr in a single step, to
-         * avoid having to return to caller and call a new unit containing
-         * just the blr.  The scanner will terminate the block at an sc
-         * instruction which is not followed by a blr, so we only need to
-         * check whether this sc is at the end of the block. */
-        bool is_sc_blr = false;
-        if (address + 4 < block->start + block->len) {
-            ASSERT(address + 8 == block->start + block->len);
-            const uint32_t *memory_base =
-                (const uint32_t *)ctx->handle->setup.guest_memory_base;
-            const uint32_t next_insn = bswap_be32(memory_base[(address+4)/4]);
-            ASSERT(next_insn == 0x4E800020);
-            is_sc_blr = true;
-        }
-        int nia;
-        if (is_sc_blr) {
-            const int lr = get_lr(ctx);
-            nia = rtl_alloc_register(unit, RTLTYPE_INT32);
-            rtl_add_insn(unit, RTLOP_ANDI, nia, lr, 0, -4);
-        } else {
-            nia = rtl_imm32(unit, address + 4);
-        }
         guest_ppc_flush_cr(ctx, false);
         guest_ppc_flush_fpscr(ctx);
         flush_live_regs(ctx, true);
-        set_nia(ctx, nia);
+        set_nia_imm(ctx, address + 4);
         const int sc_handler = rtl_alloc_register(unit, RTLTYPE_ADDRESS);
         rtl_add_insn(unit, RTLOP_LOAD, sc_handler, ctx->psb_reg, 0,
                      ctx->handle->setup.state_offset_sc_handler);
         rtl_add_insn(unit, RTLOP_CALL, 0, sc_handler, ctx->psb_reg, 0);
         post_insn_callback(ctx, address);
         rtl_add_insn(unit, RTLOP_RETURN, 0, 0, 0, 0);
-        ctx->skip_next_insn = is_sc_blr;
         return;
       }  // case OPCD_SC
 
