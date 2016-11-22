@@ -568,20 +568,6 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
             }
         }
         insn->host_data_32 = regs_to_save;
-
-        /* Non-tail calls use R15 as a temporary to hold the call address,
-         * if needed.  The temporary is used unconditionally if src1 (the
-         * address) is spilled, or if either src2 or src3 is spilled and
-         * src1 is live in the corresponding argument register for the
-         * current ABI.  Mark R15 as touched in those cases so it's saved
-         * and restored by the generated prologue and epilogue. */
-        if (src1_info->spilled
-            || (src2 && src2_info->spilled
-                && src1_info->host_reg == host_x86_int_arg_register(ctx, 0))
-            || (insn->src3 && ctx->regs[insn->src3].spilled
-                && src1_info->host_reg == host_x86_int_arg_register(ctx, 1))) {
-            ctx->block_regs_touched |= 1 << X86_R15;
-        }
     }
 
     if (dest) {

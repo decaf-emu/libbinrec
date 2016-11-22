@@ -2080,11 +2080,12 @@ static bool translate_call(HostX86Context *ctx, int block_index,
     /* Tail calls: worst case epilogue (107 bytes, see append_epilogue()) +
      * JMP Ev (without REX, since src1 is loaded to RAX) */
     const int MAX_TAIL_CALL_LEN = MAX_SETUP_LEN + 107 + 2;
-    /* Nontail calls: CALL Ev (with REX) + return value copy (with REX) +
-     * worst case save/restore for System V ABI (9x REX GPR store,
-     * 8x non-REX XMM store, 7x REX XMM store) */
+    /* Nontail calls: CALL Ev (without REX, since spilled src1 is always
+     * loaded to RAX) + return value copy (with REX) + worst case
+     * save/restore for System V ABI (9x REX GPR store, 8x non-REX XMM
+     * store, 7x REX XMM store) */
     const int MAX_NONTAIL_CALL_LEN =
-        MAX_SETUP_LEN + 3 + 3 + 2 * (9*8 + 8*8 + 7*9);
+        MAX_SETUP_LEN + 2 + 3 + 2 * (9*8 + 8*8 + 7*9);
     const int max_len = is_tail ? MAX_TAIL_CALL_LEN : MAX_NONTAIL_CALL_LEN;
     if (UNLIKELY(handle->code_len + max_len > handle->code_buffer_size)
      && UNLIKELY(!binrec_ensure_code_space(handle, max_len))) {
@@ -2118,11 +2119,70 @@ static bool translate_call(HostX86Context *ctx, int block_index,
         }
     }
 
-    /* Put arguments (if any) in the right place.  This is a bit ugly
-     * due to all the different ways we might have to swap values around. */
+    /*
+     * Put arguments (if any) in the right place.  This is a bit ugly
+     * due to all the different ways we might have to swap values around.
+     * We take advantage of the fact that RAX and R11 are both callee-saved
+     * (thus unused at this point) and not argument registers in either ABI
+     * (System V or Windows), and use them as temporaries if needed.
+     *
+     * Several of these cases could be implemented in fewer operations
+     * using swaps, but the XCHG instruction has the same latency as a
+     * 3-move sequence (temp=a, a=b, b=temp) on current-generation CPUs,
+     * so we prefer moves if we can get away with less than three per swap.
+     *
+     * Behavior table for 1 argument:
+     *  src2  | src1  | Actions
+     * -------+-------+----------------------------------------------------
+     *  arg0  | (any) | Reload src1 to RAX (if spilled; likewise below)
+     *   RAX  | arg0  | Move arg0 to R11, move RAX to arg0
+     *  (any) | arg0  | Move arg0 to RAX, move/reload src2 to arg0
+     *  (any) | (any) | Move/reload src2 to arg0, reload src1 to RAX
+     *
+     * Behavior table for 2 arguments:
+     *  src2  | src3  | src1  | Actions
+     * -------+-------+-------+--------------------------------------------
+     *  arg0  | arg0  | arg1  | Copy arg1 to RAX, copy arg0 to arg1
+     *  arg0  | arg0  | (any) | Copy arg0 to arg1, reload src1 to RAX
+     *  arg0  | arg1  | (any) | Reload src1 to RAX
+     *  arg0  |  RAX  | arg1  | Move arg1 to R11, move RAX to arg1
+     *  arg0  | (any) | arg1  | Move arg11 to RAX, move/reload src3 to arg1
+     *  arg0  | (any) | (any) | Move/reload src3 to arg1, reload src1 to RAX
+     *  arg1  | arg0  | arg0  | Swap arg0 and arg1 (and call arg1)
+     *  arg1  | arg0  | arg1  | Swap arg0 and arg1 (and call arg0)
+     *  arg1  | arg0  | (any) | Swap arg0 and arg1, reload src1 to RAX
+     *  arg1  | arg1  | arg0  | Move arg0 to RAX, copy arg1 to arg0
+     *  arg1  | arg1  | (any) | Copy arg1 to arg0, reload src1 to RAX
+     *  arg1  |  RAX  | arg0  | Move arg0 to R11, move arg1 to arg0, move
+     *        |       |       |    RAX to arg1
+     *  arg1  | (any) | arg0  | Move arg0 to RAX, move arg1 to arg0,
+     *        |       |       |    move/reload src3 to arg1
+     *  arg1  | (any) | arg1  | Move arg1 to arg0, move/reload src3 to arg1
+     *        |       |       |    (and call arg0)
+     *  arg1  | (any) | (any) | Move arg1 to arg0, move/reload src3 to arg1,
+     *        |       |       |    reload src1 to RAX
+     *  (any) | arg0  | arg0  | Move arg0 to arg1, move/reload src2 to arg0
+     *  (any) | arg0  | arg1  | Move/reload src2 to R11, move arg1 to RAX,
+     *        |       |       |    move arg0 to arg1, move R11 to arg0
+     *  (any) | arg0  | (any) | Move arg0 to arg1, move/reload src2 to arg0,
+     *        |       |       |    reload src1 to RAX
+     *   RAX  | arg1  | arg0  | Move arg0 to R11, move RAX to arg0
+     *  (any) | arg1  | arg0  | Move arg0 to RAX, move/reload src2 to arg0
+     *  (any) | arg1  | (any) | Move/reload src2 to arg0, reload src1 to RAX
+     *   RAX  | (any) | arg0  | Move/reload src3 to arg1, move arg0 to R11,
+     *        |       |       |    move RAX to arg0
+     *  (any) | (any) | arg0  | Move/reload src3 to arg1, move arg0 to RAX,
+     *        |       |       |    move/reload src2 to arg0
+     *  (any) |  RAX  | arg1  | Move/reload src2 to arg0, move arg1 to R11,
+     *        |       |       |    move RAX to arg1
+     *  (any) | (any) | arg1  | Move/reload src2 to arg0, move arg1 to RAX,
+     *        |       |       |    move/reload src3 to arg1
+     *  (any) | (any) | (any) | Move/reload src2 to arg0, move/reload src3
+     *        |       |       |    to arg1, reload src1 to RAX
+     */
 
-    const X86Register src1_fallback = is_tail ? X86_AX : X86_R15;
     if (src2) {
+
         const bool src2_is64 = int_type_is_64(unit->regs[src2].type);
         const bool src3_is64 =  // Safe even if src3 == 0.
             int_type_is_64(unit->regs[src3].type);
@@ -2131,91 +2191,154 @@ static bool translate_call(HostX86Context *ctx, int block_index,
         const int host_arg1 = host_x86_int_arg_register(ctx, 1);
         ASSERT(host_arg1 >= 0);
 
-        if (src2_loc >= 0 && src2_loc != host_arg0) {
-            if (src1_loc == host_arg0) {
-                if (src2_loc == host_arg1 && src3_loc == host_arg1) {
-                    /* This case has the call address in the first argument
-                     * register (arg0) and the doubled argument in the
-                     * second argument register (arg1).  If we follow the
-                     * normal logic, we'll swap the arg0 and arg1 registers
-                     * here, then swap them back at the src3 check below,
-                     * so we'll end up passing the function pointer instead
-                     * of the desired value in the first argument.  To
-                     * solve this, we move the function pointer to RAX
-                     * (which in this case is known to be unused regardless
-                     * of tailness), opening up arg0 so we can copy arg1
-                     * into it. */
+        /* For simplicity, we omit the reload of src1 if that's the last
+         * operation, since we fall through to a reload of src1 anyway. */
+
+        if (!src3) {  // 1-argument call
+
+            if (src2_loc != host_arg0) {
+                if (src1_loc == host_arg0) {
+                    const X86Register src1_target =
+                        (src2_loc == X86_AX) ? X86_R11 : X86_AX;
                     append_insn_ModRM_reg(&code, true, X86OP_MOV_Gv_Ev,
-                                          X86_AX, host_arg0);
-                    append_insn_ModRM_reg(&code, true, X86OP_MOV_Gv_Ev,
-                                          host_arg0, host_arg1);
-                    src1_loc = X86_AX;
-                    src2_loc = host_arg0;
-                    src3_loc = host_arg1;
-                } else {
-                    append_insn_ModRM_reg(&code, true, X86OP_XCHG_Ev_Gv,
-                                          src2_loc, host_arg0);
-                    src1_loc = src2_loc;
-                    if (src3_loc == host_arg0) {
-                        src3_loc = src2_loc;
-                    } else if (src3_loc == src2_loc) {
-                        src3_loc = host_arg0;
+                                          src1_target, host_arg0);
+                    src1_loc = src1_target;
+                }
+                append_move_or_load_gpr(&code, ctx, unit, insn_index,
+                                        host_arg0, src2);
+            }
+
+        } else {  // 2-argument call
+
+            if (src2_loc == host_arg0) {
+
+                if (src3_loc == host_arg0) {
+                    if (src1_loc == host_arg1) {
+                        append_insn_ModRM_reg(&code, true, X86OP_MOV_Gv_Ev,
+                                              X86_AX, host_arg1);
+                        src1_loc = X86_AX;
                     }
+                    append_insn_ModRM_reg(&code, src2_is64, X86OP_MOV_Gv_Ev,
+                                          host_arg1, host_arg0);
+                } else if (src3_loc != host_arg1) {
+                    if (src1_loc == host_arg1) {
+                        const X86Register src1_target =
+                            (src3_loc == X86_AX) ? X86_R11 : X86_AX;
+                        append_insn_ModRM_reg(&code, true, X86OP_MOV_Gv_Ev,
+                                              src1_target, host_arg1);
+                        src1_loc = src1_target;
+                    }
+                    append_move_or_load_gpr(&code, ctx, unit, insn_index,
+                                            host_arg1, src3);
                 }
+
+            } else if (src2_loc == host_arg1) {
+
+                if (src3_loc == host_arg0) {
+                    append_insn_ModRM_reg(&code, src2_is64 || src3_is64,
+                                          X86OP_XCHG_Ev_Gv,
+                                          host_arg1, host_arg0);
+                    if (src1_loc == host_arg0) {
+                        src1_loc = host_arg1;
+                    } else if (src1_loc == host_arg1) {
+                        src1_loc = host_arg0;
+                    }
+                } else if (src3_loc == host_arg1) {
+                    if (src1_loc == host_arg0) {
+                        append_insn_ModRM_reg(&code, true, X86OP_MOV_Gv_Ev,
+                                              X86_AX, host_arg0);
+                        src1_loc = X86_AX;
+                    }
+                    append_insn_ModRM_reg(&code, src2_is64, X86OP_MOV_Gv_Ev,
+                                          host_arg0, host_arg1);
+                } else {
+                    if (src1_loc == host_arg0) {
+                        const X86Register src1_target =
+                            (src3_loc == X86_AX) ? X86_R11 : X86_AX;
+                        append_insn_ModRM_reg(&code, true, X86OP_MOV_Gv_Ev,
+                                              src1_target, host_arg0);
+                        src1_loc = src1_target;
+                    }
+                    append_insn_ModRM_reg(&code, src2_is64, X86OP_MOV_Gv_Ev,
+                                          host_arg0, host_arg1);
+                    if (src1_loc == host_arg1) {
+                        src1_loc = host_arg0;
+                    }
+                    append_move_or_load_gpr(&code, ctx, unit, insn_index,
+                                            host_arg1, src3);
+                }
+
             } else if (src3_loc == host_arg0) {
-                append_insn_ModRM_reg(&code, src2_is64 || src3_is64,
-                                      X86OP_XCHG_Ev_Gv, src2_loc, host_arg0);
-                src3_loc = src2_loc;
-                if (src1_loc == src2_loc) {
-                    src1_loc = host_arg0;
+
+                if (src1_loc == host_arg1) {
+                    append_move_or_load_gpr(&code, ctx, unit, insn_index,
+                                            X86_R11, src2);
+                    append_insn_ModRM_reg(&code, true, X86OP_MOV_Gv_Ev,
+                                          X86_AX, host_arg1);
+                    src1_loc = X86_AX;
+                    append_insn_ModRM_reg(&code, src3_is64, X86OP_MOV_Gv_Ev,
+                                          host_arg1, host_arg0);
+                    append_insn_ModRM_reg(&code, src2_is64, X86OP_MOV_Gv_Ev,
+                                          host_arg0, X86_R11);
+                } else {
+                    append_insn_ModRM_reg(&code, src3_is64, X86OP_MOV_Gv_Ev,
+                                          host_arg1, host_arg0);
+                    if (src1_loc == host_arg0) {
+                        src1_loc = host_arg1;
+                    }
+                    append_move_or_load_gpr(&code, ctx, unit, insn_index,
+                                            host_arg0, src2);
                 }
-            } else {
-                append_insn_ModRM_reg(&code, src2_is64, X86OP_MOV_Gv_Ev,
-                                      host_arg0, src2_loc);
-            }
-        }
 
-        if (src3_loc >= 0 && src3_loc != host_arg1) {
-            if (src1_loc == host_arg1) {
-                append_insn_ModRM_reg(&code, true, X86OP_XCHG_Ev_Gv,
-                                      src3_loc, host_arg1);
-                src1_loc = src3_loc;
-            } else {
-                append_insn_ModRM_reg(&code, src2_is64, X86OP_MOV_Gv_Ev,
-                                      host_arg1, src3_loc);
-            }
-        }
+            } else if (src3_loc == host_arg1) {
 
-        /* At this point src2 and src3 are either in their target registers
-         * or not loaded, so we can safely move src1 out of the way of any
-         * spill reloads. */
+                if (src1_loc == host_arg0) {
+                    const X86Register src1_target =
+                        (src2_loc == X86_AX) ? X86_R11 : X86_AX;
+                    append_insn_ModRM_reg(&code, true, X86OP_MOV_Gv_Ev,
+                                          src1_target, host_arg0);
+                    src1_loc = src1_target;
+                }
+                append_move_or_load_gpr(&code, ctx, unit, insn_index,
+                                        host_arg0, src2);
 
-        if (src2_loc < 0) {
-            if (src1_loc == host_arg0) {
+            } else if (src1_loc == host_arg0) {
+
+                append_move_or_load_gpr(&code, ctx, unit, insn_index,
+                                        host_arg1, src3);
+                const X86Register src1_target =
+                    (src2_loc == X86_AX) ? X86_R11 : X86_AX;
                 append_insn_ModRM_reg(&code, true, X86OP_MOV_Gv_Ev,
-                                      src1_fallback, host_arg0);
-                src1_loc = src1_fallback;
-            }
-            append_load_gpr(&code, unit->regs[src2].type, host_arg0,
-                            X86_SP, ctx->regs[src2].spill_offset);
-        }
+                                      src1_target, host_arg0);
+                src1_loc = src1_target;
+                append_move_or_load_gpr(&code, ctx, unit, insn_index,
+                                        host_arg0, src2);
 
-        if (src3 && src3_loc < 0) {
-            if (src1_loc == host_arg1) {
-                append_insn_ModRM_reg(&code, true, X86OP_MOV_Gv_Ev,
-                                      src1_fallback, host_arg1);
-                src1_loc = src1_fallback;
+            } else {
+
+                append_move_or_load_gpr(&code, ctx, unit, insn_index,
+                                        host_arg0, src2);
+                if (src1_loc == host_arg1) {
+                    const X86Register src1_target =
+                        (src3_loc == X86_AX) ? X86_R11 : X86_AX;
+                    append_insn_ModRM_reg(&code, true, X86OP_MOV_Gv_Ev,
+                                          src1_target, host_arg1);
+                    src1_loc = src1_target;
+                }
+                append_move_or_load_gpr(&code, ctx, unit, insn_index,
+                                        host_arg1, src3);
+
             }
-            append_load_gpr(&code, unit->regs[src3].type, host_arg1,
-                            X86_SP, ctx->regs[src3].spill_offset);
-        }
-    }
+
+        }  // if (!src3)
+
+    }  // if (src2)
 
     /* Reload the call target, if necessary. */
     if (src1_loc < 0) {
-        append_load_gpr(&code, RTLTYPE_ADDRESS, src1_fallback,
+        append_load_gpr(&code, RTLTYPE_ADDRESS, X86_AX,
                         X86_SP, ctx->regs[src1].spill_offset);
-        src1_loc = src1_fallback;
+        src1_loc = X86_AX;
     }
 
     if (is_tail) {
