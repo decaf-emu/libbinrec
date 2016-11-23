@@ -1650,18 +1650,17 @@ static void first_pass_for_block(HostX86Context *ctx, int block_index)
 
         switch (insn->opcode) {
           case RTLOP_GET_ALIAS:
-            if (UNLIKELY(block_info->alias_load[insn->alias])) {
-                /* We already loaded the alias once!  Probably a lazy guest
-                 * translator.  Just reuse the register. */
-                insn->src1 = block_info->alias_load[insn->alias];
+            if (block_info->alias_store[insn->alias]) {
+                /* We already stored the alias in this block!  Probably a
+                 * lazy guest translator.  Just reuse the register. */
+                insn->src1 = block_info->alias_store[insn->alias];
                 insn->opcode = RTLOP_MOVE;
                 if (unit->regs[insn->src1].death < insn_index) {
                     unit->regs[insn->src1].death = insn_index;
                 }
-            } else if (UNLIKELY(block_info->alias_store[insn->alias])) {
-                /* We already stored the alias in this block!  Reuse the
-                 * register. */
-                insn->src1 = block_info->alias_store[insn->alias];
+            } else if (block_info->alias_load[insn->alias]) {
+                /* We already loaded the alias once!  Reuse the register. */
+                insn->src1 = block_info->alias_load[insn->alias];
                 insn->opcode = RTLOP_MOVE;
                 if (unit->regs[insn->src1].death < insn_index) {
                     unit->regs[insn->src1].death = insn_index;
