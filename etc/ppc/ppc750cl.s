@@ -3,6 +3,7 @@
 # No copyright is claimed on this file.
 #
 # Update history:
+#    - 2016-11-23: Added tests for the high word of fctiw[z] output.
 #    - 2016-11-23: Added tests for subfic/subfic when rA has the value 0.
 #    - 2016-11-23: Added more tests for undocumented instruction patterns.
 #    - 2016-11-23: Renamed TEST_UNDOCUMENTED to TEST_UNDOCUMENTED_INSNS to
@@ -11244,6 +11245,54 @@ get_load_address:
    bl add_fpscr_vxcvi
    bl check_fctiw
 
+   # fctiw (high word of result)
+   # The PowerPC architecture specification states that the high 32 bits
+   # of the output register are undefined, but the 750CL sets them to
+   # 0xFFF80000 (turning the entire register into a NaN).
+0: fmr %f5,%f0
+   fctiw %f5,%f0
+   bl record
+   stfd %f5,0(%r4)
+   lwz %r3,0(%r4)
+   lis %r7,0xFFF8
+   cmpw %r3,%r7
+   lwz %r7,4(%r4)
+   bne 1f
+   cmpwi %r7,0
+   beq 0f
+1: stw %r3,8(%r6)
+   stw %r7,12(%r6)
+   addi %r6,%r6,32
+0: fmr %f5,%f0
+   fctiw %f5,%f1
+   bl record
+   stfd %f5,0(%r4)
+   lwz %r3,0(%r4)
+   lis %r7,0xFFF8
+   cmpw %r3,%r7
+   lwz %r7,4(%r4)
+   bne 1f
+   cmpwi %r7,1
+   beq 0f
+1: stw %r3,8(%r6)
+   stw %r7,12(%r6)
+   addi %r6,%r6,32
+0: fmr %f5,%f0
+   fneg %f3,%f1
+   fctiw %f5,%f3
+   bl record
+   stfd %f5,0(%r4)
+   lwz %r3,0(%r4)
+   lis %r7,0xFFF8
+   cmpw %r3,%r7
+   lwz %r7,4(%r4)
+   bne 1f
+   cmpwi %r7,-1
+   beq 0f
+1: stw %r3,8(%r6)
+   stw %r7,12(%r6)
+   addi %r6,%r6,32
+
 .if TEST_UNDOCUMENTED_INSNS
    # fctiw (nonzero frA)
 0: .int 0xFC6B001C  # fctiw %f3,%f0,frA=%f11
@@ -11310,6 +11359,51 @@ get_load_address:
    bl record
    mr %r7,%r26
    bl check_fctiw_inex
+
+   # fctiwz (high word of result)
+0: fmr %f5,%f0
+   fctiwz %f5,%f0
+   bl record
+   stfd %f5,0(%r4)
+   lwz %r3,0(%r4)
+   lis %r7,0xFFF8
+   cmpw %r3,%r7
+   lwz %r7,4(%r4)
+   bne 1f
+   cmpwi %r7,0
+   beq 0f
+1: stw %r3,8(%r6)
+   stw %r7,12(%r6)
+   addi %r6,%r6,32
+0: fmr %f5,%f0
+   fctiwz %f5,%f1
+   bl record
+   stfd %f5,0(%r4)
+   lwz %r3,0(%r4)
+   lis %r7,0xFFF8
+   cmpw %r3,%r7
+   lwz %r7,4(%r4)
+   bne 1f
+   cmpwi %r7,1
+   beq 0f
+1: stw %r3,8(%r6)
+   stw %r7,12(%r6)
+   addi %r6,%r6,32
+0: fmr %f5,%f0
+   fneg %f3,%f1
+   fctiwz %f5,%f3
+   bl record
+   stfd %f5,0(%r4)
+   lwz %r3,0(%r4)
+   lis %r7,0xFFF8
+   cmpw %r3,%r7
+   lwz %r7,4(%r4)
+   bne 1f
+   cmpwi %r7,-1
+   beq 0f
+1: stw %r3,8(%r6)
+   stw %r7,12(%r6)
+   addi %r6,%r6,32
 
 .if TEST_UNDOCUMENTED_INSNS
    # fctiwz (nonzero frA)

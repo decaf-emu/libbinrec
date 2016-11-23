@@ -3147,6 +3147,25 @@ static void translate_fctiw(GuestPPCContext *ctx, uint32_t insn,
     set_fpr_and_flush(ctx, insn_frD(insn), result, true);
 
     rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, label_skip_set);
+
+    /* fctiw[z]-specific logic: Set the high word appropriately, unless
+     * disabled by optimization flags.  We always store a value with the
+     * high 32 bits clear, so we can just OR in the new bits. */
+    if (!(ctx->handle->guest_opt & BINREC_OPT_G_PPC_FAST_FCTIW)) {
+        const int old_result = rtl_alloc_register(unit, RTLTYPE_FLOAT64);
+        rtl_add_insn(unit, RTLOP_GET_ALIAS,
+                     old_result, 0, 0, ctx->alias.fpr[insn_frD(insn)]);
+        const int bits = rtl_alloc_register(unit, RTLTYPE_INT64);
+        rtl_add_insn(unit, RTLOP_BITCAST, bits, old_result, 0, 0);
+        const int high_word = rtl_imm64(unit, 0xFFF8000000000000);
+        const int new_bits = rtl_alloc_register(unit, RTLTYPE_INT64);
+        rtl_add_insn(unit, RTLOP_OR, new_bits, bits, high_word, 0);
+        const int new_result = rtl_alloc_register(unit, RTLTYPE_FLOAT64);
+        rtl_add_insn(unit, RTLOP_BITCAST, new_result, new_bits, 0, 0);
+        rtl_add_insn(unit, RTLOP_SET_ALIAS,
+                     0, new_result, 0, ctx->alias.fpr[insn_frD(insn)]);
+    }
+
     if (!(ctx->handle->guest_opt & BINREC_OPT_G_PPC_NO_FPSCR_STATE)) {
         const int fprf = gen_fprf(unit, result, 0);
         const int inexact = rtl_alloc_register(unit, RTLTYPE_INT32);

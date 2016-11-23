@@ -251,6 +251,8 @@ static bool process_command_line(int argc, char **argv)
                     opt_guest |= BINREC_OPT_G_PPC_ASSUME_NO_SNAN;
                 } else if (strcmp(name, "ppc-constant-gqr") == 0) {
                     opt_guest |= BINREC_OPT_G_PPC_CONSTANT_GQRS;
+                } else if (strcmp(name, "ppc-fast-fctiw") == 0) {
+                    opt_guest |= BINREC_OPT_G_PPC_FAST_FCTIW;
                 } else if (strcmp(name, "ppc-fast-fmuls") == 0) {
                     opt_guest |= BINREC_OPT_G_PPC_FAST_FMULS;
                 } else if (strcmp(name, "ppc-fp-zero-sign") == 0) {
@@ -417,6 +419,7 @@ static bool process_command_line(int argc, char **argv)
                     | BINREC_OPT_NATIVE_IEEE_NAN
                     | BINREC_OPT_NATIVE_IEEE_UNDERFLOW;
         opt_guest |= BINREC_OPT_G_PPC_ASSUME_NO_SNAN
+                   | BINREC_OPT_G_PPC_FAST_FCTIW
                    | BINREC_OPT_G_PPC_FAST_FMULS
                    | BINREC_OPT_G_PPC_FAST_STFS
                    | BINREC_OPT_G_PPC_FNMADD_ZERO_SIGN

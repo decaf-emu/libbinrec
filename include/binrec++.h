@@ -64,6 +64,7 @@ namespace Optimize {
     namespace GuestPPC {
         const unsigned int ASSUME_NO_SNAN = BINREC_OPT_G_PPC_ASSUME_NO_SNAN;
         const unsigned int CONSTANT_GQRS = BINREC_OPT_G_PPC_CONSTANT_GQRS;
+        const unsigned int FAST_FCTIW = BINREC_OPT_G_PPC_FAST_FCTIW;
         const unsigned int FAST_FMULS = BINREC_OPT_G_PPC_FAST_FMULS;
         const unsigned int FAST_STFS = BINREC_OPT_G_PPC_FAST_STFS;
         const unsigned int FNMADD_ZERO_SIGN = BINREC_OPT_G_PPC_FNMADD_ZERO_SIGN;
