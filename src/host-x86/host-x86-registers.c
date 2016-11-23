@@ -383,6 +383,29 @@ static void unassign_register(HostX86Context *ctx, int reg_index,
 /*-----------------------------------------------------------------------*/
 
 /**
+ * allocate_callsave_slots:  Allocate frame slots as necessary to save each
+ * register in the given register set.
+ *
+ * [Parameters]
+ *     ctx: Translation context.
+ *     regset: Set of registers to save (X86Register bitmask).
+ */
+static void allocate_callsave_slots(HostX86Context *ctx, uint32_t regset)
+{
+    while (regset) {
+        const int reg = ctz32(regset);
+        regset ^= 1 << reg;
+        if (ctx->stack_callsave[reg] < 0) {
+            const RTLDataType type =
+                reg >= X86_XMM0 ? RTLTYPE_V2_FLOAT64 : RTLTYPE_INT64;
+            ctx->stack_callsave[reg] = allocate_frame_slot(ctx, type);
+        }
+    }
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
  * allocate_regs_for_insn:  Allocate host registers for the given RTL
  * instruction.
  *
@@ -553,21 +576,24 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
             ctx->nontail_call_list = insn->host_data_32;
         }
 
-        uint32_t regs_to_save = 0;
-        uint32_t caller_saved_regs = ~ctx->callee_saved_regs;
-        while (caller_saved_regs) {
-            const int reg = ctz32(caller_saved_regs);
-            caller_saved_regs ^= 1 << reg;
-            if (ctx->reg_map[reg]) {
-                regs_to_save |= 1 << reg;
-                if (ctx->stack_callsave[reg] < 0) {
-                    const RTLDataType type =
-                        reg >= X86_XMM0 ? RTLTYPE_V2_FLOAT64 : RTLTYPE_INT64;
-                    ctx->stack_callsave[reg] = allocate_frame_slot(ctx, type);
-                }
-            }
-        }
+        const uint32_t caller_saved_regs =
+            ~ctx->callee_saved_regs & ~RESERVED_REGS;
+        const uint32_t regs_to_save =
+            caller_saved_regs & (~ctx->regs_free | ctx->early_merge_regs);
+        allocate_callsave_slots(ctx, regs_to_save);
         insn->host_data_32 = regs_to_save;
+
+        /* A function call effectively touches all caller-saved registers,
+         * so block alias merging across a call through any such registers.
+         * However, we honor the semantic that CALL_TRANSPARENT should have
+         * minimal effect on register allocation, at the cost of having to
+         * scan backward from an alias merge to update all CALL_TRANSPARENT
+         * save masks in the same block when the merge register is chosen. */
+        if (insn->opcode == RTLOP_CALL_TRANSPARENT) {
+            ctx->have_call_transparent = true;
+        } else {
+            ctx->block_regs_touched |= caller_saved_regs;
+        }
     }
 
     if (dest) {
@@ -760,6 +786,27 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
                     ASSERT(ctx->regs[prev_store_reg].host_allocated);
                     ctx->blocks[prev_block].end_live |=
                         1 << ctx->regs[prev_store_reg].host_reg;
+                }
+                /* If we're merging through a caller-saved register and
+                 * we've seen any CALL_TRANSPARENT instructions in this
+                 * block, scan back and add this register to all such
+                 * instructions' save bitmasks.  (We don't need to check
+                 * CALL instructions because those block merging through
+                 * all caller-saved registers.) */
+                if (ctx->have_call_transparent) {
+                    const uint32_t caller_saved_regs =
+                        ~ctx->callee_saved_regs & ~RESERVED_REGS;
+                    if (caller_saved_regs & (1 << host_merge)) {
+                        for (int i = insn_index - 1;
+                             i >= unit->blocks[block_index].first_insn; i--)
+                        {
+                            if (unit->insns[i].opcode==RTLOP_CALL_TRANSPARENT) {
+                                unit->insns[i].host_data_32 |= 1 << host_merge;
+                                allocate_callsave_slots(
+                                    ctx, unit->insns[i].host_data_32);
+                            }
+                        }
+                    }
                 }
             }
         }  // if (insn->opcode == RTLOP_GET_ALIAS)
@@ -1520,6 +1567,7 @@ static bool allocate_regs_for_block(HostX86Context *ctx, int block_index)
         }   // for each instruction
     }  // if MERGE_REGS
 
+    ctx->have_call_transparent = false;
     for (int insn_index = block->first_insn; insn_index <= block->last_insn;
          insn_index++)
     {

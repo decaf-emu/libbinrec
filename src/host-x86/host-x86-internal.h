@@ -250,6 +250,10 @@ typedef struct HostX86Context {
     /* Bitmap of registers reserved for alias merging (used with the
      * MERGE_REGS optimization). */
     uint32_t early_merge_regs;
+    /* Flag indicating whether a CALL_TRANSPARENT has been seen in the
+     * current block.  Used by the register allocator to record whether
+     * alias merges need to update preceding call instruction save masks. */
+    bool have_call_transparent;
 
     /* Register whose state is currently reflected in the Z flag, or 0 if
      * none/unknown. */
