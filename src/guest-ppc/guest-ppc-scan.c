@@ -445,7 +445,6 @@ static inline void update_used_changed(
         if (insn_rA(insn)) {
             mark_gpr_used(block, insn_rA(insn));
         }
-        // FIXME: this shouldn't cause the ps0 value to get copied to ps1
         mark_fpr_used(block, insn_frD(insn), false);
         break;
 
@@ -466,7 +465,6 @@ static inline void update_used_changed(
       case OPCD_STFSU:
         mark_gpr_used(block, insn_rA(insn));
         mark_fpr_used(block, insn_frD(insn), false);
-        // FIXME: as above
         mark_gpr_changed(block, insn_rA(insn));
         break;
 
