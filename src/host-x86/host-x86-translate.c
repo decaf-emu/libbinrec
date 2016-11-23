@@ -3228,6 +3228,11 @@ static bool translate_block(HostX86Context *ctx, int block_index)
             const bool is64 = int_type_is_64(unit->regs[dest].type);
             const X86Opcode opcode = (insn->opcode == RTLOP_SEXT8
                                       ? X86OP_MOVSX_Gv_Eb : X86OP_MOVSX_Gv_Ew);
+            if (insn->opcode == RTLOP_SEXT8 && !is64
+             && !is_spilled(ctx, insn_index, src1)) {
+                maybe_append_empty_rex(&code, ctx->regs[src1].host_reg,
+                                       host_dest, -1);
+            }
             append_insn_ModRM_ctx(&code, is64, opcode, host_dest,
                                   ctx, insn_index, src1);
             break;
