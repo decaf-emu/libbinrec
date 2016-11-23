@@ -10,7 +10,7 @@
 #include "tests/guest-ppc/insn/common.h"
 
 static const uint8_t input[] = {
-    0x20,0x60,0xAB,0xCD,  // subfic r3,r0,-21555
+    0x20,0x60,0xFF,0xFF,  // subfic r3,r0,-1
 };
 
 static const unsigned int guest_opt = 0;
@@ -23,11 +23,11 @@ static const char expected[] =
     "    0: LOAD_ARG   r1, 0\n"
     "    1: LOAD_ARG   r2, 1\n"
     "    2: GET_ALIAS  r3, a2\n"
-    "    3: LOAD_IMM   r4, -21555\n"
+    "    3: LOAD_IMM   r4, -1\n"
     "    4: SUB        r5, r4, r3\n"
     "    5: SET_ALIAS  a3, r5\n"
     "    6: GET_ALIAS  r6, a4\n"
-    "    7: SLTUI      r7, r5, -21554\n"
+    "    7: LOAD_IMM   r7, 1\n"
     "    8: BFINS      r8, r6, r7, 29, 1\n"
     "    9: SET_ALIAS  a4, r8\n"
     "   10: LOAD_IMM   r9, 4\n"

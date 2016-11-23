@@ -27,7 +27,7 @@ static const char expected[] =
     "    4: SUB        r5, r4, r3\n"
     "    5: SET_ALIAS  a3, r5\n"
     "    6: GET_ALIAS  r6, a4\n"
-    "    7: SGTU       r7, r4, r5\n"
+    "    7: SLTUI      r7, r5, 4661\n"
     "    8: BFINS      r8, r6, r7, 29, 1\n"
     "    9: SET_ALIAS  a4, r8\n"
     "   10: LOAD_IMM   r9, 4\n"

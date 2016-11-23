@@ -3,6 +3,7 @@
 # No copyright is claimed on this file.
 #
 # Update history:
+#    - 2016-11-23: Added tests for subfic/subfic when rA has the value 0.
 #    - 2016-11-21: Added tests to verify the behavior of stfs with respect
 #         to double-precision values.
 #    - 2016-11-19: Added an IGNORE_FPSCR_STATE symbol (disabled by default)
@@ -216,7 +217,11 @@ TEST_PAIRED_SINGLE = 1
 .endif
 
 # TEST_UNDOCUMENTED:  Set this to 1 to test the behavior of undocumented
-# or documented-as-undefined instruction formats.
+# or documented-as-undefined instruction formats.  (This does not cover
+# tests of undocumented but observed behavior of documented instruction
+# formats, such as executing single-precision floating-point operations
+# in double precision or faulty interlocking between double-precision and
+# paired-single instructions.)
 .ifndef TEST_UNDOCUMENTED
 TEST_UNDOCUMENTED = 1
 .endif
@@ -2899,10 +2904,25 @@ get_load_address:
    bl record
    li %r7,-1
    bl check_alu
-0: li %r0,1
-   subfic %r3,%r0,1
+0: li %r3,1
+   subfic %r3,%r3,1
    bl record
    li %r7,0
+   bl check_alu_ca
+0: li %r7,0
+   subfic %r3,%r7,1
+   bl record
+   li %r7,1
+   bl check_alu_ca
+0: li %r8,0
+   subfic %r3,%r8,0
+   bl record
+   li %r7,0
+   bl check_alu_ca
+0: li %r9,0
+   subfic %r3,%r9,-1
+   bl record
+   li %r7,-1
    bl check_alu_ca
 
    # addc
@@ -2999,6 +3019,12 @@ get_load_address:
    bl record
    li %r7,-5
    bl check_alu
+0: li %r3,0
+   li %r9,9
+   subfc %r3,%r3,%r9
+   bl record
+   li %r7,9
+   bl check_alu_ca
 
    # subfc.
 0: li %r8,4

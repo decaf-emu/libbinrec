@@ -7595,14 +7595,19 @@ static inline void translate_insn(
 
       case OPCD_SUBFIC: {
         const int rA = get_gpr(ctx, insn_rA(insn));
-        const int imm = rtl_imm32(unit, insn_SIMM(insn));
+        const int32_t imm = insn_SIMM(insn);
+        const int imm_reg = rtl_imm32(unit, imm);
         const int result = rtl_alloc_register(unit, RTLTYPE_INT32);
-        rtl_add_insn(unit, RTLOP_SUB, result, imm, rA, 0);
+        rtl_add_insn(unit, RTLOP_SUB, result, imm_reg, rA, 0);
         set_gpr(ctx, insn_rD(insn), result);
 
         const int xer = get_xer(ctx);
         const int ca = rtl_alloc_register(unit, RTLTYPE_INT32);
-        rtl_add_insn(unit, RTLOP_SGTU, ca, imm, result, 0);
+        if (imm == -1) {
+            rtl_add_insn(unit, RTLOP_LOAD_IMM, ca, 0, 0, 1);
+        } else {
+            rtl_add_insn(unit, RTLOP_SLTUI, ca, result, 0, imm+1);
+        }
         const int new_xer = rtl_alloc_register(unit, RTLTYPE_INT32);
         rtl_add_insn(unit, RTLOP_BFINS, new_xer, xer, ca, XER_CA_SHIFT | 1<<8);
         set_xer(ctx, new_xer);
