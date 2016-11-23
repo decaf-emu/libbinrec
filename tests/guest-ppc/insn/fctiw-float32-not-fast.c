@@ -14,8 +14,7 @@ static const uint8_t input[] = {
     0xFC,0x20,0x08,0x1C,  // fctiw f1,f1
 };
 
-static const unsigned int guest_opt = BINREC_OPT_G_PPC_NO_FPSCR_STATE
-                                    | BINREC_OPT_G_PPC_FAST_FCTIW;
+static const unsigned int guest_opt = BINREC_OPT_G_PPC_NO_FPSCR_STATE;
 static const unsigned int common_opt = 0;
 
 static const bool expected_success = true;
@@ -44,11 +43,22 @@ static const char expected[] =
     "   19: LABEL      L1\n"
     "   20: SET_ALIAS  a2, r7\n"
     "   21: LABEL      L2\n"
-    "   22: FCLEAREXC  r14, r9\n"
-    "   23: FSETSTATE  r14\n"
-    "   24: LOAD_IMM   r15, 8\n"
-    "   25: SET_ALIAS  a1, r15\n"
-    "   26: RETURN\n"
+    "   22: GET_ALIAS  r14, a2\n"
+    "   23: BITCAST    r15, r4\n"
+    "   24: BITCAST    r16, r14\n"
+    "   25: LOAD_IMM   r17, 0x80000000\n"
+    "   26: SEQ        r18, r15, r17\n"
+    "   27: SLLI       r19, r18, 32\n"
+    "   28: LOAD_IMM   r20, 0xFFF8000000000000\n"
+    "   29: OR         r21, r20, r19\n"
+    "   30: OR         r22, r16, r21\n"
+    "   31: BITCAST    r23, r22\n"
+    "   32: SET_ALIAS  a2, r23\n"
+    "   33: FCLEAREXC  r24, r9\n"
+    "   34: FSETSTATE  r24\n"
+    "   35: LOAD_IMM   r25, 8\n"
+    "   36: SET_ALIAS  a1, r25\n"
+    "   37: RETURN\n"
     "\n"
     "Alias 1: int32 @ 956(r1)\n"
     "Alias 2: float64 @ 400(r1)\n"
@@ -58,7 +68,7 @@ static const char expected[] =
     "Block 1: 0 --> [13,15] --> 2,3\n"
     "Block 2: 1 --> [16,18] --> 4\n"
     "Block 3: 0,1 --> [19,20] --> 4\n"
-    "Block 4: 3,2 --> [21,26] --> <none>\n"
+    "Block 4: 3,2 --> [21,37] --> <none>\n"
     ;
 
 #include "tests/rtl-disasm-test.i"

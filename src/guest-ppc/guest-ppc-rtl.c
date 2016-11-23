@@ -3084,8 +3084,12 @@ static void translate_fctiw(GuestPPCContext *ctx, uint32_t insn,
         ctx->last_set.fpscr = -1;
         ctx->live.fr_fi_fprf = 0;
         ctx->last_set.fr_fi_fprf = -1;
-        flush_fpr(ctx, insn_frD(insn), true);
     }
+
+    /* fctiw[z]-specific logic: We have to flush the output register even
+     * if NO_FPSCR_STATE is set because we might need to rewrite the
+     * output to INT32_MAX. */
+    flush_fpr(ctx, insn_frD(insn), true);
 
     const int fpstate = rtl_alloc_register(unit, RTLTYPE_FPSTATE);
     rtl_add_insn(unit, RTLOP_FGETSTATE, fpstate, 0, 0, 0);
@@ -3155,9 +3159,30 @@ static void translate_fctiw(GuestPPCContext *ctx, uint32_t insn,
         const int old_result = rtl_alloc_register(unit, RTLTYPE_FLOAT64);
         rtl_add_insn(unit, RTLOP_GET_ALIAS,
                      old_result, 0, 0, ctx->alias.fpr[insn_frD(insn)]);
+        RTLDataType frB_bits_type;
+        uint64_t negative_zero_val;
+        if (unit->regs[frB].type == RTLTYPE_FLOAT32) {
+            frB_bits_type = RTLTYPE_INT32;
+            negative_zero_val = UINT64_C(1) << 31;
+        } else {
+            frB_bits_type = RTLTYPE_INT64;
+            negative_zero_val = UINT64_C(1) << 63;
+        }
+        const int frB_bits = rtl_alloc_register(unit, frB_bits_type);
+        rtl_add_insn(unit, RTLOP_BITCAST, frB_bits, frB, 0, 0);
         const int bits = rtl_alloc_register(unit, RTLTYPE_INT64);
         rtl_add_insn(unit, RTLOP_BITCAST, bits, old_result, 0, 0);
-        const int high_word = rtl_imm64(unit, 0xFFF8000000000000);
+        const int negative_zero = rtl_alloc_register(unit, frB_bits_type);
+        rtl_add_insn(unit, RTLOP_LOAD_IMM,
+                     negative_zero, 0, 0, negative_zero_val);
+        const int is_neg_zero = rtl_alloc_register(unit, RTLTYPE_INT64);
+        rtl_add_insn(unit, RTLOP_SEQ, is_neg_zero, frB_bits, negative_zero, 0);
+        const int inz_shifted = rtl_alloc_register(unit, RTLTYPE_INT64);
+        rtl_add_insn(unit, RTLOP_SLLI, inz_shifted, is_neg_zero, 0, 32);
+        const int high_word_base = rtl_imm64(unit, 0xFFF8000000000000);
+        const int high_word = rtl_alloc_register(unit, RTLTYPE_INT64);
+        rtl_add_insn(unit, RTLOP_OR,
+                     high_word, high_word_base, inz_shifted, 0);
         const int new_bits = rtl_alloc_register(unit, RTLTYPE_INT64);
         rtl_add_insn(unit, RTLOP_OR, new_bits, bits, high_word, 0);
         const int new_result = rtl_alloc_register(unit, RTLTYPE_FLOAT64);

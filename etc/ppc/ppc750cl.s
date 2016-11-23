@@ -11248,7 +11248,8 @@ get_load_address:
    # fctiw (high word of result)
    # The PowerPC architecture specification states that the high 32 bits
    # of the output register are undefined, but the 750CL sets them to
-   # 0xFFF80000 (turning the entire register into a NaN).
+   # 0xFFF8000x (turning the entire register into a NaN), where x is 1 if
+   # the input was negative zero (0x80000000_00000000) and 0 otherwise.
 0: fmr %f5,%f0
    fctiw %f5,%f0
    bl record
@@ -11288,6 +11289,22 @@ get_load_address:
    lwz %r7,4(%r4)
    bne 1f
    cmpwi %r7,-1
+   beq 0f
+1: stw %r3,8(%r6)
+   stw %r7,12(%r6)
+   addi %r6,%r6,32
+0: fmr %f5,%f0
+   fneg %f4,%f0
+   fctiw %f5,%f4
+   bl record
+   stfd %f5,0(%r4)
+   lwz %r3,0(%r4)
+   lis %r7,0xFFF8
+   ori %r7,%r7,1
+   cmpw %r3,%r7
+   lwz %r7,4(%r4)
+   bne 1f
+   cmpwi %r7,0
    beq 0f
 1: stw %r3,8(%r6)
    stw %r7,12(%r6)
@@ -11400,6 +11417,22 @@ get_load_address:
    lwz %r7,4(%r4)
    bne 1f
    cmpwi %r7,-1
+   beq 0f
+1: stw %r3,8(%r6)
+   stw %r7,12(%r6)
+   addi %r6,%r6,32
+0: fmr %f5,%f0
+   fneg %f4,%f0
+   fctiwz %f5,%f4
+   bl record
+   stfd %f5,0(%r4)
+   lwz %r3,0(%r4)
+   lis %r7,0xFFF8
+   ori %r7,%r7,1
+   cmpw %r3,%r7
+   lwz %r7,4(%r4)
+   bne 1f
+   cmpwi %r7,0
    beq 0f
 1: stw %r3,8(%r6)
    stw %r7,12(%r6)
