@@ -2062,7 +2062,7 @@ static bool translate_call(HostX86Context *ctx, int block_index,
     binrec_t * const handle = ctx->handle;
     const RTLUnit * const unit = ctx->unit;
     const RTLBlock * const block = &unit->blocks[block_index];
-    const RTLInsn * const insn = &unit->insns[insn_index];
+    RTLInsn * const insn = &unit->insns[insn_index];
     const int src1 = insn->src1;
     const int src2 = insn->src2;
     const int src3 = insn->src3;
@@ -2104,6 +2104,13 @@ static bool translate_call(HostX86Context *ctx, int block_index,
      * allocator will let us know which registers are live via the
      * host_data_32 field in the CALL instruction. */
     if (!is_tail) {
+        if (insn->dest) {
+            /* Make sure we don't overwrite the result after the call!
+             * If the result register is in the save set, it means that
+             * register spilled whatever was previously living there, so
+             * remove it from the save set. */
+            insn->host_data_32 &= ~(1 << ctx->regs[insn->dest].host_reg);
+        }
         uint32_t save_regs = insn->host_data_32;
         while (save_regs) {
             const int reg = ctz32(save_regs);
