@@ -4,6 +4,9 @@
 #
 # Update history:
 #    - 2016-11-23: Added tests for subfic/subfic when rA has the value 0.
+#    - 2016-11-23: Added more tests for undocumented instruction patterns.
+#    - 2016-11-23: Renamed TEST_UNDOCUMENTED to TEST_UNDOCUMENTED_INSNS to
+#         better reflect its purpose.
 #    - 2016-11-21: Added tests to verify the behavior of stfs with respect
 #         to double-precision values.
 #    - 2016-11-19: Added an IGNORE_FPSCR_STATE symbol (disabled by default)
@@ -216,14 +219,14 @@ TEST_RECIPROCAL_TABLES = 0
 TEST_PAIRED_SINGLE = 1
 .endif
 
-# TEST_UNDOCUMENTED:  Set this to 1 to test the behavior of undocumented
+# TEST_UNDOCUMENTED_INSNS:  Set this to 1 to test the behavior of undocumented
 # or documented-as-undefined instruction formats.  (This does not cover
 # tests of undocumented but observed behavior of documented instruction
 # formats, such as executing single-precision floating-point operations
 # in double precision or faulty interlocking between double-precision and
 # paired-single instructions.)
-.ifndef TEST_UNDOCUMENTED
-TEST_UNDOCUMENTED = 1
+.ifndef TEST_UNDOCUMENTED_INSNS
+TEST_UNDOCUMENTED_INSNS = 1
 .endif
 
 
@@ -588,7 +591,7 @@ get_load_address:
    bc 20,0,0f
    bl record
    addi %r6,%r6,32
-.if TEST_UNDOCUMENTED
+.if TEST_UNDOCUMENTED_INSNS
    # Check that the "z" bits in 1z1zz are ignored.
    # Some assemblers reject instructions with z != 0, so code them directly.
 0: .int 0x42A0000C  # bc 21,0,0f
@@ -617,7 +620,7 @@ get_load_address:
 0: bc 20,2,0f
    bl record
    addi %r6,%r6,32
-.if TEST_UNDOCUMENTED
+.if TEST_UNDOCUMENTED_INSNS
 0: .int 0x42A2000C  # bc 21,2,0f
    bl record
    addi %r6,%r6,32
@@ -742,7 +745,7 @@ get_load_address:
 0: bdzt eq,0f       # Taken.
    bl record
    addi %r6,%r6,32
-.if TEST_UNDOCUMENTED
+.if TEST_UNDOCUMENTED_INSNS
    # Same with z=1.
 0: li %r3,2
    mtctr %r3
@@ -785,7 +788,7 @@ get_load_address:
 0: bdnzt eq,0f      # Taken.
    bl record
    addi %r6,%r6,32
-.if TEST_UNDOCUMENTED
+.if TEST_UNDOCUMENTED_INSNS
    # Same with z=1.
 0: li %r3,1
    mtctr %r3
@@ -851,7 +854,7 @@ get_load_address:
 0: bdzf gt,0f       # Taken.
    bl record
    addi %r6,%r6,32
-.if TEST_UNDOCUMENTED
+.if TEST_UNDOCUMENTED_INSNS
    # Same with z=1.
 0: li %r3,2
    mtctr %r3
@@ -894,7 +897,7 @@ get_load_address:
 0: bdnzf gt,0f      # Taken.
    bl record
    addi %r6,%r6,32
-.if TEST_UNDOCUMENTED
+.if TEST_UNDOCUMENTED_INSNS
    # Same with z=1.
 0: li %r3,1
    mtctr %r3
@@ -3928,7 +3931,7 @@ get_load_address:
    bl record
    li %r7,0x1112
    bl check_alu
-.if TEST_UNDOCUMENTED
+.if TEST_UNDOCUMENTED_INSNS
    # Check that the version of mulhw with the OE bit set doesn't affect XER
    # (OE is a reserved field in the mulh* instructions, but the CPU accepts
    # this encoding and treats it as if OE=0).
@@ -3966,7 +3969,7 @@ get_load_address:
    bl record
    li %r7,0x1112
    bl check_alu_undef
-.if TEST_UNDOCUMENTED
+.if TEST_UNDOCUMENTED_INSNS
 0: lis %r3,0x6000
    addis %r3,%r3,0x6000
    mtxer %r3
@@ -4003,7 +4006,7 @@ get_load_address:
    bl record
    li %r7,0x1112
    bl check_alu
-.if TEST_UNDOCUMENTED
+.if TEST_UNDOCUMENTED_INSNS
 0: lis %r3,0x6000
    addis %r3,%r3,0x6000
    mtxer %r3
@@ -4039,7 +4042,7 @@ get_load_address:
    bl record
    li %r7,0x1112
    bl check_alu_undef
-.if TEST_UNDOCUMENTED
+.if TEST_UNDOCUMENTED_INSNS
 0: lis %r3,0x6000
    addis %r3,%r3,0x6000
    mtxer %r3
@@ -8230,7 +8233,7 @@ get_load_address:
    bl add_fpscr_vxsnan
    bl check_fpu_pnorm
 
-.if TEST_UNDOCUMENTED
+.if TEST_UNDOCUMENTED_INSNS
    # frsp (nonzero frA -- see notes at fadd)
 0: .int 0xFC6BC018  # frsp %f3,%f24,frA=%f11
    bl record
@@ -8372,7 +8375,7 @@ get_load_address:
    bl add_fpscr_vxsnan
    bl check_fpu_pnorm
 
-.if TEST_UNDOCUMENTED
+.if TEST_UNDOCUMENTED_INSNS
    # fadd (nonzero frC)
    # The PowerPC spec requires frC to be zero, but the 750CL just ignores
    # the frC field.  Likewise for the unused fields in the other 1- and
@@ -8380,7 +8383,7 @@ get_load_address:
    # frsp and fctiw[z], suggesting that the processor reads the full
    # 10-bit XO field for OPCD 0x3F with XO bit 0x10 clear.  We use a SNaN
    # in the ignored fields to verify that the operand is in fact ignored.
-   .int 0xFC61C2EA      # fadd %f3,%f1,%f24,frC=%f11
+0: .int 0xFC61C2EA      # fadd %f3,%f1,%f24,frC=%f11
    bl record
    fmr %f4,%f30
    bl check_fpu_pnorm
@@ -8481,9 +8484,9 @@ get_load_address:
    bl check_fpu_pnorm
    mtfsfi 7,0
 
-.if TEST_UNDOCUMENTED
+.if TEST_UNDOCUMENTED_INSNS
    # fadds (nonzero frC)
-   .int 0xEC61CAEA      # fadds %f3,%f1,%f25,frC=%f11
+0: .int 0xEC61CAEA      # fadds %f3,%f1,%f25,frC=%f11
    bl record
    fmr %f4,%f30
    bl check_fpu_pnorm_inex
@@ -8586,9 +8589,9 @@ get_load_address:
    bl add_fpscr_vxsnan
    bl check_fpu_pnorm
 
-.if TEST_UNDOCUMENTED
+.if TEST_UNDOCUMENTED_INSNS
    # fsub (nonzero frC)
-   .int 0xFC7E0AE8      # fsub %f3,%f30,%f1,frC=%f11
+0: .int 0xFC7E0AE8      # fsub %f3,%f30,%f1,frC=%f11
    bl record
    fmr %f4,%f24
    bl check_fpu_pnorm
@@ -8683,7 +8686,7 @@ get_load_address:
    bl check_fpu_pnorm
    mtfsfi 7,0
 
-.if TEST_UNDOCUMENTED
+.if TEST_UNDOCUMENTED_INSNS
    # fsubs (nonzero frC)
 0: lfd %f13,56(%r31)
    .int 0xEC7B6AE8      # fsubs %f3,%f27,%f13,frC=%f11
@@ -8830,7 +8833,7 @@ get_load_address:
    bl add_fpscr_vxsnan
    bl check_fpu_pnorm
 
-.if TEST_UNDOCUMENTED
+.if TEST_UNDOCUMENTED_INSNS
    # fmul (nonzero frB)
 0: .int 0xFC625F32      # fmul %f3,%f2,%f28,frB=%f11
    bl record
@@ -9180,7 +9183,7 @@ get_load_address:
    lfd %f4,0(%r4)
    bl check_fpu_nan
 
-.if TEST_UNDOCUMENTED
+.if TEST_UNDOCUMENTED_INSNS
    # fmuls (nonzero frB)
 0: .int 0xEC625F72      # fmuls %f3,%f2,%f29,frB=%f11
    bl record
@@ -9317,7 +9320,7 @@ get_load_address:
    bl add_fpscr_vxsnan
    bl check_fpu_pnorm
 
-.if TEST_UNDOCUMENTED
+.if TEST_UNDOCUMENTED_INSNS
    # fdiv (nonzero frC)
 0: .int 0xFC7812E4      # fdiv %f3,%f24,%f2,frC=%f11
    bl record
@@ -9419,7 +9422,7 @@ get_load_address:
    lfs %f4,8(%r4)
    bl check_fpu_pnorm
 
-.if TEST_UNDOCUMENTED
+.if TEST_UNDOCUMENTED_INSNS
    # fdivs (nonzero frC)
 0: .int 0xEC7912E4      # fdivs %f3,%f25,%f2,frC=%f11
    bl record
@@ -11241,7 +11244,7 @@ get_load_address:
    bl add_fpscr_vxcvi
    bl check_fctiw
 
-.if TEST_UNDOCUMENTED
+.if TEST_UNDOCUMENTED_INSNS
    # fctiw (nonzero frA)
 0: .int 0xFC6B001C  # fctiw %f3,%f0,frA=%f11
    bl record
@@ -11308,7 +11311,7 @@ get_load_address:
    mr %r7,%r26
    bl check_fctiw_inex
 
-.if TEST_UNDOCUMENTED
+.if TEST_UNDOCUMENTED_INSNS
    # fctiwz (nonzero frA)
 0: .int 0xFC6B001E  # fctiwz %f3,%f0,frA=%f11
    bl record
@@ -11512,7 +11515,7 @@ get_load_address:
    bl add_fpscr_vxsnan
    bl check_fpu_estimate_pnorm
 
-.if TEST_UNDOCUMENTED
+.if TEST_UNDOCUMENTED_INSNS
    # fres (nonzero frA and frC)
 0: .int 0xEC6B12F0      # fres %f3,%f2,frA=%f11,frC=%f11
    bl record
@@ -11900,7 +11903,7 @@ get_load_address:
    bl add_fpscr_vxsnan
    bl check_fpu_estimate_pnorm
 
-.if TEST_UNDOCUMENTED
+.if TEST_UNDOCUMENTED_INSNS
    # frsqrte (nonzero frA and frC)
 0: .int 0xFC6BEAF4      # frsqrte %f3,%f29,frA=%f11,frC=%f11
    bl record
@@ -16216,6 +16219,15 @@ get_load_address:
    bl check_ps_pnorm
    mtfsfi 7,0
 
+.if TEST_UNDOCUMENTED_INSNS
+   # ps_add (nonzero frC)
+0: .int 0x1061C2EA      # ps_add %f3,%f1,%f24,frC=%f11
+   bl record
+   fmr %f4,%f30
+   fmr %f5,%f4
+   bl check_ps_pnorm
+.endif
+
    # ps_add.
 0: ps_add. %f3,%f1,%f11  # normal + SNaN
    bl record
@@ -16876,6 +16888,15 @@ get_load_address:
    bl check_ps_pnorm
    mtfsfi 7,0
 
+.if TEST_UNDOCUMENTED_INSNS
+   # ps_sub (nonzero frC)
+0: .int 0x107E0AE8      # ps_sub %f3,%f30,%f1,frC=%f11
+   bl record
+   fmr %f4,%f24
+   fmr %f5,%f4
+   bl check_ps_pnorm
+.endif
+
    # ps_sub.
 0: ps_sub. %f3,%f1,%f11  # normal - SNaN
    bl record
@@ -17368,6 +17389,15 @@ get_load_address:
    fmr %f5,%f0
    bl check_ps_nan
 
+.if TEST_UNDOCUMENTED_INSNS
+   # ps_mul (nonzero frB)
+0: .int 0x10625F32      # ps_mul %f3,%f2,%f28,frC=%f11
+   bl record
+   fmr %f4,%f24
+   fmr %f5,%f4
+   bl check_ps_pnorm
+.endif
+
    # ps_mul.
 0: ps_mul. %f3,%f1,%f11  # normal * SNaN
    bl record
@@ -17449,6 +17479,18 @@ get_load_address:
    bl add_fpscr_xx_fi
    bl check_ps_pinf
    mtfsb0 24
+
+.if TEST_UNDOCUMENTED_INSNS
+   # ps_muls0 (nonzero frB)
+0: ps_merge00 %f4,%f1,%f7
+   ps_merge00 %f5,%f2,%f11
+   .int 0x10645958      # ps_muls0 %f3,%f4,%f5,frB=%f11
+   bl record
+   fmr %f4,%f2
+   fmr %f5,%f9
+   bl add_fpscr_ox
+   bl check_ps_pnorm_inex
+.endif
 
    # ps_muls0.
 0: ps_merge00 %f5,%f1,%f7   # (normal,normal) * NaN = (NaN,NaN)
@@ -17537,6 +17579,18 @@ get_load_address:
    bl add_fpscr_xx_fi
    bl check_ps_pinf
    mtfsb0 24
+
+.if TEST_UNDOCUMENTED_INSNS
+   # ps_muls1 (nonzero frB)
+0: ps_merge00 %f4,%f1,%f7
+   ps_merge00 %f5,%f11,%f2
+   .int 0x1064595A      # ps_muls0 %f3,%f4,%f5,frB=%f11
+   bl record
+   fmr %f4,%f2
+   fmr %f5,%f9
+   bl add_fpscr_ox
+   bl check_ps_pnorm_inex
+.endif
 
    # ps_muls1.
 0: ps_merge00 %f5,%f1,%f7   # (normal,normal) * NaN = (NaN,NaN)
@@ -17842,6 +17896,15 @@ get_load_address:
    lfs %f4,8(%r4)
    fmr %f5,%f0
    bl check_ps_pnorm
+
+.if TEST_UNDOCUMENTED_INSNS
+   # ps_div (nonzero frC)
+0: .int 0x107812E4      # ps_div %f3,%f24,%f2,frC=%f11
+   bl record
+   fmr %f4,%f28
+   fmr %f5,%f4
+   bl check_ps_pnorm
+.endif
 
    # ps_div.
 0: ps_div. %f3,%f1,%f11  # normal / SNaN
@@ -19902,6 +19965,17 @@ get_load_address:
    bl check_ps_pnorm
    mtfsb0 27
 
+.if TEST_UNDOCUMENTED_INSNS
+   # ps_res (nonzero frA and frC)
+0: .int 0x106B12F0      # ps_res %f3,%f2,frA=%f11,frC=%f11
+   bl record
+   lfd %f4,256(%r31)
+   fmr %f5,%f4
+   lfd %f6,264(%r31)
+   fmr %f7,%f6
+   bl check_ps_estimate_pnorm
+.endif
+
    # ps_res.
 0: ps_res. %f3,%f11     # SNaN
    bl record
@@ -20477,6 +20551,18 @@ get_load_address:
    stw %r8,16(%r6)
    stw %r9,20(%r6)
    addi %r6,%r6,32
+
+.if TEST_UNDOCUMENTED_INSNS
+   # ps_rsqrte (nonzero frA and frC)
+0: mtfsf 255,%f0
+   .int 0x106BEAF4      # ps_rsqrte %f3,%f29,frA=%f11,frC=%f11
+   bl record
+   lfd %f4,272(%r31)
+   fmr %f5,%f4
+   lfd %f6,280(%r31)
+   fmr %f7,%f6
+   bl check_ps_estimate_pnorm
+.endif
 
    # ps_rsqrte.
 0: mtcr %r0
