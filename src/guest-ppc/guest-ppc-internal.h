@@ -35,36 +35,32 @@ struct RTLInsn;
  *     750CL manual, and it should be reasonable to assume that real-world
  *     programs do not rely on such behavior.
  *
- * During the initial scan, we track the type of data stored in each FPR
- * based on the instructions with which it is used.  We then allocate a
- * primary alias for each FPR used in the translation unit, of type
- * V2_FLOAT64 if the register is ever used in paired-single mode and
- * FLOAT64 (scalar) if not; the primary alias is bound to the appropriate
- * location in the processor state block.  Additional aliases are allocated
- * for each data type other than that of the primary alias; these aliases
- * will hold the current value across basic blocks which use the regsiter
- * in the same mode, to avoid having to convert between formats at every
- * block boundary.
- * FIXME: we currently don't have additional aliases; edit this later
+ * During the initial scan, we track whether each FPR is used with any
+ * paired-single instructions.  We then allocate an alias for each FPR used
+ * in the translation unit, of type V2_FLOAT64 if the register is ever used
+ * in paired-single mode and FLOAT64 (scalar) if not, bound to the
+ * appropriate location in the processor state block.
  *
- * When a format conversion is needed, it is performed according to the
- * following table:
+ * During actual translation, the translator tracks the current data type
+ * stored in the register, to avoid converting back to the alias type on
+ * every operation.  When a format conversion is needed, it is performed
+ * according to the following table:
  *
  *    V2_FLOAT64 -> FLOAT32: extract element 0, convert to FLOAT32
  *    V2_FLOAT64 -> FLOAT64: extract element 0
  *    V2_FLOAT64 -> V2_FLOAT32: convert to V2_FLOAT32
  *
  *    V2_FLOAT32 -> FLOAT32: extract element 0
- *    V2_FLOAT32 -> FLOAT64: convert to V2_FLOAT64, copy to primary alias,
+ *    V2_FLOAT32 -> FLOAT64: convert to V2_FLOAT64, copy to alias,
  *                              extract element 0
  *    V2_FLOAT32 -> V2_FLOAT64: convert to V2_FLOAT64
  *
  *    FLOAT64 -> FLOAT32: convert to FLOAT32
- *    FLOAT64 -> V2_FLOAT32: load primary alias, insert into element 0,
- *                              convert result to V2_FLOAT32
- *    FLOAT64 -> V2_FLOAT64: load primary alias, insert into element 0,
+ *    FLOAT64 -> V2_FLOAT32: load alias, insert into element 0, convert
+ *                              result to V2_FLOAT32
+ *    FLOAT64 -> V2_FLOAT64: load alias, insert into element 0
  *
- *    FLOAT32 -> FLOAT64: convert to FLOAT64; if primary alias is not
+ *    FLOAT32 -> FLOAT64: convert to FLOAT64; if alias is not of type
  *                           V2_FLOAT64, store to second slot in PSB
  *    FLOAT32 -> V2_FLOAT32: broadcast to V2_FLOAT32
  *    FLOAT32 -> V2_FLOAT64: convert to FLOAT64, broadcast to V2_FLOAT64
