@@ -3063,7 +3063,10 @@ static bool translate_block(HostX86Context *ctx, int block_index)
             /* We need to store to memory if (1) this is a terminal block,
              * (2) at least one successor block doesn't both (a) have a
              * mergeable GET_ALIAS and (b) SET_ALIAS the same alias, or
-             * (3) this block contains a non-tail CALL or CALL_TRANSPARENT. */
+             * (3) this block or any successor block contains a non-tail
+             * CALL or CALL_TRANSPARENT.  (FIXME: (3) only needs to apply
+             * if the alias has bound storage, but for our purposes it
+             * shouldn't make a difference.) */
             bool need_store =
                 (block->exits[0] < 0 || block_info->has_nontail_call);
             for (int i = 0; !need_store && i < lenof(block->exits); i++) {
@@ -3073,7 +3076,8 @@ static bool translate_block(HostX86Context *ctx, int block_index)
                         ctx->blocks[successor].alias_load[insn->alias];
                     if (!reg
                      || !ctx->regs[reg].merge_alias
-                     || !ctx->blocks[successor].alias_store[insn->alias]) {
+                     || !ctx->blocks[successor].alias_store[insn->alias]
+                     || ctx->blocks[successor].has_nontail_call) {
                         need_store = true;
                     }
                 }

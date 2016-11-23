@@ -23,6 +23,10 @@ static int add_rtl(RTLUnit *unit)
     EXPECT(reg1 = rtl_alloc_register(unit, RTLTYPE_INT32));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg1, 0, 0, 1));
     EXPECT(rtl_add_insn(unit, RTLOP_SET_ALIAS, 0, reg1, 0, alias));
+    /* The alias will be stored because of the CALL_TRANSPARENT in the
+     * next block.  The register itself is still merged, which could
+     * theoretically avoid a load if the merge occurred before the call,
+     * though in this case it ends up going to and from the stack anyway. */
 
     int reg2, reg3, label;
     EXPECT(label = rtl_alloc_label(unit));
@@ -41,6 +45,7 @@ static int add_rtl(RTLUnit *unit)
 static const uint8_t expected_code[] = {
     0x48,0x83,0xEC,0x18,                // sub $24,%rsp
     0xB8,0x01,0x00,0x00,0x00,           // mov $1,%eax
+    0x89,0x04,0x24,                     // mov %eax,(%rsp)
     0x8B,0xC8,                          // mov %eax,%ecx
     0xB8,0x02,0x00,0x00,0x00,           // mov $2,%eax
     0x48,0x89,0x4C,0x24,0x08,           // mov %rcx,8(%rsp)
