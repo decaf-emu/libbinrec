@@ -3608,7 +3608,7 @@ static bool translate_block(HostX86Context *ctx, int block_index)
                  * (x86 is little-endian, so we don't have to adjust the
                  * load address to do this.) */
                 append_load_gpr(&code, RTLTYPE_INT32, X86_CX,
-                                X86_SP, ctx->regs[src1].spill_offset);
+                                X86_SP, ctx->regs[src2].spill_offset);
             } else if (host_src2 != X86_CX) {
                 const int current_cx = ctx->reg_map[X86_CX];
                 if (!current_cx || unit->regs[current_cx].death < insn_index) {
