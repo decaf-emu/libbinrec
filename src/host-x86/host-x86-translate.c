@@ -2081,11 +2081,11 @@ static bool translate_call(HostX86Context *ctx, int block_index,
      * JMP Ev (without REX, since src1 is loaded to RAX) */
     const int MAX_TAIL_CALL_LEN = MAX_SETUP_LEN + 107 + 2;
     /* Nontail calls: CALL Ev (without REX, since spilled src1 is always
-     * loaded to RAX) + return value copy (with REX) + worst case
-     * save/restore for System V ABI (9x REX GPR store, 8x non-REX XMM
-     * store, 7x REX XMM store) */
+     * loaded to RAX) + return value copy (with REX) + MXCSR exception
+     * clear (24) + worst case save/restore for System V ABI (9x REX GPR
+     * store, 8x non-REX XMM store, 7x REX XMM store) */
     const int MAX_NONTAIL_CALL_LEN =
-        MAX_SETUP_LEN + 2 + 3 + 2 * (9*8 + 8*8 + 7*9);
+        MAX_SETUP_LEN + 2 + 3 + 24 + 2 * (9*8 + 8*8 + 7*9);
     const int max_len = is_tail ? MAX_TAIL_CALL_LEN : MAX_NONTAIL_CALL_LEN;
     if (UNLIKELY(handle->code_len + max_len > handle->code_buffer_size)
      && UNLIKELY(!binrec_ensure_code_space(handle, max_len))) {
@@ -2386,6 +2386,19 @@ static bool translate_call(HostX86Context *ctx, int block_index,
                             ctx->regs[dest].host_reg, X86_AX);
         }
 
+        /* Clear any MXCSR exception flags that might have been set by the
+         * callee. */
+        ASSERT(ctx->stack_mxcsr >= 0);
+        append_insn_ModRM_mem(
+            &code, false, X86OP_MISC_0FAE, X86OP_MISC0FAE_STMXCSR,
+            X86_SP, -1, ctx->stack_mxcsr);
+        append_insn_ModRM_mem(&code, false, X86OP_IMM_Ev_Ib, X86OP_IMM_AND,
+                              X86_SP, -1, ctx->stack_mxcsr);
+        append_imm8(&code, 0xC0);
+        append_insn_ModRM_mem(
+            &code, false, X86OP_MISC_0FAE, X86OP_MISC0FAE_LDMXCSR,
+            X86_SP, -1, ctx->stack_mxcsr);
+
         /* Restore all registers we saved before the call. */
         uint32_t save_regs = insn->host_data_32;
         while (save_regs) {
@@ -2461,7 +2474,7 @@ static bool translate_fcast(HostX86Context *ctx, int insn_index)
         X86_SP, -1, ctx->stack_mxcsr);
     //@ 8 = 44 8B ModRM SIB disp32
     append_load_gpr(&code, RTLTYPE_INT32, temp_gpr, X86_SP, ctx->stack_mxcsr);
-    //@ 8 = 83 ModRM SIB disp32 C0
+    //@ 8 = 83 ModRM SIB disp32 FE
     append_insn_ModRM_mem(&code, false, X86OP_IMM_Ev_Ib, X86OP_IMM_AND,
                           X86_SP, -1, ctx->stack_mxcsr);
     append_imm8(&code, 0xFE);

@@ -594,6 +594,12 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
         } else {
             ctx->block_regs_touched |= caller_saved_regs;
         }
+
+        /* Always allocate a frame slot for MXCSR (if one hasn't been
+         * allocated yet) so we can clear exceptions on return. */
+        if (ctx->stack_mxcsr < 0) {
+            ctx->stack_mxcsr = allocate_frame_slot(ctx, RTLTYPE_INT32);
+        }
     }
 
     if (dest) {
