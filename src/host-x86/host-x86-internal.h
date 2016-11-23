@@ -140,8 +140,10 @@ enum {
 enum {
     LC_FLOAT32_SIGNBIT = 0,     // 1<<31
     LC_FLOAT32_INV_SIGNBIT,     // ~(1<<31)
+    LC_FLOAT32_INV_QUIETBIT,    // ~(1<<22)
     LC_FLOAT64_SIGNBIT,         // 1<<63
     LC_FLOAT64_INV_SIGNBIT,     // ~(1<<63)
+    LC_FLOAT64_INV_QUIETBIT,    // ~(1<<51)
     LC_V2_FLOAT32_SIGNBIT,      // {1<<31, 1<<31}
     LC_V2_FLOAT32_INV_SIGNBIT,  // {~(1<<31), ~(1<<31)}
     LC_V2_FLOAT64_SIGNBIT,      // {1<<63, 1<<63}

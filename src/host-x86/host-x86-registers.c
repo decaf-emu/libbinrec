@@ -1268,13 +1268,6 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
                         | 1 << src2_info->host_reg;
             break;
 
-          case RTLOP_FCAST:
-          case RTLOP_VFCAST:
-            /* Temporary GPR and XMM register needed if the source and
-             * destination are different types. */
-            need_temp = (src1_reg->type != dest_reg->type);
-            break;
-
           case RTLOP_FZCAST:
             /* Temporary needed if converting a 64-bit or spilled 32-bit
              * value. */
@@ -1326,6 +1319,13 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
             } else {
                 need_temp = false;
             }
+            break;
+
+          case RTLOP_FCAST:
+          case RTLOP_VFCAST:
+            /* Temporary GPR needed if the source and destination are
+             * different types. */
+            need_temp = (src1_reg->type != dest_reg->type);
             break;
 
           case RTLOP_LOAD_IMM:
@@ -1409,8 +1409,8 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
             dest_info->host_temp = (uint8_t)temp_reg;
             dest_info->temp_allocated = true;
             ctx->block_regs_touched |= 1 << temp_reg;
-            if (insn->opcode == RTLOP_FCAST || insn->opcode == RTLOP_VFCAST) {
-                /* These need an additional XMM temporary. */
+            if (insn->opcode == RTLOP_VFCAST) {
+                /* This needs an additional XMM temporary. */
                 int temp_xmm = get_xmm(ctx, temp_avoid);
                 if (temp_xmm < 0) {
                     temp_xmm = X86_XMM15;
@@ -1847,10 +1847,16 @@ static void first_pass_for_block(HostX86Context *ctx, int block_index)
           }  // case RTLOP_{SLL,SRL,SRA,ROL,ROR}
 
           case RTLOP_FCAST:
-            /* FCAST touches MXCSR if the types are different. */
+            /* FCAST touches MXCSR and uses a constant if the types are
+             * different. */
             if (unit->regs[insn->dest].type != unit->regs[insn->src1].type) {
                 if (ctx->stack_mxcsr < 0) {
                     ctx->stack_mxcsr = allocate_frame_slot(ctx, RTLTYPE_INT32);
+                }
+                if (unit->regs[insn->dest].type == RTLTYPE_FLOAT64) {
+                    ctx->const_loc[LC_FLOAT64_INV_QUIETBIT] = 1;
+                } else {
+                    ctx->const_loc[LC_FLOAT32_INV_QUIETBIT] = 1;
                 }
             }
             break;

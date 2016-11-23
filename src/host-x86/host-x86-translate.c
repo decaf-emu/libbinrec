@@ -25,8 +25,10 @@ static const struct {
 } local_constants[NUM_LOCAL_CONSTANTS] = {
     [LC_FLOAT32_SIGNBIT       ] = {{0x00,0x00,0x00,0x80}},
     [LC_FLOAT32_INV_SIGNBIT   ] = {{0xFF,0xFF,0xFF,0x7F}},
+    [LC_FLOAT32_INV_QUIETBIT  ] = {{0xFF,0xFF,0xBF,0xFF}},
     [LC_FLOAT64_SIGNBIT       ] = {{0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x80}},
     [LC_FLOAT64_INV_SIGNBIT   ] = {{0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0x7F}},
+    [LC_FLOAT64_INV_QUIETBIT  ] = {{0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xF7,0xFF}},
     [LC_V2_FLOAT32_SIGNBIT    ] = {{0x00,0x00,0x00,0x80,0x00,0x00,0x00,0x80}},
     [LC_V2_FLOAT32_INV_SIGNBIT] = {{0xFF,0xFF,0xFF,0x7F,0xFF,0xFF,0xFF,0x7F}},
     [LC_V2_FLOAT64_SIGNBIT    ] = {{0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x80,
@@ -2459,8 +2461,6 @@ static bool translate_fcast(HostX86Context *ctx, int insn_index)
     const X86Register host_dest = ctx->regs[dest].host_reg;
     ASSERT(ctx->regs[dest].temp_allocated);
     const X86Register temp_gpr = ctx->regs[dest].host_temp;
-    ASSERT(insn->host_data_16 >= X86_XMM0);
-    const X86Register temp_xmm = insn->host_data_16;
 
     const int max_len = 147;  // See "//@" length comments below.
     if (UNLIKELY(ctx->handle->code_len + max_len
@@ -2540,30 +2540,14 @@ static bool translate_fcast(HostX86Context *ctx, int insn_index)
     /* If an exception occurred, a source SNaN was quieted, so we need to
      * clear the quiet bit from the output value. */
     if (rtl_register_is_scalar(&unit->regs[dest])) {
-        //@ f32x2: 6+5+4 = 15
-        //  f64x2: 10+5+4 = 19
         /* Scalar conversions are trivial: we know the sole value had its
          * quiet bit set, so we just need to clear it. */
-        // FIXME: make this a local constant instead of loading it here
-        if (unit->regs[dest].type == RTLTYPE_FLOAT64) {
-            const uint64_t mask = ~(UINT64_C(1) << 51);
-            //@ 10 = 48 Bx imm64
-            append_insn_R(&code, true, X86OP_MOV_rAX_Iv, temp_gpr);
-            append_imm64(&code, mask);
-            //@ 5 = 66 48 0F 6E ModRM
-            append_insn_ModRM_reg(&code, true, X86OP_MOVD_V_E,
-                                  temp_xmm, temp_gpr);
-        } else {
-            const uint32_t mask = ~(UINT32_C(1) << 22);
-            //@ 6 = 41 Bx imm32
-            append_insn_R(&code, false, X86OP_MOV_rAX_Iv, temp_gpr);
-            append_imm32(&code, mask);
-            //@ 5 = 66 45 0F 6E ModRM
-            append_insn_ModRM_reg(&code, false, X86OP_MOVD_V_E,
-                                  temp_xmm, temp_gpr);
-        }
-        //@ 4 = 45 0F 54 ModRM
-        append_insn_ModRM_reg(&code, false, X86OP_ANDPS, host_dest, temp_xmm);
+        const int lc_id = (unit->regs[dest].type == RTLTYPE_FLOAT64)
+            ? LC_FLOAT64_INV_QUIETBIT : LC_FLOAT32_INV_QUIETBIT;
+        const long lc_offset = ctx->const_loc[lc_id];
+        ASSERT(lc_offset);
+        //@ 8 = 44 0F 54 ModRM disp32
+        append_insn_ModRM_riprel(&code, X86OP_ANDPS, host_dest, lc_offset);
 
     } else {
         //@ f32x2: 4+11+9+8+5+6+10+6+4+8 = 71
@@ -2579,6 +2563,8 @@ static bool translate_fcast(HostX86Context *ctx, int insn_index)
          * should avoid reallocating src1 as dest for this instruction). */
         ASSERT(is_spilled(ctx, insn_index, src1)
                || host_dest != ctx->regs[src1].host_reg);
+        ASSERT(insn->host_data_16 >= X86_XMM0);
+        const X86Register temp_xmm = insn->host_data_16;
 
         /* We could almost avoid having to clobber dest and redo the
          * conversion, but PANDN inverts the wrong operand!  Argh! */
