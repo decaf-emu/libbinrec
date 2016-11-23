@@ -6615,8 +6615,10 @@ static inline void translate_x1F(
         /* Optimize an mfcr+rlwinm pair which extracts a single bit from CR.
          * We can only trivially skip the mfcr if the rlwinm reads and
          * writes the same register. */
+        const bool can_skip_insn = (!ctx->handle->pre_insn_callback
+                                    && !ctx->handle->post_insn_callback);
         const uint32_t next_insn =
-            guest_ppc_get_insn_at(ctx, block, address+4);
+            can_skip_insn ? guest_ppc_get_insn_at(ctx, block, address+4) : 0;
         const uint32_t extract_bit_insn =
             OPCD_RLWINM<<26 | insn_rD(insn)<<21 | 31<<6 | 31<<1;
         const uint32_t extract_bit_same_reg_insn =
@@ -6873,7 +6875,9 @@ static inline void translate_x1F(
 
       /* XO_5 = 0x1A */
       case XO_CNTLZW:
-        if (!insn_Rc(insn)
+        if (!ctx->handle->pre_insn_callback
+         && !ctx->handle->post_insn_callback
+         && !insn_Rc(insn)
          && ((guest_ppc_get_insn_at(ctx, block, address+4) & 0xFFE0FFFE)
              == (OPCD_RLWINM<<26 | insn_rA(insn)<<21 | 27<<11 | 5<<6 | 31<<1)))
         {
