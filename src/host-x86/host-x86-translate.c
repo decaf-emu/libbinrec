@@ -3857,6 +3857,10 @@ static bool translate_block(HostX86Context *ctx, int block_index)
                 const uint32_t src2_mask = (1 << insn->bitfield.count) - 1;
                 const uint32_t src1_mask = ~(src2_mask << insn->bitfield.start);
                 if (src1_mask == 0x000000FF) {
+                    if (!is_spilled(ctx, insn_index, src1)) {
+                        maybe_append_empty_rex(&code, host_src1,
+                                               host_dest, -1);
+                    }
                     append_insn_ModRM_ctx(&code, is64, X86OP_MOVZX_Gv_Eb,
                                           host_dest, ctx, insn_index, src1);
                 } else if (src1_mask == 0x0000FFFF) {
@@ -4390,8 +4394,8 @@ static bool translate_block(HostX86Context *ctx, int block_index)
                 const int jump_disp = (host_dest >= X86_SP ? 4 : 3);
                 append_jump_raw(&code, X86OP_JP_Jb, jump_disp);
                 const long jump_from = code.len;
-                maybe_append_empty_rex(&code, host_dest, -1, -1);
                 const X86Opcode set_opcode = invert ? X86OP_SETNZ : X86OP_SETZ;
+                maybe_append_empty_rex(&code, host_dest, -1, -1);
                 append_insn_ModRM_reg(&code, false, set_opcode, 0, host_dest);
                 const long jump_to = code.len;
                 ASSERT(jump_to - jump_from == jump_disp);
