@@ -13496,12 +13496,14 @@ get_load_address:
    lis %r3,0xC392   # -292.0f
    stw %r3,0(%r4)
    lfs %f8,0(%r4)
-   lfd %f9,56(%r31)
-   fadd %f10,%f9,%f9
-   fadd %f10,%f10,%f9
-   fadd %f10,%f10,%f1
-   ps_merge00 %f10,%f9,%f10
-   ps_add %f10,%f10,%f2  # {2.25,3.75}
+   lis %r3,0x3E80   # 0.25f
+   stw %r3,0(%r4)
+   lfs %f9,0(%r4)
+   lis %r3,0x4010   # 2.25f
+   stw %r3,0(%r4)
+   lis %r3,0x4070   # 3.75f
+   stw %r3,4(%r4)
+   psq_l %f10,0(%r4),0,0
 
    # 8-bit unsigned, no shift
 0: lis %r3,0x0004
