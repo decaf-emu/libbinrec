@@ -58,7 +58,7 @@ static const char expected[] =
     "   35: FCVT       r32, r31\n"
     "   36: FMUL       r33, r32, r18\n"
     "   37: BITCAST    r34, r33\n"
-    "   38: FROUNDI    r35, r33\n"
+    "   38: FTRUNCI    r35, r33\n"
     "   39: SLLI       r36, r34, 1\n"
     "   40: SRLI       r37, r34, 31\n"
     "   41: SELECT     r38, r28, r29, r37\n"

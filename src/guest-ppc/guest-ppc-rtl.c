@@ -1239,7 +1239,7 @@ static int ps_quantize(GuestPPCContext *ctx, int floatval, int scale,
     const int bits = rtl_alloc_register(unit, RTLTYPE_INT32);
     rtl_add_insn(unit, RTLOP_BITCAST, bits, scaled_val, 0, 0);
     const int scaled_int = rtl_alloc_register(unit, RTLTYPE_INT32);
-    rtl_add_insn(unit, RTLOP_FROUNDI, scaled_int, scaled_val, 0, 0);
+    rtl_add_insn(unit, RTLOP_FTRUNCI, scaled_int, scaled_val, 0, 0);
     const int bits_sll1 = rtl_alloc_register(unit, RTLTYPE_INT32);
     rtl_add_insn(unit, RTLOP_SLLI, bits_sll1, bits, 0, 1);
     const int is_sign = rtl_alloc_register(unit, RTLTYPE_INT32);

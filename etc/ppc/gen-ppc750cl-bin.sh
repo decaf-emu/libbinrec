@@ -49,7 +49,7 @@ trap "rm -r '$tempdir'" EXIT SIGHUP SIGINT SIGQUIT SIGTERM
 
 (
     set -x
-    "$PPC_AS" --defsym ESPRESSO=1 --defsym TEST_RECIPROCAL_TABLES=$tables \
+    "$PPC_AS" --defsym HAVE_UGQR=1 --defsym TEST_RECIPROCAL_TABLES=$tables \
         --defsym IGNORE_FPSCR_STATE=$nofpscr -o"$tempdir/ppc750cl.o" "$1"
     "$PPC_LD" -Ttext=0x1000000 --defsym _start=0x1000000 \
         -o"$tempdir/ppc750cl" "$tempdir/ppc750cl.o"

@@ -3,6 +3,12 @@
 # No copyright is claimed on this file.
 #
 # Update history:
+#    - 2016-11-24: Renamed the ESPRESSO define to HAVE_UGQR to better
+#         reflect its purpose (since other processor versions might also
+#         have UGQRs), and changed the CAN_SET_GQR default to 0 so the code
+#         can run safely in user mode under default settings.
+#    - 2016-11-24: Added tests for rounding (truncation) by psq_st*.  Also
+#         changed memory offsets so all psq_* instructions are distinct.
 #    - 2016-11-23: Added tests for the high word of fctiw[z] output.
 #    - 2016-11-23: Added tests for subfic/subfic when rA has the value 0.
 #    - 2016-11-23: Added more tests for undocumented instruction patterns.
@@ -154,18 +160,19 @@
 #
 
 # CAN_SET_GQR:  Set this to 1 if the routine will be run in an environment
-# which allows writing to the GQR registers.  If this is not set, the
-# routine will test only the floating point load and store operations, and
-# will assume that all fields of GQR0 are set to zero.
+# which allows writing to the GQR registers (SPRs 912-919).  If neither
+# this not HAVE_UGQR is set, the routine will test only the floating point
+# load and store operations of psq_l* and psq_st*, and will assume that all
+# fields of GQR0 are set to zero.
 .ifndef CAN_SET_GQR
-CAN_SET_GQR = 1
+CAN_SET_GQR = 0
 .endif
 
-# ESPRESSO:  Set this to 1 if testing the Espresso CPU.  This enables use
-# of the Espresso-specific UGQR registers to set GQRs without supervisor
-# privileges.
-.ifndef ESPRESSO
-ESPRESSO = 0
+# HAVE_UGQR:  Set this to 1 if the runtime environment allows setting GQRs
+# by writing to the UGQR register set (896-903), such as when testing the
+# Espresso CPU.
+.ifndef HAVE_UGQR
+HAVE_UGQR = 0
 .endif
 
 # IGNORE_FPSCR_STATE:  Set this to 1 to cause all floating-point tests to
@@ -241,6 +248,16 @@ TEST_UNDOCUMENTED_INSNS = 1
    isync
    lfd \frD,\source
    isync
+.endm
+
+# Convenience method for loading a value into a GQR, using UGQRs if
+# available and regular GQRs if not.
+.macro mtgqr gqrD, source
+   .if HAVE_UGQR
+      mtspr 896+\gqrD, \source
+   .else
+      mtspr 912+\gqrD, \source
+   .endif
 .endm
 
 
@@ -13055,10 +13072,8 @@ get_load_address:
    # Paired-single load and store instructions (floating-point data)
    ########################################################################
 
-.if ESPRESSO
-   mtspr 896,%r0    # UGQR0
-.elseif CAN_SET_GQR
-   mtspr 912,%r0    # GQR0
+.if CAN_SET_GQR || HAVE_UGQR
+   mtgqr 0,%r0
 .else
    # If we can't set GQRs, we assume that GQR0 has a value of zero.
 .endif
@@ -13460,7 +13475,7 @@ get_load_address:
 
 0: li %r0,0
 
-.if CAN_SET_GQR || ESPRESSO
+.if CAN_SET_GQR || HAVE_UGQR
 
 0: lis %r3,0x7F80
    stw %r3,0(%r4)
@@ -13481,14 +13496,16 @@ get_load_address:
    lis %r3,0xC392   # -292.0f
    stw %r3,0(%r4)
    lfs %f8,0(%r4)
+   lfd %f9,56(%r31)
+   fadd %f10,%f9,%f9
+   fadd %f10,%f10,%f9
+   fadd %f10,%f10,%f1
+   ps_merge00 %f10,%f9,%f10
+   ps_add %f10,%f10,%f2  # {2.25,3.75}
 
    # 8-bit unsigned, no shift
 0: lis %r3,0x0004
-   .if ESPRESSO
-      mtspr 897,%r3    # UGQR1
-   .else
-      mtspr 913,%r3    # GQR1
-   .endif
+   mtgqr 1,%r3
    li %r3,0x01FE
    sth %r3,0(%r4)
    psq_l %f3,0(%r4),0,1
@@ -13499,15 +13516,11 @@ get_load_address:
    lfs %f5,0(%r4)
    bl check_ps
 0: li %r3,0x0004
-   .if ESPRESSO
-      mtspr 897,%r3
-   .else
-      mtspr 913,%r3
-   .endif
-   stw %r0,0(%r4)
-   psq_st %f3,0(%r4),0,1
+   mtgqr 1,%r3
+   stw %r0,4(%r4)
+   psq_st %f3,4(%r4),0,1
    bl record
-   lhz %r3,0(%r4)
+   lhz %r3,4(%r4)
    cmpwi %r3,0x01FE
    beq 0f
    stw %r3,8(%r6)
@@ -13515,14 +13528,10 @@ get_load_address:
 
    # 8-bit unsigned, positive shift
 0: lis %r3,0x0204
-   .if ESPRESSO
-      mtspr 897,%r3
-   .else
-      mtspr 913,%r3
-   .endif
+   mtgqr 1,%r3
    li %r3,0x04F8
-   sth %r3,4(%r4)
-   psq_l %f3,4(%r4),0,1
+   sth %r3,8(%r4)
+   psq_l %f3,8(%r4),0,1
    bl record
    fmr %f4,%f1
    lis %r3,0x4278   # 62.0f
@@ -13530,15 +13539,11 @@ get_load_address:
    lfs %f5,0(%r4)
    bl check_ps
 0: li %r3,0x0204
-   .if ESPRESSO
-      mtspr 897,%r3
-   .else
-      mtspr 913,%r3
-   .endif
-   stw %r0,4(%r4)
-   psq_st %f3,4(%r4),0,1
+   mtgqr 1,%r3
+   stw %r0,12(%r4)
+   psq_st %f3,12(%r4),0,1
    bl record
-   lhz %r3,4(%r4)
+   lhz %r3,12(%r4)
    cmpwi %r3,0x04F8
    beq 0f
    stw %r3,8(%r6)
@@ -13546,14 +13551,10 @@ get_load_address:
 
    # 8-bit unsigned, negative shift
 0: lis %r3,0x3F04
-   .if ESPRESSO
-      mtspr 897,%r3
-   .else
-      mtspr 913,%r3
-   .endif
+   mtgqr 1,%r3
    li %r3,0x01FE
-   sth %r3,8(%r4)
-   psq_l %f3,8(%r4),0,1
+   sth %r3,16(%r4)
+   psq_l %f3,16(%r4),0,1
    bl record
    fmr %f4,%f2
    lis %r3,0x43FE   # 508.0f
@@ -13561,31 +13562,35 @@ get_load_address:
    lfs %f5,0(%r4)
    bl check_ps
 0: li %r3,0x3F04
-   .if ESPRESSO
-      mtspr 897,%r3
-   .else
-      mtspr 913,%r3
-   .endif
-   stw %r0,8(%r4)
-   psq_st %f3,8(%r4),0,1
+   mtgqr 1,%r3
+   stw %r0,20(%r4)
+   psq_st %f3,20(%r4),0,1
    bl record
-   lhz %r3,8(%r4)
+   lhz %r3,20(%r4)
    cmpwi %r3,0x01FE
+   beq 0f
+   stw %r3,8(%r6)
+   addi %r6,%r6,32
+
+   # 8-bit unsigned, rounding
+0: li %r3,0x0004
+   mtgqr 1,%r3
+   stw %r0,24(%r4)
+   psq_st %f10,24(%r4),0,1
+   bl record
+   lhz %r3,24(%r4)
+   cmpwi %r3,0x0203
    beq 0f
    stw %r3,8(%r6)
    addi %r6,%r6,32
 
    # 8-bit unsigned, overflow
 0: li %r3,0x0004
-   .if ESPRESSO
-      mtspr 897,%r3
-   .else
-      mtspr 913,%r3
-   .endif
-   stw %r0,12(%r4)
-   psq_st %f28,12(%r4),0,1
+   mtgqr 1,%r3
+   stw %r0,28(%r4)
+   psq_st %f28,28(%r4),0,1
    bl record
-   lhz %r3,12(%r4)
+   lhz %r3,28(%r4)
    ori %r7,%r0,0xFF00
    cmpw %r3,%r7
    beq 0f
@@ -13594,15 +13599,11 @@ get_load_address:
 
    # 8-bit unsigned, NaN
 0: li %r3,0x0004
-   .if ESPRESSO
-      mtspr 897,%r3
-   .else
-      mtspr 913,%r3
-   .endif
-   stw %r0,16(%r4)
-   psq_st %f29,16(%r4),0,1
+   mtgqr 1,%r3
+   stw %r0,32(%r4)
+   psq_st %f29,32(%r4),0,1
    bl record
-   lhz %r3,16(%r4)
+   lhz %r3,32(%r4)
    ori %r7,%r0,0xFF00
    cmpw %r3,%r7
    beq 0f
@@ -13611,319 +13612,15 @@ get_load_address:
 
    # 16-bit unsigned, no shift
 0: lis %r3,0x0005
-   .if ESPRESSO
-      mtspr 897,%r3
-   .else
-      mtspr 913,%r3
-   .endif
-   stw %r24,20(%r4)
-   psq_l %f3,20(%r4),0,1
+   mtgqr 1,%r3
+   stw %r24,64(%r4)
+   psq_l %f3,64(%r4),0,1
    bl record
    fmr %f4,%f6
    fmr %f5,%f7
    bl check_ps
 0: li %r3,0x0005
-   .if ESPRESSO
-      mtspr 897,%r3
-   .else
-      mtspr 913,%r3
-   .endif
-   stw %r0,20(%r4)
-   psq_st %f3,20(%r4),0,1
-   bl record
-   lwz %r3,20(%r4)
-   cmpw %r3,%r24
-   beq 0f
-   stw %r3,8(%r6)
-   addi %r6,%r6,32
-
-   # 16-bit unsigned, positive shift
-0: lis %r3,0x0205
-   .if ESPRESSO
-      mtspr 897,%r3
-   .else
-      mtspr 913,%r3
-   .endif
-   stw %r24,24(%r4)
-   psq_l %f3,24(%r4),0,1
-   bl record
-   lfd %f9,56(%r31)  # 0.25
-   fmul %f4,%f6,%f9
-   fmul %f5,%f7,%f9
-   bl check_ps
-0: li %r3,0x0205
-   .if ESPRESSO
-      mtspr 897,%r3
-   .else
-      mtspr 913,%r3
-   .endif
-   stw %r0,24(%r4)
-   psq_st %f3,24(%r4),0,1
-   bl record
-   lwz %r3,24(%r4)
-   cmpw %r3,%r24
-   beq 0f
-   stw %r3,8(%r6)
-   addi %r6,%r6,32
-
-   # 16-bit unsigned, negative shift
-0: lis %r3,0x3F05
-   .if ESPRESSO
-      mtspr 897,%r3
-   .else
-      mtspr 913,%r3
-   .endif
-   stw %r24,28(%r4)
-   psq_l %f3,28(%r4),0,1
-   bl record
-   fmul %f4,%f6,%f2
-   fmul %f5,%f7,%f2
-   bl check_ps
-0: li %r3,0x3F05
-   .if ESPRESSO
-      mtspr 897,%r3
-   .else
-      mtspr 913,%r3
-   .endif
-   stw %r0,28(%r4)
-   psq_st %f3,28(%r4),0,1
-   bl record
-   lwz %r3,28(%r4)
-   cmpw %r3,%r24
-   beq 0f
-   stw %r3,8(%r6)
-   addi %r6,%r6,32
-
-   # 16-bit unsigned, overflow
-0: li %r3,0x0005
-   .if ESPRESSO
-      mtspr 897,%r3
-   .else
-      mtspr 913,%r3
-   .endif
-   stw %r0,32(%r4)
-   psq_st %f28,32(%r4),0,1
-   bl record
-   lwz %r3,32(%r4)
-   lis %r7,0xFFFF
-   cmpw %r3,%r7
-   beq 0f
-   stw %r3,8(%r6)
-   addi %r6,%r6,32
-
-   # 16-bit unsigned, NaN
-0: li %r3,0x0005
-   .if ESPRESSO
-      mtspr 897,%r3
-   .else
-      mtspr 913,%r3
-   .endif
-   stw %r0,36(%r4)
-   psq_st %f29,36(%r4),0,1
-   bl record
-   lwz %r3,36(%r4)
-   lis %r7,0xFFFF
-   cmpw %r3,%r7
-   beq 0f
-   stw %r3,8(%r6)
-   addi %r6,%r6,32
-
-   # 8-bit signed, no shift
-0: lis %r3,0x0006
-   .if ESPRESSO
-      mtspr 897,%r3
-   .else
-      mtspr 913,%r3
-   .endif
-   li %r3,0x01FE
-   sth %r3,40(%r4)
-   psq_l %f3,40(%r4),0,1
-   bl record
-   fmr %f4,%f1
-   fneg %f5,%f2
-   bl check_ps
-0: li %r3,0x0006
-   .if ESPRESSO
-      mtspr 897,%r3
-   .else
-      mtspr 913,%r3
-   .endif
-   stw %r0,40(%r4)
-   psq_st %f3,40(%r4),0,1
-   bl record
-   lhz %r3,40(%r4)
-   cmpwi %r3,0x01FE
-   beq 0f
-   stw %r3,8(%r6)
-   addi %r6,%r6,32
-
-   # 8-bit signed, positive shift
-0: lis %r3,0x0206
-   .if ESPRESSO
-      mtspr 897,%r3
-   .else
-      mtspr 913,%r3
-   .endif
-   li %r3,0x04F8
-   sth %r3,44(%r4)
-   psq_l %f3,44(%r4),0,1
-   bl record
-   fmr %f4,%f1
-   fneg %f5,%f2
-   bl check_ps
-0: li %r3,0x0206
-   .if ESPRESSO
-      mtspr 897,%r3
-   .else
-      mtspr 913,%r3
-   .endif
-   stw %r0,44(%r4)
-   psq_st %f3,44(%r4),0,1
-   bl record
-   lhz %r3,44(%r4)
-   cmpwi %r3,0x04F8
-   beq 0f
-   stw %r3,8(%r6)
-   addi %r6,%r6,32
-
-   # 8-bit signed, negative shift
-0: lis %r3,0x3F06
-   .if ESPRESSO
-      mtspr 897,%r3
-   .else
-      mtspr 913,%r3
-   .endif
-   li %r3,0x01FE
-   sth %r3,48(%r4)
-   psq_l %f3,48(%r4),0,1
-   bl record
-   fmr %f4,%f2
-   fadd %f5,%f2,%f2
-   fneg %f5,%f5
-   bl check_ps
-0: li %r3,0x3F06
-   .if ESPRESSO
-      mtspr 897,%r3
-   .else
-      mtspr 913,%r3
-   .endif
-   stw %r0,48(%r4)
-   psq_st %f3,48(%r4),0,1
-   bl record
-   lhz %r3,48(%r4)
-   cmpwi %r3,0x01FE
-   beq 0f
-   stw %r3,8(%r6)
-   addi %r6,%r6,32
-
-   # 8-bit signed, overflow
-0: li %r3,0x0006
-   .if ESPRESSO
-      mtspr 897,%r3
-   .else
-      mtspr 913,%r3
-   .endif
-   stw %r0,52(%r4)
-   psq_st %f28,52(%r4),0,1
-   bl record
-   lhz %r3,52(%r4)
-   cmpwi %r3,0x7F80
-   beq 0f
-   stw %r3,8(%r6)
-   addi %r6,%r6,32
-
-   # 8-bit signed, NaN
-0: li %r3,0x0006
-   .if ESPRESSO
-      mtspr 897,%r3
-   .else
-      mtspr 913,%r3
-   .endif
-   stw %r0,56(%r4)
-   psq_st %f29,56(%r4),0,1
-   bl record
-   lhz %r3,56(%r4)
-   cmpwi %r3,0x7F80
-   beq 0f
-   stw %r3,8(%r6)
-   addi %r6,%r6,32
-
-   # 16-bit signed, no shift
-0: lis %r3,0x0007
-   .if ESPRESSO
-      mtspr 897,%r3
-   .else
-      mtspr 913,%r3
-   .endif
-   stw %r24,60(%r4)
-   psq_l %f3,60(%r4),0,1
-   bl record
-   fmr %f4,%f6
-   fmr %f5,%f8
-   bl check_ps
-0: li %r3,0x0007
-   .if ESPRESSO
-      mtspr 897,%r3
-   .else
-      mtspr 913,%r3
-   .endif
-   stw %r0,60(%r4)
-   psq_st %f3,60(%r4),0,1
-   bl record
-   lwz %r3,60(%r4)
-   cmpw %r3,%r24
-   beq 0f
-   stw %r3,8(%r6)
-   addi %r6,%r6,32
-
-   # 16-bit signed, positive shift
-0: lis %r3,0x0207
-   .if ESPRESSO
-      mtspr 897,%r3
-   .else
-      mtspr 913,%r3
-   .endif
-   stw %r24,64(%r4)
-   psq_l %f3,64(%r4),0,1
-   bl record
-   lfd %f9,56(%r31)  # 0.25
-   fmul %f4,%f6,%f9
-   fmul %f5,%f8,%f9
-   bl check_ps
-0: li %r3,0x0207
-   .if ESPRESSO
-      mtspr 897,%r3
-   .else
-      mtspr 913,%r3
-   .endif
-   stw %r0,64(%r4)
-   psq_st %f3,64(%r4),0,1
-   bl record
-   lwz %r3,64(%r4)
-   cmpw %r3,%r24
-   beq 0f
-   stw %r3,8(%r6)
-   addi %r6,%r6,32
-
-   # 16-bit signed, negative shift
-0: lis %r3,0x3F07
-   .if ESPRESSO
-      mtspr 897,%r3
-   .else
-      mtspr 913,%r3
-   .endif
-   stw %r24,68(%r4)
-   psq_l %f3,68(%r4),0,1
-   bl record
-   fmul %f4,%f6,%f2
-   fmul %f5,%f8,%f2
-   bl check_ps
-0: li %r3,0x3F07
-   .if ESPRESSO
-      mtspr 897,%r3
-   .else
-      mtspr 913,%r3
-   .endif
+   mtgqr 1,%r3
    stw %r0,68(%r4)
    psq_st %f3,68(%r4),0,1
    bl record
@@ -13933,17 +13630,292 @@ get_load_address:
    stw %r3,8(%r6)
    addi %r6,%r6,32
 
+   # 16-bit unsigned, positive shift
+0: lis %r3,0x0205
+   mtgqr 1,%r3
+   stw %r24,72(%r4)
+   psq_l %f3,72(%r4),0,1
+   bl record
+   fmul %f4,%f6,%f9
+   fmul %f5,%f7,%f9
+   bl check_ps
+0: li %r3,0x0205
+   mtgqr 1,%r3
+   stw %r0,76(%r4)
+   psq_st %f3,76(%r4),0,1
+   bl record
+   lwz %r3,76(%r4)
+   cmpw %r3,%r24
+   beq 0f
+   stw %r3,8(%r6)
+   addi %r6,%r6,32
+
+   # 16-bit unsigned, negative shift
+0: lis %r3,0x3F05
+   mtgqr 1,%r3
+   stw %r24,80(%r4)
+   psq_l %f3,80(%r4),0,1
+   bl record
+   fmul %f4,%f6,%f2
+   fmul %f5,%f7,%f2
+   bl check_ps
+0: li %r3,0x3F05
+   mtgqr 1,%r3
+   stw %r0,84(%r4)
+   psq_st %f3,84(%r4),0,1
+   bl record
+   lwz %r3,84(%r4)
+   cmpw %r3,%r24
+   beq 0f
+   stw %r3,8(%r6)
+   addi %r6,%r6,32
+
+   # 16-bit unsigned, rounding
+0: li %r3,0x0005
+   mtgqr 1,%r3
+   stw %r0,88(%r4)
+   psq_st %f10,88(%r4),0,1
+   bl record
+   lwz %r3,88(%r4)
+   lis %r7,2
+   ori %r7,%r7,3
+   cmpw %r3,%r7
+   beq 0f
+   stw %r3,8(%r6)
+   addi %r6,%r6,32
+
+   # 16-bit unsigned, overflow
+0: li %r3,0x0005
+   mtgqr 1,%r3
+   stw %r0,92(%r4)
+   psq_st %f28,92(%r4),0,1
+   bl record
+   lwz %r3,92(%r4)
+   lis %r7,0xFFFF
+   cmpw %r3,%r7
+   beq 0f
+   stw %r3,8(%r6)
+   addi %r6,%r6,32
+
+   # 16-bit unsigned, NaN
+0: li %r3,0x0005
+   mtgqr 1,%r3
+   stw %r0,96(%r4)
+   psq_st %f29,96(%r4),0,1
+   bl record
+   lwz %r3,96(%r4)
+   lis %r7,0xFFFF
+   cmpw %r3,%r7
+   beq 0f
+   stw %r3,8(%r6)
+   addi %r6,%r6,32
+
+   # 8-bit signed, no shift
+0: lis %r3,0x0006
+   mtgqr 1,%r3
+   li %r3,0x01FE
+   sth %r3,128(%r4)
+   psq_l %f3,128(%r4),0,1
+   bl record
+   fmr %f4,%f1
+   fneg %f5,%f2
+   bl check_ps
+0: li %r3,0x0006
+   mtgqr 1,%r3
+   stw %r0,132(%r4)
+   psq_st %f3,132(%r4),0,1
+   bl record
+   lhz %r3,132(%r4)
+   cmpwi %r3,0x01FE
+   beq 0f
+   stw %r3,8(%r6)
+   addi %r6,%r6,32
+
+   # 8-bit signed, positive shift
+0: lis %r3,0x0206
+   mtgqr 1,%r3
+   li %r3,0x04F8
+   sth %r3,136(%r4)
+   psq_l %f3,136(%r4),0,1
+   bl record
+   fmr %f4,%f1
+   fneg %f5,%f2
+   bl check_ps
+0: li %r3,0x0206
+   mtgqr 1,%r3
+   stw %r0,140(%r4)
+   psq_st %f3,140(%r4),0,1
+   bl record
+   lhz %r3,140(%r4)
+   cmpwi %r3,0x04F8
+   beq 0f
+   stw %r3,8(%r6)
+   addi %r6,%r6,32
+
+   # 8-bit signed, negative shift
+0: lis %r3,0x3F06
+   mtgqr 1,%r3
+   li %r3,0x01FE
+   sth %r3,144(%r4)
+   psq_l %f3,144(%r4),0,1
+   bl record
+   fmr %f4,%f2
+   fadd %f5,%f2,%f2
+   fneg %f5,%f5
+   bl check_ps
+0: li %r3,0x3F06
+   mtgqr 1,%r3
+   stw %r0,148(%r4)
+   psq_st %f3,148(%r4),0,1
+   bl record
+   lhz %r3,148(%r4)
+   cmpwi %r3,0x01FE
+   beq 0f
+   stw %r3,8(%r6)
+   addi %r6,%r6,32
+
+   # 8-bit signed, rounding
+0: li %r3,0x0006
+   mtgqr 1,%r3
+   stw %r0,152(%r4)
+   psq_st %f10,152(%r4),0,1
+   bl record
+   lhz %r3,152(%r4)
+   cmpwi %r3,0x0203
+   beq 0f
+   stw %r3,8(%r6)
+   addi %r6,%r6,32
+0: li %r3,0x0006
+   mtgqr 1,%r3
+   stw %r0,156(%r4)
+   ps_neg %f3,%f10
+   psq_st %f3,156(%r4),0,1
+   bl record
+   lhz %r3,156(%r4)
+   ori %r7,%r0,0xFEFD
+   cmpw %r3,%r7
+   beq 0f
+   stw %r3,8(%r6)
+   addi %r6,%r6,32
+
+   # 8-bit signed, overflow
+0: li %r3,0x0006
+   mtgqr 1,%r3
+   stw %r0,160(%r4)
+   psq_st %f28,160(%r4),0,1
+   bl record
+   lhz %r3,160(%r4)
+   cmpwi %r3,0x7F80
+   beq 0f
+   stw %r3,8(%r6)
+   addi %r6,%r6,32
+
+   # 8-bit signed, NaN
+0: li %r3,0x0006
+   mtgqr 1,%r3
+   stw %r0,164(%r4)
+   psq_st %f29,164(%r4),0,1
+   bl record
+   lhz %r3,164(%r4)
+   cmpwi %r3,0x7F80
+   beq 0f
+   stw %r3,8(%r6)
+   addi %r6,%r6,32
+
+   # 16-bit signed, no shift
+0: lis %r3,0x0007
+   mtgqr 1,%r3
+   stw %r24,192(%r4)
+   psq_l %f3,192(%r4),0,1
+   bl record
+   fmr %f4,%f6
+   fmr %f5,%f8
+   bl check_ps
+0: li %r3,0x0007
+   mtgqr 1,%r3
+   stw %r0,196(%r4)
+   psq_st %f3,196(%r4),0,1
+   bl record
+   lwz %r3,196(%r4)
+   cmpw %r3,%r24
+   beq 0f
+   stw %r3,8(%r6)
+   addi %r6,%r6,32
+
+   # 16-bit signed, positive shift
+0: lis %r3,0x0207
+   mtgqr 1,%r3
+   stw %r24,200(%r4)
+   psq_l %f3,200(%r4),0,1
+   bl record
+   fmul %f4,%f6,%f9
+   fmul %f5,%f8,%f9
+   bl check_ps
+0: li %r3,0x0207
+   mtgqr 1,%r3
+   stw %r0,204(%r4)
+   psq_st %f3,204(%r4),0,1
+   bl record
+   lwz %r3,204(%r4)
+   cmpw %r3,%r24
+   beq 0f
+   stw %r3,8(%r6)
+   addi %r6,%r6,32
+
+   # 16-bit signed, negative shift
+0: lis %r3,0x3F07
+   mtgqr 1,%r3
+   stw %r24,208(%r4)
+   psq_l %f3,208(%r4),0,1
+   bl record
+   fmul %f4,%f6,%f2
+   fmul %f5,%f8,%f2
+   bl check_ps
+0: li %r3,0x3F07
+   mtgqr 1,%r3
+   stw %r0,212(%r4)
+   psq_st %f3,212(%r4),0,1
+   bl record
+   lwz %r3,212(%r4)
+   cmpw %r3,%r24
+   beq 0f
+   stw %r3,8(%r6)
+   addi %r6,%r6,32
+
+   # 16-bit signed, rounding
+0: li %r3,0x0007
+   mtgqr 1,%r3
+   stw %r0,216(%r4)
+   psq_st %f10,216(%r4),0,1
+   bl record
+   lwz %r3,216(%r4)
+   lis %r7,2
+   ori %r7,%r7,3
+   cmpw %r3,%r7
+   beq 0f
+   stw %r3,8(%r6)
+   addi %r6,%r6,32
+0: li %r3,0x0007
+   mtgqr 1,%r3
+   stw %r0,220(%r4)
+   ps_neg %f3,%f10
+   psq_st %f3,220(%r4),0,1
+   bl record
+   lwz %r3,220(%r4)
+   lis %r7,-2
+   ori %r7,%r7,0xFFFD
+   cmpw %r3,%r7
+   beq 0f
+   stw %r3,8(%r6)
+   addi %r6,%r6,32
+
    # 16-bit signed, overflow
 0: li %r3,0x0007
-   .if ESPRESSO
-      mtspr 897,%r3
-   .else
-      mtspr 913,%r3
-   .endif
-   stw %r0,72(%r4)
-   psq_st %f28,72(%r4),0,1
+   mtgqr 1,%r3
+   stw %r0,224(%r4)
+   psq_st %f28,224(%r4),0,1
    bl record
-   lwz %r3,72(%r4)
+   lwz %r3,224(%r4)
    lis %r7,0x7FFF
    ori %r7,%r7,0x8000
    cmpw %r3,%r7
@@ -13953,15 +13925,11 @@ get_load_address:
 
    # 16-bit signed, NaN
 0: li %r3,0x0007
-   .if ESPRESSO
-      mtspr 897,%r3
-   .else
-      mtspr 913,%r3
-   .endif
-   stw %r0,76(%r4)
-   psq_st %f29,76(%r4),0,1
+   mtgqr 1,%r3
+   stw %r0,228(%r4)
+   psq_st %f29,228(%r4),0,1
    bl record
-   lwz %r3,76(%r4)
+   lwz %r3,228(%r4)
    lis %r7,0x7FFF
    ori %r7,%r7,0x8000
    cmpw %r3,%r7
@@ -13969,7 +13937,7 @@ get_load_address:
    stw %r3,8(%r6)
    addi %r6,%r6,32
 
-.endif  # CAN_SET_GQR
+.endif  # CAN_SET_GQR || HAVE_UGQR
 
    ########################################################################
    # Paired-single interactions with load/store instructions
