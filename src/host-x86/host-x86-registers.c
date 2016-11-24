@@ -223,7 +223,7 @@ static int allocate_frame_slot(HostX86Context *ctx, RTLDataType type)
         [RTLTYPE_ADDRESS   ] = 8,
         [RTLTYPE_FLOAT32   ] = 4,
         [RTLTYPE_FLOAT64   ] = 8,
-        [RTLTYPE_V2_FLOAT32] = 8,
+        [RTLTYPE_V2_FLOAT32] = 16,  // So we can use it as a memory operand.
         [RTLTYPE_V2_FLOAT64] = 16,
         [RTLTYPE_FPSTATE   ] = 4,
     };

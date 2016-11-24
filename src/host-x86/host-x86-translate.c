@@ -729,6 +729,9 @@ static inline void append_move_gpr(CodeBuffer *code, RTLDataType type,
  * append_load:  Append an instruction to load a register from a memory
  * location.  The memory address is assumed to be properly aligned.
  *
+ * V2_FLOAT32 operands load a full XMM register (16 bytes).  To load only
+ * the 8 bytes of actual data, use the FLOAT64 type.
+ *
  * [Parameters]
  *     code: Output code buffer.
  *     type: Register type (RTLTYPE_*).
@@ -757,12 +760,11 @@ static inline void append_load(
                               host_dest, host_base, host_index, offset);
         return;
       case RTLTYPE_FLOAT64:
-      case RTLTYPE_V2_FLOAT32:
         append_insn_ModRM_mem(code, false, X86OP_MOVSD_V_W,
                               host_dest, host_base, host_index, offset);
         return;
       default:
-        ASSERT(type == RTLTYPE_V2_FLOAT64);
+        ASSERT(rtl_type_is_vector(type));
         append_insn_ModRM_mem(code, false, X86OP_MOVAPS_V_W,
                               host_dest, host_base, host_index, offset);
         return;
@@ -793,6 +795,9 @@ static inline void append_load_gpr(
  * append_store:  Append an instruction to store a register to a memory
  * location.  The memory address is assumed to be properly aligned.
  *
+ * V2_FLOAT32 operands store a full XMM register (16 bytes).  To store
+ * only the 8 bytes of actual data, use the FLOAT64 type.
+ *
  * [Parameters]
  *     code: Output code buffer.
  *     type: Register type (RTLTYPE_*).
@@ -821,12 +826,11 @@ static inline void append_store(
                               host_base, host_index, offset);
         return;
       case RTLTYPE_FLOAT64:
-      case RTLTYPE_V2_FLOAT32:
         append_insn_ModRM_mem(code, false, X86OP_MOVSD_W_V, host_src,
                               host_base, host_index, offset);
         return;
       default:
-        ASSERT(type == RTLTYPE_V2_FLOAT64);
+        ASSERT(rtl_type_is_vector(type));
         append_insn_ModRM_mem(code, false, X86OP_MOVAPS_W_V, host_src,
                               host_base, host_index, offset);
         return;
@@ -870,9 +874,17 @@ static inline void append_store_alias(
     CodeBuffer *code, const HostX86Context *ctx, const RTLAlias *alias,
     X86Register host_src)
 {
-    const X86Register host_base =
-        alias->base ? ctx->regs[alias->base].host_reg : X86_SP;
-    append_store(code, alias->type, host_src, host_base, -1, alias->offset);
+    if (alias->base) {
+        /* We store V2_FLOAT32 as a full XMM register on the stack, but we
+         * need to store only the 8 bytes with actual data if writing to
+         * bound storage. */
+        const RTLDataType store_type = ((alias->type == RTLTYPE_V2_FLOAT32)
+                                        ? RTLTYPE_FLOAT64 : alias->type);
+        append_store(code, store_type, host_src,
+                     ctx->regs[alias->base].host_reg, -1, alias->offset);
+    } else {
+        append_store(code, alias->type, host_src, X86_SP, -1, alias->offset);
+    }
 }
 
 /*-----------------------------------------------------------------------*/
@@ -4309,7 +4321,7 @@ static bool translate_block(HostX86Context *ctx, int block_index)
                     append_imm8(&code, prefix);
                 }
                 /* We can't use append_insn_ModRM_ctx() because src2 might
-                 * be in a different regsiter due to the FDIV hack. */
+                 * be in a different register due to the FDIV hack. */
                 if (src2_loaded) {
                     append_insn_ModRM_reg(&code, false, base_opcode,
                                           host_dest, host_src2);
@@ -4808,9 +4820,13 @@ static bool translate_block(HostX86Context *ctx, int block_index)
             int host_index;
             reload_base_and_index(&code, ctx, insn_index, host_temp,
                                   &host_base, &host_index);
+            RTLDataType load_type = unit->regs[dest].type;
+            if (load_type == RTLTYPE_V2_FLOAT32) {
+                load_type = RTLTYPE_FLOAT64;  // Only load 8 bytes.
+            }
             const int32_t offset =
                 insn->host_data_32 ? (int32_t)insn->host_data_32 : insn->offset;
-            append_load(&code, unit->regs[dest].type, host_dest,
+            append_load(&code, load_type, host_dest,
                         host_base, host_index, offset);
             break;
           }  // case RTLOP_LOAD
@@ -4884,7 +4900,9 @@ static bool translate_block(HostX86Context *ctx, int block_index)
                     append_load(&code, type, host_value,
                                 X86_SP, -1, ctx->regs[src2].spill_offset);
                 }
-                append_store(&code, type, host_value,
+                const RTLDataType store_type =
+                    (type == RTLTYPE_V2_FLOAT32) ? RTLTYPE_FLOAT64 : type;
+                append_store(&code, store_type, host_value,
                              host_base, host_index, offset);
             }
             break;
