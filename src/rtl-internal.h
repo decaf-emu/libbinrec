@@ -309,6 +309,8 @@ struct RTLUnit {
                                 //    (== number of allocated registers)
     uint16_t first_live_reg;    // First register in live range list
     uint16_t last_live_reg;     // Last register in live range list
+    uint16_t membase_reg;       // Register containing guest memory base
+                                //    (for readonly-load optimizations)
 
     RTLAlias *aliases;          // Alias register array
     uint16_t aliases_size;      // Size of alias register array (entries)

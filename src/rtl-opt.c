@@ -1259,8 +1259,9 @@ static inline void fold_one_register(RTLUnit * const unit,
 
 /**
  * get_readonly_ptr:  Return a pointer to the address referenced by the
- * given register's load instruction if that address is constant and within
- * a region of guest memory marked as read-only, otherwise NULL.
+ * given register's load instruction if that address is a constant offset
+ * from the guest memory base and within a region of guest memory marked
+ * as read-only, otherwise NULL.
  *
  * [Parameters]
  *     unit: RTLUnit to operate on.
@@ -1277,11 +1278,39 @@ static const void *get_readonly_ptr(RTLUnit * const unit,
     ASSERT(reg);
     ASSERT(reg->source == RTLREG_MEMORY);
 
-    const RTLRegister * const base_reg = &unit->regs[reg->memory.base];
-    if (base_reg->source != RTLREG_CONSTANT) {
+    bool is_guest_relative = false;
+    uint32_t base_addr = 0;
+    if (reg->memory.base == unit->membase_reg) {
+        is_guest_relative = true;
+    } else {
+        const RTLRegister * const base_reg = &unit->regs[reg->memory.base];
+        /* Folding will already have been performed on the register, so its
+         * source can never be plain RTLREG_RESULT. */
+        if (base_reg->source == RTLREG_RESULT_NOFOLD) {
+            if (base_reg->result.opcode == RTLOP_ADDI
+             && base_reg->result.src1 == unit->membase_reg) {
+                is_guest_relative = true;
+                base_addr = (uint32_t)base_reg->result.src_imm;
+            } else if (base_reg->result.opcode == RTLOP_ADD) {
+                const int src1 = base_reg->result.src1;
+                const int src2 = base_reg->result.src2;
+                if (src1 == unit->membase_reg
+                 && unit->regs[src2].source == RTLREG_CONSTANT) {
+                    is_guest_relative = true;
+                    base_addr = (uint32_t)unit->regs[src2].value.i64;
+                } else if (src2 == unit->membase_reg
+                        && unit->regs[src1].source == RTLREG_CONSTANT) {
+                    is_guest_relative = true;
+                    base_addr = (uint32_t)unit->regs[src1].value.i64;
+                }
+            }
+        }
+    }
+    if (!is_guest_relative) {
         return NULL;
     }
-    const uint32_t addr = (uint32_t)base_reg->value.i64 + reg->memory.offset;
+
+    const uint32_t addr = base_addr + reg->memory.offset;
     const uint32_t page = addr >> READONLY_PAGE_BITS;
 
     bool is_readonly;
@@ -1291,7 +1320,8 @@ static const void *get_readonly_ptr(RTLUnit * const unit,
     } else if (handle->readonly_map[page>>2] & (1 << ((page & 3) * 2))) {
         const int index = lookup_partial_readonly_page(handle, page);
         ASSERT(index < lenof(handle->partial_readonly_pages));
-        ASSERT(handle->partial_readonly_pages[index] == page);
+        ASSERT(handle->partial_readonly_pages[index]
+               == page << READONLY_PAGE_BITS);
         const uint32_t page_offset = addr & READONLY_PAGE_MASK;
         is_readonly = ((handle->partial_readonly_map[index][page_offset>>3]
                         & (1 << (page_offset & 7))) != 0);
@@ -1377,7 +1407,7 @@ static void fold_readonly_load(RTLUnit * const unit, RTLRegister * const reg,
         snprintf_assert(value_str, sizeof(value_str), "0x%"PRIX64, value);
     }
     const uint32_t addr =
-        ((uint32_t)unit->regs[base].value.i64 + reg->memory.offset);
+        (uintptr_t)load_ptr - (uintptr_t)unit->handle->setup.guest_memory_base;
     log_info(unit->handle, "r%d loads constant value %s from 0x%X at %d",
              (int)(reg - unit->regs), value_str, addr, reg->birth);
 #endif

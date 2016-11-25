@@ -692,6 +692,21 @@ extern int rtl_alloc_label(RTLUnit *unit);
 extern bool rtl_finalize_unit(RTLUnit *unit);
 
 /**
+ * rtl_set_membase_pointer:  Mark the given register as holding a pointer
+ * to the base address of the guest memory region.  Load operations whose
+ * address register is this register or the result of ADDing another
+ * (constant) register to this one will be eligible for constant folding
+ * if the referenced guest address is in a read-only region.
+ *
+ * [Parameters]
+ *     unit: RTLUnit containing register to mark.
+ *     reg: Index of register containing the base address of the guest
+ *         memory region.
+ */
+#define rtl_set_membase_pointer INTERNAL(rtl_set_membase_pointer)
+extern void rtl_set_membase_pointer(RTLUnit *unit, int reg);
+
+/**
  * rtl_optimize_unit:  Perform target-independent optimization on the
  * given unit.  Before calling this function, rtl_finalize_unit() must be
  * called for the unit.

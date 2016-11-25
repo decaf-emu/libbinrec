@@ -49,6 +49,7 @@ static bool init_unit(GuestPPCContext *ctx)
     rtl_add_insn(unit, RTLOP_LOAD_ARG, ctx->membase_reg, 0, 0, 1);
     rtl_make_unique_pointer(unit, ctx->membase_reg);
     rtl_make_unspillable(unit, ctx->membase_reg);
+    rtl_set_membase_pointer(unit, ctx->membase_reg);
 
     /* Allocate an alias register for the output NIA. */
     ctx->alias.nia = rtl_alloc_alias_register(unit, RTLTYPE_INT32);

@@ -23,26 +23,30 @@ static int add_rtl(RTLUnit *unit)
     unit->handle->host_little_endian = is_little_endian();
     binrec_add_readonly_region(unit->handle, 0, sizeof(value_buf));
 
-    int reg1, reg2;
+    int reg1, reg2, reg3;
     EXPECT(reg1 = rtl_alloc_register(unit, RTLTYPE_ADDRESS));
-    EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM,
-                        reg1, 0, 0, 2*sizeof(*value_buf)));
-    EXPECT(reg2 = rtl_alloc_register(unit, RTLTYPE_INT32));
+    EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg1, 0, 0, 0));
+    rtl_set_membase_pointer(unit, reg1);
+    EXPECT(reg2 = rtl_alloc_register(unit, RTLTYPE_ADDRESS));
+    EXPECT(rtl_add_insn(unit, RTLOP_ADDI,
+                        reg2, reg1, 0, 2*sizeof(*value_buf)));
+    EXPECT(reg3 = rtl_alloc_register(unit, RTLTYPE_INT32));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_S8,
-                        reg2, reg1, 0, -sizeof(*value_buf)));
+                        reg3, reg2, 0, -sizeof(*value_buf)));
 
     return EXIT_SUCCESS;
 }
 
 static const char expected[] =
     #ifdef RTL_DEBUG_OPTIMIZE
-        "[info] r2 loads constant value -64 from 0x1 at 1\n"
-        "[info] r1 no longer used, setting death = birth\n"
+        "[info] r3 loads constant value -64 from 0x1 at 2\n"
+        "[info] r2 no longer used, setting death = birth\n"
     #endif
-    "    0: LOAD_IMM   r1, 0x2\n"
-    "    1: LOAD_IMM   r2, -64\n"
+    "    0: LOAD_IMM   r1, 0x0\n"
+    "    1: ADDI       r2, r1, 2\n"
+    "    2: LOAD_IMM   r3, -64\n"
     "\n"
-    "Block 0: <none> --> [0,1] --> <none>\n"
+    "Block 0: <none> --> [0,2] --> <none>\n"
     ;
 
 #include "tests/rtl-optimize-test.i"

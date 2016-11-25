@@ -25,6 +25,7 @@ static int add_rtl(RTLUnit *unit)
     int reg1, reg2;
     EXPECT(reg1 = rtl_alloc_register(unit, RTLTYPE_ADDRESS));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg1, 0, 0, 0));
+    rtl_set_membase_pointer(unit, reg1);
     EXPECT(reg2 = rtl_alloc_register(unit, RTLTYPE_INT32));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD, reg2, reg1, 0, 0));
 

@@ -1092,6 +1092,7 @@ RTLUnit *rtl_create_unit(binrec_t *handle)
     unit->next_reg = 1;
     unit->first_live_reg = 0;
     unit->last_live_reg = 0;
+    unit->membase_reg = 0;
 
     unit->aliases = NULL;
     unit->aliases_size = REGS_EXPAND_SIZE;
@@ -1469,6 +1470,40 @@ bool rtl_finalize_unit(RTLUnit *unit)
 
     unit->finalized = true;
     return true;
+}
+
+/*-----------------------------------------------------------------------*/
+
+void rtl_set_membase_pointer(RTLUnit *unit, int reg)
+{
+    ASSERT(unit != NULL);
+
+    if (UNLIKELY(reg == 0 || reg >= unit->next_reg)) {
+        log_error(unit->handle, "rtl_set_membase_pointer: Invalid register %d",
+                  reg);
+        return;
+    }
+    if (UNLIKELY(unit->regs[reg].type != RTLTYPE_ADDRESS)) {
+        log_error(unit->handle, "rtl_set_membase_pointer: Register %d has"
+                  " invalid type %s (must be address)", reg,
+                  rtl_type_name(unit->regs[reg].type));
+        return;
+    }
+    if (UNLIKELY(unit->regs[reg].source == RTLREG_UNDEFINED)) {
+        log_error(unit->handle, "rtl_set_membase_pointer: Register %d is"
+                  " not yet defined", reg);
+        return;
+    }
+
+    unit->membase_reg = reg;
+
+    /* Make it unfoldable (if necessary) so optimization doesn't eliminate
+     * it and prevent read-only load detection. */
+    if (unit->regs[reg].source == RTLREG_CONSTANT) {
+        unit->regs[reg].source = RTLREG_CONSTANT_NOFOLD;
+    } else if (unit->regs[reg].source == RTLREG_RESULT) {
+        unit->regs[reg].source = RTLREG_RESULT_NOFOLD;
+    }
 }
 
 /*-----------------------------------------------------------------------*/

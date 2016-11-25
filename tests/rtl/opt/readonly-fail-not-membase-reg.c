@@ -16,33 +16,26 @@ static unsigned int opt_flags = BINREC_OPT_FOLD_CONSTANTS;
 
 static int add_rtl(RTLUnit *unit)
 {
-    static uint64_t value_buf[3][2];
-    memset(value_buf, 0x80, sizeof(value_buf));
-    value_buf[1][0] = UINT64_C(0x3FF0000000000000);
-    value_buf[1][1] = UINT64_C(0x4000000000000000);
-    unit->handle->setup.guest_memory_base = value_buf;
+    static uint8_t memory[READONLY_PAGE_SIZE];
+    memset(memory, 0x80, sizeof(memory));
+    unit->handle->setup.guest_memory_base = memory;
     unit->handle->host_little_endian = is_little_endian();
-    binrec_add_readonly_region(unit->handle, 0, sizeof(value_buf));
+    binrec_add_readonly_region(unit->handle, 0, sizeof(memory));
 
-    int reg1, reg2, reg3;
+    int reg1, reg2;
     EXPECT(reg1 = rtl_alloc_register(unit, RTLTYPE_ADDRESS));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg1, 0, 0, 0));
-    rtl_set_membase_pointer(unit, reg1);
-    EXPECT(reg2 = rtl_alloc_register(unit, RTLTYPE_ADDRESS));
-    EXPECT(rtl_add_insn(unit, RTLOP_ADDI,
-                        reg2, reg1, 0, 2*sizeof(*value_buf)));
-    EXPECT(reg3 = rtl_alloc_register(unit, RTLTYPE_V2_FLOAT64));
-    EXPECT(rtl_add_insn(unit, RTLOP_LOAD, reg3, reg2, 0, -sizeof(*value_buf)));
+    EXPECT(reg2 = rtl_alloc_register(unit, RTLTYPE_INT32));
+    EXPECT(rtl_add_insn(unit, RTLOP_LOAD, reg2, reg1, 0, 0));
 
     return EXIT_SUCCESS;
 }
 
 static const char expected[] =
     "    0: LOAD_IMM   r1, 0x0\n"
-    "    1: ADDI       r2, r1, 32\n"
-    "    2: LOAD       r3, -16(r2)\n"
+    "    1: LOAD       r2, 0(r1)\n"
     "\n"
-    "Block 0: <none> --> [0,2] --> <none>\n"
+    "Block 0: <none> --> [0,1] --> <none>\n"
     ;
 
 #include "tests/rtl-optimize-test.i"
