@@ -27,6 +27,7 @@ static int add_rtl(RTLUnit *unit)
     int reg1, reg2;
     EXPECT(reg1 = rtl_alloc_register(unit, RTLTYPE_ADDRESS));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg1, 0, 0, 1));
+    rtl_make_unfoldable(unit, reg1);
     EXPECT(reg2 = rtl_alloc_register(unit, RTLTYPE_INT32));
     /* reg1 will still be live when this CALL is processed; that shouldn't
      * cause the translator to try and save/restore it (which would

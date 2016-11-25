@@ -28,11 +28,14 @@ static int add_rtl(RTLUnit *unit)
     EXPECT(rtl_add_insn(unit, RTLOP_NOP, 0, dummy_regs[4], 0, 0));  // Free DI.
     EXPECT(reg1 = rtl_alloc_register(unit, RTLTYPE_ADDRESS));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg1, 0, 0, 1));
+    rtl_make_unfoldable(unit, reg1);
     EXPECT(rtl_add_insn(unit, RTLOP_NOP, 0, dummy_regs[13], 0, 0));  // R14
     EXPECT(reg2 = rtl_alloc_register(unit, RTLTYPE_INT32));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg2, 0, 0, 2));
+    rtl_make_unfoldable(unit, reg2);
     EXPECT(reg3 = rtl_alloc_register(unit, RTLTYPE_INT32));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg3, 0, 0, 3));
+    rtl_make_unfoldable(unit, reg3);
     for (int i = 0; i < 13; i++) {
         if (i != 4) {
             EXPECT(rtl_add_insn(unit, RTLOP_NOP, 0, dummy_regs[i], 0, 0));

@@ -21,11 +21,9 @@ static int add_rtl(RTLUnit *unit)
     alloc_dummy_registers(unit, RTLTYPE_INT32, 1);
 
     int reg1, reg2;
-    /* These constants should all be loaded right before the actual call,
-     * after the dummy register is saved. */
     EXPECT(reg1 = rtl_alloc_register(unit, RTLTYPE_ADDRESS));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg1, 0, 0, 1));
-    EXPECT(reg2 = rtl_alloc_register(unit, RTLTYPE_ADDRESS));
+    EXPECT(reg2 = rtl_alloc_register(unit, RTLTYPE_INT32));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg2, 0, 0, 2));
     EXPECT(rtl_add_insn(unit, RTLOP_CALL_TRANSPARENT, 0, reg1, reg2, 0));
 

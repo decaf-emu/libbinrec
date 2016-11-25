@@ -23,6 +23,7 @@ static int add_rtl(RTLUnit *unit)
     int reg1;
     EXPECT(reg1 = rtl_alloc_register(unit, RTLTYPE_ADDRESS));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg1, 0, 0, 1));
+    rtl_make_unfoldable(unit, reg1);
     EXPECT(rtl_add_insn(unit, RTLOP_CALL, 0, reg1, 0, 0));
 
     return EXIT_SUCCESS;

@@ -25,9 +25,12 @@ static int add_rtl(RTLUnit *unit)
 
     alloc_dummy_registers(unit, 1, RTLTYPE_INT32);
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg1, 0, 0, 1));
+    rtl_make_unfoldable(unit, reg1);
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg3, 0, 0, 3));
+    rtl_make_unfoldable(unit, reg3);
     alloc_dummy_registers(unit, 1, RTLTYPE_INT32);
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg2, 0, 0, 2));
+    rtl_make_unfoldable(unit, reg2);
     EXPECT(rtl_add_insn(unit, RTLOP_CALL, 0, reg1, reg2, reg3));
     EXPECT(rtl_add_insn(unit, RTLOP_RETURN, 0, 0, 0, 0));
 

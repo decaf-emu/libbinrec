@@ -1614,6 +1614,54 @@ static bool allocate_regs_for_block(HostX86Context *ctx, int block_index)
 /*-----------------------------------------------------------------------*/
 
 /**
+ * maybe_optimize_call_immediate:  Check whether the given register is a
+ * constant valid for CALL operand optimization, and kill it if so.
+ * Helper for optimize_call_immediates().
+ */
+static void maybe_optimize_call_immediate(RTLUnit *unit, int insn_index,
+                                          int reg_index)
+{
+    RTLRegister * const reg = &unit->regs[reg_index];
+    if (reg->source == RTLREG_CONSTANT) {
+        const int prev_use = rtl_opt_prev_reg_use(unit, reg_index, insn_index);
+        if (prev_use == reg->birth) {
+            reg->death = reg->birth;
+            rtl_opt_kill_insn(unit, reg->birth, true, false);
+            /* The translator relies on the live flag being clear to know
+             * to load the constant directly. */
+            ASSERT(!reg->live);
+        }
+    }
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
+ * optimize_call_immediates:  Look for operands to the given CALL or
+ * CALL_TRANSPARENT instruction which are constants not used elsewhere,
+ * and kill the associated LOAD_IMM instructions.  This allows the value
+ * to be loaded right before the call, avoiding the need to allocate a
+ * separate register for it.
+ */
+static void optimize_call_immediates(RTLUnit *unit, int insn_index)
+{
+    const RTLInsn * const insn = &unit->insns[insn_index];
+    const int src1 = insn->src1;
+    const int src2 = insn->src2;
+    const int src3 = insn->src3;
+
+    maybe_optimize_call_immediate(unit, insn_index, src1);
+    if (src2 && src2 != src1) {
+        maybe_optimize_call_immediate(unit, insn_index, src2);
+        if (src3 && src3 != src1 && src3 != src2) {
+            maybe_optimize_call_immediate(unit, insn_index, src3);
+        }
+    }
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
  * first_pass_for_block:  Run an initial analysis pass on the given basic
  * block, and perform any enabled RTL-level optimizations.
  *
@@ -2068,6 +2116,9 @@ static void first_pass_for_block(HostX86Context *ctx, int block_index)
             break;
 
           case RTLOP_CALL:
+            /* Check for constants whose loads can be moved to right
+             * before the call. */
+            optimize_call_immediates(unit, insn_index);
             /* Non-tail calls require special handling to preserve
              * caller-saved registers around the call, and to avoid
              * allocating callee-saved registers to values which are
@@ -2115,55 +2166,12 @@ static void first_pass_for_block(HostX86Context *ctx, int block_index)
              */
             break;
 
-          case RTLOP_CALL_TRANSPARENT: {
+          case RTLOP_CALL_TRANSPARENT:
             /* We treat all CALL_TRANSPARENT instructions as non-tail. */
             insn->host_data_16 = 0;
             block_info->has_nontail_call = true;
-            /* If an operand is a constant value which is not used
-             * elsewhere, kill the associated LOAD_IMM so it doesn't
-             * occupy a register (and thus affect register allocation). */
-            const int src1 = insn->src1;
-            const int src2 = insn->src2;
-            const int src3 = insn->src3;
-            RTLRegister * const src1_reg = &unit->regs[src1];
-            if (src1_reg->source == RTLREG_CONSTANT) {
-                const int prev_use =
-                    rtl_opt_prev_reg_use(unit, src1, insn_index);
-                if (prev_use == src1_reg->birth) {
-                    src1_reg->death = src1_reg->birth;
-                    rtl_opt_kill_insn(unit, src1_reg->birth, true, false);
-                    /* The translator relies on the live flag being clear
-                     * to know to load the constant directly. */
-                    ASSERT(!src1_reg->live);
-                }
-            }
-            if (src2) {
-                RTLRegister * const src2_reg = &unit->regs[src2];
-                if (src2_reg->source == RTLREG_CONSTANT) {
-                    const int prev_use =
-                        rtl_opt_prev_reg_use(unit, src2, insn_index);
-                    if (prev_use == src2_reg->birth) {
-                        src2_reg->death = src2_reg->birth;
-                        rtl_opt_kill_insn(unit, src2_reg->birth, true, false);
-                        ASSERT(!src2_reg->live);
-                    }
-                }
-                if (src3) {
-                    RTLRegister * const src3_reg = &unit->regs[src3];
-                    if (src3_reg->source == RTLREG_CONSTANT) {
-                        const int prev_use =
-                            rtl_opt_prev_reg_use(unit, src3, insn_index);
-                        if (prev_use == src3_reg->birth) {
-                            src3_reg->death = src3_reg->birth;
-                            rtl_opt_kill_insn(unit, src3_reg->birth,
-                                              true, false);
-                            ASSERT(!src3_reg->live);
-                        }
-                    }
-                }
-            }
+            optimize_call_immediates(unit, insn_index);
             break;
-          }  // case RTLOP_CALL_TRANSPARENT
 
           case RTLOP_RETURN:
             if (!do_fixed_regs) {

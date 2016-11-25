@@ -31,6 +31,7 @@ static int add_rtl(RTLUnit *unit)
     EXPECT(rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, label));
     EXPECT(reg2 = rtl_alloc_register(unit, RTLTYPE_ADDRESS));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg2, 0, 0, 2));
+    rtl_make_unfoldable(unit, reg2);
     /* This call should preserve reg1 (in EAX). */
     EXPECT(rtl_add_insn(unit, RTLOP_CALL, 0, reg2, 0, 0));
     EXPECT(reg3 = rtl_alloc_register(unit, RTLTYPE_INT32));

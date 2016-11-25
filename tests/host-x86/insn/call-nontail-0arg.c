@@ -27,6 +27,10 @@ static int add_rtl(RTLUnit *unit)
     int reg1;
     EXPECT(reg1 = rtl_alloc_register(unit, RTLTYPE_ADDRESS));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg1, 0, 0, 1));
+    /* Make the register explicitly unfoldable to block the optimization
+     * of loading the register at the call site (that's tested in a
+     * separate test). */
+    rtl_make_unfoldable(unit, reg1);
     for (int i = 0; i < lenof(dummy_regs); i++) {
         EXPECT(rtl_add_insn(unit, RTLOP_NOP, 0, dummy_regs[i], 0, 0));
     }
