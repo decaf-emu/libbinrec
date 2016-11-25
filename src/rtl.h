@@ -383,9 +383,9 @@ typedef enum RTLOpcode {
     RTLOP_GOTO_IF_Z,    // if (src1 == 0) goto LABEL(other)
     RTLOP_GOTO_IF_NZ,   // if (src1 != 0) goto LABEL(other)
 
-    /* Call to host address.  src1 must be of ADDRESS type. dest, src2, and
-     * other are optional, but must be integer type if given; if src2 is
-     * omitted, other must also be omitted. */
+    /* Call to host address.  src1 must be of ADDRESS type.  dest, src2,
+     * and other are optional, but must be integer type if given; if src2
+     * is omitted, other must also be omitted. */
     RTLOP_CALL,         // dest = (*src1)(src2, other)
     /* Call to host address.  Functionally identical to CALL, but host
      * translators should avoid effects on translation state as much as

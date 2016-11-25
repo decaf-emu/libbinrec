@@ -2106,11 +2106,55 @@ static void first_pass_for_block(HostX86Context *ctx, int block_index)
              */
             break;
 
-          case RTLOP_CALL_TRANSPARENT:
+          case RTLOP_CALL_TRANSPARENT: {
             /* We treat all CALL_TRANSPARENT instructions as non-tail. */
             insn->host_data_16 = 0;
             block_info->has_nontail_call = true;
+            /* If an operand is a constant value which is not used
+             * elsewhere, kill the associated LOAD_IMM so it doesn't
+             * occupy a register (and thus affect register allocation). */
+            const int src1 = insn->src1;
+            const int src2 = insn->src2;
+            const int src3 = insn->src3;
+            RTLRegister * const src1_reg = &unit->regs[src1];
+            if (src1_reg->source == RTLREG_CONSTANT) {
+                const int prev_use =
+                    rtl_opt_prev_reg_use(unit, src1, insn_index);
+                if (prev_use == src1_reg->birth) {
+                    src1_reg->death = src1_reg->birth;
+                    rtl_opt_kill_insn(unit, src1_reg->birth, true, false);
+                    /* The translator relies on the live flag being clear
+                     * to know to load the constant directly. */
+                    ASSERT(!src1_reg->live);
+                }
+            }
+            if (src2) {
+                RTLRegister * const src2_reg = &unit->regs[src2];
+                if (src2_reg->source == RTLREG_CONSTANT) {
+                    const int prev_use =
+                        rtl_opt_prev_reg_use(unit, src2, insn_index);
+                    if (prev_use == src2_reg->birth) {
+                        src2_reg->death = src2_reg->birth;
+                        rtl_opt_kill_insn(unit, src2_reg->birth, true, false);
+                        ASSERT(!src2_reg->live);
+                    }
+                }
+                if (src3) {
+                    RTLRegister * const src3_reg = &unit->regs[src3];
+                    if (src3_reg->source == RTLREG_CONSTANT) {
+                        const int prev_use =
+                            rtl_opt_prev_reg_use(unit, src3, insn_index);
+                        if (prev_use == src3_reg->birth) {
+                            src3_reg->death = src3_reg->birth;
+                            rtl_opt_kill_insn(unit, src3_reg->birth,
+                                              true, false);
+                            ASSERT(!src3_reg->live);
+                        }
+                    }
+                }
+            }
             break;
+          }  // case RTLOP_CALL_TRANSPARENT
 
           case RTLOP_RETURN:
             if (!do_fixed_regs) {

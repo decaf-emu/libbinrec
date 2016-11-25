@@ -726,6 +726,35 @@ static inline void append_move_gpr(CodeBuffer *code, RTLDataType type,
 /*-----------------------------------------------------------------------*/
 
 /**
+ * append_load_imm_gpr:  Append an instruction to load an immediate value
+ * into an integer register.
+ *
+ * [Parameters]
+ *     code: Output code buffer.
+ *     host_dest: Destination register.
+ *     imm: Immediate value to load.
+ */
+static inline void append_load_imm_gpr(CodeBuffer *code,
+                                       X86Register host_dest, uint64_t imm)
+{
+    if (imm == 0) {
+        append_insn_ModRM_reg(code, false, X86OP_XOR_Gv_Ev,
+                              host_dest, host_dest);
+    } else if (imm <= UINT64_C(0xFFFFFFFF)) {
+        append_insn_R(code, false, X86OP_MOV_rAX_Iv, host_dest);
+        append_imm32(code, (uint32_t)imm);
+    } else if (imm >= UINT64_C(0xFFFFFFFF80000000)) {
+        append_insn_ModRM_reg(code, true, X86OP_MOV_Ev_Iz, 0, host_dest);
+        append_imm32(code, (uint32_t)imm);
+    } else {
+        append_insn_R(code, true, X86OP_MOV_rAX_Iv, host_dest);
+        append_imm64(code, imm);
+    }
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
  * append_load:  Append an instruction to load a register from a memory
  * location.  The memory address is assumed to be properly aligned.
  *
@@ -924,13 +953,20 @@ static inline void append_move_or_load(
  * location; otherwise, move it from its current register if it is not
  * already in the destination register.
  *
- * Specialization of append_move_or_load() for GPRs.
+ * Specialization of append_move_or_load() for GPRs.  As a special case
+ * (used by translate_call()), if the register is not live at all, it is
+ * assumed to be a constant which can be loaded directly into the target
+ * register.
  */
 static inline void append_move_or_load_gpr(
     CodeBuffer *code, const HostX86Context *ctx, const RTLUnit *unit,
     int insn_index, int host_dest, int src)
 {
-    if (is_spilled(ctx, insn_index, src)) {
+    if (!unit->regs[src].live) {
+        ASSERT(unit->regs[src].source == RTLREG_CONSTANT);
+        ASSERT(rtl_register_is_int(&unit->regs[src]));
+        append_load_imm_gpr(code, host_dest, unit->regs[src].value.i64);
+    } else if (is_spilled(ctx, insn_index, src)) {
         append_load_gpr(code, unit->regs[src].type, host_dest,
                         X86_SP, ctx->regs[src].spill_offset);
     } else if (ctx->regs[src].host_reg != host_dest) {
@@ -2080,17 +2116,19 @@ static bool translate_call(HostX86Context *ctx, int block_index,
     const int src1 = insn->src1;
     const int src2 = insn->src2;
     const int src3 = insn->src3;
-    int src1_loc = (is_spilled(ctx, insn_index, src1)
+    int src1_loc = (!unit->regs[src1].live || is_spilled(ctx, insn_index, src1)
                     ? -1 : ctx->regs[src1].host_reg);
-    int src2_loc = (!src2 || is_spilled(ctx, insn_index, src2)
+    int src2_loc = (!src2 || !unit->regs[src2].live
+                          || is_spilled(ctx, insn_index, src2)
                     ? -1 : ctx->regs[src2].host_reg);
-    int src3_loc = (!src3 || is_spilled(ctx, insn_index, src3)
+    int src3_loc = (!src3 || !unit->regs[src3].live
+                          || is_spilled(ctx, insn_index, src3)
                     ? -1 : ctx->regs[src3].host_reg);
     const bool is_tail = (insn->host_data_16 != 0);
 
     /* Call setup will generally require more space than is reserved by
      * default, so expand the buffer if needed. */
-    const int MAX_SETUP_LEN = 3*8;  // 3x REX GPR load (src1/src2/src3)
+    const int MAX_SETUP_LEN = 3*10;  // 3x 64-bit immediate (src1/src2/src3)
     /* Tail calls: worst case epilogue (107 bytes, see append_epilogue()) +
      * JMP Ev (without REX, since src1 is loaded to RAX) */
     const int MAX_TAIL_CALL_LEN = MAX_SETUP_LEN + 107 + 2;
@@ -2355,10 +2393,9 @@ static bool translate_call(HostX86Context *ctx, int block_index,
 
     }  // if (src2)
 
-    /* Reload the call target, if necessary. */
+    /* Reload the call target (or copy from constant), if necessary. */
     if (src1_loc < 0) {
-        append_load_gpr(&code, RTLTYPE_ADDRESS, X86_AX,
-                        X86_SP, ctx->regs[src1].spill_offset);
+        append_move_or_load_gpr(&code, ctx, unit, insn_index, X86_AX, src1);
         src1_loc = X86_AX;
     }
 
@@ -4777,20 +4814,7 @@ static bool translate_block(HostX86Context *ctx, int block_index)
 
               default:
                 ASSERT(rtl_type_is_int(unit->regs[dest].type));
-                if (imm == 0) {
-                    append_insn_ModRM_reg(&code, false, X86OP_XOR_Gv_Ev,
-                                          host_dest, host_dest);
-                } else if (imm <= UINT64_C(0xFFFFFFFF)) {
-                    append_insn_R(&code, false, X86OP_MOV_rAX_Iv, host_dest);
-                    append_imm32(&code, (uint32_t)imm);
-                } else if (imm >= UINT64_C(0xFFFFFFFF80000000)) {
-                    append_insn_ModRM_reg(&code, true, X86OP_MOV_Ev_Iz,
-                                          0, host_dest);
-                    append_imm32(&code, (uint32_t)imm);
-                } else {
-                    append_insn_R(&code, true, X86OP_MOV_rAX_Iv, host_dest);
-                    append_imm64(&code, imm);
-                }
+                append_load_imm_gpr(&code, host_dest, imm);
                 break;
             }
 

@@ -37,6 +37,7 @@ static int add_rtl(RTLUnit *unit)
     EXPECT(rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, label));
     EXPECT(reg2 = rtl_alloc_register(unit, RTLTYPE_ADDRESS));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg2, 0, 0, 2));
+    rtl_make_unfoldable(unit, reg2);  // Block constant-load optimization.
     /* This call should not attempt to preserve reg1, since it's in a
      * callee-saved register. */
     EXPECT(rtl_add_insn(unit, RTLOP_CALL_TRANSPARENT, 0, reg2, 0, 0));
