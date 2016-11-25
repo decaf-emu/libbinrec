@@ -148,6 +148,8 @@ static int get_compare_condition(const RTLRegister *reg, bool invert)
             case RTLFCMP_GE: return invert ? X86CC_B : X86CC_AE;
             default:         return -1;
         }
+      case RTLOP_FTESTEXC:
+        return invert ? X86CC_Z : X86CC_NZ;
       default:
         return -1;
     }
@@ -221,6 +223,7 @@ static int forward_condition(HostX86Context *ctx, int insn_index, int cond)
     kill_reg(ctx, cond, true, false);
 
     insn->host_data_16 = 0x8000
+                       | (cond_reg->result.opcode == RTLOP_FTESTEXC ? 0x40 : 0)
                        | (cond_reg->result.fcmp & RTLFCMP_ORDERED ? 0x20 : 0)
                        | (cond_reg->result.is_imm ? 0x10 : 0)
                        | jump_condition;

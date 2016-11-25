@@ -53,13 +53,14 @@
  * - For the SELECT instruction:
  *      - If host_data_16 is nonzero, it indicates that the comparands
  *        given in the condition register's result structure should be
- *        compared at the move point (condition-forwarding optimization)
+ *        compared at the move point (condition-forwarding optimization).
  *        The contents of host_data_16 are as follows:
  *           0x8000 - bit always set (indicates data present)
  *           0x000F - condition
  *           0x0010 - true if a register-immediate compare, false if a
  *                       register-register compare
  *           0x0020 - true for ordered floating-point compares (COMIS[SD])
+ *           0x0040 - true if a bitwise TEST instead of a CMP (FTESTEXC)
  *           0x1F00 - register to use for src1 reload (if needed)
  *        In this case, the src3 field is rewritten to the src1 field
  *        from the register's result structure.

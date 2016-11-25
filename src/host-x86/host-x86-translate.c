@@ -57,7 +57,7 @@ typedef struct CodeBuffer {
 } CodeBuffer;
 
 /*************************************************************************/
-/*************** Utility routines for adding instructions ****************/
+/************************ Basic utility routines *************************/
 /*************************************************************************/
 
 /**
@@ -101,6 +101,27 @@ static inline CONST_FUNCTION uint8_t sse_opcode_prefix_for_type(
 }
 
 /*-----------------------------------------------------------------------*/
+
+/**
+ * rtlfexc_to_bits:  Return an MXCSR bitmask corresponding to the
+ * exception(s) specified by exc, or 0 if exc is invalid.
+ */
+static inline CONST_FUNCTION uint8_t rtlfexc_to_bits(RTLFloatException exc)
+{
+    switch (exc) {
+        case RTLFEXC_ANY:         return 0x3D;
+        case RTLFEXC_INEXACT:     return 0x20;
+        case RTLFEXC_INVALID:     return 0x01;
+        case RTLFEXC_OVERFLOW:    return 0x08;
+        case RTLFEXC_UNDERFLOW:   return 0x10;
+        case RTLFEXC_ZERO_DIVIDE: return 0x04;
+    }
+    return 0;
+}
+
+/*************************************************************************/
+/*************** Utility routines for adding instructions ****************/
+/*************************************************************************/
 
 /**
  * append_opcode:  Append an x86 opcode to the current code stream.  The
@@ -3165,11 +3186,27 @@ static bool translate_block(HostX86Context *ctx, int block_index)
                 condition = insn->host_data_16 & 0xF;
                 const int32_t cmp2 = insn->host_data_32;
                 const bool cmp2_is_imm = (insn->host_data_16 & 0x10) != 0;
-                append_compare(ctx, insn_index, &code, insn->src3,
-                               cmp2_is_imm ? 0 : cmp2, cmp2,
-                               (insn->host_data_16 >> 8) & 0x1F,
-                               (condition & 0xE) == X86CC_Z,
-                               (insn->host_data_16 & 0x20) != 0, -1);
+                if (insn->host_data_16 & 0x40) {
+                    /* 0x40 implies FTESTEXC, which always has src1 of type
+                     * FPSTATE and an immediate RTLFloatException src2. */
+                    ASSERT(cmp2_is_imm);
+                    if (!is_spilled(ctx, insn_index, insn->src3)) {
+                        maybe_append_empty_rex(
+                            &code, ctx->regs[insn->src3].host_reg, -1, -1);
+                    }
+                    append_insn_ModRM_ctx(
+                        &code, false, X86OP_UNARY_Eb, X86OP_UNARY_TEST,
+                        ctx, insn_index, insn->src3);
+                    append_imm8(&code, rtlfexc_to_bits(cmp2));
+                    ctx->last_test_reg = 0;
+                    ctx->last_cmp_reg = 0;
+                } else {
+                    append_compare(ctx, insn_index, &code, insn->src3,
+                                   cmp2_is_imm ? 0 : cmp2, cmp2,
+                                   (insn->host_data_16 >> 8) & 0x1F,
+                                   (condition & 0xE) == X86CC_Z,
+                                   (insn->host_data_16 & 0x20) != 0, -1);
+                }
             } else {
                 condition = X86CC_NZ;
                 append_compare(ctx, insn_index, &code, insn->src3,
@@ -4510,15 +4547,7 @@ static bool translate_block(HostX86Context *ctx, int block_index)
           case RTLOP_FTESTEXC: {
             const X86Register host_dest = ctx->regs[dest].host_reg;
             const X86Register host_src1 = ctx->regs[src1].host_reg;
-            int bits = 0;
-            switch ((RTLFloatException)insn->src_imm) {
-                case RTLFEXC_ANY:         bits = 0x3D; break;
-                case RTLFEXC_INEXACT:     bits = 0x20; break;
-                case RTLFEXC_INVALID:     bits = 0x01; break;
-                case RTLFEXC_OVERFLOW:    bits = 0x08; break;
-                case RTLFEXC_UNDERFLOW:   bits = 0x10; break;
-                case RTLFEXC_ZERO_DIVIDE: bits = 0x04; break;
-            }
+            const uint8_t bits = rtlfexc_to_bits(insn->src_imm);
             if (UNLIKELY(!bits)) {
                 log_error(handle, "Invalid FP exception %d in FTESTEXC at %d",
                           (int)insn->src_imm, insn_index);
@@ -5487,11 +5516,25 @@ static bool translate_block(HostX86Context *ctx, int block_index)
             const X86Opcode short_opcode = X86OP_Jcc_Jb | jump_condition;
             const X86Opcode long_opcode = X86OP_Jcc_Jz | jump_condition;
 
-            append_compare(ctx, insn_index, &code, src1, src2,
-                           insn->host_data_32,
-                           (insn->host_data_16 >> 8) & 0x1F,
-                           (jump_condition & 0xE) == X86CC_Z,
-                           (insn->host_data_16 & 0x20) != 0, -1);
+            if (insn->host_data_16 & 0x40) {  // FTESTEXC
+                ASSERT(insn->host_data_16 & 0x10);
+                if (!is_spilled(ctx, insn_index, src1)) {
+                    maybe_append_empty_rex(
+                        &code, ctx->regs[src1].host_reg, -1, -1);
+                }
+                append_insn_ModRM_ctx(
+                    &code, false, X86OP_UNARY_Eb, X86OP_UNARY_TEST,
+                    ctx, insn_index, src1);
+                append_imm8(&code, rtlfexc_to_bits(insn->host_data_32));
+                ctx->last_test_reg = 0;
+                ctx->last_cmp_reg = 0;
+            } else {
+                append_compare(ctx, insn_index, &code, src1, src2,
+                               insn->host_data_32,
+                               (insn->host_data_16 >> 8) & 0x1F,
+                               (jump_condition & 0xE) == X86CC_Z,
+                               (insn->host_data_16 & 0x20) != 0, -1);
+            }
 
             /* If we have any aliases or spills to reload that would
              * conflict with live registers, we have to invert the sense of

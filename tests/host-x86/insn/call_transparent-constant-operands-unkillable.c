@@ -42,7 +42,7 @@ static const uint8_t expected_code[] = {
     0xBE,0x03,0x00,0x00,0x00,           // mov $3,%esi
     0x48,0x85,0xC9,                     // test %rcx,%rcx
     0x8B,0xFA,                          // mov %edx,%edi
-    0x0F,0x44,0xFE,                     // cmove %esi,%edi
+    0x0F,0x44,0xFE,                     // cmovz %esi,%edi
     0x48,0x89,0x04,0x24,                // mov %rax,(%rsp)
     0x8B,0xFA,                          // mov %edx,%edi
     0xFF,0xD1,                          // call *%rcx
