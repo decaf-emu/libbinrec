@@ -912,7 +912,14 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
                     soft_avoid |= 1 << src1_info->host_reg;
                 }
                 if (!src2_info->spilled) {
-                    soft_avoid |= 1 << src2_info->host_reg;
+                    /* However, we need to completely avoid src2 if src1 is
+                     * spilled so that the destination register is safe to
+                     * use as a temporary for reloading src1. */
+                    if (src1_info->spilled) {
+                        avoid_regs |= 1 << src2_info->host_reg;
+                    } else {
+                        soft_avoid |= 1 << src2_info->host_reg;
+                    }
                 }
                 break;
 
