@@ -956,9 +956,11 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
                      * depends on the specific instruction variant chosen,
                      * so avoid clobbering any other operands.  This logic
                      * needs to be kept in sync with translate_fma() in
-                     * host-x86-translate.c.  Note that we can't reverse
-                     * the order of the multiplicands because we need to
-                     * preserve NaN reporting order. */
+                     * host-x86-translate.c.  If the NATIVE_IEEE_NAN
+                     * optimization is enabled, we could potentially
+                     * reverse the order of multiplicands if that reduced
+                     * the number of reloads, but we currently don't
+                     * attempt to do that. */
                     const bool spilled1 = ctx->regs[src1].spilled;
                     const bool spilled2 = ctx->regs[src2].spilled;
                     const bool spilled3 = ctx->regs[insn->src3].spilled;

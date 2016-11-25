@@ -604,7 +604,9 @@ typedef struct binrec_setup_t {
 /**
  * BINREC_OPT_NATIVE_IEEE_NAN:  Use the host's rules for NaN results of
  * floating-point operations, even when those rules differ from the guest
- * architecture.
+ * architecture, and allow the host to reorder operands to a floating-point
+ * operation even if doing so would change the NaN returned for an invalid
+ * operation.
  *
  * The IEEE specification allows differing behavior between implementations
  * in the following cases:
