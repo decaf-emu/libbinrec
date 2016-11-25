@@ -1004,8 +1004,10 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
                 break;
 
               case RTLOP_FTESTEXC:
-                /* As for SEQ, etc. */
-                if (!src1_info->spilled) {
+                /* As for SEQ, etc.  But if the exception is INVALID, we
+                 * can use a simple AND-immediate, so we don't need to
+                 * avoid anything. */
+                if (!src1_info->spilled && insn->src_imm != RTLFEXC_INVALID) {
                     soft_avoid |= 1 << src1_info->host_reg;
                 }
                 break;

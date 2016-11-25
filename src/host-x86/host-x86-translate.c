@@ -4554,35 +4554,49 @@ static bool translate_block(HostX86Context *ctx, int block_index)
                 break;
             }
 
-            bool cleared_dest = false;
-            if (is_spilled(ctx, insn_index, src1)
-             || host_dest != ctx->regs[src1].host_reg) {
-                append_insn_ModRM_reg(&code, false, X86OP_XOR_Gv_Ev,
-                                      host_dest, host_dest);
-                cleared_dest = true;
-            }
+            if (bits == 0x01) {
+                /* In this case, we can just AND the value with 1. */
+                append_move_or_load_gpr(&code, ctx, unit, insn_index,
+                                        host_dest, src1);
+                append_insn_ModRM_reg(&code, false, X86OP_IMM_Ev_Ib,
+                                      X86OP_IMM_AND, host_dest);
+                append_imm8(&code, 1);
+                if (handle->host_opt & BINREC_OPT_H_X86_CONDITION_CODES) {
+                    ctx->last_test_reg = dest;
+                    ctx->last_cmp_reg = 0;
+                }
 
-            if (is_spilled(ctx, insn_index, src1)) {
-                append_insn_ModRM_mem(&code, false, X86OP_UNARY_Eb,
-                                      X86OP_UNARY_TEST, X86_SP, -1,
-                                      ctx->regs[src1].spill_offset);
             } else {
-                maybe_append_empty_rex(&code, host_src1, -1, -1);
-                append_insn_ModRM_reg(&code, false, X86OP_UNARY_Eb,
-                                      X86OP_UNARY_TEST, host_src1);
-            }
-            append_imm8(&code, bits);
-            ctx->last_test_reg = 0;
-            ctx->last_cmp_reg = 0;
-            ctx->last_cmp_target = 0;
-            ctx->last_cmp_imm = 0;
+                bool cleared_dest = false;
+                if (is_spilled(ctx, insn_index, src1)
+                 || host_dest != ctx->regs[src1].host_reg) {
+                    append_insn_ModRM_reg(&code, false, X86OP_XOR_Gv_Ev,
+                                          host_dest, host_dest);
+                    cleared_dest = true;
+                }
 
-            maybe_append_empty_rex(&code, host_dest, -1, -1);
-            append_insn_ModRM_reg(&code, false, X86OP_SETNZ, 0, host_dest);
-            if (!cleared_dest) {
+                if (is_spilled(ctx, insn_index, src1)) {
+                    append_insn_ModRM_mem(&code, false, X86OP_UNARY_Eb,
+                                          X86OP_UNARY_TEST, X86_SP, -1,
+                                          ctx->regs[src1].spill_offset);
+                } else {
+                    maybe_append_empty_rex(&code, host_src1, -1, -1);
+                    append_insn_ModRM_reg(&code, false, X86OP_UNARY_Eb,
+                                          X86OP_UNARY_TEST, host_src1);
+                }
+                append_imm8(&code, bits);
+                ctx->last_test_reg = 0;
+                ctx->last_cmp_reg = 0;
+                ctx->last_cmp_target = 0;
+                ctx->last_cmp_imm = 0;
+
                 maybe_append_empty_rex(&code, host_dest, -1, -1);
-                append_insn_ModRM_reg(&code, false, X86OP_MOVZX_Gv_Eb,
-                                      host_dest, host_dest);
+                append_insn_ModRM_reg(&code, false, X86OP_SETNZ, 0, host_dest);
+                if (!cleared_dest) {
+                    maybe_append_empty_rex(&code, host_dest, -1, -1);
+                    append_insn_ModRM_reg(&code, false, X86OP_MOVZX_Gv_Eb,
+                                          host_dest, host_dest);
+                }
             }
             break;
           }  // case RTLOP_FTESTEXC
