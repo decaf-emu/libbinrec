@@ -14,7 +14,7 @@ static const uint8_t input[] = {
     0xFD,0xFE,0x15,0x8E,  // mtfsf 255,f2
 };
 
-static const unsigned int guest_opt = 0;
+static const unsigned int guest_opt = BINREC_OPT_G_PPC_USE_SPLIT_FIELDS;
 static const unsigned int common_opt = 0;
 
 static const bool expected_success = true;

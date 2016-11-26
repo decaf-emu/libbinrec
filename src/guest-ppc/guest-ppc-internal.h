@@ -367,8 +367,12 @@ typedef struct GuestPPCContext {
     uint32_t start;
 
     /* True if the TRIM_CR_STORES optimization is active.  (Even if the
-     * flag is enabled, the optimization may fail due to lack of memory.) */
+     * flag is enabled, the optimization may fail due to lack of memory,
+     * or it may be suppressed by USE_SPLIT_FIELDS not being enabled.) */
     bool trim_cr_stores;
+    /* True if the USE_SPLIT_FIELDS optimization is active.  (Stored here
+     * just for convenience. */
+    bool use_split_fields;
 
     /* List of basic blocks found from scanning, sorted by address. */
     GuestPPCBlockInfo *blocks;
@@ -404,15 +408,20 @@ typedef struct GuestPPCContext {
     /* Set of CR bits which are modified by the unit.  These bits are
      * stored in the same order as the CR word, so that the MSB corresponds
      * to CR bit 0; this saves the cost of a bit-reverse operation every
-     * time we need to merge bits back to the CR word. */
+     * time we need to merge bits back to the CR word.  This is always zero
+     * if the USE_SPLIT_FIELDS optimization is not enabled. */
     uint32_t crb_changed_bitrev;
     /* Set of CR bits which have live registers.  Bits are in natural order
-     * (the LSB corresponds to CR bit 0), as with GuestPPCBlockInfo bitmaps. */
+     * (the LSB corresponds to CR bit 0), as with GuestPPCBlockInfo bitmaps.
+     * This is always zero if the USE_SPLIT_FIELDS optimization is not
+     * enabled. */
     uint32_t crb_dirty;
     /* Flag indicating whether FPSCR is written by any instruction in the
      * unit. */
     bool fpscr_changed;
-    /* Flag indicating whether the fr_fi_fprf alias contains a valid value. */
+    /* Flag indicating whether the fr_fi_fprf alias contains a valid value.
+     * This is always false if the USE_SPLIT_FIELDS optimization is not
+     * enabled. */
     bool fr_fi_fprf_loaded;
 
     /* RTL registers for each CPU register live in the current block. */
@@ -496,6 +505,9 @@ extern bool guest_ppc_translate_block(GuestPPCContext *ctx, int index);
 /**
  * guest_ppc_flush_cr:  Flush all CR bit aliases to the full CR register.
  *
+ * This function does nothing if the BINREC_OPT_G_PPC_USE_SPLIT_FIELDS
+ * optimization is not enabled.
+ *
  * [Parameters]
  *     ctx: Translation context.
  *     make_live: True to leave the flushed CR value live in its alias,
@@ -507,6 +519,9 @@ extern void guest_ppc_flush_cr(GuestPPCContext *ctx, bool make_live);
 /**
  * guest_ppc_flush_fpscr:  Flush the FR/FI/FPRF alias to the full FPSCR
  * register.  FPSCR is not made live if it was not live already.
+ *
+ * This function does nothing if the BINREC_OPT_G_PPC_USE_SPLIT_FIELDS
+ * optimization is not enabled.
  *
  * [Parameters]
  *     ctx: Translation context.

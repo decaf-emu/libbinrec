@@ -189,6 +189,7 @@ static bool process_command_line(int argc, char **argv)
                     "        -Gppc-no-vxfoo       Suppress FPSCR invalid exception reason bits\n"
                     "        -Gppc-ps-denormals   Do not flush paired-single denormals to zero\n"
                     "        -Gppc-reciprocal     Use native FP reciprocal math instead of tables\n"
+                    "        -Gppc-split-fields   Split out CR/FPSCR fields for flow analysis\n"
                     "    -H<NAME>     Enable specific host optimizations.\n"
                     "        -Hx86-address-op     Address operand optimization\n"
                     "        -Hx86-branch-align   Branch target alignment\n"
@@ -267,6 +268,8 @@ static bool process_command_line(int argc, char **argv)
                     opt_guest |= BINREC_OPT_G_PPC_PS_STORE_DENORMALS;
                 } else if (strcmp(name, "ppc-cr-stores") == 0) {
                     opt_guest |= BINREC_OPT_G_PPC_TRIM_CR_STORES;
+                } else if (strcmp(name, "ppc-split-fields") == 0) {
+                    opt_guest |= BINREC_OPT_G_PPC_USE_SPLIT_FIELDS;
                 } else {
                     fprintf(stderr, "Unknown guest optimization flag %s\n",
                             name);
@@ -393,6 +396,7 @@ static bool process_command_line(int argc, char **argv)
                         | BINREC_OPT_FOLD_CONSTANTS;
             if (arch == GUEST_ARCH_PPC_7XX) {
                 opt_guest |= BINREC_OPT_G_PPC_TRIM_CR_STORES;
+                opt_guest |= BINREC_OPT_G_PPC_USE_SPLIT_FIELDS;
             }
             if (native_arch == BINREC_ARCH_X86_64_SYSV
              || native_arch == BINREC_ARCH_X86_64_WINDOWS) {

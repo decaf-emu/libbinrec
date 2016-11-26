@@ -23,8 +23,9 @@ static const FailureRecord expected_error_list[] = {
 
 static void configure_handle(binrec_t *handle)
 {
-    binrec_set_optimization_flags(handle,
-                                  0, BINREC_OPT_G_PPC_TRIM_CR_STORES, 0);
+    binrec_set_optimization_flags(
+        handle, 0, (BINREC_OPT_G_PPC_TRIM_CR_STORES
+                    | BINREC_OPT_G_PPC_USE_SPLIT_FIELDS), 0);
 }
 
 int main(void)

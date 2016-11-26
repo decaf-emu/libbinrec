@@ -15,7 +15,7 @@ static const uint8_t input[] = {
     0x41,0x82,0x00,0x08,  // beq 0x10
 };
 
-static const unsigned int guest_opt = 0;
+static const unsigned int guest_opt = BINREC_OPT_G_PPC_USE_SPLIT_FIELDS;
 static const unsigned int common_opt = 0;
 
 static const bool expected_success = true;

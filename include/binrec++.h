@@ -73,6 +73,7 @@ namespace Optimize {
         const unsigned int NO_FPSCR_STATE = BINREC_OPT_G_PPC_NO_FPSCR_STATE;
         const unsigned int PS_STORE_DENORMALS = BINREC_OPT_G_PPC_PS_STORE_DENORMALS;
         const unsigned int TRIM_CR_STORES = BINREC_OPT_G_PPC_TRIM_CR_STORES;
+        const unsigned int USE_SPLIT_FIELDS = BINREC_OPT_G_PPC_USE_SPLIT_FIELDS;
     }
 
     namespace HostX86 {

@@ -1412,17 +1412,22 @@ bool guest_ppc_scan(GuestPPCContext *ctx, uint32_t limit)
     /* If optimizing CR bits, traverse all blocks in control flow order to
      * find which CR bits don't need to be stored. */
     if (ctx->handle->guest_opt & BINREC_OPT_G_PPC_TRIM_CR_STORES) {
-        uint8_t *visited = binrec_malloc(ctx->handle, ctx->num_blocks);
-        if (UNLIKELY(!visited)) {
-            log_warning(ctx->handle, "No memory for block visited flags"
-                        " (%d bytes), skipping TRIM_CR_STORES optimization",
-                        ctx->num_blocks);
+        if (!ctx->use_split_fields) {
+            log_warning(ctx->handle, "Skipping TRIM_CR_STORES optimization"
+                        " because USE_SPLIT_FIELDS is not enabled");
         } else {
-            memset(visited, 0, ctx->num_blocks);
-            scan_branches(ctx);
-            scan_cr_bits(ctx, visited, 0);
-            binrec_free(ctx->handle, visited);
-            ctx->trim_cr_stores = true;
+            uint8_t *visited = binrec_malloc(ctx->handle, ctx->num_blocks);
+            if (UNLIKELY(!visited)) {
+                log_warning(ctx->handle, "No memory for block visited flags"
+                            " (%d bytes), skipping TRIM_CR_STORES"
+                            " optimization", ctx->num_blocks);
+            } else {
+                memset(visited, 0, ctx->num_blocks);
+                scan_branches(ctx);
+                scan_cr_bits(ctx, visited, 0);
+                binrec_free(ctx->handle, visited);
+                ctx->trim_cr_stores = true;
+            }
         }
     }
 

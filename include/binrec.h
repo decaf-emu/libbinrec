@@ -174,7 +174,7 @@ extern "C" {
  * lmw/stmw) D-form instructions with rA = 0 are handled correctly.
  *
  * Some obscure hardware quirks are not emulated by the translated code;
- * see the list of expected failures in tests/guest-ppc/exec/750cl-noopt.c
+ * see the list of expected failures in tests/guest-ppc/exec/750cl-common.i
  * for details.
  *
  *
@@ -969,12 +969,29 @@ typedef struct binrec_setup_t {
  * CR bit and eliminate stores which are not visible outside the
  * translated code.
  *
- * If this optimization is enabled, pre- and post-instruction callbacks,
- * branch callbacks, and timebase handlers may see incorrect values of CR
- * in the processor state block.  System call and trap handlers are not
- * affected.
+ * This optimization has no effect unless BINREC_OPT_G_PPC_USE_SPLIT_FIELDS
+ * is also enabled.
  */
 #define BINREC_OPT_G_PPC_TRIM_CR_STORES  (1<<10)
+
+/**
+ * BINREC_OPT_G_PPC_USE_SPLIT_FIELDS:  Treat subfields of certain registers
+ * as separate values, rather than directly modifying the associated bits
+ * in the register.
+ *
+ * Enabling this optimization causes individual bits of CR and the FPRF
+ * field of FPSCR to be treated as separate "variables" in their own right;
+ * the translated code will extract their values on entry and recombine
+ * them into the full register on exit.  This allows data flow analysis to
+ * find dead stores to specific fields, which otherwise would be obscured
+ * by the dependency on the full register's previous state.
+ *
+ * If this optimization is enabled, pre- and post-instruction callbacks,
+ * branch callbacks, and timebase handlers may see incorrect values of CR
+ * and FPSCR[FPRF] in the processor state block.  System call and trap
+ * handlers are not affected.
+ */
+#define BINREC_OPT_G_PPC_USE_SPLIT_FIELDS  (1<<11)
 
 /*------------ Host-architecture-specific optimization flags ------------*/
 
