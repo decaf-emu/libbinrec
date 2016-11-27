@@ -1416,6 +1416,7 @@ static void fold_readonly_load(RTLUnit * const unit, RTLRegister * const reg,
     reg->value.i64 = value;
     RTLInsn *reg_insn = &unit->insns[reg->birth];
     reg_insn->opcode = RTLOP_LOAD_IMM;
+    reg_insn->src1 = 0;
     reg_insn->src_imm = value;
 
     if (unit->regs[base].death == reg->birth) {
