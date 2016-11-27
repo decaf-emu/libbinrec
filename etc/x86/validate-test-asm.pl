@@ -9,8 +9,8 @@
 #
 
 # This script can be used to check that x86 assembly in comments in test
-# sources matches the associated machine code.  Run from the top directory
-# using: etc/x86/validate-test-asm.pl tests/host-x86/*/*.c
+# sources matches the associated machine code.  Run from the top directory:
+# etc/x86/validate-test-asm.pl tests/host-x86/*/*.c
 
 use strict;
 use warnings;

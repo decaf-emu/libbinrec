@@ -679,12 +679,25 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
 
             /* If we've already reserved a register with MERGE_REGS, take
              * it out of the reserved set so we can properly allocate it
-             * below. */
+             * below.  If the reserved register is not actually available
+             * here (because it got clobbered by a fixed instruction input,
+             * like rAX/rDX in multiply/divide instructions), clear the
+             * merge_alias flag and select a merge register normally. */
             if (dest_info->merge_alias) {
                 const X86Register host_merge = dest_info->host_merge;
                 ASSERT(ctx->early_merge_regs & (1 << host_merge));
                 ctx->early_merge_regs ^= 1 << host_merge;
-                avoid_regs ^= 1 << host_merge;
+                if (ctx->block_regs_touched & (1 << host_merge)) {
+                    /* Can't use this register!  Oh well. */
+                    dest_info->merge_alias = false;
+                    /* We don't touch avoid_regs just in case this bit was
+                     * also set for some other reason, so we'll fail to
+                     * use this register even if it would otherwise be
+                     * available, but that'll clear up for the next
+                     * instruction. */
+                } else {
+                    avoid_regs ^= 1 << host_merge;
+                }
             }
 
             /* First priority: register used by SET_ALIAS in previous block
@@ -1497,6 +1510,37 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
                 ctx->block_regs_touched |= 1 << cmp1_temp;
             }
         }
+    }
+
+    /* Mark as touched any fixed registers used by the instruction, since
+     * they may not have any associated RTL registers but we still need to
+     * prevent merging through them. */
+    switch (insn->opcode) {
+      case RTLOP_MULHU:
+      case RTLOP_MULHS:
+      case RTLOP_DIVU:
+      case RTLOP_DIVS:
+      case RTLOP_MODU:
+      case RTLOP_MODS:
+        /* At least one of rAX and rDX will always be occupied here, either
+         * by dest or by an existing register which blocked dest from its
+         * preferred allocation, but we mark both as touched just to be
+         * safe (and also so we can handle all these instructions with a
+         * single case). */
+        ctx->block_regs_touched |= 1 << X86_AX | 1 << X86_DX;
+        break;
+
+      case RTLOP_SLL:
+      case RTLOP_SRL:
+      case RTLOP_SRA:
+      case RTLOP_ROL:
+      case RTLOP_ROR:
+        ctx->block_regs_touched |= 1 << X86_CX;
+        break;
+
+      case RTLOP_CMPXCHG:
+        ctx->block_regs_touched |= 1 << X86_AX;
+        break;
     }
 
     return true;

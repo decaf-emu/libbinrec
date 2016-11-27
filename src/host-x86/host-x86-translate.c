@@ -1337,7 +1337,7 @@ static void reload_base_and_index(
  *     host_index_ptr: Pointer to index register for address (X86Register,
  *         -1 if none).  May be modified on return.
  *     host_value_ret: Pointer to variable to receive the value register
- *         (X86Register).
+ *         (X86Register).  May be modified on return.
  * [Return value]
  *     True if RAX was saved to XMM15, false otherwise.
  */
@@ -1369,7 +1369,7 @@ static bool reload_store_source_gpr(
         return false;
     }
 
-    X86Register host_value = insn->src3;
+    X86Register host_value = insn->src3;  // FIXME: wait what???
     if (host_value != *host_base_ptr && (int)host_value != *host_index_ptr) {
         if (spilled) {
             append_load_gpr(code, type, host_value,
@@ -1392,6 +1392,7 @@ static bool reload_store_source_gpr(
      * check host_base for RAX collision here. */
     ASSERT(*host_index_ptr != X86_AX);
     if (*host_base_ptr == X86_AX) {
+        ASSERT(*host_index_ptr == X86_R15);
         append_insn_ModRM_reg(code, true, X86OP_ADD_Gv_Ev, X86_R15, X86_AX);
         *host_base_ptr = X86_R15;
         *host_index_ptr = -1;
