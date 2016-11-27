@@ -28,8 +28,8 @@ static int add_rtl(RTLUnit *unit)
 }
 
 static const char expected[] =
+    "[error] Invalid opcode 1 on RESULT register 2\n"
     #ifdef RTL_DEBUG_OPTIMIZE
-        "[error] Invalid opcode 1 on RESULT register 2\n"
         "[info] Folded r2 to constant value 0 at 1\n"
         "[info] r1 no longer used, setting death = birth\n"
     #endif

@@ -23,8 +23,10 @@ static const bool expected_success = true;
 static const char expected[] =
     "[info] Scanning terminated at requested limit 0xF\n"
     "[warning] Skipping TRIM_CR_STORES optimization because USE_SPLIT_FIELDS is not enabled\n"
-    "[info] Killing instruction 5\n"
-    "[info] r1 death rolled back to 3\n"
+    #ifdef RTL_DEBUG_OPTIMIZE
+        "[info] Killing instruction 5\n"
+        "[info] r1 death rolled back to 3\n"
+    #endif
     "    0: LOAD_ARG   r1, 0\n"
     "    1: LOAD_ARG   r2, 1\n"
     "    2: LOAD_IMM   r3, 1\n"

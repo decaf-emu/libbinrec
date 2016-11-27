@@ -36,8 +36,8 @@ static int add_rtl(RTLUnit *unit)
 }
 
 static const char expected[] =
+    "[error] Invalid opcode 0 on RESULT register 3\n"
     #ifdef RTL_DEBUG_OPTIMIZE
-        "[error] Invalid opcode 0 on RESULT register 3\n"
         "[info] Folded r3 to constant value 0 at 2\n"
         "[info] r2 no longer used, setting death = birth\n"
         "[info] Reduced r4 to register-immediate operation (r1, 0) at 3\n"
