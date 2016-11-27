@@ -74,6 +74,14 @@ ENABLE_ASSERT = 1
 ENABLE_OPERAND_SANITY_CHECKS = 1
 
 
+# ENABLE_RTL_DEBUG_OPTIMIZE:  If this variable is set to 1, optimization
+# routines will output debugging information via the logging callback.
+#
+# The default is 1 (debugging information will be output).
+
+ENABLE_RTL_DEBUG_OPTIMIZE = 1
+
+
 # INSTALL_PKGCONFIG:  If this variable is set to 1, the build process will
 # install a control file for the "pkg-config" tool as
 # "$(LIBDIR)/pkgconfig/binrec.pc".
@@ -367,6 +375,7 @@ endif
 ALL_DEFS = $(strip \
     $(call define-if-true,ENABLE_ASSERT) \
     $(call define-if-true,ENABLE_OPERAND_SANITY_CHECKS) \
+    $(call if-true,ENABLE_RTL_DEBUG_OPTIMIZE,-DRTL_DEBUG_OPTIMIZE) \
     -DVERSION=\"$(VERSION)\")
 
 ALL_CFLAGS = $(BASE_CFLAGS) $(ALL_DEFS) $(CFLAGS)

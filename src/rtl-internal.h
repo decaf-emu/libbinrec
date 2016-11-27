@@ -85,9 +85,10 @@
 
 /**
  * RTL_DEBUG_OPTIMIZE:  If defined, optimization functions will output
- * debugging information via log_info().
+ * debugging information via log_info().  Normally defined (if desired)
+ * by the Makefile.
  */
-#define RTL_DEBUG_OPTIMIZE
+// #define RTL_DEBUG_OPTIMIZE
 
 /*************************************************************************/
 /*************************** Type declarations ***************************/
