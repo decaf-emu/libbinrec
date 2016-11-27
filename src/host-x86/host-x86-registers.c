@@ -457,8 +457,8 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
      * R15 as a temporary for reloading the address if necessary.  (For
      * SET_ALIAS, we unconditionally use R15 or XMM15 to store the
      * reloaded value, since SET_ALIAS source values should generally not
-     * be spilled in the first place and thus it's not worth the effort to
-     * add special handling.) */
+     * be spilled in the first place and thus it's not worth the effort
+     * to add special handling.) */
     switch (insn->opcode) {
       case RTLOP_SET_ALIAS:
         if (src1_info->spilled) {

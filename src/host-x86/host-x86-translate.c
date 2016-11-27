@@ -1337,7 +1337,7 @@ static void reload_base_and_index(
  *     host_index_ptr: Pointer to index register for address (X86Register,
  *         -1 if none).  May be modified on return.
  *     host_value_ret: Pointer to variable to receive the value register
- *         (X86Register).  May be modified on return.
+ *         (X86Register).
  * [Return value]
  *     True if RAX was saved to XMM15, false otherwise.
  */
@@ -1369,7 +1369,11 @@ static bool reload_store_source_gpr(
         return false;
     }
 
-    X86Register host_value = insn->src3;  // FIXME: wait what???
+    /* insn->src3 is not an RTL register here!  Instead it holds a
+     * temporary X86Register for reloading a spilled store source value.
+     * See the allocation logic at the top of allocate_regs_for_insn()
+     * for details. */
+    X86Register host_value = (X86Register)insn->src3;
     if (host_value != *host_base_ptr && (int)host_value != *host_index_ptr) {
         if (spilled) {
             append_load_gpr(code, type, host_value,
