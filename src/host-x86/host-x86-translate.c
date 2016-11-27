@@ -3319,7 +3319,10 @@ static bool translate_block(HostX86Context *ctx, int block_index)
                     }
                 }
             } else {
-                if (host_dest != host_src1) {
+                /* When converting from 64 to 32 bits, we need a MOV even
+                 * if the source and destination are in the same register
+                 * in order to clear the high 32 bits of the register. */
+                if (int_type_is_64(type_src1) || host_dest != host_src1) {
                     append_insn_ModRM_reg(&code, false, X86OP_MOV_Ev_Gv,
                                           host_src1, host_dest);
                 }

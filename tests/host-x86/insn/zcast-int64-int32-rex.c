@@ -43,6 +43,7 @@ static const uint8_t expected_code[] = {
     0x53,                               // push %rbx
     0xBF,0x01,0x00,0x00,0x00,           // mov $1,%edi
     0x41,0x89,0xF8,                     // mov %edi,%r8d
+    0x45,0x89,0xC0,                     // mov %r8d,%r8d
     0x44,0x89,0xC3,                     // mov %r8d,%ebx
     0x5B,                               // pop %rbx
     0xC3,                               // ret
