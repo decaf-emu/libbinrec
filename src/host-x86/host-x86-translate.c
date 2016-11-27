@@ -5317,8 +5317,6 @@ static bool translate_block(HostX86Context *ctx, int block_index)
                  * is also spilled (the register allocator guarantees this). */
                 ASSERT(!(!is_spilled(ctx, insn_index, src2)
                          && host_dest == ctx->regs[src2].host_reg));
-                /* temp_index is only used to check the assertion below
-                 * that no more than two temporary registers are used. */
                 temp_index++;
             }
             if (is_spilled(ctx, insn_index, insn->src3)) {
@@ -5327,34 +5325,6 @@ static bool translate_block(HostX86Context *ctx, int block_index)
                 host_src3 = host_temp;
                 temp_index++;
             }
-
-            /* Load src2 (the compare value) into rAX.  If any other
-             * operand is in rAX, save it in the destination register;
-             * note that we don't need to restore it from dest later,
-             * since if it's live past this instruction, it will already
-             * have been saved in (and be restored from) R15 or XMM15.
-             * We also don't have to worry about clobbering anything
-             * that's already in dest, since the register allocator avoids
-             * reusing the register of any unspilled input operand. */
-            if (host_src1 == X86_AX || host_src3 == X86_AX) {
-                ASSERT(temp_index < 2);
-                /* If we saved RAX to R15 above, this MOV is technically
-                 * unnecessary, but the logic to use R15 in that specific
-                 * case (which will probably be fairly rare) is more
-                 * complex than it's worth.  Likewise, we don't try to
-                 * omit this MOV if src2 is also in rAX (due to being the
-                 * same RTL register as src1 or src3). */
-                append_insn_ModRM_reg(&code, is64 || host_src1 == X86_AX,
-                                      X86OP_MOV_Gv_Ev, host_dest, X86_AX);
-                if (host_src1 == X86_AX) {
-                    host_src1 = host_dest;
-                }
-                if (host_src3 == X86_AX) {
-                    host_src3 = host_dest;
-                }
-            }
-            append_move_or_load_gpr(&code, ctx, unit, insn_index,
-                                    X86_AX, src2);
 
             /* If we have an index register and it's spilled, "reload" it
              * by adding it to the address register and subtracting it
@@ -5378,6 +5348,55 @@ static bool translate_block(HostX86Context *ctx, int block_index)
                     host_index = index_info->host_reg;
                 }
             }
+
+            /* If we have an index register in RAX and both src1 and src3
+             * were spilled, add the index to the reloaded src1 so it's not
+             * in the way of src2.  Since host_src1 is a temporary in this
+             * case, we don't have to worry about restoring its old value
+             * later.  We don't try to use the rAX save register because
+             * (1) it won't exist if the index dies on this instruction
+             * and (2) we can't use it as an index if it's XMM15. */
+            if (host_index == X86_AX && temp_index == 2) {
+                ASSERT(is_spilled(ctx, insn_index, src1));
+                append_insn_ModRM_reg(&code, true, X86OP_ADD_Gv_Ev,
+                                      host_src1, host_index);
+                host_index = -1;
+            }
+
+            /* Load src2 (the compare value) into rAX.  If any other
+             * operand is in rAX, save it in the destination register;
+             * note that we don't need to restore it from dest later,
+             * since if it's live past this instruction, it will already
+             * have been saved in (and be restored from) R15 or XMM15.
+             * We also don't have to worry about clobbering anything
+             * that's already in dest, since the register allocator avoids
+             * reusing the register of any unspilled input operand. */
+            if (host_src1 == X86_AX || host_src3 == X86_AX
+             || host_index == X86_AX) {
+                ASSERT(temp_index < 2);
+                /* If we saved RAX to R15 above, this MOV is technically
+                 * unnecessary, but the logic to use R15 in that specific
+                 * case (which will probably be fairly rare) is more
+                 * complex than it's worth, especially since MOVs are
+                 * potentially zero-latency.  Likewise, we don't try to
+                 * omit this MOV if src2 is also in rAX (due to being the
+                 * same RTL register as src1 or src3). */
+                const bool is64_ax = (is64 || host_src1 == X86_AX
+                                           || host_index == X86_AX);
+                append_insn_ModRM_reg(&code, is64_ax, X86OP_MOV_Gv_Ev,
+                                      host_dest, X86_AX);
+                if (host_src1 == X86_AX) {
+                    host_src1 = host_dest;
+                }
+                if (host_src3 == X86_AX) {
+                    host_src3 = host_dest;
+                }
+                if (host_index == X86_AX) {
+                    host_index = host_dest;
+                }
+            }
+            append_move_or_load_gpr(&code, ctx, unit, insn_index,
+                                    X86_AX, src2);
 
             /* Do the actual compare-and-swap. */
             append_opcode(&code, X86OP_LOCK);

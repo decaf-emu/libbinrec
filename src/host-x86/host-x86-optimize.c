@@ -271,8 +271,8 @@ void host_x86_optimize_address(HostX86Context *ctx, int insn_index)
         return;  // Can't optimize.
     }
 
-    /* Bail if the instruction is ADDI and the final offset would be
-     * outside the range of a 32-bit displacement. */
+    /* Bail if the instruction that generates the address is ADDI and the
+     * final offset would be outside the range of a 32-bit displacement. */
     const bool insn_has_offset = (insn->opcode < RTLOP_ATOMIC_INC);
     if (insn_has_offset) {
         const int64_t final_offset = (int64_t)offset + (int64_t)insn->offset;
