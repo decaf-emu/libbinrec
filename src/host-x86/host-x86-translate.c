@@ -61,6 +61,34 @@ typedef struct CodeBuffer {
 /*************************************************************************/
 
 /**
+ * current_reg:  Helper function to return the RTL register currently
+ * occupying the given host register.  Returns zero if ctx->reg_map[] has
+ * a nonzero entry but that register is already dead, or if host_reg is
+ * occupied by the destination of the current instruction and that
+ * register dies immediately (a dead store).
+ *
+ * [Parameters]
+ *     ctx: Translation context.
+ *     insn_index: Index of current instruction in ctx->unit->insns[].
+ *     host_reg: Host register to look up (X86Register).
+ * [Return value]
+ *     Index of the RTL register using the given host register, or 0 if
+ *     the host register is not in use.
+ */
+static inline PURE_FUNCTION int current_reg(
+    const HostX86Context *ctx, int insn_index, X86Register host_reg)
+{
+    const int rtl_reg = ctx->reg_map[host_reg];
+    if (rtl_reg && ctx->unit->regs[rtl_reg].death > insn_index) {
+        return rtl_reg;
+    } else {
+        return 0;
+    }
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
  * is_spilled:  Helper function to return whether a register is currently
  * spilled.
  *
@@ -71,8 +99,8 @@ typedef struct CodeBuffer {
  * [Return value]
  *     True if the register is spilled at insn_index, false if not.
  */
-static inline PURE_FUNCTION bool is_spilled(const HostX86Context *ctx,
-                                            int insn_index, int reg)
+static inline PURE_FUNCTION bool is_spilled(
+    const HostX86Context *ctx, int insn_index, int reg)
 {
     const HostX86RegInfo *reg_info = &ctx->regs[reg];
     return reg_info->spilled && reg_info->spill_insn <= insn_index;
@@ -1475,6 +1503,8 @@ static bool reload_regs_for_block(
     if (unit->blocks[block_index].next_block >= 0
      && target_block > unit->blocks[block_index].next_block) {
         for (int i = 0; i < 32; i++) {
+            /* We don't need to call current_reg() here since we check
+             * reg->death separately below. */
             const int reg_index = ctx->reg_map[i];
             if (reg_index) {
                 const RTLRegister *reg = &unit->regs[reg_index];
@@ -3090,16 +3120,14 @@ static bool translate_block(HostX86Context *ctx, int block_index)
         /* Evict the current occupant of the destination register if needed. */
         if (dest) {
             const X86Register host_dest = ctx->regs[dest].host_reg;
-            const int spill_index = ctx->reg_map[host_dest];
+            const int spill_index = current_reg(ctx, insn_index, host_dest);
             if (spill_index) {
                 const RTLRegister *spill_reg = &unit->regs[spill_index];
-                if (spill_reg->death > insn_index) {
-                    const HostX86RegInfo *spill_info = &ctx->regs[spill_index];
-                    ASSERT(spill_info->spilled);
-                    ASSERT(spill_info->spill_insn == insn_index);
-                    append_store(&code, spill_reg->type, spill_info->host_reg,
-                                 X86_SP, -1, spill_info->spill_offset);
-                }
+                const HostX86RegInfo *spill_info = &ctx->regs[spill_index];
+                ASSERT(spill_info->spilled);
+                ASSERT(spill_info->spill_insn == insn_index);
+                append_store(&code, spill_reg->type, spill_info->host_reg,
+                             X86_SP, -1, spill_info->spill_offset);
             }
             ctx->reg_map[host_dest] = dest;
         }
@@ -3410,13 +3438,13 @@ static bool translate_block(HostX86Context *ctx, int block_index)
             const bool is64 = int_type_is_64(unit->regs[src1].type);
             ASSERT(host_dest != X86_AX);
 
-            /* The destination register will always get rDX if it's free,
-             * so if the destination is somewhere else, we need to save
-             * away the current value of RDX.  We save all 64 bits of the
-             * register so we don't have to worry about checking the type
-             * of what's already there. */
+            /* If another value is already in rDX, save it away so it's not
+             * clobbered.  We save all 64 bits of the register so we don't
+             * have to worry about checking the type of what's there. */
+            const bool dx_busy = (host_dest != X86_DX
+                                  && current_reg(ctx, insn_index, X86_DX));
             bool swapped_dx = false;
-            if (host_dest != X86_DX) {
+            if (dx_busy) {
                 /* If dest shares a hardware register with src1 or src2,
                  * we need to preserve its value until the actual multiply;
                  * otherwise, we can use a MOV for potentially less latency. */
@@ -3483,10 +3511,13 @@ static bool translate_block(HostX86Context *ctx, int block_index)
             }
 
             if (host_dest != X86_DX) {
-                /* This is always an XCHG, since both dest and the former
-                 * rDX now have live values. */
-                append_insn_ModRM_reg(&code, true, X86OP_XCHG_Ev_Gv,
-                                      X86_DX, host_dest);
+                if (dx_busy) {
+                    append_insn_ModRM_reg(&code, true, X86OP_XCHG_Ev_Gv,
+                                          X86_DX, host_dest);
+                } else {
+                    append_insn_ModRM_reg(&code, is64, X86OP_MOV_Gv_Ev,
+                                          host_dest, X86_DX);
+                }
             }
             if (ctx->regs[dest].temp_allocated) {
                 append_insn_ModRM_reg(&code, true, X86OP_MOV_Gv_Ev,
@@ -3524,12 +3555,13 @@ static bool translate_block(HostX86Context *ctx, int block_index)
             }
             ASSERT(divisor != X86_DX);
 
-            /* As with MULH*, if dest is not in the result register then
-             * we need to save the result register's value.  For division,
-             * we never allocate dest and src2 in the same register, so we
-             * only need to check for host_dest == host_src1. */
+            /* As with MULH*, save the result register's value if needed.
+             * For division, we never allocate dest and src2 in the same
+             * register, so we only need to XCHG if host_dest == host_src1. */
             X86Register dividend = host_src1;
-            if (host_dest != X86_AX) {
+            const bool ax_busy = (host_dest != X86_AX
+                                  && current_reg(ctx, insn_index, X86_AX));
+            if (host_dest != X86_AX && (divisor == X86_AX || ax_busy)) {
                 if (dividend == host_dest) {
                     append_insn_ModRM_reg(&code, true, X86OP_XCHG_Ev_Gv,
                                           host_dest, X86_AX);
@@ -3572,8 +3604,13 @@ static bool translate_block(HostX86Context *ctx, int block_index)
             }
 
             if (host_dest != X86_AX) {
-                append_insn_ModRM_reg(&code, true, X86OP_XCHG_Ev_Gv,
-                                      X86_AX, host_dest);
+                if (ax_busy) {
+                    append_insn_ModRM_reg(&code, true, X86OP_XCHG_Ev_Gv,
+                                          X86_AX, host_dest);
+                } else {
+                    append_insn_ModRM_reg(&code, is64, X86OP_MOV_Gv_Ev,
+                                          host_dest, X86_AX);
+                }
             }
             if (ctx->regs[dest].temp_allocated) {
                 append_insn_ModRM_reg(&code, true, X86OP_MOV_Gv_Ev,
@@ -3612,9 +3649,13 @@ static bool translate_block(HostX86Context *ctx, int block_index)
              * we take care of moving src1 to rAX first and we never
              * allocate dest and src2 in the same register, so this can
              * always be a regular MOV. */
+            const bool dx_busy = (host_dest != X86_DX
+                                  && current_reg(ctx, insn_index, X86_DX));
             if (host_dest != X86_DX) {
-                append_insn_ModRM_reg(&code, true, X86OP_MOV_Gv_Ev,
-                                      host_dest, X86_DX);
+                if (divisor == X86_DX || dx_busy) {
+                    append_insn_ModRM_reg(&code, true, X86OP_MOV_Gv_Ev,
+                                          host_dest, X86_DX);
+                }
                 if (divisor == X86_DX) {
                     divisor = host_dest;
                 }
@@ -3639,8 +3680,13 @@ static bool translate_block(HostX86Context *ctx, int block_index)
             }
 
             if (host_dest != X86_DX) {
-                append_insn_ModRM_reg(&code, true, X86OP_XCHG_Ev_Gv,
-                                      X86_DX, host_dest);
+                if (dx_busy) {
+                    append_insn_ModRM_reg(&code, true, X86OP_XCHG_Ev_Gv,
+                                          X86_DX, host_dest);
+                } else {
+                    append_insn_ModRM_reg(&code, is64, X86OP_MOV_Gv_Ev,
+                                          host_dest, X86_DX);
+                }
             }
             if (ctx->regs[dest].temp_allocated) {
                 append_insn_ModRM_reg(&code, true, X86OP_MOV_Gv_Ev,
@@ -3692,14 +3738,13 @@ static bool translate_block(HostX86Context *ctx, int block_index)
                 append_load_gpr(&code, RTLTYPE_INT32, X86_CX,
                                 X86_SP, ctx->regs[src2].spill_offset);
             } else if (host_src2 != X86_CX) {
-                const int current_cx = ctx->reg_map[X86_CX];
-                if (!current_cx || unit->regs[current_cx].death < insn_index) {
-                    append_insn_ModRM_reg(&code, false, X86OP_MOV_Gv_Ev,
-                                          X86_CX, host_src2);
-                } else {
+                if (current_reg(ctx, insn_index, X86_CX)) {
                     append_insn_ModRM_reg(&code, true, X86OP_XCHG_Ev_Gv,
                                           X86_CX, host_src2);
                     swapped_cx = true;
+                } else {
+                    append_insn_ModRM_reg(&code, false, X86OP_MOV_Gv_Ev,
+                                          X86_CX, host_src2);
                 }
             }
 

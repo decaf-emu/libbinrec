@@ -876,11 +876,11 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
                  * (which is clobbered by both input and output) in any
                  * case. */
                 if (!ctx->reg_map[X86_DX]) {
-                    /* Currently there are no cases in which a MULH/DIV/MOD
-                     * output register can be forced to avoid its natural
-                     * location.  Assert on that just to be safe. */
-                    ASSERT(!(avoid_regs & (1 << X86_DX)));
-                    preferred_reg = X86_DX;
+                    if (!(avoid_regs & (1 << X86_DX))) {
+                        preferred_reg = X86_DX;
+                    } else {
+                        avoid_regs |= 1 << X86_DX;
+                    }
                 }
                 avoid_regs |= 1 << X86_AX;
                 break;
@@ -891,8 +891,9 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
                  * src2 since we use dest to store src2 if src2 is in the
                  * way of the fixed input registers. */
                 if (!ctx->reg_map[X86_AX] && src2_info->host_reg != X86_AX) {
-                    ASSERT(!(avoid_regs & (1 << X86_AX)));
-                    preferred_reg = X86_AX;
+                    if (!(avoid_regs & (1 << X86_AX))) {
+                        preferred_reg = X86_AX;
+                    }
                 }
                 avoid_regs |= 1 << X86_AX
                             | 1 << X86_DX
@@ -903,8 +904,9 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
               case RTLOP_MODS:
                 /* As for DIVU/DIVS. */
                 if (!ctx->reg_map[X86_DX] && src2_info->host_reg != X86_DX) {
-                    ASSERT(!(avoid_regs & (1 << X86_DX)));
-                    preferred_reg = X86_DX;
+                    if (!(avoid_regs & (1 << X86_DX))) {
+                        preferred_reg = X86_DX;
+                    }
                 }
                 avoid_regs |= 1 << X86_AX
                             | 1 << X86_DX

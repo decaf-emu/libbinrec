@@ -33,8 +33,8 @@ static int add_rtl(RTLUnit *unit)
     int reg4, reg5, reg6, label;
     EXPECT(label = rtl_alloc_label(unit));
     EXPECT(rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, label));
-    EXPECT(reg4 = rtl_alloc_register(unit, RTLTYPE_INT32));  // Gets EAX.
-    EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg4, 0, 0, 4));
+    EXPECT(reg4 = rtl_alloc_register(unit, RTLTYPE_INT32));
+    EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg4, 0, 0, 4));  // Gets EAX.
     EXPECT(reg5 = rtl_alloc_register(unit, RTLTYPE_INT32));
     /* The temporary for saving RAX should not clobber ECX. */
     EXPECT(rtl_add_insn(unit, RTLOP_MODU, reg5, reg4, reg4, 0));
