@@ -185,8 +185,8 @@ SHARED_LIB = lib$(PACKAGE).$(if $(filter darwin%,$(OSTYPE)),dylib,$(if $(filter 
 STATIC_LIB = lib$(PACKAGE).a
 
 # Test source list, with optional overriding.
-TEST_SOURCES_FULL := $(sort $(wildcard tests/*/*.c tests/*/*/*.c) \
-                            tests/api/binrec++.cc)
+TEST_SOURCES_FULL := $(wildcard tests/*/*.c tests/*/*/*.c) \
+                     tests/api/binrec++.cc
 TEST_SOURCES := $(TEST_SOURCES_FULL)
 ifneq ($(TESTS),)
     _ := $(foreach i,$(TESTS),$(or $(filter $i.c $i.cc,$(TEST_SOURCES_FULL)),$(error Test $i not found for TESTS)))
@@ -200,10 +200,10 @@ endif
 # Source and object filenames:
 LIBRARY_SOURCES := $(sort $(wildcard src/*.c src/*/*.c))
 LIBRARY_OBJECTS := $(LIBRARY_SOURCES:%.c=%.o)
-TEST_OBJECTS := $(patsubst %.c,%.o,$(filter %.c,$(TEST_SOURCES))) \
-                $(patsubst %.cc,%.o,$(filter %.cc,$(TEST_SOURCES)))
-TEST_BINS := $(patsubst %.c,%,$(filter %.c,$(TEST_SOURCES))) \
-             $(patsubst %.cc,%,$(filter %.cc,$(TEST_SOURCES)))
+TEST_OBJECTS := $(sort $(patsubst %.c,%.o,$(filter %.c,$(TEST_SOURCES))) \
+                       $(patsubst %.cc,%.o,$(filter %.cc,$(TEST_SOURCES))))
+TEST_BINS := $(sort $(patsubst %.c,%,$(filter %.c,$(TEST_SOURCES))) \
+                    $(patsubst %.cc,%,$(filter %.cc,$(TEST_SOURCES))))
 BENCHMARK_SOURCES := $(sort $(wildcard benchmarks/*.c benchmarks/blobs/*.c))
 BENCHMARK_LIB_SOURCES := \
     $(sort $(wildcard benchmarks/library/*.c benchmarks/library/math/*.c))
