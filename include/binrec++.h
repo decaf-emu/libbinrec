@@ -228,25 +228,28 @@ static inline const char *version() {return ::binrec_version();}
  * native_arch:  Return the architecture of the runtime environment.
  * Wraps binrec_native_arch().
  */
-extern Arch native_arch() {return ::binrec_native_arch();}
+static inline Arch native_arch() {return ::binrec_native_arch();}
 
 /**
  * native_features:  Return a bitmask of architecture features available
  * in the runtime environment.  Wraps binrec_native_features().
  */
-extern unsigned int native_features() {return ::binrec_native_features();}
+static inline unsigned int native_features()
+    {return ::binrec_native_features();}
 
 /**
  * guest_supported:  Return whether the given architecture is supported as
  * a guest architecure.  Wraps binrec_guest_supported().
  */
-extern bool guest_supported(Arch arch) {return ::binrec_guest_supported(arch);}
+static inline bool guest_supported(Arch arch)
+    {return ::binrec_guest_supported(arch);}
 
 /**
  * host_supported:  Return whether the given architecture is supported as
  * a host architecure.  Wraps binrec_host_supported().
  */
-extern bool host_supported(Arch arch) {return ::binrec_host_supported(arch);}
+static inline bool host_supported(Arch arch)
+    {return ::binrec_host_supported(arch);}
 
 /*************************************************************************/
 /*************************************************************************/
