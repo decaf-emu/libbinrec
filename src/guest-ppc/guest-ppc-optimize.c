@@ -176,6 +176,7 @@ void guest_ppc_trim_cr_stores(
      * possible) the instructions which set the corresponding RTL register,
      * then re-add them at the branch or fall-through point. */
     const uint32_t crb_to_save = *crb_store_branch_ret | *crb_store_next_ret;
+    ASSERT(!(crb_to_kill & crb_to_save));
     kill_cr_stores(ctx, BO, BI, crb_to_save, crb_reg_ret, crb_insn_ret);
 }
 

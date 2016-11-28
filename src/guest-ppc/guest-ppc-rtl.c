@@ -970,6 +970,8 @@ static void set_fpr_and_flush(GuestPPCContext *ctx, int index, int reg,
 
 /**
  * flush_live_regs:  Finalize all pending stores of guest registers.
+ * This does not handle merging split bitfields back to their primary
+ * registers.
  *
  * [Parameters]
  *     ctx: Translation context.
@@ -985,12 +987,23 @@ static void flush_live_regs(GuestPPCContext *ctx, bool clear)
         flush_fpr(ctx, index, false);
     }
 
-    memset(&ctx->last_set, -1, sizeof(ctx->last_set));
     if (clear) {
+        memset(&ctx->last_set, -1, sizeof(ctx->last_set));
         memset(&ctx->live, 0, sizeof(ctx->live));
         ctx->fpr_is_safe = 0;
         ctx->ps1_is_safe = 0;
         ctx->crb_dirty = 0;
+    } else {
+        /* Only clear last_set for registers which are mapped to the PSB.
+         * (Note that if we were to clear last_set.crb, we'd have to modify
+         * the TRIM_CR_STORES optimization to deal with bits that were
+         * dirty but had no last_set instruction.) */
+        memset(ctx->last_set.gpr, -1, sizeof(ctx->last_set.gpr));
+        ctx->last_set.cr = -1;
+        ctx->last_set.lr = -1;
+        ctx->last_set.ctr = -1;
+        ctx->last_set.xer = -1;
+        ctx->last_set.fpscr = -1;
     }
 }
 
