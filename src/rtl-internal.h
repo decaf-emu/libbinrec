@@ -251,6 +251,9 @@ typedef struct RTLBlock {
      * set to zero. */
     int32_t min_death;
 
+    /* Highest register index which is live during this block. */
+    uint16_t max_live_reg;
+
     /* unit->blocks[] index of the next block in the code stream (excluding
      * dropped blocks); -1 indicates the end of the code stream. */
     int16_t next_block;

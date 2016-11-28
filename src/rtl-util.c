@@ -182,11 +182,11 @@ void rtl_update_live_ranges(RTLUnit * const unit)
             const int birth_limit = block->first_insn;
             const int min_death = unit->blocks[latest_entry_block].last_insn;
             block->min_death = min_death;
-            for (int reg = unit->first_live_reg;
-                 reg < unit->next_reg && unit->regs[reg].birth < birth_limit;
+            for (int reg = unit->first_live_reg; reg <= block->max_live_reg;
                  reg++)
             {
-                if (unit->regs[reg].death >= birth_limit
+                if (unit->regs[reg].birth < birth_limit
+                 && unit->regs[reg].death >= birth_limit
                  && unit->regs[reg].death < min_death) {
                     unit->regs[reg].death = min_death;
                 }

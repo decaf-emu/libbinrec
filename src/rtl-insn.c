@@ -67,6 +67,8 @@ static ALWAYS_INLINE void rtl_mark_live(
         unit->last_live_reg = index;
     }
     reg->death = insn_index;
+    unit->blocks[unit->cur_block].max_live_reg =
+        max(unit->blocks[unit->cur_block].max_live_reg, index);
 }
 
 /*************************************************************************/
