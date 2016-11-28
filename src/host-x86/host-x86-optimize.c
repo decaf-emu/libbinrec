@@ -7,6 +7,7 @@
  * NO WARRANTY is provided with this software.
  */
 
+#include "src/bitutils.h"
 #include "src/common.h"
 #include "src/endian.h"
 #include "src/host-x86.h"
@@ -430,15 +431,19 @@ void host_x86_optimize_immediate_store(HostX86Context *ctx, int insn_index)
 
     RTLOpcode opcode = insn->opcode;
     RTLDataType type = src2_reg->type;
+    uint64_t value;
     if (type == RTLTYPE_FLOAT32) {
         type = RTLTYPE_INT32;
-    } else if (type == RTLTYPE_FLOAT64) {
-        type = RTLTYPE_INT64;
+        value = float_to_bits(src2_reg->value.f32);
+    } else {
+        if (type == RTLTYPE_FLOAT64) {
+            type = RTLTYPE_INT64;
+        }
+        value = src2_reg->value.i64;
     }
-    uint64_t value = src2_reg->value.i64;
     if (opcode == RTLOP_STORE_BR) {
         opcode = RTLOP_STORE;
-        if (src2_reg->type == RTLTYPE_INT32) {
+        if (type == RTLTYPE_INT32) {
             value = bswap32((uint32_t)value);
         } else {
             value = bswap64(value);
