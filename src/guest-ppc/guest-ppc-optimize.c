@@ -117,6 +117,7 @@ static inline void kill_cr_stores(
         const int bit = ctz32(bits_to_kill);
         bits_to_kill ^= 1 << bit;
         const int insn_index = ctx->last_set.crb[bit];
+        ASSERT(insn_index >= 0);
         ctx->last_set.crb[bit] = -1;
         if (crb_reg) {
             crb_reg[bit] = unit->insns[insn_index].src1;
@@ -152,10 +153,22 @@ void guest_ppc_trim_cr_stores(
     const int next_block = ctx->blocks[ctx->current_block].next_block;
     ASSERT(branch_block >= 0);  // Must be valid if we have a label target.
 
+    /* Collect the set of bits which are both dirty and killable.  This
+     * excludes registers which have already been flushed, since we can't
+     * do anything about them. */
+    uint32_t crb_dirty = 0;
+    uint32_t dirty_temp = ctx->crb_dirty;
+    while (dirty_temp) {
+        const int bit = ctz32(dirty_temp);
+        dirty_temp ^= 1 << bit;
+        if (ctx->last_set.crb[bit] >= 0) {
+            crb_dirty |= 1 << bit;
+        }
+    }
+
     /* First eliminate any stores which are dead on both taken and
      * not-taken paths.  For an unconditional branch, this will kill
      * all dead stores and the second half of the logic will be skipped. */
-    const uint32_t crb_dirty = ctx->crb_dirty;
     const uint32_t crb_dead_branch =
         ctx->blocks[branch_block].crb_changed_recursive & crb_dirty;
     const uint32_t crb_dead_next =

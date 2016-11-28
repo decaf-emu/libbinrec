@@ -114,14 +114,13 @@ static bool init_unit(GuestPPCContext *ctx)
                 ctx->alias.crb[i] =
                     rtl_alloc_alias_register(unit, RTLTYPE_INT32);
                 /* Load the initial value of the bit, unless we know from
-                 * data flow analysis that its value is not needed.  We
-                 * have to do this here in case the bit is first loaded in
-                 * a block which is only conditionally executed; in that
-                 * case, if the block was skipped, the alias would remain
-                 * uninitialized.  If the value is not in fact needed (and
-                 * the TRIM_CR_STORES optimization is not enabled), RTL
-                 * data flow analysis should be able to eliminate this
-                 * initialization. */
+                 * TRIM_CR_STORES data flow analysis that its value is not
+                 * needed.  We have to do this here in case the bit is
+                 * first loaded in a block which is only conditionally
+                 * executed; in that case, if the block was skipped, the
+                 * alias would remain uninitialized.  If the value is not
+                 * in fact needed, data flow analysis at the RTL level
+                 * should be able to eliminate this initialization. */
                 bool need_load;
                 if (ctx->trim_cr_stores) {
                     need_load =

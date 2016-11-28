@@ -994,10 +994,7 @@ static void flush_live_regs(GuestPPCContext *ctx, bool clear)
         ctx->ps1_is_safe = 0;
         ctx->crb_dirty = 0;
     } else {
-        /* Only clear last_set for registers which are mapped to the PSB.
-         * (Note that if we were to clear last_set.crb, we'd have to modify
-         * the TRIM_CR_STORES optimization to deal with bits that were
-         * dirty but had no last_set instruction.) */
+        /* Only clear last_set for registers which are mapped to the PSB. */
         memset(ctx->last_set.gpr, -1, sizeof(ctx->last_set.gpr));
         ctx->last_set.cr = -1;
         ctx->last_set.lr = -1;
