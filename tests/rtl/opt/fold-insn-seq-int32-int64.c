@@ -18,26 +18,26 @@ static int add_rtl(RTLUnit *unit)
     int reg1, reg2, reg3, reg4, reg5, reg6, reg7, reg8, reg9;
     EXPECT(reg1 = rtl_alloc_register(unit, RTLTYPE_INT64));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM,
-                        reg1, 0, 0, UINT64_C(0x123456789)));
+                        reg1, 0, 0, UINT64_C(0x223456789)));
     EXPECT(reg2 = rtl_alloc_register(unit, RTLTYPE_INT64));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM,
-                        reg2, 0, 0, UINT64_C(0x102030405)));
+                        reg2, 0, 0, UINT64_C(0x172737475)));
     EXPECT(reg3 = rtl_alloc_register(unit, RTLTYPE_INT64));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM,
-                        reg3, 0, 0, UINT64_C(0x123456789)));
+                        reg3, 0, 0, UINT64_C(0x223456789)));
     EXPECT(reg4 = rtl_alloc_register(unit, RTLTYPE_INT64));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM,
-                        reg4, 0, 0, UINT64_C(-0x102030405)));
-    EXPECT(reg5 = rtl_alloc_register(unit, RTLTYPE_INT64));
+                        reg4, 0, 0, UINT64_C(-0x182838485)));
+    EXPECT(reg5 = rtl_alloc_register(unit, RTLTYPE_INT32));
     EXPECT(rtl_add_insn(unit, RTLOP_SEQ, reg5, reg1, reg2, 0));
-    EXPECT(reg6 = rtl_alloc_register(unit, RTLTYPE_INT64));
+    EXPECT(reg6 = rtl_alloc_register(unit, RTLTYPE_INT32));
     EXPECT(rtl_add_insn(unit, RTLOP_SEQ, reg6, reg1, reg3, 0));
-    EXPECT(reg7 = rtl_alloc_register(unit, RTLTYPE_INT64));
+    EXPECT(reg7 = rtl_alloc_register(unit, RTLTYPE_INT32));
     EXPECT(rtl_add_insn(unit, RTLOP_SEQ, reg7, reg1, reg4, 0));
     EXPECT(reg8 = rtl_alloc_register(unit, RTLTYPE_INT64));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM,
-                        reg8, 0, 0, UINT64_C(0x223456789)));
-    EXPECT(reg9 = rtl_alloc_register(unit, RTLTYPE_INT64));
+                        reg8, 0, 0, UINT64_C(0x123456789)));
+    EXPECT(reg9 = rtl_alloc_register(unit, RTLTYPE_INT32));
     EXPECT(rtl_add_insn(unit, RTLOP_SEQ, reg9, reg1, reg8, 0));
 
     return EXIT_SUCCESS;
@@ -55,14 +55,14 @@ static const char expected[] =
         "[info] r1 no longer used, setting death = birth\n"
         "[info] r8 no longer used, setting death = birth\n"
     #endif
-    "    0: LOAD_IMM   r1, 0x123456789\n"
-    "    1: LOAD_IMM   r2, 0x102030405\n"
-    "    2: LOAD_IMM   r3, 0x123456789\n"
-    "    3: LOAD_IMM   r4, 0xFFFFFFFEFDFCFBFB\n"
+    "    0: LOAD_IMM   r1, 0x223456789\n"
+    "    1: LOAD_IMM   r2, 0x172737475\n"
+    "    2: LOAD_IMM   r3, 0x223456789\n"
+    "    3: LOAD_IMM   r4, 0xFFFFFFFE7D7C7B7B\n"
     "    4: LOAD_IMM   r5, 0\n"
     "    5: LOAD_IMM   r6, 1\n"
     "    6: LOAD_IMM   r7, 0\n"
-    "    7: LOAD_IMM   r8, 0x223456789\n"
+    "    7: LOAD_IMM   r8, 0x123456789\n"
     "    8: LOAD_IMM   r9, 0\n"
     "\n"
     "Block 0: <none> --> [0,8] --> <none>\n"

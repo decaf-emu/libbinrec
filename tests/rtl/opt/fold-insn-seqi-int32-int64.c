@@ -19,14 +19,14 @@ static int add_rtl(RTLUnit *unit)
     EXPECT(reg1 = rtl_alloc_register(unit, RTLTYPE_INT64));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM,
                         reg1, 0, 0, UINT64_C(-0x12345678)));
-    EXPECT(reg2 = rtl_alloc_register(unit, RTLTYPE_INT64));
+    EXPECT(reg2 = rtl_alloc_register(unit, RTLTYPE_INT32));
     EXPECT(rtl_add_insn(unit, RTLOP_SEQI, reg2, reg1, 0, 1));
-    EXPECT(reg3 = rtl_alloc_register(unit, RTLTYPE_INT64));
+    EXPECT(reg3 = rtl_alloc_register(unit, RTLTYPE_INT32));
     EXPECT(rtl_add_insn(unit, RTLOP_SEQI, reg3, reg1, 0, -0x12345678));
     EXPECT(reg4 = rtl_alloc_register(unit, RTLTYPE_INT64));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM,
                         reg4, 0, 0, UINT64_C(0x100000001)));
-    EXPECT(reg5 = rtl_alloc_register(unit, RTLTYPE_INT64));
+    EXPECT(reg5 = rtl_alloc_register(unit, RTLTYPE_INT32));
     EXPECT(rtl_add_insn(unit, RTLOP_SEQI, reg5, reg4, 0, 1));
 
     return EXIT_SUCCESS;

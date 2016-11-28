@@ -18,19 +18,19 @@ static int add_rtl(RTLUnit *unit)
     int reg1, reg2, reg3, reg4, reg5, reg6, reg7, reg8;
     EXPECT(reg1 = rtl_alloc_register(unit, RTLTYPE_INT32));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg1, 0, 0, 1234));
-    EXPECT(reg2 = rtl_alloc_register(unit, RTLTYPE_INT32));
+    EXPECT(reg2 = rtl_alloc_register(unit, RTLTYPE_INT64));
     EXPECT(rtl_add_insn(unit, RTLOP_SGTSI, reg2, reg1, 0, 1234));
-    EXPECT(reg3 = rtl_alloc_register(unit, RTLTYPE_INT32));
+    EXPECT(reg3 = rtl_alloc_register(unit, RTLTYPE_INT64));
     EXPECT(rtl_add_insn(unit, RTLOP_SGTSI, reg3, reg1, 0, 1));
-    EXPECT(reg4 = rtl_alloc_register(unit, RTLTYPE_INT32));
+    EXPECT(reg4 = rtl_alloc_register(unit, RTLTYPE_INT64));
     EXPECT(rtl_add_insn(unit, RTLOP_SGTSI, reg4, reg1, 0, -1));
-    EXPECT(reg5 = rtl_alloc_register(unit, RTLTYPE_INT32));
+    EXPECT(reg5 = rtl_alloc_register(unit, RTLTYPE_INT64));
     EXPECT(rtl_add_insn(unit, RTLOP_SGTSI, reg5, reg1, 0, 5678));
-    EXPECT(reg6 = rtl_alloc_register(unit, RTLTYPE_INT32));
+    EXPECT(reg6 = rtl_alloc_register(unit, RTLTYPE_INT64));
     EXPECT(rtl_add_insn(unit, RTLOP_SGTSI, reg6, reg1, 0, -5678));
     EXPECT(reg7 = rtl_alloc_register(unit, RTLTYPE_INT32));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg7, 0, 0, 0xFFFFFFFF));
-    EXPECT(reg8 = rtl_alloc_register(unit, RTLTYPE_INT32));
+    EXPECT(reg8 = rtl_alloc_register(unit, RTLTYPE_INT64));
     EXPECT(rtl_add_insn(unit, RTLOP_SGTSI, reg8, reg7, 0, 1));
 
     return EXIT_SUCCESS;

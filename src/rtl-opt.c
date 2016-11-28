@@ -209,35 +209,35 @@ static inline uint64_t fold_constant(RTLUnit * const unit,
         return (int16_t)src1->value.i64;
 
       case RTLOP_ADD:
-        if (reg->type == RTLTYPE_INT32) {
+        if (src1->type == RTLTYPE_INT32) {
             return (uint32_t)src1->value.i64 + (uint32_t)src2->value.i64;
         } else {
             return src1->value.i64 + src2->value.i64;
         }
 
       case RTLOP_SUB:
-        if (reg->type == RTLTYPE_INT32) {
+        if (src1->type == RTLTYPE_INT32) {
             return (uint32_t)src1->value.i64 - (uint32_t)src2->value.i64;
         } else {
             return src1->value.i64 - src2->value.i64;
         }
 
       case RTLOP_NEG:
-        if (reg->type == RTLTYPE_INT32) {
+        if (src1->type == RTLTYPE_INT32) {
             return -(uint32_t)src1->value.i64;
         } else {
             return -src1->value.i64;
         }
 
       case RTLOP_MUL:
-        if (reg->type == RTLTYPE_INT32) {
+        if (src1->type == RTLTYPE_INT32) {
             return (uint32_t)src1->value.i64 * (uint32_t)src2->value.i64;
         } else {
             return src1->value.i64 * src2->value.i64;
         }
 
       case RTLOP_MULHU:
-        if (reg->type == RTLTYPE_INT32) {
+        if (src1->type == RTLTYPE_INT32) {
             return ((uint64_t)(uint32_t)src1->value.i64
                     * (uint64_t)(uint32_t)src2->value.i64) >> 32;
         } else {
@@ -245,7 +245,7 @@ static inline uint64_t fold_constant(RTLUnit * const unit,
         }
 
       case RTLOP_MULHS:
-        if (reg->type == RTLTYPE_INT32) {
+        if (src1->type == RTLTYPE_INT32) {
             return ((int64_t)(int32_t)src1->value.i64
                       * (int64_t)(int32_t)src2->value.i64) >> 32;
         } else {
@@ -253,7 +253,7 @@ static inline uint64_t fold_constant(RTLUnit * const unit,
         }
 
       case RTLOP_DIVU:
-        if (reg->type == RTLTYPE_INT32) {
+        if (src1->type == RTLTYPE_INT32) {
             if (UNLIKELY(!(uint32_t)src2->value.i64)) {
                 log_warning(unit->handle, "r%d: Treating constant division"
                             " by zero as 0", (int)(reg - unit->regs));
@@ -272,7 +272,7 @@ static inline uint64_t fold_constant(RTLUnit * const unit,
         }
 
       case RTLOP_DIVS:
-        if (reg->type == RTLTYPE_INT32) {
+        if (src1->type == RTLTYPE_INT32) {
             if (UNLIKELY(!(uint32_t)src2->value.i64)) {
                 log_warning(unit->handle, "r%d: Treating constant division"
                             " by zero as 0", (int)(reg - unit->regs));
@@ -303,7 +303,7 @@ static inline uint64_t fold_constant(RTLUnit * const unit,
         }
 
       case RTLOP_MODU:
-        if (reg->type == RTLTYPE_INT32) {
+        if (src1->type == RTLTYPE_INT32) {
             if (UNLIKELY(!(uint32_t)src2->value.i64)) {
                 log_warning(unit->handle, "r%d: Treating constant division"
                             " by zero as 0", (int)(reg - unit->regs));
@@ -322,7 +322,7 @@ static inline uint64_t fold_constant(RTLUnit * const unit,
         }
 
       case RTLOP_MODS:
-        if (reg->type == RTLTYPE_INT32) {
+        if (src1->type == RTLTYPE_INT32) {
             if (UNLIKELY(!(uint32_t)src2->value.i64)) {
                 log_warning(unit->handle, "r%d: Treating constant division"
                             " by zero as 0", (int)(reg - unit->regs));
@@ -362,98 +362,98 @@ static inline uint64_t fold_constant(RTLUnit * const unit,
         return src1->value.i64 ^ src2->value.i64;
 
       case RTLOP_NOT:
-        if (reg->type == RTLTYPE_INT32) {
+        if (src1->type == RTLTYPE_INT32) {
             return ~(uint32_t)src1->value.i64;
         } else {
             return ~src1->value.i64;
         }
 
       case RTLOP_SLL:
-        if (reg->type == RTLTYPE_INT32) {
+        if (src1->type == RTLTYPE_INT32) {
             return (uint32_t)src1->value.i64 << src2->value.i64;
         } else {
             return src1->value.i64 << src2->value.i64;
         }
 
       case RTLOP_SRL:
-        if (reg->type == RTLTYPE_INT32) {
+        if (src1->type == RTLTYPE_INT32) {
             return (uint32_t)src1->value.i64 >> src2->value.i64;
         } else {
             return src1->value.i64 >> src2->value.i64;
         }
 
       case RTLOP_SRA:
-        if (reg->type == RTLTYPE_INT32) {
+        if (src1->type == RTLTYPE_INT32) {
             return (int32_t)src1->value.i64 >> src2->value.i64;
         } else {
             return (int64_t)src1->value.i64 >> src2->value.i64;
         }
 
       case RTLOP_ROL:
-        if (reg->type == RTLTYPE_INT32) {
+        if (src1->type == RTLTYPE_INT32) {
             return ror32((uint32_t)src1->value.i64, -(int)src2->value.i64);
         } else {
             return ror64(src1->value.i64, -(int)src2->value.i64);
         }
 
       case RTLOP_ROR:
-        if (reg->type == RTLTYPE_INT32) {
+        if (src1->type == RTLTYPE_INT32) {
             return ror32((uint32_t)src1->value.i64, (int)src2->value.i64);
         } else {
             return ror64(src1->value.i64, (int)src2->value.i64);
         }
 
       case RTLOP_CLZ:
-        if (reg->type == RTLTYPE_INT32) {
+        if (src1->type == RTLTYPE_INT32) {
             return clz32((uint32_t)src1->value.i64);
         } else {
             return clz64(src1->value.i64);
         }
 
       case RTLOP_BSWAP:
-        if (reg->type == RTLTYPE_INT32) {
+        if (src1->type == RTLTYPE_INT32) {
             return bswap32((uint32_t)src1->value.i64);
         } else {
             return bswap64(src1->value.i64);
         }
 
       case RTLOP_SEQ:
-        if (reg->type == RTLTYPE_INT32) {
+        if (src1->type == RTLTYPE_INT32) {
             return ((uint32_t)src1->value.i64 == (uint32_t)src2->value.i64);
         } else {
             return (src1->value.i64 == src2->value.i64);
         }
 
       case RTLOP_SLTU:
-        if (reg->type == RTLTYPE_INT32) {
+        if (src1->type == RTLTYPE_INT32) {
             return ((uint32_t)src1->value.i64 < (uint32_t)src2->value.i64);
         } else {
             return (src1->value.i64 < src2->value.i64);
         }
 
       case RTLOP_SLTS:
-        if (reg->type == RTLTYPE_INT32) {
+        if (src1->type == RTLTYPE_INT32) {
             return ((int32_t)src1->value.i64 < (int32_t)src2->value.i64);
         } else {
             return ((int64_t)src1->value.i64 < (int64_t)src2->value.i64);
         }
 
       case RTLOP_SGTU:
-        if (reg->type == RTLTYPE_INT32) {
+        if (src1->type == RTLTYPE_INT32) {
             return ((uint32_t)src1->value.i64 > (uint32_t)src2->value.i64);
         } else {
             return (src1->value.i64 > src2->value.i64);
         }
 
       case RTLOP_SGTS:
-        if (reg->type == RTLTYPE_INT32) {
+        if (src1->type == RTLTYPE_INT32) {
             return ((int32_t)src1->value.i64 > (int32_t)src2->value.i64);
         } else {
             return ((int64_t)src1->value.i64 > (int64_t)src2->value.i64);
         }
 
       case RTLOP_BFEXT:
-        if (reg->type == RTLTYPE_INT32) {
+        if (src1->type == RTLTYPE_INT32) {
             return (((uint32_t)src1->value.i64 >> reg->result.start)
                     & ((1 << reg->result.count) - 1));
         } else {
@@ -462,7 +462,7 @@ static inline uint64_t fold_constant(RTLUnit * const unit,
         }
 
       case RTLOP_BFINS:
-        if (reg->type == RTLTYPE_INT32) {
+        if (src1->type == RTLTYPE_INT32) {
             const uint32_t mask =
                 ((1 << reg->result.count) - 1) << reg->result.start;
             return (src1->value.i64 & ~mask)
@@ -475,14 +475,14 @@ static inline uint64_t fold_constant(RTLUnit * const unit,
         }
 
       case RTLOP_ADDI:
-        if (reg->type == RTLTYPE_INT32) {
+        if (src1->type == RTLTYPE_INT32) {
             return (uint32_t)src1->value.i64 + reg->result.src_imm;
         } else {
             return src1->value.i64 + reg->result.src_imm;
         }
 
       case RTLOP_MULI:
-        if (reg->type == RTLTYPE_INT32) {
+        if (src1->type == RTLTYPE_INT32) {
             return (uint32_t)src1->value.i64 * reg->result.src_imm;
         } else {
             return src1->value.i64 * reg->result.src_imm;
@@ -491,84 +491,84 @@ static inline uint64_t fold_constant(RTLUnit * const unit,
       case RTLOP_ANDI:
         /* Unlike the register-register variant, we have to handle int32
          * separately here because of sign-extension of the immediate value. */
-        if (reg->type == RTLTYPE_INT32) {
+        if (src1->type == RTLTYPE_INT32) {
             return (uint32_t)src1->value.i64 & (uint32_t)reg->result.src_imm;
         } else {
             return src1->value.i64 & (uint64_t)reg->result.src_imm;
         }
 
       case RTLOP_ORI:
-        if (reg->type == RTLTYPE_INT32) {
+        if (src1->type == RTLTYPE_INT32) {
             return (uint32_t)src1->value.i64 | (uint32_t)reg->result.src_imm;
         } else {
             return src1->value.i64 | (uint64_t)reg->result.src_imm;
         }
 
       case RTLOP_XORI:
-        if (reg->type == RTLTYPE_INT32) {
+        if (src1->type == RTLTYPE_INT32) {
             return (uint32_t)src1->value.i64 ^ (uint32_t)reg->result.src_imm;
         } else {
             return src1->value.i64 ^ (uint64_t)reg->result.src_imm;
         }
 
       case RTLOP_SLLI:
-        if (reg->type == RTLTYPE_INT32) {
+        if (src1->type == RTLTYPE_INT32) {
             return (uint32_t)src1->value.i64 << reg->result.src_imm;
         } else {
             return src1->value.i64 << reg->result.src_imm;
         }
 
       case RTLOP_SRLI:
-        if (reg->type == RTLTYPE_INT32) {
+        if (src1->type == RTLTYPE_INT32) {
             return (uint32_t)src1->value.i64 >> reg->result.src_imm;
         } else {
             return src1->value.i64 >> reg->result.src_imm;
         }
 
       case RTLOP_SRAI:
-        if (reg->type == RTLTYPE_INT32) {
+        if (src1->type == RTLTYPE_INT32) {
             return (int32_t)src1->value.i64 >> reg->result.src_imm;
         } else {
             return (int64_t)src1->value.i64 >> reg->result.src_imm;
         }
 
       case RTLOP_RORI:
-        if (reg->type == RTLTYPE_INT32) {
+        if (src1->type == RTLTYPE_INT32) {
             return ror32((uint32_t)src1->value.i64, reg->result.src_imm);
         } else {
             return ror64(src1->value.i64, reg->result.src_imm);
         }
 
       case RTLOP_SEQI:
-        if (reg->type == RTLTYPE_INT32) {
+        if (src1->type == RTLTYPE_INT32) {
             return ((uint32_t)src1->value.i64 == (uint32_t)reg->result.src_imm);
         } else {
             return (src1->value.i64 == (uint64_t)reg->result.src_imm);
         }
 
       case RTLOP_SLTUI:
-        if (reg->type == RTLTYPE_INT32) {
+        if (src1->type == RTLTYPE_INT32) {
             return ((uint32_t)src1->value.i64 < (uint32_t)reg->result.src_imm);
         } else {
             return (src1->value.i64 < (uint64_t)reg->result.src_imm);
         }
 
       case RTLOP_SLTSI:
-        if (reg->type == RTLTYPE_INT32) {
+        if (src1->type == RTLTYPE_INT32) {
             return ((int32_t)src1->value.i64 < (int32_t)reg->result.src_imm);
         } else {
             return ((int64_t)src1->value.i64 < (int64_t)reg->result.src_imm);
         }
 
       case RTLOP_SGTUI:
-        if (reg->type == RTLTYPE_INT32) {
+        if (src1->type == RTLTYPE_INT32) {
             return ((uint32_t)src1->value.i64 > (uint32_t)reg->result.src_imm);
         } else {
             return (src1->value.i64 > (uint64_t)reg->result.src_imm);
         }
 
       case RTLOP_SGTSI:
-        if (reg->type == RTLTYPE_INT32) {
+        if (src1->type == RTLTYPE_INT32) {
             return ((int32_t)src1->value.i64 > (int32_t)reg->result.src_imm);
         } else {
             return ((int64_t)src1->value.i64 > (int64_t)reg->result.src_imm);
@@ -673,56 +673,56 @@ static inline uint64_t fold_constant(RTLUnit * const unit,
         }
 
       case RTLOP_FNEG:
-        if (reg->type == RTLTYPE_FLOAT32) {
+        if (src1->type == RTLTYPE_FLOAT32) {
             return float_to_bits(src1->value.f32) ^ (1 << 31);
         } else {
             return double_to_bits(src1->value.f64) ^ (UINT64_C(1) << 63);
         }
 
       case RTLOP_FABS:
-        if (reg->type == RTLTYPE_FLOAT32) {
+        if (src1->type == RTLTYPE_FLOAT32) {
             return float_to_bits(src1->value.f32) & ~(1 << 31);
         } else {
             return double_to_bits(src1->value.f64) & ~(UINT64_C(1) << 63);
         }
 
       case RTLOP_FNABS:
-        if (reg->type == RTLTYPE_FLOAT32) {
+        if (src1->type == RTLTYPE_FLOAT32) {
             return float_to_bits(src1->value.f32) | (1 << 31);
         } else {
             return double_to_bits(src1->value.f64) | (UINT64_C(1) << 63);
         }
 
       case RTLOP_FADD:
-        if (reg->type == RTLTYPE_FLOAT32) {
+        if (src1->type == RTLTYPE_FLOAT32) {
             return float_to_bits(src1->value.f32 + src2->value.f32);
         } else {
             return double_to_bits(src1->value.f64 + src2->value.f64);
         }
 
       case RTLOP_FSUB:
-        if (reg->type == RTLTYPE_FLOAT32) {
+        if (src1->type == RTLTYPE_FLOAT32) {
             return float_to_bits(src1->value.f32 - src2->value.f32);
         } else {
             return double_to_bits(src1->value.f64 - src2->value.f64);
         }
 
       case RTLOP_FMUL:
-        if (reg->type == RTLTYPE_FLOAT32) {
+        if (src1->type == RTLTYPE_FLOAT32) {
             return float_to_bits(src1->value.f32 * src2->value.f32);
         } else {
             return double_to_bits(src1->value.f64 * src2->value.f64);
         }
 
       case RTLOP_FDIV:
-        if (reg->type == RTLTYPE_FLOAT32) {
+        if (src1->type == RTLTYPE_FLOAT32) {
             return float_to_bits(src1->value.f32 / src2->value.f32);
         } else {
             return double_to_bits(src1->value.f64 / src2->value.f64);
         }
 
       case RTLOP_FSQRT:
-        if (reg->type == RTLTYPE_FLOAT32) {
+        if (src1->type == RTLTYPE_FLOAT32) {
             return float_to_bits(sqrtf(src1->value.f32));
         } else {
             return double_to_bits(sqrt(src1->value.f64));
@@ -753,7 +753,7 @@ static inline uint64_t fold_constant(RTLUnit * const unit,
       }  // case RTLOP_FCMP
 
       case RTLOP_FMADD:
-        if (reg->type == RTLTYPE_FLOAT32) {
+        if (src1->type == RTLTYPE_FLOAT32) {
             return float_to_bits(
                 fmaf(src1->value.f32, src2->value.f32,
                      unit->regs[reg->result.src3].value.f32));
@@ -764,7 +764,7 @@ static inline uint64_t fold_constant(RTLUnit * const unit,
         }
 
       case RTLOP_FMSUB:
-        if (reg->type == RTLTYPE_FLOAT32) {
+        if (src1->type == RTLTYPE_FLOAT32) {
             return float_to_bits(
                 fmaf(src1->value.f32, src2->value.f32,
                      -unit->regs[reg->result.src3].value.f32));
@@ -775,7 +775,7 @@ static inline uint64_t fold_constant(RTLUnit * const unit,
         }
 
       case RTLOP_FNMADD:
-        if (reg->type == RTLTYPE_FLOAT32) {
+        if (src1->type == RTLTYPE_FLOAT32) {
             return float_to_bits(
                 -fmaf(src1->value.f32, src2->value.f32,
                       unit->regs[reg->result.src3].value.f32));
@@ -786,7 +786,7 @@ static inline uint64_t fold_constant(RTLUnit * const unit,
         }
 
       case RTLOP_FNMSUB:
-        if (reg->type == RTLTYPE_FLOAT32) {
+        if (src1->type == RTLTYPE_FLOAT32) {
             return float_to_bits(
                 -fmaf(src1->value.f32, src2->value.f32,
                       -unit->regs[reg->result.src3].value.f32));
