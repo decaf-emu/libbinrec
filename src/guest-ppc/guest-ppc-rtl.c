@@ -4445,12 +4445,6 @@ static void translate_load_store_multiple(
             }
         }
     }
-
-    /* Flush loaded GPRs so we don't have a bunch of dirty RTL registers
-     * live until the end of the block. */
-    if (!is_store) {
-        flush_live_regs(ctx, false);
-    }
 }
 
 /*-----------------------------------------------------------------------*/
