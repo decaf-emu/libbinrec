@@ -91,8 +91,8 @@ See the documentation in include/binrec.h for details.
 
 When using libbinrec from a C++ program, the C++ header (binrec++.h) may
 be more convenient; this header provides a "binrec" namespace for all
-constants and functions, and wraps most functions in C++ classes for
-convenience.
+constants and functions, and wraps handle-specific functions in a C++
+class for convenience.
 
 
 Performance
@@ -143,7 +143,7 @@ instruction encodings, such as to take advantage of undocumented
 behavior of a specific architecture implementation.
 
 More generally, libbinrec is designed to translate between architectures
-rather than hardware implementations; thus, as a rule, input code which
+rather than specific implementations; thus, as a rule, input code which
 triggers behavior undefined in the architecture specification may behave
 differently when translated by libbinrec than when run on a physical CPU
 implementing the guest architecture.  For example, the PowerPC integer
@@ -161,9 +161,9 @@ libbinrec is intended as a pure program translator rather than a
 full-fledged architecture emulator, and consequently it does not support
 translation of privileged instructions in the input program.
 Non-privileged instructions which explicitly transfer control to a
-privileged handler, such as the PowerPC sc (system call) instruction,
+privileged handler, such as the PowerPC "sc" (system call) instruction,
 are translated by inserting a call to a handler function supplied by the
-library user.  Similarly, libbinrec has no facility for handling
+library client.  Similarly, libbinrec has no facility for handling
 memory-mapped I/O; if such support is needed, the client program should
 mark relevant regions of the guest memory space as unmapped on the host
 system and use unmapped-access host exceptions to detect and handle such
