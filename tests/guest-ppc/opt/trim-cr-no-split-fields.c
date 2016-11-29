@@ -17,6 +17,7 @@ static const uint8_t input[] = {
 };
 
 static const unsigned int guest_opt = BINREC_OPT_G_PPC_TRIM_CR_STORES;
+static const unsigned int common_opt = 0;
 
 static const bool expected_success = true;
 
@@ -56,81 +57,4 @@ static const char expected[] =
     "Block 2: 1,0 --> [12,19] --> <none>\n"
     ;
 
-
-/* Tweaked version of tests/rtl-disasm-test.i to trigger OOM. */
-
-#include "src/guest-ppc.h"
-#include "tests/common.h"
-#include "tests/log-capture.h"
-#include "tests/mem-wrappers.h"
-
-int main(void)
-{
-    void *aligned_input;
-    ASSERT(aligned_input = malloc(sizeof(input)));
-    memcpy(aligned_input, input, sizeof(input));
-
-    binrec_setup_t final_setup = setup;
-    final_setup.guest_memory_base = aligned_input;
-    final_setup.malloc = mem_wrap_malloc;
-    final_setup.realloc = mem_wrap_realloc;
-    final_setup.free = mem_wrap_free;
-    final_setup.log = log_capture;
-    binrec_t *handle;
-    EXPECT(handle = binrec_create_handle(&final_setup));
-
-    binrec_set_optimization_flags(handle, 0, guest_opt, 0);
-    binrec_set_code_range(handle, 0, sizeof(input) - 1);
-    #ifdef BRANCH_CALLBACK
-        binrec_enable_branch_callback(handle, true);
-    #endif
-    #ifdef PRE_INSN_CALLBACK
-        binrec_set_pre_insn_callback(handle, PRE_INSN_CALLBACK);
-    #endif
-    #ifdef POST_INSN_CALLBACK
-        binrec_set_post_insn_callback(handle, POST_INSN_CALLBACK);
-    #endif
-
-    RTLUnit *unit;
-    EXPECT(unit = rtl_create_unit(handle));
-
-    mem_wrap_fail_after(1);
-    if (guest_ppc_translate(handle, 0, sizeof(input) - 1,
-                            unit) != expected_success) {
-        const char *log_messages = get_log_messages();
-        if (log_messages) {
-            fputs(log_messages, stdout);
-        }
-        FAIL("guest_ppc_translate(handle, 0, 0x%X, unit) did not %s as"
-             " expected", (int)sizeof(input) - 1,
-             expected_success ? "succeed" : "fail");
-    }
-    mem_wrap_cancel_fail();
-
-    EXPECT(rtl_finalize_unit(unit));
-
-    const char *disassembly;
-    if (expected_success) {
-        EXPECT(disassembly = rtl_disassemble_unit(unit, false));
-    } else {
-        disassembly = "";
-    }
-
-    char *output;
-    const char *log_messages = get_log_messages();
-    if (!log_messages) {
-        log_messages = "";
-    }
-
-    const int output_size = strlen(log_messages) + strlen(disassembly) + 1;
-    ASSERT(output = malloc(output_size));
-    ASSERT(snprintf(output, output_size, "%s%s", log_messages, disassembly)
-           == output_size - 1);
-    EXPECT_STREQ(output, expected);
-
-    free(output);
-    rtl_destroy_unit(unit);
-    binrec_destroy_handle(handle);
-    free(aligned_input);
-    return EXIT_SUCCESS;
-}
+#include "tests/rtl-disasm-test.i"

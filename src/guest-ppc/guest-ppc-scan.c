@@ -1415,6 +1415,13 @@ bool guest_ppc_scan(GuestPPCContext *ctx, uint32_t limit)
         if (!ctx->use_split_fields) {
             log_warning(ctx->handle, "Skipping TRIM_CR_STORES optimization"
                         " because USE_SPLIT_FIELDS is not enabled");
+        } else if (ctx->handle->use_branch_callback) {
+            /* The point of the TRIM_CR_STORES optimization is to analyze
+             * data flow across branches to eliminate dead stores, so if
+             * we could potentially have to exit the unit at any branch,
+             * we gain no benefit from the optimization. */
+            log_warning(ctx->handle, "Skipping TRIM_CR_STORES optimization"
+                        " because branch callback is enabled");
         } else {
             uint8_t *visited = binrec_malloc(ctx->handle, ctx->num_blocks);
             if (UNLIKELY(!visited)) {
