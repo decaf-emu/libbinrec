@@ -14,9 +14,9 @@
 cmake_minimum_required(VERSION 2.8)
 include(CheckCCompilerFlag)
 
-set(BINREC_ENABLE_ASSERT TRUE)
-set(BINREC_ENABLE_OPERAND_SANITY_CHECKS TRUE)
-set(BINREC_ENABLE_RTL_DEBUG_OPTIMIZE TRUE)
+set(BINREC_ENABLE_ASSERT TRUE CACHE BOOL "Enable basic assertion checks")
+set(BINREC_ENABLE_OPERAND_SANITY_CHECKS TRUE CACHE BOOL "Enable code generation assertion checks")
+set(BINREC_ENABLE_RTL_DEBUG_OPTIMIZE TRUE CACHE BOOL "Enable debug output from optimization passes")
 
 include_directories("${CMAKE_CURRENT_SOURCE_DIR}")
 file(GLOB SOURCES src/*.c src/*/*.c)
