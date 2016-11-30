@@ -589,16 +589,22 @@ static inline void append_insn_ModRM_ctx(
  *
  * [Parameters]
  *     code: Output code buffer.
+ *     is64: True to prepend REX.W to an integer instruction, false otherwise.
  *     opcode: Instruction opcode.
  *     reg: Register for ModR/M reg field.
  *     offset: Offset of the address to encode, counting from the base of
  *         the code buffer.
  */
 static inline void append_insn_ModRM_riprel(
-    CodeBuffer *code, X86Opcode opcode, X86Register reg, long offset)
+    CodeBuffer *code, bool is64, X86Opcode opcode, X86Register reg,
+    long offset)
 {
+    uint8_t rex = is64 ? X86_REX_W : 0;
     if (reg & 8) {
-        append_rex_opcode(code, X86_REX_R, opcode);
+        rex |= X86_REX_R;
+    }
+    if (rex) {
+        append_rex_opcode(code, rex, opcode);
     } else {
         append_opcode(code, opcode);
     }
@@ -710,6 +716,95 @@ static inline void append_vex_insn_ModRM_ctx(
     } else {
         append_vex_insn_ModRM_reg(code, vex_W, vex_L, opcode, reg1,
                                   ctx->regs[rtl_reg2].host_reg, reg3);
+    }
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
+ * append_nops:  Append no-op instructions totaling the given number of
+ * bytes.
+ *
+ * [Parameters]
+ *     code: Output code buffer.
+ *     len: Number of bytes to append.
+ */
+static void append_nops(CodeBuffer *code, int len)
+{
+    ASSERT(len >= 0);
+    ASSERT(len < 16);
+
+    switch (len) {
+      case 15:
+        append_opcode(code, X86OP_OPERAND_SIZE);
+        append_opcode(code, X86OP_NOP_Ev);
+        append_ModRM_SIB(code, X86MOD_DISP8, 0, 0, 0, 0);
+        append_imm8(code, 0);
+        goto nop9;
+      case 14:
+        append_opcode(code, X86OP_NOP_Ev);
+        append_ModRM_SIB(code, X86MOD_DISP8, 0, 0, 0, 0);
+        append_imm8(code, 0);
+        goto nop9;
+      case 13:
+        append_opcode(code, X86OP_NOP_Ev);
+        append_ModRM(code, X86MOD_DISP8, 0, 0);
+        append_imm8(code, 0);
+        goto nop9;
+      case 12:
+        append_opcode(code, X86OP_NOP_Ev);
+        append_ModRM(code, X86MOD_DISP0, 0, 0);
+        goto nop9;
+      case 11:
+        append_opcode(code, X86OP_OPERAND_SIZE);
+        append_opcode(code, X86OP_NOP);
+        goto nop9;
+      case 10:
+        append_opcode(code, X86OP_NOP);
+        /* fall through */
+      case 9: nop9:
+        append_opcode(code, X86OP_OPERAND_SIZE);
+        append_opcode(code, X86OP_NOP_Ev);
+        append_ModRM_SIB(code, X86MOD_DISP32, 0, 0, 0, 0);
+        append_imm32(code, 0);
+        break;
+      case 8:
+        append_opcode(code, X86OP_NOP_Ev);
+        append_ModRM_SIB(code, X86MOD_DISP32, 0, 0, 0, 0);
+        append_imm32(code, 0);
+        break;
+      case 7:
+        append_opcode(code, X86OP_NOP_Ev);
+        append_ModRM(code, X86MOD_DISP32, 0, 0);
+        append_imm32(code, 0);
+        break;
+      case 6:
+        append_opcode(code, X86OP_OPERAND_SIZE);
+        append_opcode(code, X86OP_NOP_Ev);
+        append_ModRM_SIB(code, X86MOD_DISP8, 0, 0, 0, 0);
+        append_imm8(code, 0);
+        break;
+      case 5:
+        append_opcode(code, X86OP_NOP_Ev);
+        append_ModRM_SIB(code, X86MOD_DISP8, 0, 0, 0, 0);
+        append_imm8(code, 0);
+        break;
+      case 4:
+        append_opcode(code, X86OP_NOP_Ev);
+        append_ModRM(code, X86MOD_DISP8, 0, 0);
+        append_imm8(code, 0);
+        break;
+      case 3:
+        append_opcode(code, X86OP_NOP_Ev);
+        append_ModRM(code, X86MOD_DISP0, 0, 0);
+        break;
+      case 2:
+        append_opcode(code, X86OP_OPERAND_SIZE);
+        append_opcode(code, X86OP_NOP);
+        break;
+      case 1:
+        append_opcode(code, X86OP_NOP);
+        break;
     }
 }
 
@@ -2145,94 +2240,32 @@ static bool append_epilogue(HostX86Context *ctx, bool append_ret)
 /*-----------------------------------------------------------------------*/
 
 /**
- * translate_call:  Translate a CALL or CALL_TRANSPARENT instruction.
+ * do_call_setup:  Perform setup for a call-like instruction (CALL,
+ * CALL_TRANSPARENT, or CHAIN).
  *
  * [Parameters]
  *     ctx: Translation context.
- *     block_index: Index of basic block in ctx->unit->blocks[].
+ *     code: Output code buffer.
  *     insn_index: Index of instruction in ctx->unit->insns[].
- * [Return value]
- *     True on success, false if out of memory.
+ *     is_tail: True to set up for a tail call, false to set up for a
+ *         non-tail call.
+ *     src1_loc: X86Register holding the target address, or -1 if the
+ *         address is not in a host register.  If not -1, may be modified
+ *         on return.
+ *     src2, src3: RTL registers holding the function arguments, or 0 if
+ *         there is no argument in the corresponding position.
  */
-static bool translate_call(HostX86Context *ctx, int block_index,
-                           int insn_index)
+static void do_call_setup(HostX86Context *ctx, CodeBuffer *code,
+                          int insn_index,  bool is_tail,
+                          int *src1_loc, int src2, int src3)
 {
-    ASSERT(ctx);
-    ASSERT(ctx->handle);
-    ASSERT(ctx->unit);
-    ASSERT(block_index >= 0);
-    ASSERT(block_index < ctx->unit->num_blocks);
-    ASSERT(insn_index >= 0);
-    ASSERT((uint32_t)insn_index < ctx->unit->num_insns);
-
-    binrec_t * const handle = ctx->handle;
     const RTLUnit * const unit = ctx->unit;
-    const RTLBlock * const block = &unit->blocks[block_index];
-    RTLInsn * const insn = &unit->insns[insn_index];
-    const int src1 = insn->src1;
-    const int src2 = insn->src2;
-    const int src3 = insn->src3;
-    int src1_loc = (!unit->regs[src1].live || is_spilled(ctx, insn_index, src1)
-                    ? -1 : ctx->regs[src1].host_reg);
     int src2_loc = (!src2 || !unit->regs[src2].live
                           || is_spilled(ctx, insn_index, src2)
                     ? -1 : ctx->regs[src2].host_reg);
     int src3_loc = (!src3 || !unit->regs[src3].live
                           || is_spilled(ctx, insn_index, src3)
                     ? -1 : ctx->regs[src3].host_reg);
-    const bool is_tail = (insn->host_data_16 != 0);
-
-    /* Call setup will generally require more space than is reserved by
-     * default, so expand the buffer if needed. */
-    const int MAX_SETUP_LEN = 3*10;  // 3x 64-bit immediate (src1/src2/src3)
-    /* Tail calls: worst case epilogue (107 bytes, see append_epilogue()) +
-     * JMP Ev (without REX, since src1 is loaded to RAX) */
-    const int MAX_TAIL_CALL_LEN = MAX_SETUP_LEN + 107 + 2;
-    /* Nontail calls: CALL Ev (without REX, since spilled src1 is always
-     * loaded to RAX) + return value copy (with REX) + MXCSR exception
-     * clear (24) + worst case save/restore for System V ABI (9x REX GPR
-     * store, 8x non-REX XMM store, 7x REX XMM store) */
-    const int MAX_NONTAIL_CALL_LEN =
-        MAX_SETUP_LEN + 2 + 3 + 24 + 2 * (9*8 + 8*8 + 7*9);
-    const int max_len = is_tail ? MAX_TAIL_CALL_LEN : MAX_NONTAIL_CALL_LEN;
-    if (UNLIKELY(handle->code_len + max_len > handle->code_buffer_size)
-     && UNLIKELY(!binrec_ensure_code_space(handle, max_len))) {
-        log_error(handle, "No memory for CALL instruction");
-        return false;
-    }
-
-    CodeBuffer code = {.buffer = handle->code_buffer,
-                       .buffer_size = handle->code_buffer_size,
-                       .len = handle->code_len};
-    const long initial_len = code.len;
-
-    /* If this is not a tail call, we need to save any values live in
-     * caller-saved registers to the stack (and we need to do this before
-     * potentially clobbering them with function arguments).  The register
-     * allocator will let us know which registers are live via the
-     * host_data_32 field in the CALL instruction. */
-    if (!is_tail) {
-        if (insn->dest) {
-            /* Make sure we don't overwrite the result after the call!
-             * If the result register is in the save set, it means that
-             * register spilled whatever was previously living there, so
-             * remove it from the save set. */
-            insn->host_data_32 &= ~(1 << ctx->regs[insn->dest].host_reg);
-        }
-        uint32_t save_regs = insn->host_data_32;
-        while (save_regs) {
-            const int reg = ctz32(save_regs);
-            save_regs ^= 1 << reg;
-            ASSERT(ctx->stack_callsave[reg] >= 0);
-            if (reg >= X86_XMM0) {
-                append_insn_ModRM_mem(&code, false, X86OP_MOVAPS_W_V, reg,
-                                      X86_SP, -1, ctx->stack_callsave[reg]);
-            } else {
-                append_insn_ModRM_mem(&code, true, X86OP_MOV_Ev_Gv, reg,
-                                      X86_SP, -1, ctx->stack_callsave[reg]);
-            }
-        }
-    }
 
     /*
      * Put arguments (if any) in the right place.  This is a bit ugly
@@ -2312,14 +2345,14 @@ static bool translate_call(HostX86Context *ctx, int block_index,
         if (!src3) {  // 1-argument call
 
             if (src2_loc != host_arg0) {
-                if (src1_loc == host_arg0) {
+                if (*src1_loc == host_arg0) {
                     const X86Register src1_target =
                         (src2_loc == X86_AX) ? X86_R11 : X86_AX;
-                    append_insn_ModRM_reg(&code, true, X86OP_MOV_Gv_Ev,
+                    append_insn_ModRM_reg(code, true, X86OP_MOV_Gv_Ev,
                                           src1_target, host_arg0);
-                    src1_loc = src1_target;
+                    *src1_loc = src1_target;
                 }
-                append_move_or_load_gpr(&code, ctx, unit, insn_index,
+                append_move_or_load_gpr(code, ctx, unit, insn_index,
                                         host_arg0, src2);
             }
 
@@ -2328,119 +2361,119 @@ static bool translate_call(HostX86Context *ctx, int block_index,
             if (src2_loc == host_arg0) {
 
                 if (src3_loc == host_arg0) {
-                    if (src1_loc == host_arg1) {
-                        append_insn_ModRM_reg(&code, true, X86OP_MOV_Gv_Ev,
+                    if (*src1_loc == host_arg1) {
+                        append_insn_ModRM_reg(code, true, X86OP_MOV_Gv_Ev,
                                               X86_AX, host_arg1);
-                        src1_loc = X86_AX;
+                        *src1_loc = X86_AX;
                     }
-                    append_insn_ModRM_reg(&code, src2_is64, X86OP_MOV_Gv_Ev,
+                    append_insn_ModRM_reg(code, src2_is64, X86OP_MOV_Gv_Ev,
                                           host_arg1, host_arg0);
                 } else if (src3_loc != host_arg1) {
-                    if (src1_loc == host_arg1) {
+                    if (*src1_loc == host_arg1) {
                         const X86Register src1_target =
                             (src3_loc == X86_AX) ? X86_R11 : X86_AX;
-                        append_insn_ModRM_reg(&code, true, X86OP_MOV_Gv_Ev,
+                        append_insn_ModRM_reg(code, true, X86OP_MOV_Gv_Ev,
                                               src1_target, host_arg1);
-                        src1_loc = src1_target;
+                        *src1_loc = src1_target;
                     }
-                    append_move_or_load_gpr(&code, ctx, unit, insn_index,
+                    append_move_or_load_gpr(code, ctx, unit, insn_index,
                                             host_arg1, src3);
                 }
 
             } else if (src2_loc == host_arg1) {
 
                 if (src3_loc == host_arg0) {
-                    append_insn_ModRM_reg(&code, src2_is64 || src3_is64,
+                    append_insn_ModRM_reg(code, src2_is64 || src3_is64,
                                           X86OP_XCHG_Ev_Gv,
                                           host_arg1, host_arg0);
-                    if (src1_loc == host_arg0) {
-                        src1_loc = host_arg1;
-                    } else if (src1_loc == host_arg1) {
-                        src1_loc = host_arg0;
+                    if (*src1_loc == host_arg0) {
+                        *src1_loc = host_arg1;
+                    } else if (*src1_loc == host_arg1) {
+                        *src1_loc = host_arg0;
                     }
                 } else if (src3_loc == host_arg1) {
-                    if (src1_loc == host_arg0) {
-                        append_insn_ModRM_reg(&code, true, X86OP_MOV_Gv_Ev,
+                    if (*src1_loc == host_arg0) {
+                        append_insn_ModRM_reg(code, true, X86OP_MOV_Gv_Ev,
                                               X86_AX, host_arg0);
-                        src1_loc = X86_AX;
+                        *src1_loc = X86_AX;
                     }
-                    append_insn_ModRM_reg(&code, src2_is64, X86OP_MOV_Gv_Ev,
+                    append_insn_ModRM_reg(code, src2_is64, X86OP_MOV_Gv_Ev,
                                           host_arg0, host_arg1);
                 } else {
-                    if (src1_loc == host_arg0) {
+                    if (*src1_loc == host_arg0) {
                         const X86Register src1_target =
                             (src3_loc == X86_AX) ? X86_R11 : X86_AX;
-                        append_insn_ModRM_reg(&code, true, X86OP_MOV_Gv_Ev,
+                        append_insn_ModRM_reg(code, true, X86OP_MOV_Gv_Ev,
                                               src1_target, host_arg0);
-                        src1_loc = src1_target;
+                        *src1_loc = src1_target;
                     }
-                    append_insn_ModRM_reg(&code, src2_is64, X86OP_MOV_Gv_Ev,
+                    append_insn_ModRM_reg(code, src2_is64, X86OP_MOV_Gv_Ev,
                                           host_arg0, host_arg1);
-                    if (src1_loc == host_arg1) {
-                        src1_loc = host_arg0;
+                    if (*src1_loc == host_arg1) {
+                        *src1_loc = host_arg0;
                     }
-                    append_move_or_load_gpr(&code, ctx, unit, insn_index,
+                    append_move_or_load_gpr(code, ctx, unit, insn_index,
                                             host_arg1, src3);
                 }
 
             } else if (src3_loc == host_arg0) {
 
-                if (src1_loc == host_arg1) {
-                    append_move_or_load_gpr(&code, ctx, unit, insn_index,
+                if (*src1_loc == host_arg1) {
+                    append_move_or_load_gpr(code, ctx, unit, insn_index,
                                             X86_R11, src2);
-                    append_insn_ModRM_reg(&code, true, X86OP_MOV_Gv_Ev,
+                    append_insn_ModRM_reg(code, true, X86OP_MOV_Gv_Ev,
                                           X86_AX, host_arg1);
-                    src1_loc = X86_AX;
-                    append_insn_ModRM_reg(&code, src3_is64, X86OP_MOV_Gv_Ev,
+                    *src1_loc = X86_AX;
+                    append_insn_ModRM_reg(code, src3_is64, X86OP_MOV_Gv_Ev,
                                           host_arg1, host_arg0);
-                    append_insn_ModRM_reg(&code, src2_is64, X86OP_MOV_Gv_Ev,
+                    append_insn_ModRM_reg(code, src2_is64, X86OP_MOV_Gv_Ev,
                                           host_arg0, X86_R11);
                 } else {
-                    append_insn_ModRM_reg(&code, src3_is64, X86OP_MOV_Gv_Ev,
+                    append_insn_ModRM_reg(code, src3_is64, X86OP_MOV_Gv_Ev,
                                           host_arg1, host_arg0);
-                    if (src1_loc == host_arg0) {
-                        src1_loc = host_arg1;
+                    if (*src1_loc == host_arg0) {
+                        *src1_loc = host_arg1;
                     }
-                    append_move_or_load_gpr(&code, ctx, unit, insn_index,
+                    append_move_or_load_gpr(code, ctx, unit, insn_index,
                                             host_arg0, src2);
                 }
 
             } else if (src3_loc == host_arg1) {
 
-                if (src1_loc == host_arg0) {
+                if (*src1_loc == host_arg0) {
                     const X86Register src1_target =
                         (src2_loc == X86_AX) ? X86_R11 : X86_AX;
-                    append_insn_ModRM_reg(&code, true, X86OP_MOV_Gv_Ev,
+                    append_insn_ModRM_reg(code, true, X86OP_MOV_Gv_Ev,
                                           src1_target, host_arg0);
-                    src1_loc = src1_target;
+                    *src1_loc = src1_target;
                 }
-                append_move_or_load_gpr(&code, ctx, unit, insn_index,
+                append_move_or_load_gpr(code, ctx, unit, insn_index,
                                         host_arg0, src2);
 
-            } else if (src1_loc == host_arg0) {
+            } else if (*src1_loc == host_arg0) {
 
-                append_move_or_load_gpr(&code, ctx, unit, insn_index,
+                append_move_or_load_gpr(code, ctx, unit, insn_index,
                                         host_arg1, src3);
                 const X86Register src1_target =
                     (src2_loc == X86_AX) ? X86_R11 : X86_AX;
-                append_insn_ModRM_reg(&code, true, X86OP_MOV_Gv_Ev,
+                append_insn_ModRM_reg(code, true, X86OP_MOV_Gv_Ev,
                                       src1_target, host_arg0);
-                src1_loc = src1_target;
-                append_move_or_load_gpr(&code, ctx, unit, insn_index,
+                *src1_loc = src1_target;
+                append_move_or_load_gpr(code, ctx, unit, insn_index,
                                         host_arg0, src2);
 
             } else {
 
-                append_move_or_load_gpr(&code, ctx, unit, insn_index,
+                append_move_or_load_gpr(code, ctx, unit, insn_index,
                                         host_arg0, src2);
-                if (src1_loc == host_arg1) {
+                if (*src1_loc == host_arg1) {
                     const X86Register src1_target =
                         (src3_loc == X86_AX) ? X86_R11 : X86_AX;
-                    append_insn_ModRM_reg(&code, true, X86OP_MOV_Gv_Ev,
+                    append_insn_ModRM_reg(code, true, X86OP_MOV_Gv_Ev,
                                           src1_target, host_arg1);
-                    src1_loc = src1_target;
+                    *src1_loc = src1_target;
                 }
-                append_move_or_load_gpr(&code, ctx, unit, insn_index,
+                append_move_or_load_gpr(code, ctx, unit, insn_index,
                                         host_arg1, src3);
 
             }
@@ -2448,6 +2481,96 @@ static bool translate_call(HostX86Context *ctx, int block_index,
         }  // if (!src3)
 
     }  // if (src2)
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
+ * translate_call:  Translate a CALL or CALL_TRANSPARENT instruction.
+ *
+ * [Parameters]
+ *     ctx: Translation context.
+ *     block_index: Index of basic block in ctx->unit->blocks[].
+ *     insn_index: Index of instruction in ctx->unit->insns[].
+ * [Return value]
+ *     True on success, false if out of memory.
+ */
+static bool translate_call(HostX86Context *ctx, int block_index,
+                           int insn_index)
+{
+    ASSERT(ctx);
+    ASSERT(ctx->handle);
+    ASSERT(ctx->unit);
+    ASSERT(block_index >= 0);
+    ASSERT(block_index < ctx->unit->num_blocks);
+    ASSERT(insn_index >= 0);
+    ASSERT((uint32_t)insn_index < ctx->unit->num_insns);
+
+    binrec_t * const handle = ctx->handle;
+    const RTLUnit * const unit = ctx->unit;
+    const RTLBlock * const block = &unit->blocks[block_index];
+    RTLInsn * const insn = &unit->insns[insn_index];
+    const int src1 = insn->src1;
+    const int src2 = insn->src2;
+    const int src3 = insn->src3;
+    int src1_loc = (!unit->regs[src1].live || is_spilled(ctx, insn_index, src1)
+                    ? -1 : ctx->regs[src1].host_reg);
+    const bool is_tail = (insn->host_data_16 != 0);
+
+    /* Call setup will generally require more space than is reserved by
+     * default, so expand the buffer if needed. */
+    const int MAX_SETUP_LEN = 3*10;  // 3x 64-bit immediate (src1/src2/src3)
+    /* Tail calls: worst case epilogue (107 bytes, see append_epilogue()) +
+     * JMP Ev (without REX, since src1 is loaded to RAX) */
+    const int MAX_TAIL_CALL_LEN = MAX_SETUP_LEN + 107 + 2;
+    /* Nontail calls: CALL Ev (without REX, since spilled src1 is always
+     * loaded to RAX) + return value copy (with REX) + MXCSR exception
+     * clear (24) + worst case save/restore for System V ABI (9x REX GPR
+     * store, 8x non-REX XMM store, 7x REX XMM store) */
+    const int MAX_NONTAIL_CALL_LEN =
+        MAX_SETUP_LEN + 2 + 3 + 24 + 2 * (9*8 + 8*8 + 7*9);
+    const int max_len = is_tail ? MAX_TAIL_CALL_LEN : MAX_NONTAIL_CALL_LEN;
+    if (UNLIKELY(handle->code_len + max_len > handle->code_buffer_size)
+     && UNLIKELY(!binrec_ensure_code_space(handle, max_len))) {
+        log_error(handle, "No memory for CALL instruction");
+        return false;
+    }
+
+    CodeBuffer code = {.buffer = handle->code_buffer,
+                       .buffer_size = handle->code_buffer_size,
+                       .len = handle->code_len};
+    const long initial_len = code.len;
+
+    /* If this is not a tail call, we need to save any values live in
+     * caller-saved registers to the stack (and we need to do this before
+     * potentially clobbering them with function arguments).  The register
+     * allocator will let us know which registers are live via the
+     * host_data_32 field in the CALL instruction. */
+    if (!is_tail) {
+        if (insn->dest) {
+            /* Make sure we don't overwrite the result after the call!
+             * If the result register is in the save set, it means that
+             * register spilled whatever was previously living there, so
+             * remove it from the save set. */
+            insn->host_data_32 &= ~(1 << ctx->regs[insn->dest].host_reg);
+        }
+        uint32_t save_regs = insn->host_data_32;
+        while (save_regs) {
+            const int reg = ctz32(save_regs);
+            save_regs ^= 1 << reg;
+            ASSERT(ctx->stack_callsave[reg] >= 0);
+            if (reg >= X86_XMM0) {
+                append_insn_ModRM_mem(&code, false, X86OP_MOVAPS_W_V, reg,
+                                      X86_SP, -1, ctx->stack_callsave[reg]);
+            } else {
+                append_insn_ModRM_mem(&code, true, X86OP_MOV_Ev_Gv, reg,
+                                      X86_SP, -1, ctx->stack_callsave[reg]);
+            }
+        }
+    }
+
+    /* Get arguments into the right place. */
+    do_call_setup(ctx, &code, insn_index, is_tail, &src1_loc, src2, src3);
 
     /* Reload the call target (or copy from constant), if necessary. */
     if (src1_loc < 0) {
@@ -2532,7 +2655,178 @@ static bool translate_call(HostX86Context *ctx, int block_index,
 
     ASSERT(code.len - initial_len <= max_len);
     handle->code_len = code.len;
+    ctx->last_test_reg = 0;
+    ctx->last_cmp_reg = 0;
     return true;
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
+ * translate_chain:  Translate a CHAIN instruction.
+ *
+ * [Parameters]
+ *     ctx: Translation context.
+ *     insn_index: Index of instruction in ctx->unit->insns[].
+ * [Return value]
+ *     True on success, false if out of memory.
+ */
+static bool translate_chain(HostX86Context *ctx, int insn_index)
+{
+    ASSERT(ctx);
+    ASSERT(ctx->handle);
+    ASSERT(ctx->unit);
+    ASSERT(insn_index >= 0);
+    ASSERT((uint32_t)insn_index < ctx->unit->num_insns);
+
+    binrec_t * const handle = ctx->handle;
+    const RTLUnit * const unit = ctx->unit;
+    RTLInsn * const insn = &unit->insns[insn_index];
+
+    /* Reserve space as for a tail call (see notes in translate_call()),
+     * plus extra for the chain logic itself.  We don't attempt to
+     * optimize immediates here (since there should never be a reason to),
+     * and we handle the address separately, so the maximum setup length
+     * from do_call_setup() is 2 REX GPR loads (8 bytes each). */
+    const int MAX_CHAIN_PREFIX_LEN = 17;  // 7 bytes alignment + MOV R15,imm64
+    const int CHAIN_SUFFIX_LEN = 3;  // MOV RAX,R15
+    const int MAX_TAIL_CALL_LEN = 2*8 + 107 + 2;
+    const int max_len =
+        MAX_CHAIN_PREFIX_LEN + MAX_TAIL_CALL_LEN + CHAIN_SUFFIX_LEN;
+    if (UNLIKELY(handle->code_len + max_len > handle->code_buffer_size)
+     && UNLIKELY(!binrec_ensure_code_space(handle, max_len))) {
+        log_error(handle, "No memory for CHAIN instruction");
+        return false;
+    }
+
+    CodeBuffer code = {.buffer = handle->code_buffer,
+                       .buffer_size = handle->code_buffer_size,
+                       .len = handle->code_len};
+    const long initial_len = code.len;
+
+    /*
+     * We start the chain with a long jump over the chain code followed by
+     * five bytes of 0x00.  These will be replaced by MOV R15,addr (10
+     * bytes) once the address is known.  We arrange for the jump to be
+     * 64-bit aligned so that in the common case of an address with the
+     * high 16 bits clear, we can write both the MOV R15 opcode and the
+     * low 48 bits of the address in a single store, thus minimizing the
+     * number of store operations that could potentially trigger a
+     * self-modifying code condition.  (It's superficially convenient that
+     * the x86 architecture requires the CPU to detect modified code, but
+     * that just ends up constraining the logic for actually modifying the
+     * code.)
+     *
+     * Those initial 10 bytes are followed by the standard call setup to
+     * get arguments into their proper places.  After setup, we move the
+     * address from R15 to RAX so it's not clobbered by the function
+     * epilogue, then pop the stack and jump to RAX like a normal tail call.
+     */
+
+    append_nops(&code, (8 - code.len) & 7);
+    ASSERT(code.len % 8 == 0);
+    insn->host_data_32 = code.len;  // Save code location for CHAIN_RESOLVE.
+
+    append_insn_R(&code, true, X86OP_MOV_rAX_Iv, X86_R15);
+    append_imm64(&code, 0);
+
+    do_call_setup(ctx, &code, insn_index, true,
+                  (int[]){-1}, insn->src1, insn->src2);
+
+    append_move_gpr(&code, RTLTYPE_ADDRESS, X86_AX, X86_R15);
+
+    handle->code_len = code.len;
+    ASSERT(append_epilogue(ctx, false));
+    ASSERT(handle->code_buffer == code.buffer);
+    ASSERT(handle->code_buffer_size == code.buffer_size);
+    code.len = handle->code_len;
+
+    append_insn_ModRM_reg(&code, false, X86OP_MISC_FF,
+                          X86OP_MISC_FF_JMP_Ev, X86_AX);
+
+    /* Overwrite the MOV R15,imm64 opcode with a jump, now that we know
+     * where it should land. */
+    const int disp = code.len - (insn->host_data_32 + 5);
+    ASSERT(disp < 256);
+    code.buffer[insn->host_data_32] = X86OP_JMP_Jz;
+    code.buffer[insn->host_data_32 + 1] = (uint8_t)disp;
+
+    ASSERT(code.len - initial_len <= max_len);
+    handle->code_len = code.len;
+    return true;
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
+ * translate_chain_resolve:  Translate a CHAIN_RESOLVE instruction.
+ *
+ * [Parameters]
+ *     ctx: Translation context.
+ *     code: Output code buffer.
+ *     insn_index: Index of instruction in ctx->unit->insns[].
+ */
+static void translate_chain_resolve(HostX86Context *ctx, CodeBuffer *code,
+                                    int insn_index)
+{
+    ASSERT(ctx);
+    ASSERT(ctx->handle);
+    ASSERT(ctx->unit);
+    ASSERT(insn_index >= 0);
+    ASSERT((uint32_t)insn_index < ctx->unit->num_insns);
+
+    const RTLUnit * const unit = ctx->unit;
+    RTLInsn * const insn = &unit->insns[insn_index];
+    /* There should never be a reason for the address to be spilled. */
+    ASSERT(!is_spilled(ctx, insn_index, insn->src1));
+    const X86Register host_src1 = ctx->regs[insn->src1].host_reg;
+
+    const int target_index = insn->src_imm;
+    ASSERT(target_index >= 0);
+    ASSERT(target_index < insn_index);
+    const RTLInsn * const target_insn = &unit->insns[target_index];
+    ASSERT(target_insn->opcode == RTLOP_CHAIN);
+    const long target_offset = target_insn->host_data_32;
+    ASSERT(target_offset + 10 <= code->len);
+    ASSERT(target_offset % 8 == 0);
+
+    /* Don't resolve the chain if the pointer is null. */
+    append_insn_ModRM_reg(code, true, X86OP_TEST_Ev_Gv, host_src1, host_src1);
+    /* The size of this code is constant regardless of host_src1 due to
+     * REX.W prefixes. */
+    const int skip_disp = 34;
+    append_jump_raw(code, X86OP_JZ_Jb, skip_disp);
+    const long skip_from = code->len;
+
+    /* If the high 16 bits of the value are nonzero, first store those to
+     * the high bits of the immediate.  Note that all caller-saved
+     * registers are now free to use because RTL mandates that a
+     * CHAIN_RESOLVE instruction is immediately followed by RETURN. */
+    const X86Register host_temp = (host_src1 == X86_AX) ? X86_CX : X86_AX;
+    append_insn_ModRM_reg(code, true, X86OP_MOV_Gv_Ev, host_temp, host_src1);
+    append_insn_ModRM_reg(code, true, X86OP_SHIFT_Ev_Ib, X86OP_SHIFT_SHR,
+                          host_temp);
+    append_imm8(code, 48);
+    append_jump_raw(code, X86OP_JZ_Jb, 7);
+    const long low48_from = code->len;
+    append_opcode(code, X86OP_OPERAND_SIZE);
+    append_insn_ModRM_riprel(code, false, X86OP_MOV_Ev_Gv,
+                             host_temp, target_offset + 8);
+    ASSERT(code->len == low48_from + 7);
+
+    /* Shift the MOV R15 opcode into the bottom of the address and store
+     * it over the branch.  Again, we can destroy the existing value
+     * because it dies here by contract. */
+    append_insn_ModRM_reg(code, true, X86OP_SHIFT_Ev_Ib, X86OP_SHIFT_SHL,
+                          host_src1);
+    append_imm8(code, 16);
+    append_insn_ModRM_reg(code, true, X86OP_IMM_Ev_Iz, X86OP_IMM_OR,
+                          host_src1);
+    append_imm32(code, X86OP_REX_WB | (X86OP_MOV_rAX_Iv + (X86_R15 & 7)) << 8);
+    append_insn_ModRM_riprel(code, true, X86OP_MOV_Ev_Gv,
+                             host_src1, target_offset);
+
+    ASSERT(code->len - skip_from == skip_disp);
 }
 
 /*-----------------------------------------------------------------------*/
@@ -2652,7 +2946,8 @@ static bool translate_fcast(HostX86Context *ctx, int insn_index)
         const long lc_offset = ctx->const_loc[lc_id];
         ASSERT(lc_offset);
         //@ 8 = 44 0F 54 ModRM disp32
-        append_insn_ModRM_riprel(&code, X86OP_ANDPS, host_dest, lc_offset);
+        append_insn_ModRM_riprel(&code, false, X86OP_ANDPS, host_dest,
+                                 lc_offset);
 
     } else {
         //@ f32x2: 4+11+9+8+5+6+10+6+4+8 = 71
@@ -2694,7 +2989,8 @@ static bool translate_fcast(HostX86Context *ctx, int insn_index)
         //  f64x2:  9 = 44 0F 28 ModRM SIB disp32
         append_move_or_load(&code, ctx, unit, insn_index, temp_xmm, src1);
         //@ 8 = 44 0F 54 ModRM disp32
-        append_insn_ModRM_riprel(&code, X86OP_ANDPS, host_dest, lc_offset);
+        append_insn_ModRM_riprel(&code, false, X86OP_ANDPS, host_dest,
+                                 lc_offset);
         //@ 5 = 66 45 0F DF ModRM
         append_insn_ModRM_reg(&code, false, X86OP_PANDN_V,
                               temp_xmm, host_dest);
@@ -2890,7 +3186,8 @@ static void translate_fma(CodeBuffer *code, HostX86Context *ctx,
                 : (is64 ? LC_FLOAT64_SIGNBIT : LC_FLOAT32_SIGNBIT);
             const long lc_offset = ctx->const_loc[lc_id];
             ASSERT(lc_offset);
-            append_insn_ModRM_riprel(code, X86OP_XORPS, host_dest, lc_offset);
+            append_insn_ModRM_riprel(code, false, X86OP_XORPS, host_dest,
+                                     lc_offset);
         }
 
         if (prefix) {
@@ -4394,7 +4691,8 @@ static bool translate_block(HostX86Context *ctx, int block_index)
             const long lc_offset = ctx->const_loc[lc_id];
             ASSERT(lc_offset);
             append_move_or_load(&code, ctx, unit, insn_index, host_dest, src1);
-            append_insn_ModRM_riprel(&code, opcode, host_dest, lc_offset);
+            append_insn_ModRM_riprel(&code, false, opcode, host_dest,
+                                     lc_offset);
             break;
           }  // case RTLOP_FNEG, RTLOP_FABS, RTLOP_FNABS
 
@@ -4429,7 +4727,7 @@ static bool translate_block(HostX86Context *ctx, int block_index)
                                     host_temp, src2);
                 const long lc_offset = ctx->const_loc[LC_V2_FLOAT32_HIGH_ONES];
                 ASSERT(lc_offset);
-                append_insn_ModRM_riprel(&code, X86OP_ORPS, host_temp,
+                append_insn_ModRM_riprel(&code, false, X86OP_ORPS, host_temp,
                                          lc_offset);
                 host_src2 = host_temp;
                 src2_loaded = true;
@@ -5492,78 +5790,7 @@ static bool translate_block(HostX86Context *ctx, int block_index)
             ASSERT(insn->label < unit->next_label);
             ASSERT(ctx->label_offsets[insn->label] < 0);
             if (handle->host_opt & BINREC_OPT_H_X86_BRANCH_ALIGNMENT) {
-                switch (code.len & 15) {
-                  case 1:
-                    append_opcode(&code, X86OP_OPERAND_SIZE);
-                    append_opcode(&code, X86OP_NOP_Ev);
-                    append_ModRM_SIB(&code, X86MOD_DISP8, 0, 0, 0, 0);
-                    append_imm8(&code, 0);
-                    goto nop9;
-                  case 2:
-                    append_opcode(&code, X86OP_NOP_Ev);
-                    append_ModRM_SIB(&code, X86MOD_DISP8, 0, 0, 0, 0);
-                    append_imm8(&code, 0);
-                    goto nop9;
-                  case 3:
-                    append_opcode(&code, X86OP_NOP_Ev);
-                    append_ModRM(&code, X86MOD_DISP8, 0, 0);
-                    append_imm8(&code, 0);
-                    goto nop9;
-                  case 4:
-                    append_opcode(&code, X86OP_NOP_Ev);
-                    append_ModRM(&code, X86MOD_DISP0, 0, 0);
-                    goto nop9;
-                  case 5:
-                    append_opcode(&code, X86OP_OPERAND_SIZE);
-                    append_opcode(&code, X86OP_NOP);
-                    goto nop9;
-                  case 6:
-                    append_opcode(&code, X86OP_NOP);
-                    /* fall through */
-                  case 7: nop9:
-                    append_opcode(&code, X86OP_OPERAND_SIZE);
-                    append_opcode(&code, X86OP_NOP_Ev);
-                    append_ModRM_SIB(&code, X86MOD_DISP32, 0, 0, 0, 0);
-                    append_imm32(&code, 0);
-                    break;
-                  case 8:
-                    append_opcode(&code, X86OP_NOP_Ev);
-                    append_ModRM_SIB(&code, X86MOD_DISP32, 0, 0, 0, 0);
-                    append_imm32(&code, 0);
-                    break;
-                  case 9:
-                    append_opcode(&code, X86OP_NOP_Ev);
-                    append_ModRM(&code, X86MOD_DISP32, 0, 0);
-                    append_imm32(&code, 0);
-                    break;
-                  case 10:
-                    append_opcode(&code, X86OP_OPERAND_SIZE);
-                    append_opcode(&code, X86OP_NOP_Ev);
-                    append_ModRM_SIB(&code, X86MOD_DISP8, 0, 0, 0, 0);
-                    append_imm8(&code, 0);
-                    break;
-                  case 11:
-                    append_opcode(&code, X86OP_NOP_Ev);
-                    append_ModRM_SIB(&code, X86MOD_DISP8, 0, 0, 0, 0);
-                    append_imm8(&code, 0);
-                    break;
-                  case 12:
-                    append_opcode(&code, X86OP_NOP_Ev);
-                    append_ModRM(&code, X86MOD_DISP8, 0, 0);
-                    append_imm8(&code, 0);
-                    break;
-                  case 13:
-                    append_opcode(&code, X86OP_NOP_Ev);
-                    append_ModRM(&code, X86MOD_DISP0, 0, 0);
-                    break;
-                  case 14:
-                    append_opcode(&code, X86OP_OPERAND_SIZE);
-                    append_opcode(&code, X86OP_NOP);
-                    break;
-                  case 15:
-                    append_opcode(&code, X86OP_NOP);
-                    break;
-                }
+                append_nops(&code, (16 - code.len) & 15);
                 ASSERT((code.len & 15) == 0);
             }
             ctx->label_offsets[insn->label] = code.len;
@@ -5698,8 +5925,6 @@ static bool translate_block(HostX86Context *ctx, int block_index)
             code.buffer_size = handle->code_buffer_size;
             code.len = handle->code_len;
             initial_len = code.len;  // Suppress output length check.
-            ctx->last_test_reg = 0;
-            ctx->last_cmp_reg = 0;
             break;
 
           case RTLOP_RETURN:
@@ -5720,11 +5945,26 @@ static bool translate_block(HostX86Context *ctx, int block_index)
             fall_through = false;
             break;
 
+          case RTLOP_CHAIN:
+            handle->code_len = code.len;
+            if (!translate_chain(ctx, insn_index)) {
+                return false;
+            }
+            code.buffer = handle->code_buffer;
+            code.buffer_size = handle->code_buffer_size;
+            code.len = handle->code_len;
+            initial_len = code.len;  // Suppress output length check.
+            break;
+
+          case RTLOP_CHAIN_RESOLVE:
+            translate_chain_resolve(ctx, &code, insn_index);
+            break;
+
           case RTLOP_ILLEGAL:
             append_opcode(&code, X86OP_UD2);
             break;
 
-        }
+        }  // switch (insn->opcode)
 
         ASSERT(code.len - initial_len <= MAX_INSN_LEN);
     }

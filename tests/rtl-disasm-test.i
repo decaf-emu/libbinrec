@@ -38,6 +38,8 @@
  *      any) followed by the expected RTL disassembly (if disassembly was
  *      successful).
  *
+ * If the preprocessor symbol CHAINING is defined, chaining will be enabled.
+ *
  * If the preprocessor symbol BRANCH_CALLBACK is defined, the branch
  * callback will be enabled.
  *
@@ -71,6 +73,9 @@ int main(void)
 
     binrec_set_optimization_flags(handle, common_opt, guest_opt, 0);
     binrec_set_code_range(handle, 0, sizeof(input) - 1);
+    #ifdef CHAINING
+        binrec_enable_chaining(handle, true);
+    #endif
     #ifdef BRANCH_CALLBACK
         binrec_enable_branch_callback(handle, true);
     #endif

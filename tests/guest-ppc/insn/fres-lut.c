@@ -71,7 +71,7 @@ static const char expected[] =
     "   48: ANDI       r23, r22, 8388607\n"
     "   49: SET_ALIAS  a6, r23\n"
     "   50: LABEL      L4\n"
-    "   51: LOAD       r24, 1000(r1)\n"
+    "   51: LOAD       r24, 1008(r1)\n"
     "   52: GET_ALIAS  r25, a6\n"
     "   53: SRLI       r26, r25, 18\n"
     "   54: SLLI       r27, r26, 2\n"

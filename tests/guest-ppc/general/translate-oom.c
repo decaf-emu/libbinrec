@@ -35,9 +35,10 @@ int main(void)
     setup.state_offset_timebase_handler = 0x3C8;
     setup.state_offset_sc_handler = 0x3D0;
     setup.state_offset_trap_handler = 0x3D8;
-    setup.state_offset_branch_callback = 0x3E0;
-    setup.state_offset_fres_lut = 0x3E8;
-    setup.state_offset_frsqrte_lut = 0x3F0;
+    setup.state_offset_chain_lookup = 0x3E0;
+    setup.state_offset_branch_callback = 0x3E8;
+    setup.state_offset_fres_lut = 0x3F0;
+    setup.state_offset_frsqrte_lut = 0x3F8;
     setup.malloc = mem_wrap_malloc;
     setup.realloc = mem_wrap_realloc;
     setup.free = mem_wrap_free;

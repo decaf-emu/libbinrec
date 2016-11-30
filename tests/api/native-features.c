@@ -17,7 +17,7 @@ int main(void)
 
     #if defined(__amd64__) || defined(__x86_64__) || defined(_M_X64)
         /* Just copying the source of the function here wouldn't make for
-         * a particularly meaningful test, so we assume at least one
+         * a particularly meaningful test, so we assume that at least one
          * feature bit will be set (as will be true on all but the oldest
          * x86-64 processors) and check for non-zeroness. */
         EXPECT(features != 0);

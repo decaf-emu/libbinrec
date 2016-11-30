@@ -70,7 +70,7 @@ static const char expected[] =
     "   47: ZCAST      r27, r26\n"
     "   48: SET_ALIAS  a6, r27\n"
     "   49: LABEL      L5\n"
-    "   50: LOAD       r28, 1008(r1)\n"
+    "   50: LOAD       r28, 1016(r1)\n"
     "   51: GET_ALIAS  r29, a6\n"
     "   52: SRLI       r30, r29, 16\n"
     "   53: SLLI       r31, r30, 2\n"

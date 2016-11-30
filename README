@@ -113,15 +113,16 @@ Makefile and etc/* scripts.
     ppc32 -O0     |    2.08   |    2.95   |    109    |     185   |
     ppc32 -O1     |    2.43   |    3.54   |    113    |     195   |
     ppc32 -O2     |    2.99   |    4.05   |    126    |     196   |
+    + -fchain     |    3.10   |    4.24   |    129    |     200   |
     + -ffast-math |   -----   |   -----   |   1720    |    3020   |
 
-The order-of-magnitude difference between "-O2" and "-O2 -ffast-math"
-for the PowerPC Whetstone benchmark results from the heavy cost of
-updating FPSCR (the Floating-Point Status and Control Register) after
-each floating-point instruction.  The rules for setting bits in this
-register are fairly complex, and the code required to implement the
-register correctly is difficult for libbinrec to optimize, resulting in
-a significant performance penalty.  Disabling updates to this register
+The order-of-magnitude difference from enabling -ffast-math for the
+PowerPC Whetstone benchmark results from the heavy cost of updating
+FPSCR (the Floating-Point Status and Control Register) after each
+floating-point instruction.  The rules for setting bits in this register
+are fairly complex, and the code required to implement the register
+correctly is difficult for libbinrec to optimize, resulting in a
+significant performance penalty.  Disabling updates to this register
 brings the translated code much closer to native performance, at the
 cost of no support for unmasked floating-point exceptions and certain
 minor differences in behavior (such as different NaN payloads in

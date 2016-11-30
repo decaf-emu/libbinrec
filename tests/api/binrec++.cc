@@ -124,6 +124,7 @@ extern "C" int main(void)
     handle.set_max_inline_depth(0);
     handle.add_readonly_region(0, 1);
     handle.clear_readonly_regions();
+    handle.enable_chaining(false);
     handle.enable_branch_callback(false);
     handle.set_pre_insn_callback(nullptr);
     handle.set_post_insn_callback(nullptr);

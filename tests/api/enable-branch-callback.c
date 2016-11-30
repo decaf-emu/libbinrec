@@ -33,6 +33,8 @@ int main(void)
     binrec_enable_branch_callback(handle, INT_MIN);  // Low byte is zero.
     EXPECT(handle->use_branch_callback);
 
+    EXPECT_STREQ(get_log_messages(), NULL);
+
     binrec_destroy_handle(handle);
     return EXIT_SUCCESS;
 }

@@ -467,6 +467,7 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
             ctx->block_regs_touched |= 1 << temp_reg;
         }
         break;
+
       case RTLOP_STORE:
       case RTLOP_STORE_I8:
       case RTLOP_STORE_I16:
@@ -514,7 +515,12 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
         }
         break;
       }  // case RTLOP_STORE*
-    }
+
+      case RTLOP_CHAIN:
+        /* R15 used as temporary for chain target load. */
+        ctx->block_regs_touched |= 1 << X86_R15;
+        break;
+    }  // switch (insn->opcode)
 
     if (src1) {
         /* Source registers must have already had a host register allocated,
@@ -1670,7 +1676,7 @@ static void maybe_optimize_call_immediate(RTLUnit *unit, int insn_index,
                                           int reg_index)
 {
     RTLRegister * const reg = &unit->regs[reg_index];
-    if (reg->source == RTLREG_CONSTANT) {
+    if (reg->source == RTLREG_CONSTANT && reg->death == insn_index) {
         const int prev_use = rtl_opt_prev_reg_use(unit, reg_index, insn_index);
         if (prev_use == reg->birth) {
             reg->death = reg->birth;

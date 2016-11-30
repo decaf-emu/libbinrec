@@ -134,7 +134,7 @@ static const char expected[] =
     "  111: ANDI       r63, r62, 8388607\n"
     "  112: SET_ALIAS  a7, r63\n"
     "  113: LABEL      L6\n"
-    "  114: LOAD       r64, 1000(r1)\n"
+    "  114: LOAD       r64, 1008(r1)\n"
     "  115: GET_ALIAS  r65, a7\n"
     "  116: SRLI       r66, r65, 18\n"
     "  117: SLLI       r67, r66, 2\n"

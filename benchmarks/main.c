@@ -111,6 +111,7 @@ static int count;
 static unsigned int opt_common;
 static unsigned int opt_guest;
 static unsigned int opt_host;
+static bool chain;
 static bool dump;
 static bool quiet;
 static bool verbose;
@@ -178,6 +179,7 @@ static bool process_command_line(int argc, char **argv)
                     " ITERATION-COUNT\n", argv[0]);
             fprintf(stderr, "\nOptions:\n"
                     "    -d           Dump the translated code to disk.\n"
+                    "    -fchain      Enable dynamic chaining between translated code blocks.\n"
                     "    -ffast-math  Enable optimizations which may affect floating-point results.\n"
                     "    -G<NAME>     Enable specific guest optimizations.\n"
                     "        -Gppc-constant-gqr   Assume values stored to GQRs are always constant\n"
@@ -328,6 +330,9 @@ static bool process_command_line(int argc, char **argv)
                             name);
                     goto usage;
                 }
+
+            } else if (strcmp(argv[argi], "-fchain") == 0) {
+                chain = true;
 
             } else if (strcmp(argv[argi], "-ffast-math") == 0) {
                 fast_math = true;
@@ -485,6 +490,7 @@ static void log_callback(UNUSED void *userdata, binrec_loglevel_t level,
 static void configure_binrec(binrec_t *handle)
 {
     binrec_set_optimization_flags(handle, opt_common, opt_guest, opt_host);
+    binrec_enable_chaining(handle, chain);
 }
 
 /*-----------------------------------------------------------------------*/

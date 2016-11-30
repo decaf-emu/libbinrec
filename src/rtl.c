@@ -629,6 +629,8 @@ static void rtl_decode_insn(const RTLUnit *unit, uint32_t index,
         [RTLOP_CALL      ] = "CALL",
         [RTLOP_CALL_TRANSPARENT] = "CALL_TRANSPARENT",
         [RTLOP_RETURN    ] = "RETURN",
+        [RTLOP_CHAIN     ] = "CHAIN",
+        [RTLOP_CHAIN_RESOLVE] = "CHAIN_RESOLVE",
         [RTLOP_ILLEGAL   ] = "ILLEGAL",
     };
 
@@ -955,6 +957,18 @@ static void rtl_decode_insn(const RTLUnit *unit, uint32_t index,
         }
         return;
 
+      case RTLOP_CHAIN:
+        s += snprintf_assert(s, top - s, "%-10s r%d, r%d\n", name, src1, src2);
+        APPEND_REG_DESC(src1);
+        APPEND_REG_DESC(src2);
+        return;
+
+      case RTLOP_CHAIN_RESOLVE:
+        s += snprintf_assert(s, top - s, "%-10s @%d, r%d\n",
+                             name, (int)insn->src_imm, src1);
+        APPEND_REG_DESC(src1);
+        return;
+
     }  // switch (insn->opcode)
 
     s += snprintf_assert(s, top - s, "<invalid opcode %u>\n", insn->opcode);
@@ -1230,6 +1244,23 @@ bool rtl_add_insn(RTLUnit *unit, RTLOpcode opcode,
 
     unit->num_insns++;
     return true;
+}
+
+/*-----------------------------------------------------------------------*/
+
+int rtl_add_chain_insn(RTLUnit *unit, int src1, int src2)
+{
+    ASSERT(unit != NULL);
+    ASSERT(!unit->finalized);
+    ASSERT(unit->insns != NULL);
+    ASSERT(unit->blocks != NULL);
+    ASSERT(unit->regs != NULL);
+
+    const int insn_index = unit->num_insns;
+    if (!rtl_add_insn(unit, RTLOP_CHAIN, 0, src1, src2, 0)) {
+        return -1;
+    }
+    return insn_index;
 }
 
 /*-----------------------------------------------------------------------*/

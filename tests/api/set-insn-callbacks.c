@@ -40,6 +40,8 @@ int main(void)
     EXPECT_FALSE(handle->pre_insn_callback);
     EXPECT_FALSE(handle->post_insn_callback);
 
+    EXPECT_STREQ(get_log_messages(), NULL);
+
     binrec_destroy_handle(handle);
     return EXIT_SUCCESS;
 }

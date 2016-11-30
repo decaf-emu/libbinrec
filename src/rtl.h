@@ -400,6 +400,21 @@ typedef enum RTLOpcode {
      * is optional. */
     RTLOP_RETURN,       // return src1
 
+    /* Chain (jump) to another unit of translated code, if available.  By
+     * itself, this instruction does nothing, but it provides a point at
+     * which a subsequent CHAIN_RESOLVE instruction can insert code to jump
+     * directly to an address returned by the chain_lookup() callback.
+     * Callers should use rtl_add_chain_insn() to add this instruction,
+     * since that function returns the instruction index needed by the
+     * CHAIN_RESOLVE instruction. */
+    RTLOP_CHAIN,        // if (target) return (*target)(src1, src2)
+    /* Set the target of the given CHAIN instruction to the given pointer
+     * (src1, which must be of type ADDRESS) if it is not NULL.  other is
+     * the instruction index of the CHAIN instruction to modify, as
+     * returned from rtl_add_chain_insn().  If the next instruction is not
+     * RETURN, incorrect code may be generated. */
+    RTLOP_CHAIN_RESOLVE,  // if (src1) set_chain_target(IMMEDIATE(other), src1)
+
     /* Explicit illegal instruction; will trigger an illegal-instruction
      * exception if executed on the host. */
     RTLOP_ILLEGAL,
@@ -549,6 +564,23 @@ extern void rtl_clear_error_state(RTLUnit *unit);
 #define rtl_add_insn INTERNAL(rtl_add_insn)
 extern bool rtl_add_insn(RTLUnit *unit, RTLOpcode opcode,
                          int dest, int src1, int src2, uint64_t other);
+
+/**
+ * rtl_add_chain_insn:  Append a CHAIN instruction to the given unit, and
+ * return its index for use in a subsequent CHAIN_RESOLVE instruction.
+ * src1 and src2 give the function arguments to pass to the chained code,
+ * and should be the same as the arguments received by the code currently
+ * being generated.
+ *
+ * [Parameters]
+ *     unit: RTLUnit to append to.
+ *     src1: First function argument for chain target.
+ *     src2: Second function argument for chain target.
+ * [Return value]
+ *     Index of added instruction, or -1 on error.
+ */
+#define rtl_add_chain_insn INTERNAL(rtl_add_chain_insn)
+extern int rtl_add_chain_insn(RTLUnit *unit, int src1, int src2);
 
 /**
  * rtl_alloc_register:  Allocate a new register for use in the given unit.

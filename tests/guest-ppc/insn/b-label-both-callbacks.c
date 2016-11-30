@@ -32,7 +32,7 @@ static const char expected[] =
     "    4: LOAD_IMM   r4, 0x2\n"
     "    5: LOAD_IMM   r5, 0\n"
     "    6: CALL_TRANSPARENT @r4, r1, r5\n"
-    "    7: LOAD       r6, 992(r1)\n"
+    "    7: LOAD       r6, 1000(r1)\n"
     "    8: LOAD_IMM   r7, 0\n"
     "    9: CALL       r8, @r6, r1, r7\n"
     "   10: GOTO_IF_Z  r8, L2\n"

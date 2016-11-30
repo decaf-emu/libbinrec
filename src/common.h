@@ -337,6 +337,9 @@ struct binrec_t {
     int max_inline_length;
     int max_inline_depth;
 
+    /* Is dynamic chaining enabled? */
+    bool use_chaining;
+
     /* Is the branch callback enabled? */
     bool use_branch_callback;
 

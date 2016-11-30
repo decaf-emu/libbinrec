@@ -221,6 +221,13 @@ extern "C" {
  * (such as HUGE_VAL * HUGE_VAL - inf, in which the multiplication rounds
  * to infinity and the resulting subtraction of infinities triggers an
  * exception).
+ *
+ * The prohibition on tail calls in the Windows SEH ABI also prevents the
+ * use of dynamic chaining, so calling binrec_enable_chaining() has no
+ * effect when the host architecture is BINREC_ARCH_X86_64_WINDOWS_SEH.
+ * If a logging callback function is provided, a warning to this effect
+ * will be emitted if binrec_enable_chaning() is called with a true value
+ * for the enable parameter.
  */
 
 /*************************************************************************/
@@ -272,7 +279,9 @@ typedef enum binrec_arch_t {
     /* Variant of BINREC_ARCH_X86_64_WINDOWS which prepends unwind
      * information to the returned function.  The offset to the generated
      * code is stored as a 64-bit value at the returned code address, and
-     * the unwind information is found immediately after that value. */
+     * the unwind information is found immediately after that value.  See
+     * the documentation at the top of this file for caveats when using
+     * this architecture variant. */
     BINREC_ARCH_X86_64_WINDOWS_SEH,     // Host only.
 } binrec_arch_t;
 
@@ -374,6 +383,10 @@ typedef struct binrec_setup_t {
     /* Pointer to function to handle trap exceptions.  Signature:
      * void trap_handler(void *state) */
     int state_offset_trap_handler;
+    /* Pointer to function to look up translated blocks for chaining
+     * (see binrec_enable_chaining()).  Signature:
+     * void *chain_lookup(void *state, uint32_t target_address) */
+    int state_offset_chain_lookup;
     /* Pointer to function to call at intra-unit branches (see
      * binrec_enable_branch_callback()).  Signature:
      * int branch_callback(void *state, uint32_t branch_address) */
@@ -1231,6 +1244,9 @@ extern void binrec_set_optimization_flags(
  * Note that if a nonzero length limit is set, inlining may be performed
  * regardless of whether any optimization flags are set.
  *
+ * Inlining is not currently implemented; calling this function has no
+ * effect in this version of the library.
+ *
  * [Parameters]
  *     handle: Handle to operate on.
  *     length: Maximum inline length (must be at least 0).
@@ -1264,6 +1280,9 @@ extern void binrec_set_max_inline_length(binrec_t *handle, int length);
  *
  * Setting a value of zero disables inlining regardless of the maximum
  * inline length set with binrec_set_max_inline_length().
+ *
+ * Inlining is not currently implemented; calling this function has no
+ * effect in this version of the library.
  *
  * [Parameters]
  *     handle: Handle to operate on.
@@ -1317,6 +1336,42 @@ extern int binrec_add_readonly_region(binrec_t *handle,
  *     handle: Handle to operate on.
  */
 extern void binrec_clear_readonly_regions(binrec_t *handle);
+
+/**
+ * binrec_enable_chaining:  Set whether the translated code should include
+ * logic to chain directly to other blocks of translated code on exit,
+ * rather than returning to its caller.
+ *
+ * If chaining is enabled, then when the translated code would normally
+ * return to its caller with a known next instruction address, it will
+ * instead look up (via a function pointer stored in the PSB at the offset
+ * given by the state_offset_chain_lookup field in binrec_setup_t) the
+ * address of translated code corresponding to that guest address.  If the
+ * function returns a non-NULL pointer, the translated code will rewrite
+ * itself to jump directly to that pointer on subsequent calls.  (The code
+ * will then return to its caller whether it successfully resolved the
+ * chain or not.)  This naturally requires that the code be stored in a
+ * host memory region which allows writing.
+ *
+ * Chain resolution (rewriting of the code to jump to the resolved target
+ * address) works correctly in a multithreaded environment.  If two threads
+ * try to resolve the same chain at the same time and get two different
+ * target addresses, one of the addresses will be used for the target, but
+ * it is undefined which one.
+ *
+ * The code produced by libbinrec when chaining is enabled is still
+ * position-independent, but once a chain has been resolved, the code will
+ * be dependent on the target address of the chain.
+ *
+ * Calling this function has no effect on already-translated code.
+ *
+ * By default, chaining is disabled.
+ *
+ * [Parameters]
+ *     handle: Handle to operate on.
+ *     enable: True (nonzero) to enable chaining, false (zero) to disable.
+ */
+extern void binrec_enable_chaining(binrec_t *handle, int enable);
 
 /**
  * binrec_enable_branch_callback:  Set whether to call a function (pointed

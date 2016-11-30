@@ -25,20 +25,26 @@ static int add_rtl(RTLUnit *unit)
     }
     alloc_dummy_registers(unit, 15, RTLTYPE_FLOAT32);
 
-    int reg1, reg2, reg3, reg4;
+    int reg1, reg2, reg3, reg4, reg5, reg6, reg7;
     EXPECT(reg1 = rtl_alloc_register(unit, RTLTYPE_ADDRESS));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg1, 0, 0, 1));
-    rtl_make_unfoldable(unit, reg1);
     EXPECT(reg2 = rtl_alloc_register(unit, RTLTYPE_INT64));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg2, 0, 0, 2));
-    rtl_make_unfoldable(unit, reg2);
     EXPECT(reg3 = rtl_alloc_register(unit, RTLTYPE_INT64));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg3, 0, 0, 3));
-    rtl_make_unfoldable(unit, reg3);
     EXPECT(reg4 = rtl_alloc_register(unit, RTLTYPE_INT64));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg4, 0, 0, 4));
     EXPECT(rtl_add_insn(unit, RTLOP_STORE, 0, reg1, reg2, 0));  // Touch XMM15.
-    EXPECT(rtl_add_insn(unit, RTLOP_CALL, 0, reg1, reg2, reg3));
+    EXPECT(reg5 = rtl_alloc_register(unit, RTLTYPE_ADDRESS));
+    EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM,
+                        reg5, 0, 0, UINT64_C(0x500000005)));
+    EXPECT(reg6 = rtl_alloc_register(unit, RTLTYPE_INT64));
+    EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM,
+                        reg6, 0, 0, UINT64_C(0x600000006)));
+    EXPECT(reg7 = rtl_alloc_register(unit, RTLTYPE_INT64));
+    EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM,
+                        reg7, 0, 0, UINT64_C(0x700000007)));
+    EXPECT(rtl_add_insn(unit, RTLOP_CALL, 0, reg5, reg6, reg7));
     EXPECT(rtl_add_insn(unit, RTLOP_RETURN, 0, 0, 0, 0));
     for (int i = 0; i < lenof(dummy_regs); i++) {
         EXPECT(rtl_add_insn(unit, RTLOP_NOP, 0, dummy_regs[i], 0, 0));
@@ -96,9 +102,12 @@ static const uint8_t expected_code[] = {
     0xF2,0x44,0x0F,0x10,0xBC,0x24,0x88,0x00,0x00, // movsd 136(%rsp),%xmm15
       0x00,
     0xF2,0x45,0x0F,0x11,0x3F,                     // movsd %xmm15,(%r15)
-    0x48,0x8B,0x8C,0x24,0x88,0x00,0x00,0x00,      // mov 136(%rsp),%rcx
-    0x48,0x8B,0x94,0x24,0x90,0x00,0x00,0x00,      // mov 144(%rsp),%rdx
-    0x48,0x8B,0x84,0x24,0x80,0x00,0x00,0x00,      // mov 128(%rsp),%rax
+    0x48,0xB9,0x06,0x00,0x00,0x00,0x06,0x00,0x00, // mov $0x600000006,%rcx
+      0x00,
+    0x48,0xBA,0x07,0x00,0x00,0x00,0x07,0x00,0x00, // mov $0x700000007,%rdx
+      0x00,
+    0x48,0xB8,0x05,0x00,0x00,0x00,0x05,0x00,0x00, // mov $0x500000005,%rax
+      0x00,
     0x44,0x0F,0x28,0xBC,0x24,0x30,0x01,0x00,0x00, // movaps 304(%rsp),%xmm15
     0x44,0x0F,0x28,0xB4,0x24,0x20,0x01,0x00,0x00, // movaps 288(%rsp),%xmm14
     0x44,0x0F,0x28,0xAC,0x24,0x10,0x01,0x00,0x00, // movaps 272(%rsp),%xmm13
@@ -141,6 +150,12 @@ static const uint8_t expected_code[] = {
     0xC3,                                         // ret
 };
 
-static const char expected_log[] = "";
+static const char expected_log[] =
+    #ifdef RTL_DEBUG_OPTIMIZE
+        "[info] Killing instruction 49\n"
+        "[info] Killing instruction 50\n"
+        "[info] Killing instruction 51\n"
+    #endif
+    "";
 
 #include "tests/rtl-translate-test.i"

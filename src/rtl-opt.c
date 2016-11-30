@@ -840,6 +840,8 @@ static inline uint64_t fold_constant(RTLUnit * const unit,
       case RTLOP_CALL:
       case RTLOP_CALL_TRANSPARENT:
       case RTLOP_RETURN:
+      case RTLOP_CHAIN:
+      case RTLOP_CHAIN_RESOLVE:
       case RTLOP_ILLEGAL:
         log_error(unit->handle, "Invalid opcode %u on RESULT register %d",
                   reg->result.opcode, (int)(reg - unit->regs));
@@ -1095,6 +1097,8 @@ static inline bool convert_to_regimm(RTLUnit * const unit,
       case RTLOP_CALL:
       case RTLOP_CALL_TRANSPARENT:
       case RTLOP_RETURN:
+      case RTLOP_CHAIN:
+      case RTLOP_CHAIN_RESOLVE:
       case RTLOP_ILLEGAL:
         return false;
 

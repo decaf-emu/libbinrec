@@ -45,9 +45,10 @@ int main(void)
     setup.state_offset_timebase_handler = 0x3C8;
     setup.state_offset_sc_handler = 0x3D0;
     setup.state_offset_trap_handler = 0x3D8;
-    setup.state_offset_branch_callback = 0x3E0;
-    setup.state_offset_fres_lut = 0x3E8;
-    setup.state_offset_frsqrte_lut = 0x3F0;
+    setup.state_offset_chain_lookup = 0x3E0;
+    setup.state_offset_branch_callback = 0x3E8;
+    setup.state_offset_fres_lut = 0x3F0;
+    setup.state_offset_frsqrte_lut = 0x3F8;
     binrec_t *handle;
     EXPECT(handle = binrec_create_handle(&setup));
 
@@ -103,7 +104,7 @@ int main(void)
                  "   35: LOAD_IMM   r22, 0x2\n"
                  "   36: LOAD_IMM   r23, 4100\n"
                  "   37: CALL_TRANSPARENT @r22, r1, r23\n"
-                 "   38: LOAD       r24, 992(r1)\n"
+                 "   38: LOAD       r24, 1000(r1)\n"
                  "   39: LOAD_IMM   r25, 4100\n"
                  "   40: CALL       r26, @r24, r1, r25\n"
                  "   41: GOTO_IF_Z  r26, L3\n"

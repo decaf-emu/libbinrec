@@ -2077,6 +2077,74 @@ static bool make_return(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
     return true;
 }
 
+/*-----------------------------------------------------------------------*/
+
+/**
+ * make_chain:  Encode a CHAIN instruction.
+ */
+static bool make_chain(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
+                       int src2, uint64_t other)
+{
+    ASSERT(unit != NULL);
+    ASSERT(unit->regs != NULL);
+    ASSERT(insn != NULL);
+    ASSERT(src1 >= 0 && src1 < unit->next_reg);
+    ASSERT(src2 >= 0 && src2 < unit->next_reg);
+
+#ifdef ENABLE_OPERAND_SANITY_CHECKS
+    OPERAND_ASSERT(src1 != 0);
+    OPERAND_ASSERT(src2 != 0);
+    OPERAND_ASSERT(unit->regs[src1].source != RTLREG_UNDEFINED);
+    OPERAND_ASSERT(unit->regs[src2].source != RTLREG_UNDEFINED);
+    OPERAND_ASSERT(rtl_register_is_int(&unit->regs[src1]));
+    OPERAND_ASSERT(rtl_register_is_int(&unit->regs[src2]));
+#endif
+
+    insn->src1 = src1;
+    insn->src2 = src2;
+
+    const int insn_index = unit->num_insns;
+    rtl_mark_live(unit, insn_index, &unit->regs[src1], src1);
+    rtl_mark_live(unit, insn_index, &unit->regs[src2], src2);
+
+    /* Properly speaking, a CHAIN should terminate its basic block since
+     * it's effectively a conditional branch out of the unit, but we only
+     * use it in very specific circumstances which don't suffer from not
+     * terminating the block, so we don't bother. */
+
+    return true;
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
+ * make_chain_resolve:  Encode a CHAIN_RESOLVE instruction.
+ */
+static bool make_chain_resolve(RTLUnit *unit, RTLInsn *insn, int dest,
+                               int src1, int src2, uint64_t other)
+{
+    ASSERT(unit != NULL);
+    ASSERT(unit->regs != NULL);
+    ASSERT(insn != NULL);
+    ASSERT(src1 >= 0 && src1 < unit->next_reg);
+    ASSERT(other < unit->num_insns);
+
+#ifdef ENABLE_OPERAND_SANITY_CHECKS
+    OPERAND_ASSERT(src1 != 0);
+    OPERAND_ASSERT(unit->regs[src1].source != RTLREG_UNDEFINED);
+    OPERAND_ASSERT(unit->regs[src1].type == RTLTYPE_ADDRESS);
+    OPERAND_ASSERT(unit->insns[other].opcode == RTLOP_CHAIN);
+#endif
+
+    insn->src1 = src1;
+    insn->src_imm = other;
+
+    const int insn_index = unit->num_insns;
+    rtl_mark_live(unit, insn_index, &unit->regs[src1], src1);
+
+    return true;
+}
+
 /*************************************************************************/
 /************************ Encoding function table ************************/
 /*************************************************************************/
@@ -2190,6 +2258,8 @@ bool (* const makefunc_table[])(RTLUnit *, RTLInsn *, int, int, int,
     [RTLOP_CALL      ] = make_call,
     [RTLOP_CALL_TRANSPARENT] = make_call,
     [RTLOP_RETURN    ] = make_return,
+    [RTLOP_CHAIN     ] = make_chain,
+    [RTLOP_CHAIN_RESOLVE] = make_chain_resolve,
     [RTLOP_ILLEGAL   ] = make_0op,
 };
 

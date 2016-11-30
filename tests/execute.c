@@ -40,7 +40,7 @@ static uint32_t func_table_limit = 0;  // Address of last table entry plus one.
  * make_callable:  Create a callable memory region containing the given
  * code.  Handles setting memory protections as needed.
  */
-static void *make_callable(void *code, long code_size)
+static void *make_callable(void *code, long code_size, bool writable)
 {
     void *func;
 
@@ -56,7 +56,9 @@ static void *make_callable(void *code, long code_size)
     *((long *)base) = alloc_size;
     func = (void *)((uintptr_t)base + 64);
     memcpy(func, code, code_size);
-    ASSERT(mprotect(base, alloc_size, PROT_READ | PROT_EXEC) == 0);
+    const unsigned int flags =
+        PROT_READ | PROT_EXEC | (writable ? PROT_WRITE : 0);
+    ASSERT(mprotect(base, alloc_size, flags) == 0);
 #elif defined(_WIN32)
     func = VirtualAlloc(NULL, code_size, MEM_COMMIT | MEM_RESERVE,
                         PAGE_READWRITE);
@@ -64,7 +66,10 @@ static void *make_callable(void *code, long code_size)
         return NULL;
     }
     memcpy(func, code, code_size);
-    ASSERT(VirtualProtect(func, code_size, PAGE_EXECUTE_READ, (DWORD[1]){}));
+    if (!writable) {
+        ASSERT(VirtualProtect(func, code_size,
+                              PAGE_EXECUTE_READ, (DWORD[1]){}));
+    }
 #else
     func = code;  // Assume it can be called directly.
 #endif
@@ -102,7 +107,8 @@ static void free_callable(void *ptr)
  * [Return value]
  *     True on success, false on error.
  */
-static bool translate(binrec_t *handle, void *state, uint32_t address,
+static bool translate(
+    binrec_t *handle, void *state, uint32_t address,
     void (*translated_code_callback)(uint32_t, void *, long))
 {
     if (address < func_table_base) {
@@ -158,7 +164,7 @@ static bool translate(binrec_t *handle, void *state, uint32_t address,
         if (translated_code_callback) {
             (*translated_code_callback)(address, code, code_size);
         }
-        GuestCode func = make_callable(code, code_size);
+        GuestCode func = make_callable(code, code_size, handle->use_chaining);
         free(code);
         if (!func) {
             fprintf(stderr, "Failed to make translated code callable for"
@@ -193,6 +199,21 @@ static void clear_cache(void)
 
 /*-----------------------------------------------------------------------*/
 
+/**
+ * Look up the given address in the translation cache.  Used as a
+ * cache_lookup() callback when chaining is enabled.
+ */
+static void *cache_lookup(PPCState *state, uint32_t address)
+{
+    if (address >= func_table_base && address < func_table_limit) {
+        return func_table[address - func_table_base];
+    } else {
+        return NULL;
+    }
+}
+
+/*-----------------------------------------------------------------------*/
+
 bool call_guest_code(
     binrec_arch_t arch, void *state, void *memory, uint32_t address,
     void (*log)(void *userdata, binrec_loglevel_t level, const char *message),
@@ -223,6 +244,7 @@ bool call_guest_code(
     setup.state_offset_timebase_handler = offsetof(PPCState,timebase_handler);
     setup.state_offset_sc_handler = offsetof(PPCState,sc_handler);
     setup.state_offset_trap_handler = offsetof(PPCState,trap_handler);
+    setup.state_offset_chain_lookup = offsetof(PPCState,chain_lookup);
     setup.state_offset_branch_callback = offsetof(PPCState,branch_callback);
     setup.state_offset_fres_lut = offsetof(PPCState,fres_lut);
     setup.state_offset_frsqrte_lut = offsetof(PPCState,frsqrte_lut);
@@ -238,6 +260,9 @@ bool call_guest_code(
     }
     if (configure_handle) {
         (*configure_handle)(handle);
+    }
+    if (handle->use_chaining) {
+        state_ppc->chain_lookup = cache_lookup;
     }
 
     /* Pull cache info into registers to reduce the number of loads needed. */

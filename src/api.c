@@ -474,6 +474,21 @@ void binrec_clear_readonly_regions(binrec_t *handle)
 
 /*-----------------------------------------------------------------------*/
 
+void binrec_enable_chaining(binrec_t *handle, int enable)
+{
+    ASSERT(handle);
+
+    if (enable && handle->setup.host == BINREC_ARCH_X86_64_WINDOWS_SEH) {
+        log_warning(handle, "Dynamic chaining is not possible with the"
+                    " Windows SEH ABI");
+        return;
+    } else {
+        handle->use_chaining = (enable != 0);
+    }
+}
+
+/*-----------------------------------------------------------------------*/
+
 void binrec_enable_branch_callback(binrec_t *handle, int enable)
 {
     ASSERT(handle);

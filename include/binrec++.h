@@ -178,6 +178,14 @@ class Handle {
     }
 
     /**
+     * enable_chaining:  Enable or disable chaining of translated code.
+     * Wraps binrec_enable chaining().
+     */
+    void enable_chaining(bool enable) {
+        ::binrec_enable_chaining(handle, enable);
+    }
+
+    /**
      * enable_branch_callback:  Enable or disable the pre-branch callback.
      * Wraps binrec_enable_branch_callback().
      */

@@ -83,6 +83,10 @@
  *        or a non-tail call (zero).
  *      - host_data_32 is a bitmap of registers which need to be saved and
  *        restored around the call.
+ *
+ * - For the CHAIN instruction, after translation only:
+ *      - host_data_32 contains the output buffer offset of the first byte
+ *        of the translated code for the instruction.
  */
 
 /*************************************************************************/

@@ -35,6 +35,7 @@ typedef struct PPCState {
     uint64_t (*timebase_handler)(struct PPCState *state);
     void (*sc_handler)(struct PPCState *state);
     void (*trap_handler)(struct PPCState *state);
+    void *(*chain_lookup)(struct PPCState *state, uint32_t branch_address);
     int (*branch_callback)(struct PPCState *state, uint32_t branch_address);
     const uint16_t *fres_lut;
     const uint16_t *frsqrte_lut;

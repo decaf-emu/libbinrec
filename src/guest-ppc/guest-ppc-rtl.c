@@ -2476,6 +2476,54 @@ static void update_rounding_mode(GuestPPCContext *ctx)
     rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, label_out);
 }
 
+/*-----------------------------------------------------------------------*/
+
+/**
+ * return_from_unit:  Add RTL instructions to return from the current
+ * translation unit.
+ *
+ * [Parameters]
+ *     ctx: Translation context.
+ *     address: Address of the current instruction, or ~0 to suppress
+ *         calling the post-instruction callback (if any).
+ *     nia: RTL register containing the address of the next instruction to
+ *         execute.
+ *     need_flush: True if live registers should be flushed before returning.
+ */
+static void return_from_unit(GuestPPCContext *ctx, uint32_t address,
+                             int nia, bool need_flush)
+{
+    RTLUnit * const unit = ctx->unit;
+
+    if (need_flush) {
+        flush_live_regs(ctx, true);
+    }
+    set_nia(ctx, nia);
+    if (address != ~0u) {
+        post_insn_callback(ctx, address);
+    }
+
+    if (ctx->handle->use_chaining
+     && unit->regs[nia].source == RTLREG_CONSTANT) {
+        guest_ppc_flush_cr(ctx, false);
+        guest_ppc_flush_fpscr(ctx);
+        const int chain_insn =
+            rtl_add_chain_insn(unit, ctx->psb_reg, ctx->membase_reg);
+        const int lookup_func = rtl_alloc_register(unit, RTLTYPE_ADDRESS);
+        rtl_add_insn(unit, RTLOP_LOAD, lookup_func, ctx->psb_reg, 0,
+                     ctx->handle->setup.state_offset_chain_lookup);
+        const int lookup_result = rtl_alloc_register(unit, RTLTYPE_ADDRESS);
+        rtl_add_insn(unit, RTLOP_CALL,
+                     lookup_result, lookup_func, ctx->psb_reg, nia);
+        rtl_add_insn(unit, RTLOP_CHAIN_RESOLVE,
+                     0, lookup_result, 0, chain_insn);
+        rtl_add_insn(unit, RTLOP_RETURN, 0, 0, 0, 0);
+    } else {
+        rtl_add_insn(unit, RTLOP_GOTO,
+                     0, 0, 0, guest_ppc_get_epilogue_label(ctx));
+    }
+}
+
 /*************************************************************************/
 /*************************** Translation core ****************************/
 /*************************************************************************/
@@ -2893,9 +2941,7 @@ static void translate_branch_terminal(
         rtl_add_insn(unit, RTLOP_SET_ALIAS,
                      0, rtl_imm32(unit, address+4), 0, ctx->alias.lr);
     }
-    set_nia(ctx, target);
-    post_insn_callback(ctx, address);
-    rtl_add_insn(unit, RTLOP_GOTO, 0, 0, 0, guest_ppc_get_epilogue_label(ctx));
+    return_from_unit(ctx, address, target, false);
 
     if (skip_label) {
         rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, skip_label);
@@ -5365,13 +5411,8 @@ static void translate_move_spr(
             rtl_add_insn(unit, RTLOP_STORE, 0, ctx->psb_reg, rS,
                          ctx->handle->setup.state_offset_gqr + 4 * (spr & 7));
             if (ctx->handle->guest_opt & BINREC_OPT_G_PPC_CONSTANT_GQRS) {
-                flush_live_regs(ctx, true);
-                guest_ppc_flush_cr(ctx, false);
-                guest_ppc_flush_fpscr(ctx);
-                set_nia_imm(ctx, address+4);
-                post_insn_callback(ctx, address);
-                rtl_add_insn(unit, RTLOP_GOTO,
-                             0, 0, 0, guest_ppc_get_epilogue_label(ctx));
+                return_from_unit(ctx, address, rtl_imm32(unit, address+4),
+                                 true);
             }
         } else {
             const int value = rtl_alloc_register(unit, RTLTYPE_INT32);
@@ -6930,13 +6971,7 @@ static inline void translate_x1F(
         /* icbi implies that already-translated code may have changed, so
          * unconditionally return from this unit.  We currently don't
          * bother checking the invalidation address. */
-        flush_live_regs(ctx, true);
-        guest_ppc_flush_cr(ctx, false);
-        guest_ppc_flush_fpscr(ctx);
-        set_nia_imm(ctx, address + 4);
-        post_insn_callback(ctx, address);
-        rtl_add_insn(unit, RTLOP_GOTO,
-                     0, 0, 0, guest_ppc_get_epilogue_label(ctx));
+        return_from_unit(ctx, address, rtl_imm32(unit, address+4), true);
         return;
       case XO_DCBZ:
         translate_dcbz(ctx, insn);
@@ -8177,9 +8212,7 @@ bool guest_ppc_translate_block(GuestPPCContext *ctx, int index)
          * previous block (see block-splitting logic at the bottom of
          * guest_ppc_scan()).  Update NIA and return to the caller to
          * retranslate from the target address. */
-        set_nia_imm(ctx, start);
-        rtl_add_insn(unit, RTLOP_GOTO,
-                     0, 0, 0, guest_ppc_get_epilogue_label(ctx));
+        return_from_unit(ctx, ~0, rtl_imm32(unit, start), false);
         if (UNLIKELY(rtl_get_error_state(unit))) {
             log_ice(ctx->handle, "Failed to translate empty block at 0x%X",
                     start);
