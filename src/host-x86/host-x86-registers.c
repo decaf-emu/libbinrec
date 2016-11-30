@@ -2178,7 +2178,13 @@ static void first_pass_for_block(HostX86Context *ctx, int block_index)
                     && (unit->insns[insn_index+1].src1 == 0
                         || unit->insns[insn_index+1].src1 == insn->dest))) {
                 insn->host_data_16 = 1;
-            } else {
+            }
+            /* Tail calls violate Windows x64 structured exception handling
+             * rules, so we have to disable them for that ABI. */
+            if (ctx->handle->setup.host == BINREC_ARCH_X86_64_WINDOWS_SEH) {
+                insn->host_data_16 = 0;
+            }
+            if (!insn->host_data_16) {
                 insn->host_data_16 = 0;
                 insn->host_data_32 = -1;
                 if (ctx->last_nontail_call >= 0) {

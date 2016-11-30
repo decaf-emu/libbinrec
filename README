@@ -170,6 +170,18 @@ system and use unmapped-access host exceptions to detect and handle such
 accesses.  libbinrec also does not attempt to count instruction cycles
 or otherwise reproduce precise timing behavior of the guest processor.
 
+libbinrec does not, in general, provide support for any high-level
+exceptions (C++ exceptions, for example), so client programs should take
+care that functions which can be called from generated code do not raise
+such exceptions, or provide appropriate wrappers for the platform and
+language which insulate such exceptions from generated code.  As a
+convenience, libbinrec includes a mode for x86-64 Windows output
+(BINREC_ARCH_X86_64_WINDOWS_SEH) which follows the Windows-specific
+structured exception handling ABI; however, this ABI disallows certain
+optimizations which libbinrec normally makes use of, so code generated
+in this mode will generally perform worse than code generated in a
+non-SEH mode.
+
 See the documentation in include/binrec.h for limitations and other
 details of behavior with respect to individual architectures.
 
