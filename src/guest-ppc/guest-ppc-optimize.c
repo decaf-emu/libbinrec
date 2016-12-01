@@ -153,6 +153,17 @@ void guest_ppc_trim_cr_stores(
     const int next_block = ctx->blocks[ctx->current_block].next_block;
     ASSERT(branch_block >= 0);  // Must be valid if we have a label target.
 
+    /*
+     * Note that this function does not attempt to handle the case where
+     * multiple CR bits are set from the same RTL register.  Currently,
+     * the only case in which this can happen is with stwcx., and in that
+     * case one of the associated CR bits (CR0[eq]) is always flushed, so
+     * the associated RTL register will never be killed.  If this was not
+     * the case, we would need additional logic to detect when a register
+     * was used by multiple bits and either leave it alive or insert it
+     * only once when moving it to the appropriate code path.
+     */
+
     /* Collect the set of bits which are both dirty and killable.  This
      * excludes registers which have already been flushed, since we can't
      * do anything about them. */

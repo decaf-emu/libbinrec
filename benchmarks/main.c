@@ -111,6 +111,7 @@ static int count;
 static unsigned int opt_common;
 static unsigned int opt_guest;
 static unsigned int opt_host;
+static bool branch_exit_test;
 static bool chain;
 static bool dump;
 static bool quiet;
@@ -179,6 +180,8 @@ static bool process_command_line(int argc, char **argv)
                     " ITERATION-COUNT\n", argv[0]);
             fprintf(stderr, "\nOptions:\n"
                     "    -d           Dump the translated code to disk.\n"
+                    "    -fbranch-exit-test\n"
+                    "                 Force translated code to return at every branch.\n"
                     "    -fchain      Enable dynamic chaining between translated code blocks.\n"
                     "    -ffast-math  Enable optimizations which may affect floating-point results.\n"
                     "    -G<NAME>     Enable specific guest optimizations.\n"
@@ -330,6 +333,9 @@ static bool process_command_line(int argc, char **argv)
                             name);
                     goto usage;
                 }
+
+            } else if (strcmp(argv[argi], "-fbranch-exit-test") == 0) {
+                branch_exit_test = true;
 
             } else if (strcmp(argv[argi], "-fchain") == 0) {
                 chain = true;
@@ -490,6 +496,7 @@ static void log_callback(UNUSED void *userdata, binrec_loglevel_t level,
 static void configure_binrec(binrec_t *handle)
 {
     binrec_set_optimization_flags(handle, opt_common, opt_guest, opt_host);
+    binrec_enable_branch_exit_test(handle, branch_exit_test);
     binrec_enable_chaining(handle, chain);
 }
 
@@ -548,6 +555,7 @@ static bool call_guest(void)
       case GUEST_ARCH_PPC_7XX: {
         static PPCState ppc_state;
         memset(&ppc_state, 0, sizeof(ppc_state));
+        ppc_state.branch_exit_flag = branch_exit_test;
         ppc_state.gpr[1] = blob->base - 8;  // Leave space for first LR store!
         arg_ptr = &ppc_state.gpr[3];
         retval_ptr = &ppc_state.gpr[3];

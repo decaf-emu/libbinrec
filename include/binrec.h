@@ -999,6 +999,15 @@ typedef struct binrec_setup_t {
  * CR bit and eliminate stores which are not visible outside the
  * translated code.
  *
+ * If the branch exit test is enabled, then when translated code returns
+ * to its caller due to the branch test, this optimization may leave stale
+ * values in CR bits which would have been overwritten by later code in
+ * the same translation unit.  This will not result in a change in behavior
+ * as long as execution is eventually restarted with the same processor
+ * state at the branch target address, but if the client program relies on
+ * (or transfers execution to guest code which relies on) the value of CR,
+ * it may not behave as expected.
+ *
  * This optimization has no effect unless BINREC_OPT_G_PPC_USE_SPLIT_FIELDS
  * is also enabled.
  */
