@@ -765,6 +765,10 @@ static inline void update_used_changed(
             }
             mark_gpr_used(block, insn_rB(insn));
             mark_gpr_changed(block, insn_rD(insn));
+            if ((ctx->handle->guest_opt & BINREC_OPT_G_PPC_PAIRED_LWARX_STWCX)
+             && block->paired_stwcx == ~0u) {
+                block->paired_lwarx = address;
+            }
             break;
 
           case 0x15: {  // lsw*, stsw*
@@ -831,6 +835,10 @@ static inline void update_used_changed(
                 mark_gpr_used(block, insn_rS(insn));
                 mark_xer_used(block);
                 mark_crf_changed(block, 0);
+                if ((ctx->handle->guest_opt & BINREC_OPT_G_PPC_PAIRED_LWARX_STWCX)
+                 && block->paired_stwcx == ~0u) {
+                    block->paired_stwcx = address;
+                }
                 break;
               case XO_ECIWX:
               case XO_LWBRX:
@@ -1402,10 +1410,16 @@ bool guest_ppc_scan(GuestPPCContext *ctx, uint32_t limit)
     ctx->warned_useless_fp_Rc = false;
     for (int i = 0; i < ctx->num_blocks; i++) {
         block = &ctx->blocks[i];
+        block->paired_lwarx = ~0;
+        block->paired_stwcx = ~0;
         const uint32_t *block_base = &memory_base[block->start/4];
         for (uint32_t j = 0; j < block->len; j += 4) {
             const uint32_t insn = bswap_be32(block_base[j/4]);
             update_used_changed(ctx, block, block->start + j, insn);
+        }
+        if (!(block->paired_lwarx != ~0u && block->paired_stwcx != ~0u)) {
+            block->paired_lwarx = ~0;
+            block->paired_stwcx = ~0;
         }
     }
 

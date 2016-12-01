@@ -968,6 +968,17 @@ typedef struct binrec_setup_t {
 #define BINREC_OPT_G_PPC_NO_FPSCR_STATE  (1<<8)
 
 /**
+ * BINREC_OPT_G_PPC_PAIRED_LWARX_STWCX:  Optimize the sequence of lwarx
+ * followed by stwcx. if there are no intervening branches or branch
+ * targets.
+ *
+ * This optimization allows the translator to forward data from a paired
+ * lwarx to its associated stwcx., avoiding unnecessary accesses to the
+ * processor state block.
+ */
+#define BINREC_OPT_G_PPC_PAIRED_LWARX_STWCX  (1<<9)
+
+/**
  * BINREC_OPT_G_PPC_PS_STORE_DENORMALS:  Do not flush denormals to zero
  * when storing floating-point values with the paired-single store
  * instructions (psq_st[u][x]).
@@ -981,7 +992,7 @@ typedef struct binrec_setup_t {
  * flushed to zero by paired-single store instructions will behave
  * incorrectly if this optimization is enabled.
  */
-#define BINREC_OPT_G_PPC_PS_STORE_DENORMALS  (1<<9)
+#define BINREC_OPT_G_PPC_PS_STORE_DENORMALS  (1<<10)
 
 /**
  * BINREC_OPT_G_PPC_TRIM_CR_STORES:  Analyze the data flow through each
@@ -991,7 +1002,7 @@ typedef struct binrec_setup_t {
  * This optimization has no effect unless BINREC_OPT_G_PPC_USE_SPLIT_FIELDS
  * is also enabled.
  */
-#define BINREC_OPT_G_PPC_TRIM_CR_STORES  (1<<10)
+#define BINREC_OPT_G_PPC_TRIM_CR_STORES  (1<<11)
 
 /**
  * BINREC_OPT_G_PPC_USE_SPLIT_FIELDS:  Treat subfields of certain registers
@@ -1010,7 +1021,7 @@ typedef struct binrec_setup_t {
  * in the processor state block.  System call and trap handlers are not
  * affected.
  */
-#define BINREC_OPT_G_PPC_USE_SPLIT_FIELDS  (1<<11)
+#define BINREC_OPT_G_PPC_USE_SPLIT_FIELDS  (1<<12)
 
 /*------------ Host-architecture-specific optimization flags ------------*/
 
@@ -1419,7 +1430,9 @@ extern void binrec_enable_branch_exit_test(binrec_t *handle, int enable);
  * debugging or analysis of code at runtime, so they are set directly as
  * pointers in the runtime environment under the assumption that the host
  * architecture is that of the runtime environment.  These callbacks should
- * not be enabled when cross-compiling to a different architecture.
+ * not be enabled when cross-compiling to a different architecture.  The
+ * callbacks also should not attempt to modify the processor state block;
+ * doing so results in undefined behavior after the callback returns.
  *
  * Enabling the pre- or post-instruction callback can have a significant
  * negative impact on performance.

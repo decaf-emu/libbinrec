@@ -309,6 +309,11 @@ typedef struct GuestPPCBlockInfo {
      * code path out of the unit.  Used by the TRIM_CR_STORES optimization. */
     uint32_t crb_changed_recursive;
 
+    /* Addresses of a paired lwarx and stwcx. in this block (see notes at
+     * translate_lwarx() for details), or ~0 if none. */
+    uint32_t paired_lwarx;
+    uint32_t paired_stwcx;
+
     /* Does this block contain a trap instruction (tw/twi)? */
     bool has_trap;
 
@@ -441,6 +446,10 @@ typedef struct GuestPPCContext {
         int fpscr;
         int fr_fi_fprf;
     } last_set;
+
+    /* RTL register containing the compare value for a paired stwcx. in
+     * big-endian byte order. */
+    int paired_lwarx_data_be;
 
     /* True if the next instruction should be skipped.  Used when
      * optimizing a pair of instructions as a unit, such as sc followed

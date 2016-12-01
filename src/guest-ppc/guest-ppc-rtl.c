@@ -5271,6 +5271,58 @@ static void translate_logic_reg(
 /*-----------------------------------------------------------------------*/
 
 /**
+ * translate_lwarx:  Translate a lwarx instruction.
+ *
+ * [Parameters]
+ *     ctx: Translation context.
+ *     address: Address of instruction being translated.
+ *     insn: Instruction word.
+ */
+static void translate_lwarx(
+    GuestPPCContext *ctx, uint32_t address, uint32_t insn)
+{
+    const binrec_t *handle = ctx->handle;
+    RTLUnit * const unit = ctx->unit;
+    const int psb_reg = ctx->psb_reg;
+
+    const int host_address = get_ea_indexed(ctx, insn, NULL);
+
+    /*
+     * If enabled, we optimize the common case of a loop containing an
+     * lwarx followed by a stwcx (with no intervening branches or branch
+     * targets) by saving the loaded value in an RTL register instead of
+     * storing it back to the PSB, then using that value in the
+     * accompanying stwcx. translation instead of reloading it from the
+     * PSB.  Knowledge of the pairing also lets us omit the reserve_flag
+     * check from stwcx., since the translator design ensures that code
+     * flow cannot be interrupted between the two instructions.
+     *
+     * If the optimization is not enabled, paired_lwarx will always be
+     * set to ~0, so it can never test equal to the instruction address.
+     */
+    const int value_be = rtl_alloc_register(unit, RTLTYPE_INT32);
+    rtl_add_insn(unit, RTLOP_LOAD, value_be, host_address, 0, 0);
+    int value;
+    if (handle->host_little_endian) {
+        value = rtl_alloc_register(unit, RTLTYPE_INT32);
+        rtl_add_insn(unit, RTLOP_BSWAP, value, value_be, 0, 0);
+    } else {
+        value = value_be;
+    }
+    if (address == ctx->blocks[ctx->current_block].paired_lwarx) {
+        ctx->paired_lwarx_data_be = value_be;
+    } else {
+        rtl_add_insn(unit, RTLOP_STORE_I8, 0, psb_reg, rtl_imm32(unit, 1),
+                     handle->setup.state_offset_reserve_flag);
+        rtl_add_insn(unit, RTLOP_STORE, 0, psb_reg, value_be,
+                     handle->setup.state_offset_reserve_state);
+    }
+    set_gpr(ctx, insn_rD(insn), value);
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
  * translate_move_fpr:  Translate an fmr/fneg/fabs/fnabs or
  * ps_mr/ps_neg/ps_abs/ps_nabs instruction.
  *
@@ -6291,12 +6343,12 @@ static void translate_rotate_mask(
 /*-----------------------------------------------------------------------*/
 
 /**
- * translate_shift:  Translate a shift instruction.
+ * translate_shift:  Translate a bit-shift instruction.
  *
  * [Parameters]
  *     ctx: Translation context.
  *     insn: Instruction word.
- *     rtlop: RTL register-immediate instruction to perform the operation.
+ *     rtlop: RTL instruction to perform the operation.
  *     is_imm: True if the shift count is an immediate value, false if rB.
  *     is_sra: True if the shift is an arithmetic right shift (sets XER[CA]).
  */
@@ -6365,7 +6417,123 @@ static void translate_shift(
 /*-----------------------------------------------------------------------*/
 
 /**
- * translate_trap:  Translate a TW or TWI instruction.
+ * translate_stwcx:  Translate a stwcx. instruction.
+ *
+ * [Parameters]
+ *     ctx: Translation context.
+ *     address: Address of instruction being translated.
+ *     insn: Instruction word.
+ */
+static void translate_stwcx(
+    GuestPPCContext *ctx, uint32_t address, uint32_t insn)
+{
+    const binrec_t *handle = ctx->handle;
+    RTLUnit * const unit = ctx->unit;
+    const int psb_reg = ctx->psb_reg;
+
+    const bool is_paired =
+        (address == ctx->blocks[ctx->current_block].paired_stwcx);
+
+    const int skip_label = rtl_alloc_label(unit);
+
+    int flag;
+    if (is_paired) {
+        /* If this instruction is part of an optimized pair, we don't need
+         * to test reserve_flag.  We still clear it, though, just in case
+         * it was set on entry to the block. */
+        flag = 0;
+    } else {
+        flag = rtl_alloc_register(unit, RTLTYPE_INT32);
+        rtl_add_insn(unit, RTLOP_LOAD_U8, flag, psb_reg, 0,
+                     handle->setup.state_offset_reserve_flag);
+    }
+    const int zero = rtl_imm32(unit, 0);
+    const int xer = get_xer(ctx);
+    const int so = rtl_alloc_register(unit, RTLTYPE_INT32);
+    rtl_add_insn(unit, RTLOP_BFEXT, so, xer, 0, XER_SO_SHIFT | 1<<8);
+    if (ctx->use_split_fields) {
+        set_crf(ctx, 0, zero, zero, zero, so);
+        /* Flush CR0.eq because of the conditional branches. */
+        ctx->live.crb[2] = 0;
+        ctx->last_set.crb[2] = -1;
+        ctx->crb_dirty |= 1 << 2;
+    } else {
+        /* Optimize non-split-field set_crf() since we know the high
+         * three bits are zero. */
+        const int old_cr = get_cr(ctx);
+        const int new_cr = rtl_alloc_register(unit, RTLTYPE_INT32);
+        rtl_add_insn(unit, RTLOP_BFINS, new_cr, old_cr, so, 28 | 4<<8);
+        set_cr(ctx, new_cr);
+        /* Flush CR, as above. */
+        ctx->live.cr = 0;
+        ctx->last_set.cr = -1;
+    }
+    if (!is_paired) {
+        rtl_add_insn(unit, RTLOP_GOTO_IF_Z, 0, flag, 0, skip_label);
+    }
+    rtl_add_insn(unit, RTLOP_STORE_I8, 0, psb_reg, zero,
+                 handle->setup.state_offset_reserve_flag);
+
+    int old_value;
+    if (is_paired) {
+        old_value = ctx->paired_lwarx_data_be;
+    } else {
+        const RTLOpcode load_op =
+            handle->host_little_endian ? RTLOP_LOAD_BR : RTLOP_LOAD;
+        old_value = rtl_alloc_register(unit, RTLTYPE_INT32);
+        rtl_add_insn(unit, load_op, old_value, psb_reg, 0,
+                     handle->setup.state_offset_reserve_state);
+    }
+
+    int new_value = get_gpr(ctx, insn_rS(insn));
+    if (handle->host_little_endian) {
+        const int temp = new_value;
+        new_value = rtl_alloc_register(unit, RTLTYPE_INT32);
+        rtl_add_insn(unit, RTLOP_BSWAP, new_value, temp, 0, 0);
+    }
+    const int host_address = get_ea_indexed(ctx, insn, NULL);
+    const int result = rtl_alloc_register(unit, RTLTYPE_INT32);
+    rtl_add_insn(unit, RTLOP_CMPXCHG,
+                 result, host_address, old_value, new_value);
+    const int success = rtl_alloc_register(unit, RTLTYPE_INT32);
+    rtl_add_insn(unit, RTLOP_SEQ, success, result, old_value, 0);
+    rtl_add_insn(unit, RTLOP_GOTO_IF_Z, 0, success, 0, skip_label);
+
+    if (ctx->use_split_fields) {
+        rtl_add_insn(unit, RTLOP_SET_ALIAS,
+                     0, rtl_imm32(unit, 1), 0, ctx->alias.crb[2]);
+    } else {
+        const int old_cr = get_cr(ctx);
+        const int new_cr = rtl_alloc_register(unit, RTLTYPE_INT32);
+        rtl_add_insn(unit, RTLOP_ORI, new_cr, old_cr, 0, 1<<29);
+        set_cr(ctx, new_cr);
+        ctx->live.cr = 0;
+        ctx->last_set.cr = -1;
+    }
+
+    rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, skip_label);
+
+    /* If split fields are in use and the post-instruction callback is
+     * active, flush the store success bit back to the CR word in the PSB,
+     * so the callback knows whether the store succeeded.  This deviates
+     * from the ideal of not changing behavior in the presence of pre/post
+     * instruction callbacks, but it is necessary when the callbacks are
+     * used to validate the behavior of generated code against a hardware
+     * implementation or interpreter so the validator knows whether to
+     * simulate the store (since stwcx. is not repeatable). */
+    if (ctx->use_split_fields && ctx->handle->post_insn_callback) {
+        const int cr0_eq = get_crb(ctx, 2);
+        const int old_cr = get_cr(ctx);
+        const int new_cr = rtl_alloc_register(unit, RTLTYPE_INT32);
+        rtl_add_insn(unit, RTLOP_BFINS, new_cr, old_cr, cr0_eq, 29 | 1<<8);
+        set_cr(ctx, new_cr);
+    }
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
+ * translate_trap:  Translate a tw or twi instruction.
  *
  * [Parameters]
  *     ctx: Translation context.
@@ -6813,21 +6981,9 @@ static inline void translate_x1F(
         return;
 
       /* XO_5 = 0x14 */
-      case XO_LWARX: {
-        const binrec_t *handle = ctx->handle;
-        const int psb_reg = ctx->psb_reg;
-        const RTLOpcode rtlop =
-            handle->host_little_endian ? RTLOP_LOAD_BR : RTLOP_LOAD;
-        const int host_address = get_ea_indexed(ctx, insn, NULL);
-        const int value = rtl_alloc_register(unit, RTLTYPE_INT32);
-        rtl_add_insn(unit, rtlop, value, host_address, 0, 0);
-        set_gpr(ctx, insn_rD(insn), value);
-        rtl_add_insn(unit, RTLOP_STORE_I8, 0, psb_reg, rtl_imm32(unit, 1),
-                     handle->setup.state_offset_reserve_flag);
-        rtl_add_insn(unit, RTLOP_STORE, 0, psb_reg, value,
-                     handle->setup.state_offset_reserve_state);
+      case XO_LWARX:
+        translate_lwarx(ctx, address, insn);
         return;
-      }  // case XO_LWARX
 
       /* XO_5 = 0x15 */
       case XO_LSWX:
@@ -6851,95 +7007,9 @@ static inline void translate_x1F(
       case XO_DCBI:
         // FIXME: We currently act as if there is no data cache.
         return;
-      case XO_STWCX_: {
-        const binrec_t *handle = ctx->handle;
-        const int psb_reg = ctx->psb_reg;
-
-        const int skip_label = rtl_alloc_label(unit);
-        const int flag = rtl_alloc_register(unit, RTLTYPE_INT32);
-        rtl_add_insn(unit, RTLOP_LOAD_U8, flag, psb_reg, 0,
-                     handle->setup.state_offset_reserve_flag);
-        const int zero = rtl_imm32(unit, 0);
-        const int xer = get_xer(ctx);
-        const int so = rtl_alloc_register(unit, RTLTYPE_INT32);
-        rtl_add_insn(unit, RTLOP_BFEXT, so, xer, 0, XER_SO_SHIFT | 1<<8);
-        if (ctx->use_split_fields) {
-            set_crf(ctx, 0, zero, zero, zero, so);
-            /* Flush CR0.eq because of the conditional branches. */
-            ctx->live.crb[2] = 0;
-            ctx->last_set.crb[2] = -1;
-            ctx->crb_dirty |= 1 << 2;
-        } else {
-            /* Optimize non-split-field set_crf() since we know the high
-             * three bits are zero. */
-            const int old_cr = get_cr(ctx);
-            const int new_cr = rtl_alloc_register(unit, RTLTYPE_INT32);
-            rtl_add_insn(unit, RTLOP_BFINS, new_cr, old_cr, so, 28 | 4<<8);
-            set_cr(ctx, new_cr);
-            /* Flush CR, as above. */
-            ctx->live.cr = 0;
-            ctx->last_set.cr = -1;
-        }
-        rtl_add_insn(unit, RTLOP_GOTO_IF_Z, 0, flag, 0, skip_label);
-        rtl_add_insn(unit, RTLOP_STORE_I8, 0, psb_reg, zero,
-                     handle->setup.state_offset_reserve_flag);
-
-        int old_value = rtl_alloc_register(unit, RTLTYPE_INT32);
-        rtl_add_insn(unit, RTLOP_LOAD, old_value, psb_reg, 0,
-                     handle->setup.state_offset_reserve_state);
-        if (handle->host_little_endian) {
-            const int temp = old_value;
-            old_value = rtl_alloc_register(unit, RTLTYPE_INT32);
-            rtl_add_insn(unit, RTLOP_BSWAP, old_value, temp, 0, 0);
-        }
-
-        int new_value = get_gpr(ctx, insn_rS(insn));
-        if (handle->host_little_endian) {
-            const int temp = new_value;
-            new_value = rtl_alloc_register(unit, RTLTYPE_INT32);
-            rtl_add_insn(unit, RTLOP_BSWAP, new_value, temp, 0, 0);
-        }
-        const int host_address = get_ea_indexed(ctx, insn, NULL);
-        const int result = rtl_alloc_register(unit, RTLTYPE_INT32);
-        rtl_add_insn(unit, RTLOP_CMPXCHG,
-                     result, host_address, old_value, new_value);
-        const int success = rtl_alloc_register(unit, RTLTYPE_INT32);
-        rtl_add_insn(unit, RTLOP_SEQ, success, result, old_value, 0);
-        rtl_add_insn(unit, RTLOP_GOTO_IF_Z, 0, success, 0, skip_label);
-
-        if (ctx->use_split_fields) {
-            rtl_add_insn(unit, RTLOP_SET_ALIAS,
-                         0, rtl_imm32(unit, 1), 0, ctx->alias.crb[2]);
-        } else {
-            const int old_cr = get_cr(ctx);
-            const int new_cr = rtl_alloc_register(unit, RTLTYPE_INT32);
-            rtl_add_insn(unit, RTLOP_ORI, new_cr, old_cr, 0, 1<<29);
-            set_cr(ctx, new_cr);
-            ctx->live.cr = 0;
-            ctx->last_set.cr = -1;
-        }
-
-        rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, skip_label);
-
-        /* If split fields are in use and the post-instruction callback is
-         * active, flush the store success bit back to the CR word in the
-         * PSB, so the callback knows whether the store succeeded.  This
-         * deviates from the ideal of not changing behavior in the presence
-         * of pre/post instruction callbacks, but it is necessary when the
-         * callbacks are used to validate the behavior of generated code
-         * against a hardware implementation or interpreter so the
-         * validator knows whether to simulate the store (since stwcx. is
-         * not a repeatable instruction). */
-        if (ctx->use_split_fields && ctx->handle->post_insn_callback) {
-            const int cr0_eq = get_crb(ctx, 2);
-            const int old_cr = get_cr(ctx);
-            const int new_cr = rtl_alloc_register(unit, RTLTYPE_INT32);
-            rtl_add_insn(unit, RTLOP_BFINS, new_cr, old_cr, cr0_eq, 29 | 1<<8);
-            set_cr(ctx, new_cr);
-        }
-
+      case XO_STWCX_:
+        translate_stwcx(ctx, address, insn);
         return;
-      }  // case XO_STWCX
       case XO_ECIWX:
       case XO_ECOWX:
       case XO_TLBSYNC:
@@ -8224,6 +8294,7 @@ bool guest_ppc_translate_block(GuestPPCContext *ctx, int index)
     ctx->crb_dirty = 0;
     memset(&ctx->last_set, -1, sizeof(ctx->last_set));
 
+    ctx->paired_lwarx_data_be = 0;
     ctx->skip_next_insn = false;
 
     for (uint32_t ofs = 0; ofs < block->len; ofs += 4) {
