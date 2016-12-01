@@ -881,10 +881,7 @@ static inline void append_move_gpr(CodeBuffer *code, RTLDataType type,
 static inline void append_load_imm_gpr(CodeBuffer *code,
                                        X86Register host_dest, uint64_t imm)
 {
-    if (imm == 0) {
-        append_insn_ModRM_reg(code, false, X86OP_XOR_Gv_Ev,
-                              host_dest, host_dest);
-    } else if (imm <= UINT64_C(0xFFFFFFFF)) {
+    if (imm <= UINT64_C(0xFFFFFFFF)) {
         append_insn_R(code, false, X86OP_MOV_rAX_Iv, host_dest);
         append_imm32(code, (uint32_t)imm);
     } else if (imm >= UINT64_C(0xFFFFFFFF80000000)) {
@@ -5208,7 +5205,16 @@ static bool translate_block(HostX86Context *ctx, int block_index)
 
               default:
                 ASSERT(rtl_type_is_int(unit->regs[dest].type));
-                append_load_imm_gpr(&code, host_dest, imm);
+                if (imm == 0) {
+                    append_insn_ModRM_reg(&code, false, X86OP_XOR_Gv_Ev,
+                                          host_dest, host_dest);
+                    if (handle->host_opt & BINREC_OPT_H_X86_CONDITION_CODES) {
+                        ctx->last_test_reg = dest;
+                        ctx->last_cmp_reg = 0;
+                    }
+                } else {
+                    append_load_imm_gpr(&code, host_dest, imm);
+                }
                 break;
             }
 
