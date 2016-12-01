@@ -9,7 +9,7 @@
 
 #include "tests/guest-ppc/insn/common.h"
 
-#define BRANCH_EXIT_TEST
+#define POST_INSN_CALLBACK  ((void *)2)
 
 static const uint8_t input[] = {
     0x7C,0x64,0x29,0x2D,  // stwcx. r3,r4,r5
@@ -64,22 +64,27 @@ static const char expected[] =
     "   39: SET_ALIAS  a5, r26\n"
     "   40: LOAD_IMM   r27, 4\n"
     "   41: SET_ALIAS  a1, r27\n"
-    "   42: GET_ALIAS  r28, a5\n"
-    "   43: ANDI       r29, r28, 268435455\n"
-    "   44: GET_ALIAS  r30, a6\n"
-    "   45: SLLI       r31, r30, 31\n"
-    "   46: OR         r32, r29, r31\n"
-    "   47: GET_ALIAS  r33, a7\n"
-    "   48: SLLI       r34, r33, 30\n"
-    "   49: OR         r35, r32, r34\n"
-    "   50: GET_ALIAS  r36, a8\n"
-    "   51: SLLI       r37, r36, 29\n"
-    "   52: OR         r38, r35, r37\n"
-    "   53: GET_ALIAS  r39, a9\n"
-    "   54: SLLI       r40, r39, 28\n"
-    "   55: OR         r41, r38, r40\n"
-    "   56: SET_ALIAS  a5, r41\n"
-    "   57: RETURN\n"
+    "   42: LOAD_IMM   r28, 0x2\n"
+    "   43: LOAD_IMM   r29, 0\n"
+    "   44: CALL_TRANSPARENT @r28, r1, r29\n"
+    "   45: LOAD_IMM   r30, 4\n"
+    "   46: SET_ALIAS  a1, r30\n"
+    "   47: GET_ALIAS  r31, a5\n"
+    "   48: ANDI       r32, r31, 268435455\n"
+    "   49: GET_ALIAS  r33, a6\n"
+    "   50: SLLI       r34, r33, 31\n"
+    "   51: OR         r35, r32, r34\n"
+    "   52: GET_ALIAS  r36, a7\n"
+    "   53: SLLI       r37, r36, 30\n"
+    "   54: OR         r38, r35, r37\n"
+    "   55: GET_ALIAS  r39, a8\n"
+    "   56: SLLI       r40, r39, 29\n"
+    "   57: OR         r41, r38, r40\n"
+    "   58: GET_ALIAS  r42, a9\n"
+    "   59: SLLI       r43, r42, 28\n"
+    "   60: OR         r44, r41, r43\n"
+    "   61: SET_ALIAS  a5, r44\n"
+    "   62: RETURN\n"
     "\n"
     "Alias 1: int32 @ 956(r1)\n"
     "Alias 2: int32 @ 268(r1)\n"
@@ -95,7 +100,7 @@ static const char expected[] =
     "Block 0: <none> --> [0,19] --> 1,3\n"
     "Block 1: 0 --> [20,32] --> 2,3\n"
     "Block 2: 1 --> [33,34] --> 3\n"
-    "Block 3: 2,0,1 --> [35,57] --> <none>\n"
+    "Block 3: 2,0,1 --> [35,62] --> <none>\n"
     ;
 
 #include "tests/rtl-disasm-test.i"

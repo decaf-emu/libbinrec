@@ -6921,17 +6921,16 @@ static inline void translate_x1F(
 
         rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, skip_label);
 
-        /* If split fields are in use and the branch exit test is active,
-         * flush the store success bit back to the CR word in the PSB, so
-         * the callback knows whether the store succeeded.  This is more
-         * likely to be useful with pre/post instruction callbacks in a
-         * setting where the behavior of generated code is validated
-         * against a hardware implementation or interpreter, since the
-         * stwcx. instruction is not repeatable, but we stick to the
-         * overall rule of not changing behavior in the presence of
-         * pre/post instruction callbacks and instead use the branch exit
-         * test as a proxy for determining whether a writeback is desired. */
-        if (ctx->use_split_fields && ctx->handle->use_branch_exit_test) {
+        /* If split fields are in use and the post-instruction callback is
+         * active, flush the store success bit back to the CR word in the
+         * PSB, so the callback knows whether the store succeeded.  This
+         * deviates from the ideal of not changing behavior in the presence
+         * of pre/post instruction callbacks, but it is necessary when the
+         * callbacks are used to validate the behavior of generated code
+         * against a hardware implementation or interpreter so the
+         * validator knows whether to simulate the store (since stwcx. is
+         * not a repeatable instruction). */
+        if (ctx->use_split_fields && ctx->handle->post_insn_callback) {
             const int cr0_eq = get_crb(ctx, 2);
             const int old_cr = get_cr(ctx);
             const int new_cr = rtl_alloc_register(unit, RTLTYPE_INT32);
