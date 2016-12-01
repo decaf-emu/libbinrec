@@ -6491,10 +6491,8 @@ static void translate_stwcx(
     if (is_paired) {
         old_value = ctx->paired_lwarx_data_be;
     } else {
-        const RTLOpcode load_op =
-            handle->host_little_endian ? RTLOP_LOAD_BR : RTLOP_LOAD;
         old_value = rtl_alloc_register(unit, RTLTYPE_INT32);
-        rtl_add_insn(unit, load_op, old_value, psb_reg, 0,
+        rtl_add_insn(unit, RTLOP_LOAD, old_value, psb_reg, 0,
                      handle->setup.state_offset_reserve_state);
     }
 

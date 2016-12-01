@@ -55,7 +55,7 @@ static const char expected[] =
     "   30: SET_ALIAS  a5, r24\n"
     "   31: GOTO_IF_Z  r21, L2\n"
     "   32: STORE_I8   948(r1), r22\n"
-    "   33: LOAD_BR    r25, 952(r1)\n"
+    "   33: LOAD       r25, 952(r1)\n"
     "   34: BSWAP      r26, r13\n"
     "   35: ZCAST      r27, r3\n"
     "   36: ADD        r28, r2, r27\n"
