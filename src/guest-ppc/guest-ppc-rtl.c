@@ -2906,21 +2906,15 @@ static void translate_branch_label(
  *     BO: BO field of instruction word (0x14 for an unconditional branch).
  *     BI: BI field of instruction word (ignored if an unconditional branch).
  *     LK: LK bit of instruction word.
- *     target: RTL register containing the branch target address.
- *     clear_low_bits: True to clear the low 2 bits of the target address
- *         (as for BCLR/BCCTR), false if the low bits are known to be 0b00.
+ *     target: Target address, if an immediate branch (ignored for bclr/bcctr).
+ *     target_lr: True if the instruction is bclr.
+ *     target_ctr: True if the instruction is bcctr.
  */
 static void translate_branch_terminal(
     GuestPPCContext *ctx, uint32_t address, int BO, int BI, int LK,
-    int target, bool clear_low_bits)
+    uint32_t target, bool target_lr, bool target_ctr)
 {
     RTLUnit * const unit = ctx->unit;
-
-    if (clear_low_bits) {
-        const int new_target = rtl_alloc_register(unit, RTLTYPE_INT32);
-        rtl_add_insn(unit, RTLOP_ANDI, new_target, target, 0, -4);
-        target = new_target;
-    }
 
     int skip_label;
     if ((BO & 0x14) == 0x14) {
@@ -2961,6 +2955,15 @@ static void translate_branch_terminal(
                      0, test, 0, skip_label);
     }
 
+    int nia;
+    if (target_lr || target_ctr) {
+        const int nia_raw = target_lr ? get_lr(ctx) : get_ctr(ctx);
+        nia = rtl_alloc_register(unit, RTLTYPE_INT32);
+        rtl_add_insn(unit, RTLOP_ANDI, nia, nia_raw, 0, -4);
+    } else {
+        nia = rtl_imm32(unit, target);
+    }
+
     while (crb_store_branch) {
         const int bit = ctz32(crb_store_branch);
         crb_store_branch ^= 1 << bit;
@@ -2977,7 +2980,7 @@ static void translate_branch_terminal(
         rtl_add_insn(unit, RTLOP_SET_ALIAS,
                      0, rtl_imm32(unit, address+4), 0, ctx->alias.lr);
     }
-    return_from_unit(ctx, address, target, false);
+    return_from_unit(ctx, address, nia, false);
 
     if (skip_label) {
         rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, skip_label);
@@ -3004,8 +3007,6 @@ static void translate_branch(
 {
     ASSERT((address & 3) == 0);
     ASSERT((disp & 3) == 0);
-
-    RTLUnit * const unit = ctx->unit;
 
     uint32_t target;
     if (AA) {
@@ -3048,7 +3049,7 @@ static void translate_branch(
         translate_branch_label(ctx, address, BO, BI, target, target_label);
     } else {
         translate_branch_terminal(ctx, address, BO, BI, LK,
-                                  rtl_imm32(unit, target), false);
+                                  target, false, false);
     }
 }
 
@@ -7997,7 +7998,7 @@ static inline void translate_insn(
           case XO_BCLR:
             translate_branch_terminal(ctx, address, insn_BO(insn),
                                       insn_BI(insn), insn_LK(insn),
-                                      get_lr(ctx), true);
+                                      0, true, false);
             return;
           case XO_CRNOR:
             /* "crnor crbD,crbA,crbB" is also known as "crnot crbD,crbA",
@@ -8054,7 +8055,7 @@ static inline void translate_insn(
             }
             translate_branch_terminal(ctx, address, insn_BO(insn),
                                       insn_BI(insn), insn_LK(insn),
-                                      get_ctr(ctx), true);
+                                      0, false, true);
             return;
         }
         translate_illegal(ctx, insn);
