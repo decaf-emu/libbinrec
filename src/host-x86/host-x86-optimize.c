@@ -178,11 +178,6 @@ static int forward_condition(HostX86Context *ctx, int insn_index, int cond)
     RTLInsn * const insn = &unit->insns[insn_index];
     const RTLRegister * const cond_reg = &unit->regs[cond];
 
-    /* There's no benefit to forwarding the condition if we can't kill the
-     * register containing the compare result. */
-    if (!is_reg_killable(unit, cond, insn_index)) {
-        return -1;
-    }
     const RTLInsn * const cond_insn = &unit->insns[cond_reg->birth];
     if (cond_insn->opcode == RTLOP_FCMP) {
         /* FCMP could raise exceptions, but it's trivially safe to kill if
@@ -221,7 +216,9 @@ static int forward_condition(HostX86Context *ctx, int insn_index, int cond)
         }
     }
 
-    kill_reg(ctx, cond, true, false);
+    if (is_reg_killable(unit, cond, insn_index)) {
+        kill_reg(ctx, cond, true, false);
+    }
 
     insn->host_data_16 = 0x8000
                        | (cond_reg->result.opcode == RTLOP_FTESTEXC ? 0x40 : 0)

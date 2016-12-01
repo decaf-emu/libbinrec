@@ -40,12 +40,20 @@ static const uint8_t expected_code[] = {
     0x33,0xD2,                          // xor %edx,%edx
     0x3B,0xC1,                          // cmp %ecx,%eax
     0x0F,0x94,0xC2,                     // setz %dl
-    0x85,0xD2,                          // test %edx,%edx
-    0x75,0xEB,                          // jnz L1
+    /* This compare would be omitted with the CONDITION_CODES optimization,
+     * and even without the optimization it should incur less latency since
+     * the operands are already available. */
+    0x3B,0xC1,                          // cmp %ecx,%eax
+    0x74,0xEB,                          // jz L1
     0x48,0x83,0xC4,0x08,                // add $8,%rsp
     0xC3,                               // ret
 };
 
-static const char expected_log[] = "";
+static const char expected_log[] =
+    #ifdef RTL_DEBUG_OPTIMIZE
+        "[info] Extending r1 live range to 4\n"
+        "[info] Extending r2 live range to 4\n"
+    #endif
+    "";
 
 #include "tests/rtl-translate-test.i"
