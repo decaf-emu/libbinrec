@@ -28,9 +28,10 @@ static const char expected[] =
     #ifdef RTL_DEBUG_OPTIMIZE
         "[info] Dropping branch at 0 to next insn\n"
         "[info] Killing instruction 0\n"
+        "[info] Dropping unused label L1\n"
     #endif
     "    0: NOP\n"
-    "    1: LABEL      L1\n"
+    "    1: NOP\n"
     "    2: RETURN\n"
     "\n"
     "Block 0: <none> --> [0,0] --> 1\n"

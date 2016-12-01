@@ -40,11 +40,12 @@ static const char expected[] =
         "[info] Killing instruction 1\n"
         "[info] Dropping branch at 0 to next insn\n"
         "[info] Killing instruction 0\n"
+        "[info] Dropping unused label L2\n"
     #endif
     "    0: NOP\n"
     "    1: NOP\n"
     "    2: NOP\n"
-    "    3: LABEL      L2\n"
+    "    3: NOP\n"
     "    4: NOP\n"
     "\n"
     "Block 0: <none> --> [0,0] --> 2\n"

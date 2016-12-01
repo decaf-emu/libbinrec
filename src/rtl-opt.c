@@ -1658,6 +1658,11 @@ void rtl_opt_kill_insn(RTLUnit *unit, int insn_index, bool ignore_fexc,
         unit->regs[insn->dest].live = false;
     }
 
+    /* If the instruction was a label, clear it from the reverse mapping. */
+    if (insn->opcode == RTLOP_LABEL) {
+        unit->label_blockmap[insn->label] = -1;
+    }
+
     /* Rewrite the instruction to an empty NOP, which will be skipped by
      * the output translator. */
     insn->opcode = RTLOP_NOP;
@@ -1940,15 +1945,41 @@ void rtl_opt_drop_dead_branches(RTLUnit *unit, bool ignore_fexc, bool dse)
         if (block->last_insn >= block->first_insn) {
             RTLInsn * const insn = &unit->insns[block->last_insn];
             const RTLOpcode opcode = insn->opcode;
-            if ((opcode == RTLOP_GOTO
-              || opcode == RTLOP_GOTO_IF_Z
-              || opcode == RTLOP_GOTO_IF_NZ)
-             && unit->label_blockmap[insn->label] == block->next_block) {
+            if (opcode == RTLOP_GOTO
+             || opcode == RTLOP_GOTO_IF_Z
+             || opcode == RTLOP_GOTO_IF_NZ) {
+                const int target_block = unit->label_blockmap[insn->label];
+                if (target_block == block->next_block) {
 #ifdef RTL_DEBUG_OPTIMIZE
-                log_info(unit->handle, "Dropping branch at %d to next"
-                         " insn", block->last_insn);
+                    log_info(unit->handle, "Dropping branch at %d to next"
+                             " insn", block->last_insn);
 #endif
-                rtl_opt_kill_insn(unit, block->last_insn, ignore_fexc, dse);
+                    rtl_opt_kill_insn(unit, block->last_insn, ignore_fexc, dse);
+                } else {
+                    /* Co-opt the src1 field of each LABEL instruction for
+                     * a flag to indicate that the label has been seen. */
+                    unit->insns[unit->blocks[target_block].first_insn].src1 = 1;
+                }
+            }
+        }
+    }
+
+    for (int i = 1; i < unit->next_label; i++) {
+        const int block_index = unit->label_blockmap[i];
+        if (block_index >= 0) {
+            const int insn_index = unit->blocks[block_index].first_insn;
+            RTLInsn * const insn = &unit->insns[insn_index];
+            ASSERT(insn->opcode == RTLOP_LABEL);
+            ASSERT(insn->label == i);
+            if (insn->src1) {
+                insn->src1 = 0;
+            } else {
+#ifdef RTL_DEBUG_OPTIMIZE
+                log_info(unit->handle, "Dropping unused label L%d", i);
+#endif
+                insn->opcode = RTLOP_NOP;
+                insn->src_imm = 0;
+                unit->label_blockmap[i] = -1;
             }
         }
     }

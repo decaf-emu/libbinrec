@@ -570,7 +570,7 @@ extern void rtl_opt_drop_dead_blocks(RTLUnit *unit);
 /**
  * rtl_opt_drop_dead_branches:  Search an RTL unit for branch instructions
  * which branch to the next instruction in the code stream and replace them
- * with NOPs.
+ * with NOPs.  Also replace any unused labels with NOPs.
  *
  * [Parameters]
  *     unit: RTL unit.
