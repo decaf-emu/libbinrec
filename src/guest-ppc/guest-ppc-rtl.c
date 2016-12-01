@@ -186,15 +186,17 @@ static int convert_fpr(GuestPPCContext *ctx, int index, int reg,
 /*-----------------------------------------------------------------------*/
 
 /**
- * get_gpr, get_fpr, get_cr, get_crb, get_lr, get_ctr, get_xer, get_fpscr,
- * get_fr_fi_fprf:  Return an RTL register containing the value of the
- * given PowerPC register.  This will either be the register last used in
- * a corresponding set or get operation, or a newly allocated register (in
- * which case an appropriate GET_ALIAS instruction will also be added).
+ * get_gpr, get_fpr, get_cr, get_crb, get_lr, get_ctr, get_xer, get_xer_so,
+ * get_fpscr, get_fr_fi_fprf:  Return an RTL register containing the value
+ * of the given PowerPC register or register field.  This will either be
+ * the register last used in a corresponding set or get operation, or a
+ * newly allocated register (in which case an appropriate GET_ALIAS
+ * instruction will also be added).
  *
  * For get_crb() and get_fr_fi_fprf(), if the USE_SPLIT_FIELDS optimization
  * is not enabled, the value will be extracted from CR or FPSCR
- * respectively.
+ * respectively.  get_xer_so() always extracts the SO bit from XER if the
+ * value is not already live.
  *
  * [Parameters]
  *     ctx: Translation context.
@@ -372,6 +374,20 @@ static inline int get_fr_fi_fprf(GuestPPCContext * const ctx)
             rtl_add_insn(unit, RTLOP_BFEXT,
                          reg, fpscr, 0, FPSCR_FPRF_SHIFT | 7<<8);
         }
+        return reg;
+    }
+}
+
+static inline int get_xer_so(GuestPPCContext * const ctx)
+{
+    if (ctx->live_xer_so) {
+        return ctx->live_xer_so;
+    } else {
+        RTLUnit * const unit = ctx->unit;
+        const int xer = get_xer(ctx);
+        const int reg = rtl_alloc_register(unit, RTLTYPE_INT32);
+        rtl_add_insn(unit, RTLOP_BFEXT, reg, xer, 0, XER_SO_SHIFT | 1<<8);
+        ctx->live_xer_so = reg;
         return reg;
     }
 }
@@ -599,6 +615,7 @@ static inline void set_xer(GuestPPCContext * const ctx, int reg)
     ctx->last_set.xer = unit->num_insns;
     rtl_add_insn(unit, RTLOP_SET_ALIAS, 0, reg, 0, ctx->alias.xer);
     ctx->live.xer = reg;
+    ctx->live_xer_so = 0;
 }
 
 static inline void set_fpscr(GuestPPCContext * const ctx, int reg)
@@ -990,6 +1007,7 @@ static void flush_live_regs(GuestPPCContext *ctx, bool clear)
     if (clear) {
         memset(&ctx->last_set, -1, sizeof(ctx->last_set));
         memset(&ctx->live, 0, sizeof(ctx->live));
+        ctx->live_xer_so = 0;
         ctx->fpr_is_safe = 0;
         ctx->ps1_is_safe = 0;
         ctx->crb_dirty = 0;
@@ -2387,9 +2405,7 @@ static void update_cr0(GuestPPCContext *ctx, int result)
     rtl_add_insn(unit, RTLOP_SGTSI, gt, result, 0, 0);
     const int eq = rtl_alloc_register(unit, RTLTYPE_INT32);
     rtl_add_insn(unit, RTLOP_SEQI, eq, result, 0, 0);
-    const int xer = get_xer(ctx);
-    const int so = rtl_alloc_register(unit, RTLTYPE_INT32);
-    rtl_add_insn(unit, RTLOP_BFEXT, so, xer, 0, XER_SO_SHIFT | 1<<8);
+    const int so = get_xer_so(ctx);
     set_crf(ctx, 0, lt, gt, eq, so);
 }
 
@@ -3051,9 +3067,7 @@ static void translate_compare(
         rtl_add_insn(unit, RTLOP_SEQ, eq, rA, rB, 0);
     }
 
-    const int xer = get_xer(ctx);
-    const int so = rtl_alloc_register(unit, RTLTYPE_INT32);
-    rtl_add_insn(unit, RTLOP_BFEXT, so, xer, 0, XER_SO_SHIFT | 1<<8);
+    const int so = get_xer_so(ctx);
 
     set_crf(ctx, insn_crfD(insn), lt, gt, eq, so);
 }
@@ -5575,6 +5589,7 @@ static void translate_muldiv_reg(
         if (do_overflow) {
             ctx->last_set.xer = -1;
             ctx->live.xer = 0;
+            ctx->live_xer_so = 0;
             div_continue_label = rtl_alloc_label(unit);
             rtl_add_insn(unit, RTLOP_GOTO, 0, 0, 0, div_continue_label);
         }
@@ -6448,9 +6463,7 @@ static void translate_stwcx(
                      handle->setup.state_offset_reserve_flag);
     }
     const int zero = rtl_imm32(unit, 0);
-    const int xer = get_xer(ctx);
-    const int so = rtl_alloc_register(unit, RTLTYPE_INT32);
-    rtl_add_insn(unit, RTLOP_BFEXT, so, xer, 0, XER_SO_SHIFT | 1<<8);
+    const int so = get_xer_so(ctx);
     if (ctx->use_split_fields) {
         set_crf(ctx, 0, zero, zero, zero, so);
         /* Flush CR0.eq because of the conditional branches. */
@@ -7170,10 +7183,7 @@ static inline void translate_x1F(
                 const int gt = result;
                 const int eq = rtl_alloc_register(unit, RTLTYPE_INT32);
                 rtl_add_insn(unit, RTLOP_XORI, eq, result, 0, 1);
-                const int xer = get_xer(ctx);
-                const int so = rtl_alloc_register(unit, RTLTYPE_INT32);
-                rtl_add_insn(unit, RTLOP_BFEXT,
-                             so, xer, 0, XER_SO_SHIFT | 1<<8);
+                const int so = get_xer_so(ctx);
                 set_crf(ctx, 0, lt, gt, eq, so);
             }
             ctx->skip_next_insn = true;
@@ -8288,6 +8298,7 @@ bool guest_ppc_translate_block(GuestPPCContext *ctx, int index)
     }
 
     memset(&ctx->live, 0, sizeof(ctx->live));
+    ctx->live_xer_so = 0;
     ctx->fpr_dirty = 0;
     ctx->fpr_is_safe = 0;
     ctx->ps1_is_safe = 0;

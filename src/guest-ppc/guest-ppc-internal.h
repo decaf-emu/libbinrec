@@ -431,6 +431,8 @@ typedef struct GuestPPCContext {
 
     /* RTL registers for each CPU register live in the current block. */
     GuestPPCRegMap live;
+    /* RTL register holding live value of XER[SO]. */
+    int live_xer_so;
     /* Current type of each live FPR. */
     uint8_t fpr_type[32];
 
