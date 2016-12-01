@@ -167,6 +167,11 @@ static inline void mark_xer_changed(GuestPPCBlockInfo *block) {
     block->touched.xer = 1;
 }
 
+static inline void mark_xer_so_used(GuestPPCBlockInfo *block) {
+    block->touched.xer = 1;
+    block->touched.xer_so = 1;
+}
+
 static inline void mark_fpscr_used(GuestPPCBlockInfo *block) {
     block->touched.fpscr = 1;
 }
@@ -266,12 +271,13 @@ static inline void update_used_changed(
       case OPCD_CMPLI:
       case OPCD_CMPI:
         mark_gpr_used(block, insn_rA(insn));
-        mark_xer_used(block);
+        mark_xer_so_used(block);
         mark_crf_changed(block, insn_crfD(insn));
         break;
 
       case OPCD_ADDIC_:
         mark_crf_changed(block, 0);
+        mark_xer_so_used(block);
         /* fall through */
       case OPCD_SUBFIC:
       case OPCD_ADDIC:
@@ -304,7 +310,7 @@ static inline void update_used_changed(
 
       case OPCD_ANDI_:
       case OPCD_ANDIS_:
-        mark_xer_used(block);
+        mark_xer_so_used(block);
         mark_crf_changed(block, 0);
         mark_gpr_used(block, insn_rS(insn));
         mark_gpr_changed(block, insn_rA(insn));
@@ -326,7 +332,7 @@ static inline void update_used_changed(
         mark_gpr_used(block, insn_rA(insn));
         mark_gpr_changed(block, insn_rA(insn));
         if (insn_Rc(insn)) {
-            mark_xer_used(block);
+            mark_xer_so_used(block);
             mark_crf_changed(block, 0);
         }
         break;
@@ -342,7 +348,7 @@ static inline void update_used_changed(
         }
         mark_gpr_changed(block, insn_rA(insn));
         if (insn_Rc(insn)) {
-            mark_xer_used(block);
+            mark_xer_so_used(block);
             mark_crf_changed(block, 0);
         }
         break;
@@ -379,7 +385,7 @@ static inline void update_used_changed(
         mark_gpr_used(block, insn_rB(insn));
         mark_gpr_changed(block, insn_rA(insn));
         if (insn_Rc(insn)) {
-            mark_xer_used(block);
+            mark_xer_so_used(block);
             mark_crf_changed(block, 0);
         }
         break;
@@ -644,10 +650,11 @@ static inline void update_used_changed(
       case OPCD_x1F:
         switch (insn_XO_5(insn)) {
           case 0x00:  // cmp, cmpl, mcrxr
-            mark_xer_used(block);
             if (insn_XO_10(insn) == XO_MCRXR) {
+                mark_xer_used(block);
                 mark_xer_changed(block);
             } else {
+                mark_xer_so_used(block);
                 mark_gpr_used(block, insn_rA(insn));
                 mark_gpr_used(block, insn_rB(insn));
             }
@@ -674,7 +681,7 @@ static inline void update_used_changed(
                 mark_xer_changed(block);
             }
             if (insn_Rc(insn)) {
-                mark_xer_used(block);
+                mark_xer_so_used(block);
                 mark_crf_changed(block, 0);
             }
             break;
@@ -688,7 +695,7 @@ static inline void update_used_changed(
                 mark_xer_changed(block);
             }
             if (insn_Rc(insn)) {
-                mark_xer_used(block);
+                mark_xer_so_used(block);
                 mark_crf_changed(block, 0);
             }
             break;
@@ -833,7 +840,7 @@ static inline void update_used_changed(
                 }
                 mark_gpr_used(block, insn_rB(insn));
                 mark_gpr_used(block, insn_rS(insn));
-                mark_xer_used(block);
+                mark_xer_so_used(block);
                 mark_crf_changed(block, 0);
                 if ((ctx->handle->guest_opt & BINREC_OPT_G_PPC_PAIRED_LWARX_STWCX)
                  && block->paired_stwcx == ~0u) {
@@ -907,7 +914,7 @@ static inline void update_used_changed(
                 mark_xer_changed(block);
             }
             if (insn_Rc(insn)) {
-                mark_xer_used(block);
+                mark_xer_so_used(block);
                 mark_crf_changed(block, 0);
             }
             break;
@@ -916,7 +923,7 @@ static inline void update_used_changed(
             mark_gpr_used(block, insn_rS(insn));
             mark_gpr_changed(block, insn_rA(insn));
             if (insn_Rc(insn)) {
-                mark_xer_used(block);
+                mark_xer_so_used(block);
                 mark_crf_changed(block, 0);
             }
             break;
@@ -926,7 +933,7 @@ static inline void update_used_changed(
             mark_gpr_used(block, insn_rB(insn));
             mark_gpr_changed(block, insn_rA(insn));
             if (insn_Rc(insn)) {
-                mark_xer_used(block);
+                mark_xer_so_used(block);
                 mark_crf_changed(block, 0);
             }
             break;

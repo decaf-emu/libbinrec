@@ -160,6 +160,17 @@ static bool init_unit(GuestPPCContext *ctx)
         ctx->alias.xer = rtl_alloc_alias_register(unit, RTLTYPE_INT32);
         rtl_set_alias_storage(unit, ctx->alias.xer, ctx->psb_reg,
                               ctx->handle->setup.state_offset_xer);
+        if (ctx->use_split_fields && touched.xer_so) {
+            ctx->alias.xer_so = rtl_alloc_alias_register(unit, RTLTYPE_INT32);
+            /* As with CR bit aliases, this initialization may not be
+             * necessary, but RTL data flow analysis should be able to
+             * eliminate it in such a case. */
+            const int xer = rtl_alloc_register(unit, RTLTYPE_INT32);
+            rtl_add_insn(unit, RTLOP_GET_ALIAS, xer, 0, 0, ctx->alias.xer);
+            const int so = rtl_alloc_register(unit, RTLTYPE_INT32);
+            rtl_add_insn(unit, RTLOP_BFEXT, so, xer, 0, XER_SO_SHIFT | 1<<8);
+            rtl_add_insn(unit, RTLOP_SET_ALIAS, 0, so, 0, ctx->alias.xer_so);
+        }
     }
 
     if (touched.fpscr) {
@@ -169,13 +180,11 @@ static bool init_unit(GuestPPCContext *ctx)
         if (ctx->use_split_fields && touched.fr_fi_fprf) {
             ctx->alias.fr_fi_fprf =
                 rtl_alloc_alias_register(unit, RTLTYPE_INT32);
-            /* As with CR bit aliases, this initialization may not be
-             * necessary, but RTL data flow analysis should be able to
-             * eliminate it in such a case. */
             const int fpscr = rtl_alloc_register(unit, RTLTYPE_INT32);
             rtl_add_insn(unit, RTLOP_GET_ALIAS, fpscr, 0, 0, ctx->alias.fpscr);
             const int fff = rtl_alloc_register(unit, RTLTYPE_INT32);
-            rtl_add_insn(unit, RTLOP_BFEXT, fff, fpscr, 0, 12 | 7<<8);
+            rtl_add_insn(unit, RTLOP_BFEXT,
+                         fff, fpscr, 0, FPSCR_FPRF_SHIFT | 7<<8);
             rtl_add_insn(unit, RTLOP_SET_ALIAS,
                          0, fff, 0, ctx->alias.fr_fi_fprf);
         }

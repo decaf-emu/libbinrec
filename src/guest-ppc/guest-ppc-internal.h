@@ -275,6 +275,7 @@ typedef struct GuestPPCRegSet {
         lr : 1,
         ctr : 1,
         xer : 1,
+        xer_so : 1,
         fpscr : 1,
         fr_fi_fprf : 1;
 } GuestPPCRegSet;
@@ -346,6 +347,11 @@ typedef struct GuestPPCBlockInfo {
  * alias GuestPPCContext.crb[b], else the value of the bit is the value of
  * the corresponding bit in the base value of CR as determined above.
  *
+ * xer_so holds the value of the XER[SO] bit.  The bit is extracted at the
+ * beginning of a unit, and updated anytime XER is written, if any
+ * instruction in the unit reads XER[SO] (such as an ALU instruction with
+ * Rc=1).
+ *
  * fr_fi_fprf holds the value of bits 13-19 of FPSCR (the FI, FR, and FPRF
  * fields of that register).  The alias is always allocated if FPSCR is
  * used by the unit, but its value is not valid unless
@@ -359,6 +365,7 @@ typedef struct GuestPPCRegMap {
     uint16_t lr;
     uint16_t ctr;
     uint16_t xer;
+    uint16_t xer_so;
     uint16_t fpscr;
     uint16_t fr_fi_fprf;
     uint16_t nia;
@@ -431,8 +438,6 @@ typedef struct GuestPPCContext {
 
     /* RTL registers for each CPU register live in the current block. */
     GuestPPCRegMap live;
-    /* RTL register holding live value of XER[SO]. */
-    int live_xer_so;
     /* Current type of each live FPR. */
     uint8_t fpr_type[32];
 
@@ -445,6 +450,7 @@ typedef struct GuestPPCContext {
         int lr;
         int ctr;
         int xer;
+        int xer_so;
         int fpscr;
         int fr_fi_fprf;
     } last_set;
