@@ -22,16 +22,16 @@ int main(void)
     binrec_t *handle;
     EXPECT(handle = binrec_create_handle(&setup));
 
-    EXPECT_FALSE(handle->use_branch_callback);
+    EXPECT_FALSE(handle->use_branch_exit_test);
 
-    binrec_enable_branch_callback(handle, 1);
-    EXPECT(handle->use_branch_callback);
+    binrec_enable_branch_exit_test(handle, 1);
+    EXPECT(handle->use_branch_exit_test);
 
-    binrec_enable_branch_callback(handle, 0);
-    EXPECT_FALSE(handle->use_branch_callback);
+    binrec_enable_branch_exit_test(handle, 0);
+    EXPECT_FALSE(handle->use_branch_exit_test);
 
-    binrec_enable_branch_callback(handle, INT_MIN);  // Low byte is zero.
-    EXPECT(handle->use_branch_callback);
+    binrec_enable_branch_exit_test(handle, INT_MIN);  // Low byte is zero.
+    EXPECT(handle->use_branch_exit_test);
 
     EXPECT_STREQ(get_log_messages(), NULL);
 

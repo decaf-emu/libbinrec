@@ -186,11 +186,11 @@ class Handle {
     }
 
     /**
-     * enable_branch_callback:  Enable or disable the pre-branch callback.
-     * Wraps binrec_enable_branch_callback().
+     * enable_branch_exit_test:  Enable or disable the pre-branch exit test.
+     * Wraps binrec_enable_branch_exit_test().
      */
-    void enable_branch_callback(bool enable) {
-        ::binrec_enable_branch_callback(handle, enable);
+    void enable_branch_exit_test(bool enable) {
+        ::binrec_enable_branch_exit_test(handle, enable);
     }
 
     /**

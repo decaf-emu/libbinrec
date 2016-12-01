@@ -387,10 +387,9 @@ typedef struct binrec_setup_t {
      * (see binrec_enable_chaining()).  Signature:
      * void *chain_lookup(void *state, uint32_t target_address) */
     int state_offset_chain_lookup;
-    /* Pointer to function to call at intra-unit branches (see
-     * binrec_enable_branch_callback()).  Signature:
-     * int branch_callback(void *state, uint32_t branch_address) */
-    int state_offset_branch_callback;
+    /* Pointer to 32-bit value to check at intra-unit branches (see
+     * binrec_enable_branch_exit_test()). */
+    int state_offset_branch_exit_flag;
     /* Pointers to lookup tables (of type uint16_t[64]) for the fres and
      * frsqrte instructions.  See the BINREC_OPT_G_PPC_NATIVE_RECIPROCAL
      * optimization flag documentation for details. */
@@ -1006,10 +1005,10 @@ typedef struct binrec_setup_t {
  * find dead stores to specific fields, which otherwise would be obscured
  * by the dependency on the full register's previous state.
  *
- * If this optimization is enabled, pre- and post-instruction callbacks,
- * branch callbacks, and timebase handlers may see incorrect values of CR
- * and FPSCR[FPRF] in the processor state block.  System call and trap
- * handlers are not affected.
+ * If this optimization is enabled, pre- and post-instruction callbacks
+ * and timebase handlers may see incorrect values of CR and FPSCR[FPRF]
+ * in the processor state block.  System call and trap handlers are not
+ * affected.
  */
 #define BINREC_OPT_G_PPC_USE_SPLIT_FIELDS  (1<<11)
 
@@ -1374,43 +1373,34 @@ extern void binrec_clear_readonly_regions(binrec_t *handle);
 extern void binrec_enable_chaining(binrec_t *handle, int enable);
 
 /**
- * binrec_enable_branch_callback:  Set whether to call a function (pointed
- * to by the value at the PSB offset given by state_offset_branch_callback)
+ * binrec_enable_branch_exit_test:  Set whether to check a 32-bit value in
+ * the processor state block (pointed to by state_offset_branch_exit_flag)
  * immediately before a branch to another instruction within the same
- * translation unit.  If enabled, the callback is called immediately before
- * taking a branch within the translated code; if the called function
- * returns zero, the translated code will return to its caller rather than
- * continuing execution at the branch target.   This can be used to safely
- * interrupt execution of the guest code ("safely" in the sense of the PSB
- * being fully updated) at a finer granularity than an entire translation
- * unit.  The callback is not called for conditional branches which are not
- * taken or for branches which would return from the translated code in any
- * case (such as indirect branches).
+ * translation unit.  If enabled, the value is tested immediately before
+ * taking a branch within the translated code; if the value is nonzero,
+ * the translated code will return to its caller rather than continuing
+ * execution at the branch target.   This can be used to safely interrupt
+ * execution of the guest code ("safely" in the sense of the PSB being
+ * fully updated) at a finer granularity than an entire translation unit.
+ * The flag is not tested for conditional branches which are not taken or
+ * for branches which would return from the translated code in any case
+ * (such as indirect branches).
  *
- * The callback receives two parameters: the processor state block pointer
- * passed to the translated code and the address of the branch instruction,
- * and returns an int indicating whether to continue execution (nonzero) or
- * return from the translated code (zero).
- *
- * Note that the state of the PSB is indeterminate when the callback is
- * called; each register field will have either the same value it had at
- * the start of the unit or some value which was subsequently stored to
- * that register, but in general, register fields will not contain current
- * register values.  As an exception, the instruction pointer field (nia
- * for PowerPC hosts) will always contain the target address of the branch.
- * If the callback function returns zero to terminate execution, the PSB
- * will be updated as usual on exit from the translated code.
+ * Note that enabling the branch exit test can significantly reduce the
+ * performance of translated code; the requirement for the code to be able
+ * to exit at any branch point limits the amount of optimization that can
+ * be performed across branches.
  *
  * Calling this function has no effect on already-translated code.
  *
- * By default, the branch callback is disabled.
+ * By default, the branch exit test is disabled.
  *
  * [Parameters]
  *     handle: Handle to operate on.
- *     enable: True (nonzero) to enable the branch callback, false (zero)
+ *     enable: True (nonzero) to enable the branch exit test, false (zero)
  *         to disable it.
  */
-extern void binrec_enable_branch_callback(binrec_t *handle, int enable);
+extern void binrec_enable_branch_exit_test(binrec_t *handle, int enable);
 
 /**
  * binrec_set_pre_insn_callback:  Set a callback function which will be
@@ -1451,9 +1441,6 @@ extern void binrec_set_pre_insn_callback(binrec_t *handle,
  * The callback receives two parameters: the processor state block pointer
  * passed to the translated code and the address of the instruction that
  * was just executed.
- *
- * If both this callback and the branch callback are enabled, this callback
- * will be called before the branch callback for taken intra-unit branches.
  *
  * Calling this function has no effect on already-translated code.
  *

@@ -2777,7 +2777,7 @@ static void translate_branch_label(
     const bool is_conditional = ((BO & 0x14) != 0x14);
 
     int skip_label;
-    if ((BO & 0x14) == 0 || (is_conditional && handle->use_branch_callback)) {
+    if ((BO & 0x14) == 0 || (is_conditional && handle->use_branch_exit_test)) {
         /* Need an extra label in case a non-final test fails. */
         skip_label = rtl_alloc_label(unit);
     } else {
@@ -2796,7 +2796,7 @@ static void translate_branch_label(
                                  &crb_store_next, crb_reg, crb_insn);
         /* If there are bits to store on the branch-taken path for a
          * conditional branch, we need a label for skipping past the branch
-         * even for a single condition (much like when the branch callback
+         * even for a single condition (much like when the branch exit test
          * is enabled). */
         if (crb_store_branch && !skip_label) {
             skip_label = rtl_alloc_label(unit);
@@ -2827,7 +2827,7 @@ static void translate_branch_label(
 
     if (!(BO & 0x10)) {
         const int test = test_crb(ctx, BI);
-        if (handle->use_branch_callback || crb_store_branch) {
+        if (handle->use_branch_exit_test || crb_store_branch) {
             rtl_add_insn(unit, BO & 0x08 ? RTLOP_GOTO_IF_Z : RTLOP_GOTO_IF_NZ,
                          0, test, 0, skip_label);
         } else {
@@ -2846,24 +2846,22 @@ static void translate_branch_label(
                      0, crb_reg[bit], 0, ctx->alias.crb[bit]);
     }
 
-    if (handle->use_branch_callback || handle->post_insn_callback) {
+    if (handle->post_insn_callback) {
         set_nia_imm(ctx, target);
     }
     post_insn_callback(ctx, address);
-    if (handle->use_branch_callback) {
+    if (handle->use_branch_exit_test) {
         ASSERT(branch_op == RTLOP_GOTO);
-        const int func = rtl_alloc_register(unit, RTLTYPE_ADDRESS);
-        rtl_add_insn(unit, RTLOP_LOAD, func, ctx->psb_reg, 0,
-                     ctx->handle->setup.state_offset_branch_callback);
-        const int rtl_address = rtl_imm32(unit, address);
-        const int callback_result = rtl_alloc_register(unit, RTLTYPE_INT32);
-        rtl_add_insn(unit, RTLOP_CALL,
-                     callback_result, func, ctx->psb_reg, rtl_address);
-        rtl_add_insn(unit, RTLOP_GOTO_IF_Z,
-                     0, callback_result, 0, guest_ppc_get_epilogue_label(ctx));
+        const int flag = rtl_alloc_register(unit, RTLTYPE_INT32);
+        rtl_add_insn(unit, RTLOP_LOAD, flag, ctx->psb_reg, 0,
+                     ctx->handle->setup.state_offset_branch_exit_flag);
+        rtl_add_insn(unit, RTLOP_GOTO_IF_Z, 0, flag, 0, target_label);
+        set_nia_imm(ctx, target);
+        rtl_add_insn(unit, RTLOP_GOTO,
+                     0, 0, 0, guest_ppc_get_epilogue_label(ctx));
+    } else {
+        rtl_add_insn(unit, branch_op, 0, test_reg, 0, target_label);
     }
-
-    rtl_add_insn(unit, branch_op, 0, test_reg, 0, target_label);
 
     if (skip_label) {
         rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, skip_label);
@@ -6923,7 +6921,7 @@ static inline void translate_x1F(
 
         rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, skip_label);
 
-        /* If split fields are in use and branch callbacks are active,
+        /* If split fields are in use and the branch exit test is active,
          * flush the store success bit back to the CR word in the PSB, so
          * the callback knows whether the store succeeded.  This is more
          * likely to be useful with pre/post instruction callbacks in a
@@ -6931,10 +6929,9 @@ static inline void translate_x1F(
          * against a hardware implementation or interpreter, since the
          * stwcx. instruction is not repeatable, but we stick to the
          * overall rule of not changing behavior in the presence of
-         * pre/post instruction callbacks and instead use the branch
-         * callback as a proxy for determining whether a writeback is
-         * desired. */
-        if (ctx->use_split_fields && ctx->handle->use_branch_callback) {
+         * pre/post instruction callbacks and instead use the branch exit
+         * test as a proxy for determining whether a writeback is desired. */
+        if (ctx->use_split_fields && ctx->handle->use_branch_exit_test) {
             const int cr0_eq = get_crb(ctx, 2);
             const int old_cr = get_cr(ctx);
             const int new_cr = rtl_alloc_register(unit, RTLTYPE_INT32);

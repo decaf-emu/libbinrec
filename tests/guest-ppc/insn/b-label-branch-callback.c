@@ -9,7 +9,7 @@
 
 #include "tests/guest-ppc/insn/common.h"
 
-#define BRANCH_CALLBACK
+#define BRANCH_EXIT_TEST
 
 static const uint8_t input[] = {
     0x48,0x00,0x00,0x08,  // b 0x8
@@ -26,30 +26,28 @@ static const char expected[] =
     "[info] Scanning terminated at requested limit 0xB\n"
     "    0: LOAD_ARG   r1, 0\n"
     "    1: LOAD_ARG   r2, 1\n"
-    "    2: LOAD_IMM   r3, 8\n"
-    "    3: SET_ALIAS  a1, r3\n"
-    "    4: LOAD       r4, 1000(r1)\n"
-    "    5: LOAD_IMM   r5, 0\n"
-    "    6: CALL       r6, @r4, r1, r5\n"
-    "    7: GOTO_IF_Z  r6, L2\n"
-    "    8: GOTO       L1\n"
-    "    9: LOAD_IMM   r7, 4\n"
-    "   10: SET_ALIAS  a1, r7\n"
-    "   11: LOAD_IMM   r8, 8\n"
-    "   12: SET_ALIAS  a1, r8\n"
-    "   13: LABEL      L1\n"
-    "   14: LOAD_IMM   r9, 12\n"
-    "   15: SET_ALIAS  a1, r9\n"
-    "   16: LABEL      L2\n"
-    "   17: RETURN\n"
+    "    2: LOAD       r3, 1000(r1)\n"
+    "    3: GOTO_IF_Z  r3, L1\n"
+    "    4: LOAD_IMM   r4, 8\n"
+    "    5: SET_ALIAS  a1, r4\n"
+    "    6: GOTO       L2\n"
+    "    7: LOAD_IMM   r5, 4\n"
+    "    8: SET_ALIAS  a1, r5\n"
+    "    9: LOAD_IMM   r6, 8\n"
+    "   10: SET_ALIAS  a1, r6\n"
+    "   11: LABEL      L1\n"
+    "   12: LOAD_IMM   r7, 12\n"
+    "   13: SET_ALIAS  a1, r7\n"
+    "   14: LABEL      L2\n"
+    "   15: RETURN\n"
     "\n"
     "Alias 1: int32 @ 956(r1)\n"
     "\n"
-    "Block 0: <none> --> [0,7] --> 1,4\n"
-    "Block 1: 0 --> [8,8] --> 3\n"
-    "Block 2: <none> --> [9,12] --> 3\n"
-    "Block 3: 2,1 --> [13,15] --> 4\n"
-    "Block 4: 3,0 --> [16,17] --> <none>\n"
+    "Block 0: <none> --> [0,3] --> 1,3\n"
+    "Block 1: 0 --> [4,6] --> 4\n"
+    "Block 2: <none> --> [7,10] --> 3\n"
+    "Block 3: 2,0 --> [11,13] --> 4\n"
+    "Block 4: 3,1 --> [14,15] --> <none>\n"
     ;
 
 #include "tests/rtl-disasm-test.i"

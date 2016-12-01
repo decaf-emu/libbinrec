@@ -9,7 +9,7 @@
 
 #include "tests/guest-ppc/insn/common.h"
 
-#define BRANCH_CALLBACK
+#define BRANCH_EXIT_TEST
 
 static const uint8_t input[] = {
     0x7C,0x64,0x29,0x2D,  // stwcx. r3,r4,r5

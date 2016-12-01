@@ -107,6 +107,8 @@ extern "C" int main(void)
     setup.state_offset_timebase_handler = offsetof(PPCState,timebase_handler);
     setup.state_offset_sc_handler = offsetof(PPCState,sc_handler);
     setup.state_offset_trap_handler = offsetof(PPCState,trap_handler);
+    setup.state_offset_chain_lookup = offsetof(PPCState,chain_lookup);
+    setup.state_offset_branch_exit_flag = offsetof(PPCState,branch_exit_flag);
     setup.state_offset_fres_lut = offsetof(PPCState,fres_lut);
     setup.state_offset_frsqrte_lut = offsetof(PPCState,frsqrte_lut);
 
@@ -125,7 +127,7 @@ extern "C" int main(void)
     handle.add_readonly_region(0, 1);
     handle.clear_readonly_regions();
     handle.enable_chaining(false);
-    handle.enable_branch_callback(false);
+    handle.enable_branch_exit_test(false);
     handle.set_pre_insn_callback(nullptr);
     handle.set_post_insn_callback(nullptr);
 

@@ -89,7 +89,7 @@ int main(void)
     binrec_set_optimization_flags(handle, 0, guest_opt, 0);
     binrec_set_code_range(handle, 0, sizeof(input) - 1);
     #ifdef BRANCH_CALLBACK
-        binrec_enable_branch_callback(handle, true);
+        binrec_enable_branch_exit_test(handle, true);
     #endif
     #ifdef PRE_INSN_CALLBACK
         binrec_set_pre_insn_callback(handle, PRE_INSN_CALLBACK);

@@ -340,8 +340,8 @@ struct binrec_t {
     /* Is dynamic chaining enabled? */
     bool use_chaining;
 
-    /* Is the branch callback enabled? */
-    bool use_branch_callback;
+    /* Is the branch exit test enabled? */
+    bool use_branch_exit_test;
 
     /* Pre- and post-instruction callbacks (NULL if none). */
     void (*pre_insn_callback)(void *, uint32_t);

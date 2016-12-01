@@ -36,7 +36,7 @@ typedef struct PPCInsnTestState {
     void (*sc_handler)(void *);
     void (*trap_handler)(void *);
     void *(*chain_lookup)(void *, uint32_t);
-    int (*branch_callback)(void *, uint32_t);
+    int (*branch_exit_flag)(void *, uint32_t);
     const uint16_t *fres_lut;
     const uint16_t *frsqrte_lut;
 } PPCInsnTestState;
@@ -59,7 +59,7 @@ static const binrec_setup_t setup = {
     .state_offset_sc_handler = offsetof(PPCInsnTestState,sc_handler),
     .state_offset_trap_handler = offsetof(PPCInsnTestState,trap_handler),
     .state_offset_chain_lookup = offsetof(PPCInsnTestState,chain_lookup),
-    .state_offset_branch_callback = offsetof(PPCInsnTestState,branch_callback),
+    .state_offset_branch_exit_flag = offsetof(PPCInsnTestState,branch_exit_flag),
     .state_offset_fres_lut = offsetof(PPCInsnTestState,fres_lut),
     .state_offset_frsqrte_lut = offsetof(PPCInsnTestState,frsqrte_lut),
 };

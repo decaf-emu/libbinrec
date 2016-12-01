@@ -489,10 +489,10 @@ void binrec_enable_chaining(binrec_t *handle, int enable)
 
 /*-----------------------------------------------------------------------*/
 
-void binrec_enable_branch_callback(binrec_t *handle, int enable)
+void binrec_enable_branch_exit_test(binrec_t *handle, int enable)
 {
     ASSERT(handle);
-    handle->use_branch_callback = (enable != 0);
+    handle->use_branch_exit_test = (enable != 0);
 }
 
 /*-----------------------------------------------------------------------*/

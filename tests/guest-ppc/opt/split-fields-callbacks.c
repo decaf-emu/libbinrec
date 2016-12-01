@@ -46,7 +46,7 @@ int main(void)
     setup.state_offset_sc_handler = 0x3D0;
     setup.state_offset_trap_handler = 0x3D8;
     setup.state_offset_chain_lookup = 0x3E0;
-    setup.state_offset_branch_callback = 0x3E8;
+    setup.state_offset_branch_exit_flag = 0x3E8;
     setup.state_offset_fres_lut = 0x3F0;
     setup.state_offset_frsqrte_lut = 0x3F8;
     binrec_t *handle;
@@ -55,11 +55,11 @@ int main(void)
     binrec_set_optimization_flags(handle,
                                   0, BINREC_OPT_G_PPC_USE_SPLIT_FIELDS, 0);
 
-    /* None of these callbacks should cause CR or FPSCR to be merged back
-     * to the state block before the call. */
+    /* None of these should cause CR or FPSCR to be merged back to the
+     * state block before the call. */
     binrec_set_pre_insn_callback(handle, (void (*)(void *, uint32_t))1);
     binrec_set_post_insn_callback(handle, (void (*)(void *, uint32_t))2);
-    binrec_enable_branch_callback(handle, 1);
+    binrec_enable_branch_exit_test(handle, 1);
 
     RTLUnit *unit;
     EXPECT(unit = rtl_create_unit(handle));
@@ -105,46 +105,46 @@ int main(void)
                  "   36: LOAD_IMM   r23, 4100\n"
                  "   37: CALL_TRANSPARENT @r22, r1, r23\n"
                  "   38: LOAD       r24, 1000(r1)\n"
-                 "   39: LOAD_IMM   r25, 4100\n"
-                 "   40: CALL       r26, @r24, r1, r25\n"
-                 "   41: GOTO_IF_Z  r26, L3\n"
-                 "   42: GOTO       L1\n"
+                 "   39: GOTO_IF_Z  r24, L1\n"
+                 "   40: LOAD_IMM   r25, 4104\n"
+                 "   41: SET_ALIAS  a1, r25\n"
+                 "   42: GOTO       L3\n"
                  "   43: LABEL      L2\n"
-                 "   44: LOAD_IMM   r27, 4104\n"
-                 "   45: SET_ALIAS  a1, r27\n"
-                 "   46: LOAD_IMM   r28, 0x2\n"
-                 "   47: LOAD_IMM   r29, 4100\n"
-                 "   48: CALL_TRANSPARENT @r28, r1, r29\n"
-                 "   49: LOAD_IMM   r30, 4104\n"
-                 "   50: SET_ALIAS  a1, r30\n"
+                 "   44: LOAD_IMM   r26, 4104\n"
+                 "   45: SET_ALIAS  a1, r26\n"
+                 "   46: LOAD_IMM   r27, 0x2\n"
+                 "   47: LOAD_IMM   r28, 4100\n"
+                 "   48: CALL_TRANSPARENT @r27, r1, r28\n"
+                 "   49: LOAD_IMM   r29, 4104\n"
+                 "   50: SET_ALIAS  a1, r29\n"
                  "   51: LABEL      L1\n"
-                 "   52: LOAD_IMM   r31, 0x1\n"
-                 "   53: LOAD_IMM   r32, 4104\n"
-                 "   54: CALL_TRANSPARENT @r31, r1, r32\n"
-                 "   55: LOAD_IMM   r33, 1\n"
-                 "   56: SET_ALIAS  a2, r33\n"
-                 "   57: LOAD_IMM   r34, 4108\n"
-                 "   58: SET_ALIAS  a1, r34\n"
-                 "   59: LOAD_IMM   r35, 0x2\n"
-                 "   60: LOAD_IMM   r36, 4104\n"
-                 "   61: CALL_TRANSPARENT @r35, r1, r36\n"
-                 "   62: LOAD_IMM   r37, 4108\n"
-                 "   63: SET_ALIAS  a1, r37\n"
+                 "   52: LOAD_IMM   r30, 0x1\n"
+                 "   53: LOAD_IMM   r31, 4104\n"
+                 "   54: CALL_TRANSPARENT @r30, r1, r31\n"
+                 "   55: LOAD_IMM   r32, 1\n"
+                 "   56: SET_ALIAS  a2, r32\n"
+                 "   57: LOAD_IMM   r33, 4108\n"
+                 "   58: SET_ALIAS  a1, r33\n"
+                 "   59: LOAD_IMM   r34, 0x2\n"
+                 "   60: LOAD_IMM   r35, 4104\n"
+                 "   61: CALL_TRANSPARENT @r34, r1, r35\n"
+                 "   62: LOAD_IMM   r36, 4108\n"
+                 "   63: SET_ALIAS  a1, r36\n"
                  "   64: LABEL      L3\n"
-                 "   65: GET_ALIAS  r38, a3\n"
-                 "   66: ANDI       r39, r38, -16\n"
-                 "   67: GET_ALIAS  r40, a4\n"
-                 "   68: SLLI       r41, r40, 3\n"
-                 "   69: OR         r42, r39, r41\n"
-                 "   70: GET_ALIAS  r43, a5\n"
-                 "   71: SLLI       r44, r43, 2\n"
-                 "   72: OR         r45, r42, r44\n"
-                 "   73: GET_ALIAS  r46, a6\n"
-                 "   74: SLLI       r47, r46, 1\n"
-                 "   75: OR         r48, r45, r47\n"
-                 "   76: GET_ALIAS  r49, a7\n"
-                 "   77: OR         r50, r48, r49\n"
-                 "   78: SET_ALIAS  a3, r50\n"
+                 "   65: GET_ALIAS  r37, a3\n"
+                 "   66: ANDI       r38, r37, -16\n"
+                 "   67: GET_ALIAS  r39, a4\n"
+                 "   68: SLLI       r40, r39, 3\n"
+                 "   69: OR         r41, r38, r40\n"
+                 "   70: GET_ALIAS  r42, a5\n"
+                 "   71: SLLI       r43, r42, 2\n"
+                 "   72: OR         r44, r41, r43\n"
+                 "   73: GET_ALIAS  r45, a6\n"
+                 "   74: SLLI       r46, r45, 1\n"
+                 "   75: OR         r47, r44, r46\n"
+                 "   76: GET_ALIAS  r48, a7\n"
+                 "   77: OR         r49, r47, r48\n"
+                 "   78: SET_ALIAS  a3, r49\n"
                  "   79: RETURN\n"
                  "\n"
                  "Alias 1: int32 @ 956(r1)\n"
@@ -157,11 +157,11 @@ int main(void)
                  "Alias 8: int32 @ 940(r1)\n"
                  "\n"
                  "Block 0: <none> --> [0,32] --> 1,3\n"
-                 "Block 1: 0 --> [33,41] --> 2,5\n"
-                 "Block 2: 1 --> [42,42] --> 4\n"
+                 "Block 1: 0 --> [33,39] --> 2,4\n"
+                 "Block 2: 1 --> [40,42] --> 5\n"
                  "Block 3: 0 --> [43,50] --> 4\n"
-                 "Block 4: 3,2 --> [51,63] --> 5\n"
-                 "Block 5: 4,1 --> [64,79] --> <none>\n"
+                 "Block 4: 3,1 --> [51,63] --> 5\n"
+                 "Block 5: 4,2 --> [64,79] --> <none>\n"
                  );
 
     rtl_destroy_unit(unit);

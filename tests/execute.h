@@ -36,7 +36,7 @@ typedef struct PPCState {
     void (*sc_handler)(struct PPCState *state);
     void (*trap_handler)(struct PPCState *state);
     void *(*chain_lookup)(struct PPCState *state, uint32_t branch_address);
-    int (*branch_callback)(struct PPCState *state, uint32_t branch_address);
+    uint32_t branch_exit_flag;
     const uint16_t *fres_lut;
     const uint16_t *frsqrte_lut;
 } PPCState;
@@ -49,9 +49,6 @@ typedef struct PPCState {
  * when the guest code executes a "return-to-caller" instruction at the top
  * call level; in other words, this function acts like an indirect function
  * call to the given code.
- *
- * Branch callbacks will be enabled if the branch_callback field of the
- * processor state block is non-NULL on entry.
  *
  * [Parameters]
  *     arch: Guest architecture (BINREC_ARCH_*).

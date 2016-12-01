@@ -31,7 +31,7 @@ static const binrec_setup_t setup = {
     .state_offset_sc_handler = 0x3D0,
     .state_offset_trap_handler = 0x3D8,
     .state_offset_chain_lookup = 0x3E0,
-    .state_offset_branch_callback = 0x3E8,
+    .state_offset_branch_exit_flag = 0x3E8,
     .state_offset_fres_lut = 0x3F0,
     .state_offset_frsqrte_lut = 0x3F8,
 };

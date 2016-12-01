@@ -40,8 +40,8 @@
  *
  * If the preprocessor symbol CHAINING is defined, chaining will be enabled.
  *
- * If the preprocessor symbol BRANCH_CALLBACK is defined, the branch
- * callback will be enabled.
+ * If the preprocessor symbol BRANCH_EXIT_TEST is defined, the branch exit
+ * test will be enabled.
  *
  * If the preprocessor symbols PRE_INSN_CALLBACK or POST_INSN_CALLBACK are
  * defined, they will be passed to binrec_set_pre_insn_callback() or
@@ -76,8 +76,8 @@ int main(void)
     #ifdef CHAINING
         binrec_enable_chaining(handle, true);
     #endif
-    #ifdef BRANCH_CALLBACK
-        binrec_enable_branch_callback(handle, true);
+    #ifdef BRANCH_EXIT_TEST
+        binrec_enable_branch_exit_test(handle, true);
     #endif
     #ifdef PRE_INSN_CALLBACK
         binrec_set_pre_insn_callback(handle, PRE_INSN_CALLBACK);

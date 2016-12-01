@@ -15,34 +15,31 @@
 #include "tests/log-capture.h"
 
 
-static int branch_counter;
+static int callback_counter = 0;
 
-static int branch_callback(PPCState *state, uint32_t address)
+static void post_insn_callback(void *state_, uint32_t address)
 {
-    ASSERT(state);
+    ASSERT(state_);
+    PPCState *state = state_;
 
-    if (address == 0x1000) {
-        return 1;  // Initial branch.
-    } else if (address != 0x100C) {
-        printf("%s:%d: address was 0x%X but should have been 0x100C\n",
-               __FILE__, __LINE__, address);
-        branch_counter = -1;
-        state->nia = 0x1010;
-        return 0;
-    } else if (state->nia != 0x100C) {
-        printf("%s:%d: state->nia was 0x%X but should have been 0x100C\n",
-               __FILE__, __LINE__, state->nia);
-        branch_counter = 99;
-        state->nia = 0x1010;
-        return 0;
-    } else {
-        ASSERT(branch_counter >= 0 && branch_counter < 3);  // Else we're probably infinite-looping.
-        branch_counter++;
-        state->nia = 0x1010;  // Should only take effect when breaking out.
-        return branch_counter < 3;
+    callback_counter++;
+    if (callback_counter == 4) {
+        /* Set a value with the low byte clear to verify that the code
+         * reads the full 32-bit value. */
+        state->branch_exit_flag = 1<<31;
+        /* Modify r3 so the code exits. */
+        state->gpr[3] = 1;
     }
 }
 
+static void configure_handle(binrec_t *handle)
+{
+    binrec_enable_branch_exit_test(handle, true);
+
+    /* We use the post-instruction callback to set the exit flag during
+     * execution without needing a separate thread. */
+    binrec_set_post_insn_callback(handle, post_insn_callback);
+}
 
 int main(void)
 {
@@ -55,10 +52,8 @@ int main(void)
     EXPECT(memory = malloc(0x10000));
 
     static const uint32_t ppc_code[] = {
-        0x4800000C,  // b 0x100C
-        0x60000000,  // nop
-        0x48000000,  // b 0x1008
-        0x48000000,  // b 0x100C
+        0x2C030000,  // cmpwi r3,0
+        0x4182FFFC,  // beq 0x1000
         0x4E800020,  // blr
     };
     const uint32_t start_address = 0x1000;
@@ -66,11 +61,10 @@ int main(void)
 
     PPCState state;
     memset(&state, 0, sizeof(state));
-    state.branch_callback = branch_callback;
-    branch_counter = 0;
 
+    callback_counter = 0;
     if (!call_guest_code(BINREC_ARCH_PPC_7XX, &state, memory, start_address,
-                         log_capture, NULL, NULL)) {
+                         log_capture, configure_handle, NULL)) {
         const char *log_messages = get_log_messages();
         if (log_messages) {
             fputs(log_messages, stdout);
@@ -78,7 +72,7 @@ int main(void)
         FAIL("Failed to execute guest code");
     }
 
-    EXPECT_EQ(branch_counter, 3);
+    EXPECT_EQ(callback_counter, 7);
 
     free(memory);
     return EXIT_SUCCESS;
