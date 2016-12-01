@@ -5830,7 +5830,7 @@ static bool translate_block(HostX86Context *ctx, int block_index)
                 jump_condition = insn->host_data_16 & 0xF;
             } else {
                 jump_condition = (insn->opcode == RTLOP_GOTO_IF_Z
-                                  ? X86OP_JZ_Jb : X86OP_JNZ_Jb) & 0xF;
+                                  ? X86CC_Z : X86CC_NZ);
             }
             const X86Opcode short_opcode = X86OP_Jcc_Jb | jump_condition;
             const X86Opcode long_opcode = X86OP_Jcc_Jz | jump_condition;
