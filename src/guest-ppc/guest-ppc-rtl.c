@@ -2929,6 +2929,18 @@ static void translate_branch_terminal(
         skip_label = rtl_alloc_label(unit);
     }
 
+    /* For a terminal branch, we can only have dead stores if the branch
+     * is conditional. */
+    uint32_t crb_store_branch = 0;
+    uint16_t crb_reg[32];
+    RTLInsn crb_insn[32];
+    if ((BO & 0x14) != 0x14 && ctx->trim_cr_stores) {
+        uint32_t crb_store_next;
+        guest_ppc_trim_cr_stores(ctx, BO, BI, &crb_store_branch,
+                                 &crb_store_next, crb_reg, crb_insn);
+        ASSERT(!crb_store_next);
+    }
+
     if (!(BO & 0x04)) {
         const int ctr = get_ctr(ctx);
         const int new_ctr = rtl_alloc_register(unit, RTLTYPE_INT32);
@@ -2947,6 +2959,16 @@ static void translate_branch_terminal(
         const int test = test_crb(ctx, BI);
         rtl_add_insn(unit, BO & 0x08 ? RTLOP_GOTO_IF_Z : RTLOP_GOTO_IF_NZ,
                      0, test, 0, skip_label);
+    }
+
+    while (crb_store_branch) {
+        const int bit = ctz32(crb_store_branch);
+        crb_store_branch ^= 1 << bit;
+        if (crb_insn[bit].opcode) {
+            rtl_add_insn_copy(unit, &crb_insn[bit]);
+        }
+        rtl_add_insn(unit, RTLOP_SET_ALIAS,
+                     0, crb_reg[bit], 0, ctx->alias.crb[bit]);
     }
 
     if (LK) {

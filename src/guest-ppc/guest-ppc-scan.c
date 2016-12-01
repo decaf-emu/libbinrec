@@ -1138,6 +1138,12 @@ static void scan_branches(GuestPPCContext *ctx)
                 target = address + disp;
             }
             block->branch_block = get_block(ctx, target, false);
+        } else if (insn_OPCD(insn) == OPCD_x13
+                   && (insn_XO_10(insn) == XO_BCLR
+                       || insn_XO_10(insn) == XO_BCCTR)
+                   && block->is_conditional_branch) {
+            block->next_block =
+                get_block(ctx, block->start + block->len, false);
         } else if (insn_OPCD(insn) == OPCD_B) {
             const int32_t disp = insn_LI(insn);
             uint32_t target;

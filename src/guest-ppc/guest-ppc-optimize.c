@@ -151,7 +151,6 @@ void guest_ppc_trim_cr_stores(
     const bool is_conditional = ((BO & 0x14) != 0x14);
     const int branch_block = ctx->blocks[ctx->current_block].branch_block;
     const int next_block = ctx->blocks[ctx->current_block].next_block;
-    ASSERT(branch_block >= 0);  // Must be valid if we have a label target.
 
     /*
      * Note that this function does not attempt to handle the case where
@@ -181,7 +180,8 @@ void guest_ppc_trim_cr_stores(
      * not-taken paths.  For an unconditional branch, this will kill
      * all dead stores and the second half of the logic will be skipped. */
     const uint32_t crb_dead_branch =
-        ctx->blocks[branch_block].crb_changed_recursive & crb_dirty;
+        (branch_block < 0 ? 0 :
+             ctx->blocks[branch_block].crb_changed_recursive & crb_dirty);
     const uint32_t crb_dead_next =
         (!is_conditional ? crb_dead_branch :
          next_block < 0 ? 0 :
