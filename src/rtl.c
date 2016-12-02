@@ -1564,9 +1564,11 @@ bool rtl_optimize_unit(RTLUnit *unit, unsigned int flags)
     }
 
     /* Perform optimizations in the proper order. */
-    if (flags & BINREC_OPT_FOLD_CONSTANTS) {
-        rtl_opt_fold_constants(unit,
-                               (flags & BINREC_OPT_FOLD_FP_CONSTANTS) != 0);
+    if (flags & (BINREC_OPT_FOLD_CONSTANTS | BINREC_OPT_FOLD_VECTORS)) {
+        rtl_opt_fold_registers(unit,
+                               (flags & BINREC_OPT_FOLD_CONSTANTS) != 0,
+                               (flags & BINREC_OPT_FOLD_FP_CONSTANTS) != 0,
+                               (flags & BINREC_OPT_FOLD_VECTORS) != 0);
     }
     if (flags & BINREC_OPT_DECONDITION) {
         rtl_opt_decondition(unit);

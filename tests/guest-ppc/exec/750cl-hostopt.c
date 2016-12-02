@@ -27,7 +27,8 @@ static void configure_handle(binrec_t *handle)
                                   | BINREC_OPT_DSE
                                   | BINREC_OPT_DECONDITION
                                   | BINREC_OPT_DEEP_DATA_FLOW
-                                  | BINREC_OPT_FOLD_CONSTANTS;
+                                  | BINREC_OPT_FOLD_CONSTANTS
+                                  | BINREC_OPT_FOLD_VECTORS;
     ASSERT(binrec_native_arch() == BINREC_ARCH_X86_64_SYSV
         || binrec_native_arch() == BINREC_ARCH_X86_64_WINDOWS);
     const unsigned int host_opt = BINREC_OPT_H_X86_ADDRESS_OPERANDS

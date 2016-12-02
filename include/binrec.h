@@ -621,6 +621,19 @@ typedef struct binrec_setup_t {
 #define BINREC_OPT_FOLD_FP_CONSTANTS  (1<<6)
 
 /**
+ * BINREC_OPT_FOLD_VECTORS:  Attempt to eliminate vector registers whose
+ * values are only used as scalars.  For example, if two scalar values are
+ * merged into a vector but are immediately extracted to scalars again,
+ * the vector register is not needed and the initial scalar values can be
+ * forwarded to the later computations.
+ *
+ * This optimization only finds removable vector registers and forwards
+ * the associated scalar values; the BINREC_OPT_DSE optimization flag is
+ * required to eliminate the vectors from the code stream.
+ */
+#define BINREC_OPT_FOLD_VECTORS  (1<<7)
+
+/**
  * BINREC_OPT_NATIVE_IEEE_NAN:  Use the host's rules for NaN results of
  * floating-point operations, even when those rules differ from the guest
  * architecture, and allow the host to reorder operands to a floating-point
@@ -645,7 +658,7 @@ typedef struct binrec_setup_t {
  * the IEEE 754 specifications, it will behave correctly under this
  * optimization.
  */
-#define BINREC_OPT_NATIVE_IEEE_NAN  (1<<7)
+#define BINREC_OPT_NATIVE_IEEE_NAN  (1<<8)
 
 /**
  * BINREC_OPT_NATIVE_IEEE_UNDERFLOW:  Use the host's definition of
@@ -674,7 +687,7 @@ typedef struct binrec_setup_t {
  * the IEEE 754 specifications, it will behave correctly under this
  * optimization.
  */
-#define BINREC_OPT_NATIVE_IEEE_UNDERFLOW  (1<<8)
+#define BINREC_OPT_NATIVE_IEEE_UNDERFLOW  (1<<9)
 
 /*----------- Guest-architecture-specific optimization flags ------------*/
 

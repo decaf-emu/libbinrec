@@ -215,6 +215,7 @@ static bool process_command_line(int argc, char **argv)
                     "        -Odse-fp             Enable DSE for floating-point operations\n"
                     "        -Ofold-constants     Constant folding\n"
                     "        -Ofold-fp-constants  Constant folding for floating-point operations\n"
+                    "        -Ofold-vectors       Vector operation folding\n"
                     "        -Onative-ieee-nan    Use host rules for floating-point NaNs\n"
                     "        -Onative-ieee-underflow\n"
                     "                             Use host rules for floating-point underflow\n"
@@ -324,6 +325,8 @@ static bool process_command_line(int argc, char **argv)
                     opt_common |= BINREC_OPT_FOLD_CONSTANTS;
                 } else if (strcmp(name, "fold-fp-constants") == 0) {
                     opt_common |= BINREC_OPT_FOLD_FP_CONSTANTS;
+                } else if (strcmp(name, "fold-vectors") == 0) {
+                    opt_common |= BINREC_OPT_FOLD_VECTORS;
                 } else if (strcmp(name, "native-ieee-nan") == 0) {
                     opt_common |= BINREC_OPT_NATIVE_IEEE_NAN;
                 } else if (strcmp(name, "native-ieee-underflow") == 0) {
@@ -404,7 +407,8 @@ static bool process_command_line(int argc, char **argv)
             opt_common |= BINREC_OPT_BASIC
                         | BINREC_OPT_DECONDITION
                         | BINREC_OPT_DSE
-                        | BINREC_OPT_FOLD_CONSTANTS;
+                        | BINREC_OPT_FOLD_CONSTANTS
+                        | BINREC_OPT_FOLD_VECTORS;
             if (arch == GUEST_ARCH_PPC_7XX) {
                 opt_guest |= BINREC_OPT_G_PPC_TRIM_CR_STORES;
                 opt_guest |= BINREC_OPT_G_PPC_USE_SPLIT_FIELDS;

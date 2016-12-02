@@ -1327,9 +1327,7 @@ static bool make_vbuild2(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
     RTLRegister * const src1reg = &unit->regs[src1];
     RTLRegister * const src2reg = &unit->regs[src2];
     const int insn_index = unit->num_insns;
-    /* We have no way to represent vector constants, so all vector
-     * operations are non-foldable. */
-    destreg->source = RTLREG_RESULT_NOFOLD;
+    destreg->source = RTLREG_RESULT;
     destreg->result.opcode = insn->opcode;
     destreg->result.is_imm = 0;
     destreg->result.src1 = src1;
@@ -1369,7 +1367,7 @@ static bool make_vbroadcast(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
     RTLRegister * const destreg = &unit->regs[dest];
     RTLRegister * const src1reg = &unit->regs[src1];
     const int insn_index = unit->num_insns;
-    destreg->source = RTLREG_RESULT_NOFOLD;
+    destreg->source = RTLREG_RESULT;
     destreg->result.opcode = insn->opcode;
     destreg->result.is_imm = 0;
     destreg->result.src1 = src1;
@@ -1410,7 +1408,7 @@ static bool make_vextract(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
     RTLRegister * const destreg = &unit->regs[dest];
     RTLRegister * const src1reg = &unit->regs[src1];
     const int insn_index = unit->num_insns;
-    destreg->source = RTLREG_RESULT_NOFOLD;
+    destreg->source = RTLREG_RESULT;
     destreg->result.opcode = insn->opcode;
     destreg->result.is_imm = 0;
     destreg->result.src1 = src1;
@@ -1457,7 +1455,7 @@ static bool make_vinsert(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
     RTLRegister * const src1reg = &unit->regs[src1];
     RTLRegister * const src2reg = &unit->regs[src2];
     const int insn_index = unit->num_insns;
-    destreg->source = RTLREG_RESULT_NOFOLD;
+    destreg->source = RTLREG_RESULT;
     destreg->result.opcode = insn->opcode;
     destreg->result.is_imm = 0;
     destreg->result.src1 = src1;

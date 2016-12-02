@@ -58,6 +58,7 @@ namespace Optimize {
     const unsigned int DSE_FP = BINREC_OPT_DSE_FP;
     const unsigned int FOLD_CONSTANTS = BINREC_OPT_FOLD_CONSTANTS;
     const unsigned int FOLD_FP_CONSTANTS = BINREC_OPT_FOLD_FP_CONSTANTS;
+    const unsigned int FOLD_VECTORS = BINREC_OPT_FOLD_VECTORS;
     const unsigned int NATIVE_IEEE_NAN = BINREC_OPT_NATIVE_IEEE_NAN;
     const unsigned int NATIVE_IEEE_UNDERFLOW = BINREC_OPT_NATIVE_IEEE_UNDERFLOW;
 

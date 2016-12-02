@@ -27,7 +27,8 @@ static void configure_handle(binrec_t *handle)
                                   | BINREC_OPT_DSE
                                   | BINREC_OPT_DECONDITION
                                   | BINREC_OPT_DEEP_DATA_FLOW
-                                  | BINREC_OPT_FOLD_CONSTANTS;
+                                  | BINREC_OPT_FOLD_CONSTANTS
+                                  | BINREC_OPT_FOLD_VECTORS;
     binrec_set_optimization_flags(handle, common_opt, 0, 0);
 }
 

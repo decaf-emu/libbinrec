@@ -169,7 +169,7 @@ static bool rollback_reg_death(const RTLUnit * const unit, const int reg_index)
 /**
  * fold_constant:  Perform the operation specified by reg->result and
  * return the result value in 64 bits (bitcast from floating-point if
- * necessary).  Helper for fold_one_register.
+ * necessary).  Helper for fold_one_reg_constant().
  *
  * [Parameters]
  *     unit: RTLUnit to operate on.
@@ -892,7 +892,7 @@ static inline bool should_fold_constant(RTLUnit *unit, RTLRegister *reg,
  * convert_to_regimm:  Convert the register-register operation which sets
  * the given register to a register-immediate operation, if possible.  On
  * success, the register's result field is updated with the appropriate
- * opcode, register, and immediate values.  Helper for fold_one_register().
+ * opcode, register, and immediate values.  Helper for fold_one_reg_constant().
  *
  * [Parameters]
  *     unit: RTLUnit to operate on.
@@ -1147,9 +1147,10 @@ static inline bool convert_to_regimm(RTLUnit * const unit,
 /*-----------------------------------------------------------------------*/
 
 /**
- * fold_one_register:  Attempt to perform constant folding on a register.
- * The register must be of type RTLREG_RESULT; all operands are assumed
- * to have been folded if possible.
+ * fold_one_reg_constant:  Attempt to perform constant folding on a
+ * register.  The register must be of type RTLREG_RESULT or
+ * RTLREG_RESULT_NOFOLD; all operands are assumed to have been folded if
+ * possible.
  *
  * [Parameters]
  *     unit: RTLUnit to operate on.
@@ -1158,18 +1159,15 @@ static inline bool convert_to_regimm(RTLUnit * const unit,
  * [Return value]
  *     True if constant folding was performed, false if not.
  */
-static inline void fold_one_register(RTLUnit * const unit,
-                                     RTLRegister * const reg, bool fold_fp)
+static inline void fold_one_reg_constant(RTLUnit * const unit,
+                                         RTLRegister * const reg, bool fold_fp)
 {
     ASSERT(unit);
     ASSERT(reg);
     ASSERT(reg->live);
-    ASSERT(reg->source == RTLREG_RESULT);
+    ASSERT(reg->source == RTLREG_RESULT || reg->source == RTLREG_RESULT_NOFOLD);
 
     RTLInsn * const birth_insn = &unit->insns[reg->birth];
-
-    /* Flag the register as not foldable by default. */
-    reg->source = RTLREG_RESULT_NOFOLD;
 
     /* Convert SELECT with a constant condition operand to MOVE.  The MOVE
      * will be folded in turn if possible. */
@@ -1275,6 +1273,150 @@ static inline void fold_one_register(RTLUnit * const unit,
             ASSERT(src3_is_constant);
             rollback_reg_death(unit, src3);
         }
+    }
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
+ * fold_one_reg_vector:  Attempt to perform vector folding on a register.
+ * The register must be of type RTLREG_RESULT or RTLREG_RESULT_NOFOLD.
+ *
+ * [Parameters]
+ *     unit: RTLUnit to operate on.
+ *     reg: Register on which to perform constant folding.
+ * [Return value]
+ *     True if constant folding was performed, false if not.
+ */
+static inline void fold_one_reg_vector(RTLUnit * const unit,
+                                       RTLRegister * const reg)
+{
+    ASSERT(unit);
+    ASSERT(reg);
+    ASSERT(reg->live);
+    ASSERT(reg->source == RTLREG_RESULT || reg->source == RTLREG_RESULT_NOFOLD);
+
+    const int src1 = reg->result.src1;
+    RTLRegister * const src1_reg = &unit->regs[src1];
+    if (!rtl_register_is_vector(src1_reg)) {  // Also works for src=0.
+        return;
+    }
+    /* Previous registers will already have been folded. */
+    if (src1_reg->source != RTLREG_RESULT_NOFOLD) {
+        return;
+    }
+
+    RTLInsn * const birth_insn = &unit->insns[reg->birth];
+    const int element = reg->result.elem;
+    int forwarded_reg;
+
+    if (reg->result.opcode == RTLOP_VEXTRACT) {
+
+        /* We can copy the source of a vector-creating instruction to this
+         * register.  If the instruction is VINSERT, we only look at the
+         * element inserted at that instruction; we could theoretically
+         * iterate back through the dependency chain to find the original
+         * source for the other element, but at that point we run the risk
+         * of hurting performance through increased register pressure if
+         * we end up not being able to eliminate all the intermediate
+         * registers. */
+        if (src1_reg->result.opcode == RTLOP_VBUILD2) {
+            forwarded_reg =
+                element==0 ? src1_reg->result.src1 : src1_reg->result.src2;
+        } else if (src1_reg->result.opcode == RTLOP_VBROADCAST) {
+            forwarded_reg = src1_reg->result.src1;
+        } else if (src1_reg->result.opcode == RTLOP_VINSERT
+                   && src1_reg->result.elem == element) {
+            forwarded_reg = src1_reg->result.src2;
+        } else {
+            return;
+        }
+
+        reg->result.opcode = RTLOP_MOVE;
+        reg->result.src1 = forwarded_reg;
+        reg->result.elem = 0;
+#ifdef RTL_DEBUG_OPTIMIZE
+        log_info(unit->handle, "Reduced VEXTRACT r%d to MOVE from r%d",
+                 (int)(reg - unit->regs), forwarded_reg);
+#endif
+
+    } else if (reg->result.opcode == RTLOP_VINSERT) {
+
+        /* We can eliminate a previous VBUILD2, VBROADCAST, or VINSERT
+         * by rewriting the appropriate element.  In this case, we don't
+         * make any changes unless we can actually kill src1, since if
+         * it stayed live, we'd probably just increase register pressure
+         * from extending the live ranges of its source registers. */
+        if (src1_reg->death != reg->birth
+         || prev_reg_use(unit, src1, reg->birth) != src1_reg->birth) {
+            return;
+        }
+
+        if (src1_reg->result.opcode == RTLOP_VBUILD2) {
+            reg->result.opcode = RTLOP_VBUILD2;
+            if (element == 0) {
+                reg->result.src1 = reg->result.src2;
+                forwarded_reg = reg->result.src2 = src1_reg->result.src2;
+            } else {
+                forwarded_reg = reg->result.src1 = src1_reg->result.src1;
+            }
+            reg->result.elem = 0;
+        } else if (src1_reg->result.opcode == RTLOP_VBROADCAST) {
+            reg->result.opcode = RTLOP_VBUILD2;
+            if (element == 0) {
+                reg->result.src1 = reg->result.src2;
+                forwarded_reg = reg->result.src2 = src1_reg->result.src1;
+            } else {
+                forwarded_reg = reg->result.src1 = src1_reg->result.src1;
+            }
+            reg->result.elem = 0;
+        } else if (src1_reg->result.opcode == RTLOP_VINSERT) {
+            if (src1_reg->result.elem == element) {
+                /* We're replacing the same element as the last VINSERT
+                 * replaced, so just bring that vector forward. */
+                forwarded_reg = reg->result.src1 = src1_reg->result.src1;
+            } else {
+                /* We're replacing the element the last VINSERT left alone,
+                 * so we can build a new vector from the two scalars. */
+                reg->result.opcode = RTLOP_VBUILD2;
+                if (element == 0) {
+                    reg->result.src1 = reg->result.src2;
+                    forwarded_reg = reg->result.src2 = src1_reg->result.src2;
+                } else {
+                    forwarded_reg = reg->result.src1 = src1_reg->result.src2;
+                }
+                reg->result.elem = 0;
+            }
+        } else {
+            return;
+        }
+
+#ifdef RTL_DEBUG_OPTIMIZE
+        log_info(unit->handle, "Forwarded r%d from %d to VINSERT r%d%s",
+                 forwarded_reg, src1_reg->birth, (int)(reg - unit->regs),
+                 (reg->result.opcode == RTLOP_VINSERT
+                      ? "" : " and reduced to VBUILD2"));
+#endif
+
+    } else {
+        return;
+    }
+
+    birth_insn->opcode = reg->result.opcode;
+    birth_insn->src1 = reg->result.src1;
+    birth_insn->src2 = reg->result.src2;
+    birth_insn->elem = reg->result.elem;
+
+    if (unit->regs[forwarded_reg].death < reg->birth) {
+#ifdef RTL_DEBUG_OPTIMIZE
+        log_info(unit->handle, "Extended r%d live range to %d",
+                 forwarded_reg, reg->birth);
+#endif
+        unit->regs[forwarded_reg].death = reg->birth;
+    }
+
+    if (src1_reg->death == reg->birth) {
+        rollback_reg_death(unit, src1);
     }
 }
 
@@ -2018,7 +2160,8 @@ void rtl_opt_drop_dead_stores(RTLUnit *unit, bool ignore_fexc)
 
 /*-----------------------------------------------------------------------*/
 
-void rtl_opt_fold_constants(RTLUnit *unit, bool fold_fp)
+void rtl_opt_fold_registers(RTLUnit *unit, bool fold_constants,
+                            bool fold_fp_constants, bool fold_vectors)
 {
     ASSERT(unit);
     ASSERT(unit->insns);
@@ -2029,8 +2172,15 @@ void rtl_opt_fold_constants(RTLUnit *unit, bool fold_fp)
         if (insn->dest) {
             RTLRegister * const reg = &unit->regs[insn->dest];
             if (reg->source == RTLREG_RESULT) {
-                fold_one_register(unit, reg, fold_fp);
-            } else if (reg->source == RTLREG_MEMORY) {
+                /* Flag the register as not foldable by default. */
+                reg->source = RTLREG_RESULT_NOFOLD;
+                if (fold_vectors) {
+                    fold_one_reg_vector(unit, reg);
+                }
+                if (fold_constants) {
+                    fold_one_reg_constant(unit, reg, fold_fp_constants);
+                }
+            } else if (fold_constants && reg->source == RTLREG_MEMORY) {
                 const void *readonly_ptr = get_readonly_ptr(unit, reg);
                 if (readonly_ptr) {
                     fold_readonly_load(unit, reg, readonly_ptr);
