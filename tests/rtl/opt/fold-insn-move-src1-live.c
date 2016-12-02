@@ -15,27 +15,21 @@ static unsigned int opt_flags = BINREC_OPT_FOLD_CONSTANTS;
 
 static int add_rtl(RTLUnit *unit)
 {
-    int reg1, reg2, reg3;
+    int reg1, reg2;
     EXPECT(reg1 = rtl_alloc_register(unit, RTLTYPE_INT32));
-    EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg1, 0, 0, 1));
+    EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg1, 0, 0, 1234));
     EXPECT(reg2 = rtl_alloc_register(unit, RTLTYPE_INT32));
-    EXPECT(rtl_add_insn(unit, RTLOP_ADDI, reg2, reg1, 0, 2));
-    EXPECT(reg3 = rtl_alloc_register(unit, RTLTYPE_INT32));
-    EXPECT(rtl_add_insn(unit, RTLOP_ADD, reg3, reg1, reg2, 0));
+    /* This MOVE should not be folded because reg1 is live past it. */
+    EXPECT(rtl_add_insn(unit, RTLOP_MOVE, reg2, reg1, 0, 0));
+    EXPECT(rtl_add_insn(unit, RTLOP_NOP, 0, reg1, 0, 0));
 
     return EXIT_SUCCESS;
 }
 
 static const char expected[] =
-    #ifdef RTL_DEBUG_OPTIMIZE
-        "[info] Folded r2 to constant value 3 at 1\n"
-        "[info] Folded r3 to constant value 4 at 2\n"
-        "[info] r1 no longer used, setting death = birth\n"
-        "[info] r2 no longer used, setting death = birth\n"
-    #endif
-    "    0: LOAD_IMM   r1, 1\n"
-    "    1: LOAD_IMM   r2, 3\n"
-    "    2: LOAD_IMM   r3, 4\n"
+    "    0: LOAD_IMM   r1, 1234\n"
+    "    1: MOVE       r2, r1\n"
+    "    2: NOP        -, r1\n"
     "\n"
     "Block 0: <none> --> [0,2] --> <none>\n"
     ;

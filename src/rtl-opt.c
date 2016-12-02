@@ -857,6 +857,38 @@ static inline uint64_t fold_constant(RTLUnit * const unit,
 /*-----------------------------------------------------------------------*/
 
 /**
+ * should_fold_constant:  Return whether the instruction that sets the
+ * given register should be folded to LOAD_IMM, assuming the operands to
+ * the instruction are constant.
+ *
+ * [Parameters]
+ *     unit: RTLUnit to operate on.
+ *     reg: Register to possibly fold (assumed to be RTLREG_RESULT).
+ *     fold_fp: True to allow folding of imprecise floating-point
+ *         operations; false to only allow precise folding.
+ * [Return value]
+ *     True if the operation should be folded, false if not.
+ */
+static inline bool should_fold_constant(RTLUnit *unit, RTLRegister *reg,
+                                        bool fold_fp)
+{
+    if (reg->result.opcode == RTLOP_MOVE) {
+        /* Only fold a MOVE if the source register dies; otherwise we
+         * don't gain anything, and on x86 we lose the opportunity for a
+         * zero-latency move. */
+        return unit->regs[reg->result.src1].death == reg->birth;
+    } else if (fold_fp) {
+        return true;
+    } else {
+        const RTLOpcode opcode = reg->result.opcode;
+        return (opcode < RTLOP_FCAST
+                || (opcode >= RTLOP_FNEG && opcode <= RTLOP_FNABS));
+    }
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
  * convert_to_regimm:  Convert the register-register operation which sets
  * the given register to a register-immediate operation, if possible.  On
  * success, the register's result field is updated with the appropriate
@@ -1115,19 +1147,6 @@ static inline bool convert_to_regimm(RTLUnit * const unit,
 /*-----------------------------------------------------------------------*/
 
 /**
- * fold_is_precise:  Return whether constant folding for the given opcode
- * is a precise operation.  Imprecise operations are not folded unless the
- * fold_fp flag passed to fold_one_register() is true.
- */
-static inline CONST_FUNCTION bool fold_is_precise(RTLOpcode opcode)
-{
-    return opcode < RTLOP_FCAST
-        || (opcode >= RTLOP_FNEG && opcode <= RTLOP_FNABS);
-}
-
-/*-----------------------------------------------------------------------*/
-
-/**
  * fold_one_register:  Attempt to perform constant folding on a register.
  * The register must be of type RTLREG_RESULT; all operands are assumed
  * to have been folded if possible.
@@ -1202,7 +1221,7 @@ static inline void fold_one_register(RTLUnit * const unit,
     if (src1_is_constant
      && (!src2 || src2_is_constant)
      && (!src3 || src3_is_constant)) {
-        if (fold_fp || fold_is_precise(reg->result.opcode)) {
+        if (should_fold_constant(unit, reg, fold_fp)) {
             reg->source = RTLREG_CONSTANT;
             reg->value.i64 = fold_constant(unit, reg);
             if (reg->type == RTLTYPE_INT32) {
