@@ -167,6 +167,38 @@ static bool rollback_reg_death(const RTLUnit * const unit, const int reg_index)
 /*-----------------------------------------------------------------------*/
 
 /**
+ * should_fold_constant:  Return whether the instruction that sets the
+ * given register should be folded to LOAD_IMM, assuming the operands to
+ * the instruction are constant.
+ *
+ * [Parameters]
+ *     unit: RTLUnit to operate on.
+ *     reg: Register to possibly fold (assumed to be RTLREG_RESULT).
+ *     fold_fp: True to allow folding of imprecise floating-point
+ *         operations; false to only allow precise folding.
+ * [Return value]
+ *     True if the operation should be folded, false if not.
+ */
+static inline bool should_fold_constant(RTLUnit *unit, RTLRegister *reg,
+                                        bool fold_fp)
+{
+    if (reg->result.opcode == RTLOP_MOVE) {
+        /* Only fold a MOVE if the source register dies; otherwise we
+         * don't gain anything, and on x86 we lose the opportunity for a
+         * zero-latency move. */
+        return unit->regs[reg->result.src1].death == reg->birth;
+    } else if (fold_fp) {
+        return reg->result.opcode < RTLOP_VBUILD2;
+    } else {
+        const RTLOpcode opcode = reg->result.opcode;
+        return (opcode < RTLOP_FCAST
+                || (opcode >= RTLOP_FNEG && opcode <= RTLOP_FNABS));
+    }
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
  * fold_constant:  Perform the operation specified by reg->result and
  * return the result value in 64 bits (bitcast from floating-point if
  * necessary).  Helper for fold_one_reg_constant().
@@ -796,8 +828,8 @@ static inline uint64_t fold_constant(RTLUnit * const unit,
                      -unit->regs[reg->result.src3].value.f64));
         }
 
-      /* The remainder will never appear with RTLREG_RESULT, but we list
-       * them individually rather than using a default case so the compiler
+      /* The remainder will never appear here, but we list them
+       * individually rather than using a default case so the compiler
        * will warn us if we add a new opcode but don't include it in this
        * switch statement. */
       case RTLOP_NOP:
@@ -852,38 +884,6 @@ static inline uint64_t fold_constant(RTLUnit * const unit,
     log_error(unit->handle, "Invalid opcode %u on RESULT register %d",
               reg->result.opcode, (int)(reg - unit->regs));
     return 0;
-}
-
-/*-----------------------------------------------------------------------*/
-
-/**
- * should_fold_constant:  Return whether the instruction that sets the
- * given register should be folded to LOAD_IMM, assuming the operands to
- * the instruction are constant.
- *
- * [Parameters]
- *     unit: RTLUnit to operate on.
- *     reg: Register to possibly fold (assumed to be RTLREG_RESULT).
- *     fold_fp: True to allow folding of imprecise floating-point
- *         operations; false to only allow precise folding.
- * [Return value]
- *     True if the operation should be folded, false if not.
- */
-static inline bool should_fold_constant(RTLUnit *unit, RTLRegister *reg,
-                                        bool fold_fp)
-{
-    if (reg->result.opcode == RTLOP_MOVE) {
-        /* Only fold a MOVE if the source register dies; otherwise we
-         * don't gain anything, and on x86 we lose the opportunity for a
-         * zero-latency move. */
-        return unit->regs[reg->result.src1].death == reg->birth;
-    } else if (fold_fp) {
-        return true;
-    } else {
-        const RTLOpcode opcode = reg->result.opcode;
-        return (opcode < RTLOP_FCAST
-                || (opcode >= RTLOP_FNEG && opcode <= RTLOP_FNABS));
-    }
 }
 
 /*-----------------------------------------------------------------------*/
