@@ -4021,6 +4021,38 @@ static bool translate_block(HostX86Context *ctx, int block_index)
           case RTLOP_SLL:
           case RTLOP_SRL:
           case RTLOP_SRA:
+            if (handle->setup.host_features & BINREC_FEATURE_X86_BMI2) {
+                const X86Register host_dest = ctx->regs[dest].host_reg;
+                const bool is64 = int_type_is_64(unit->regs[src1].type);
+                const X86Opcode opcode = (
+                    insn->opcode == RTLOP_SLL ? X86OP_SHLX :
+                    insn->opcode == RTLOP_SRL ? X86OP_SHRX :
+                                 /* RTLOP_SRA */ X86OP_SARX);
+                /* There's also a RORX instruction in BMI2, but it takes an
+                 * immediate count instead of a register count because...
+                 * uh, I dunno, I guess because Intel wanted to annoy
+                 * compiler writers? */
+
+                X86Register host_shift;
+                if (is_spilled(ctx, insn_index, src2)) {
+                    ASSERT(host_dest != ctx->regs[src1].host_reg
+                           || is_spilled(ctx, insn_index, src1));
+                    /* 32-bit load even if src2 is 64 bits wide because we
+                     * only need the low 5-6 bits of the value. */
+                    append_load_gpr(&code, RTLTYPE_INT32, host_dest,
+                                    X86_SP, ctx->regs[src2].spill_offset);
+                    host_shift = host_dest;
+                } else {
+                    host_shift = ctx->regs[src2].host_reg;
+                }
+
+                append_vex_insn_ModRM_ctx(
+                    &code, is64, false, opcode,
+                    host_dest, ctx, insn_index, src1, host_shift);
+                break;
+            }
+            /* Otherwise fall through to non-BMI2 handling. */
+
           case RTLOP_ROL:
           case RTLOP_ROR: {
             const X86Register host_dest = ctx->regs[dest].host_reg;
@@ -4091,7 +4123,7 @@ static bool translate_block(HostX86Context *ctx, int block_index)
             ctx->last_test_reg = 0;
             ctx->last_cmp_reg = 0;
             break;
-          }  // case RTLOP_{SLL,SRL,SRA,ROL,ROR}
+          }  // case RTLOP_{ROL,ROR} (and non-BMI2 SLL/SRL/SRA)
 
           case RTLOP_CLZ: {
             const X86Register host_dest = ctx->regs[dest].host_reg;

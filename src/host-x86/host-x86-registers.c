@@ -1090,50 +1090,59 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
                 if (src1 && !src1_info->spilled
                  && src1_reg->death == insn_index) {
                     /* The first operand's register can usually be reused
-                     * for the destination, except for:
-                     * - Shifts with src1 in rCX (since we need CL for the
-                     *   count)
-                     * - BFEXT with BMI1 extensions extracting from the
-                     *   middle of the register (to use dest as a temporary)
-                     * - BFINS with src1==src2 (since we need to write dest
-                     *   before reading src2)
-                     * - LOAD or LOAD_BR to an XMM register (different
-                     *   register types)
-                     */
+                     * for the destination, except for the cases below. */
                     bool src1_ok;
                     switch (insn->opcode) {
                       case RTLOP_SLL:
                       case RTLOP_SRL:
                       case RTLOP_SRA:
+                        /* We can reuse src1 for BMI2-enabled shifts unless
+                         * src2 is spilled, in which case we need dest as a
+                         * temporary. */
+                        if (ctx->handle->setup.host_features & BINREC_FEATURE_X86_BMI2) {
+                            src1_ok = !src2_info->spilled;
+                            break;
+                        }
+                        /* Otherwise fall through to non-BMI2 logic. */
                       case RTLOP_ROL:
                       case RTLOP_ROR:
-                        /* src1==src2 should normally never happen (unless
-                         * the input is doing something bizarre), but if it
-                         * does and CX is in use, the code generator will
-                         * get confused, so avoid that case as well. */
+                        /* Can't reuse a src1 in rCX because we need CL for
+                         * the shift count.  src1==src2 should normally
+                         * never happen (unless the input is doing
+                         * something bizarre), but if it does and CX is in
+                         * use, the code generator will get confused, so
+                         * avoid that case as well. */
                         src1_ok = (src1_info->host_reg != X86_CX
                                    && !(src1 == src2
                                         && ctx->reg_map[X86_CX] != 0));
                         break;
                       case RTLOP_BFEXT: {
+                        /* Can't reuse src1 when using the BEXTR instruction
+                         * because we store the BEXTR control word in dest. */
+                        const unsigned int features =
+                            ctx->handle->setup.host_features;
                         const int operand_size =
                             int_type_is_64(src1_reg->type) ? 64 : 32;
                         const int start = insn->bitfield.start;
                         const int count = insn->bitfield.count;
-                        src1_ok = !((ctx->handle->setup.host_features
-                                     & BINREC_FEATURE_X86_BMI1)
+                        src1_ok = !((features & BINREC_FEATURE_X86_BMI1)
                                     && start != 0
                                     && start + count < operand_size);
                         break;
                       }
                       case RTLOP_BFINS:
+                        /* Can't reuse src1 if it's the same as src2 because
+                         * we need to write dest before reading src2. */
                         src1_ok = (src1_info->host_reg != src2_info->host_reg);
                         break;
                       case RTLOP_LOAD:
                       case RTLOP_LOAD_BR:
-                        /* This will also cause the temporary to
-                         * (unnecessarily) avoid src1, but since it's only
-                         * a temporary we don't worry about it. */
+                        /* Can't reuse src1 if dest is an XMM register
+                         * (this is obvious, but we need to explicitly set
+                         * src1_ok=false because there's no register type
+                         * check on preferred_reg).  This will also cause
+                         * the temporary to unnecessarily avoid src1, but
+                         * since it's only a temporary we let it slide. */
                         src1_ok = rtl_register_is_int(dest_reg);
                         break;
                       default:
@@ -1185,6 +1194,14 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
                            && insn->opcode <= RTLOP__LAST);
                     bool src2_ok = !(non_commutative[insn->opcode / 8]
                                      & (1 << (insn->opcode % 8)));
+                    if ((ctx->handle->setup.host_features & BINREC_FEATURE_X86_BMI2)
+                     && (insn->opcode == RTLOP_SLL
+                      || insn->opcode == RTLOP_SRL
+                      || insn->opcode == RTLOP_SRA)) {
+                        /* The BMI2 shift instructions are non-destructive,
+                         * so we can reuse either operand safely. */
+                        src2_ok = true;
+                    }
                     if (!(ctx->handle->common_opt & BINREC_OPT_NATIVE_IEEE_NAN)
                      && (insn->opcode == RTLOP_FADD
                       || insn->opcode == RTLOP_FMUL)) {
@@ -1228,11 +1245,15 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
         if (!dest_info->host_allocated) {
             /* Be careful not to allocate an unclobberable input register.
              * Currently this is just rCX (the shift count register) for
-             * shift-type instructions. */
+             * non-BMI2 shift-type instructions. */
             switch (insn->opcode) {
               case RTLOP_SLL:
               case RTLOP_SRL:
               case RTLOP_SRA:
+                if (ctx->handle->setup.host_features & BINREC_FEATURE_X86_BMI2) {
+                    break;
+                }
+                /* Fall through. */
               case RTLOP_ROL:
               case RTLOP_ROR:
                 avoid_regs |= 1 << X86_CX;
@@ -1283,9 +1304,15 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
           case RTLOP_SLL:
           case RTLOP_SRL:
           case RTLOP_SRA:
+            if (ctx->handle->setup.host_features & BINREC_FEATURE_X86_BMI2) {
+                need_temp = false;
+                break;
+            }
+            /* Fall through. */
           case RTLOP_ROL:
           case RTLOP_ROR:
-            /* Temporary needed if rCX is live and src2 is spilled. */
+            /* Temporary needed for non-BMI2 if rCX is live and src2 is
+             * spilled. */
             need_temp = (ctx->reg_map[X86_CX] != 0 && src2_info->spilled);
             break;
 
@@ -1958,6 +1985,11 @@ static void first_pass_for_block(HostX86Context *ctx, int block_index)
           case RTLOP_SLL:
           case RTLOP_SRL:
           case RTLOP_SRA:
+            if (ctx->handle->setup.host_features & BINREC_FEATURE_X86_BMI2) {
+                break;  // SHLX/SHRX/SARX have no fixed registers.
+            }
+            /* Otherwise fall through. */
+
           case RTLOP_ROL:
           case RTLOP_ROR: {
             if (!do_fixed_regs) {
@@ -1977,7 +2009,7 @@ static void first_pass_for_block(HostX86Context *ctx, int block_index)
              * translator doesn't support rCX as a shift destination. */
             ctx->regs[insn->dest].avoid_regs |= 1 << X86_CX;
             break;
-          }  // case RTLOP_{SLL,SRL,SRA,ROL,ROR}
+          }  // case RTLOP_{ROL,ROR} (and non-BMI2 SLL/SRL/SRA)
 
           case RTLOP_FCAST:
             /* FCAST touches MXCSR and uses a constant if the types are
