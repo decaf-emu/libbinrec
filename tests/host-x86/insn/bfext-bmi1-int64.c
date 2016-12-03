@@ -13,21 +13,20 @@
 
 static const binrec_setup_t setup = {
     .host = BINREC_ARCH_X86_64_SYSV,
+    .host_features = BINREC_FEATURE_X86_BMI1,
 };
 static const unsigned int host_opt = 0;
 
 static int add_rtl(RTLUnit *unit)
 {
     alloc_dummy_registers(unit, 1, RTLTYPE_INT32);
-    alloc_dummy_registers(unit, 3, RTLTYPE_FLOAT32);
 
     int reg1, reg2;
-    EXPECT(reg1 = rtl_alloc_register(unit, RTLTYPE_ADDRESS));
+    EXPECT(reg1 = rtl_alloc_register(unit, RTLTYPE_INT64));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg1, 0, 0, 1));
-    EXPECT(reg2 = rtl_alloc_register(unit, RTLTYPE_FLOAT32));
-    /* This should reuse reg1 for the temporary, but not for the final
-     * value since the register class is different. */
-    EXPECT(rtl_add_insn(unit, RTLOP_LOAD_BR, reg2, reg1, 0, 0));
+    EXPECT(reg2 = rtl_alloc_register(unit, RTLTYPE_INT64));
+    EXPECT(rtl_add_insn(unit, RTLOP_BFEXT, reg2, reg1, 0, 26 | 8<<8));
+    EXPECT(rtl_add_insn(unit, RTLOP_NOP, 0, reg1, 0, 0));
 
     return EXIT_SUCCESS;
 }
@@ -35,9 +34,8 @@ static int add_rtl(RTLUnit *unit)
 static const uint8_t expected_code[] = {
     0x48,0x83,0xEC,0x08,                // sub $8,%rsp
     0xB9,0x01,0x00,0x00,0x00,           // mov $1,%ecx
-    0x8B,0x11,                          // mov (%rcx),%edx
-    0x0F,0xCA,                          // bswap %edx
-    0x66,0x0F,0x6E,0xDA,                // movd %edx,%xmm3
+    0xBA,0x1A,0x08,0x00,0x00,           // mov $0x081A,%edx
+    0xC4,0xE2,0xE8,0xF7,0xD1,           // bextr %rdx,%rcx,%rdx
     0x48,0x83,0xC4,0x08,                // add $8,%rsp
     0xC3,                               // ret
 };

@@ -131,6 +131,28 @@ static inline CONST_FUNCTION uint8_t sse_opcode_prefix_for_type(
 /*-----------------------------------------------------------------------*/
 
 /**
+ * vex_pp_for_opcode_prefix:  Return the 2-bit VEX "pp" field value
+ * corresponding to the given opcode prefix byte (0x66, 0xF3, 0xF2, or
+ * 0 for no prefix).
+ *
+ * [Parameters]
+ *     prefix: Prefix byte, or 0 for no prefix.
+ * [Return value]
+ *     VEX.pp value corresponding to the prefix.
+ */
+static inline CONST_FUNCTION uint8_t vex_pp_for_opcode_prefix(uint8_t prefix)
+{
+    switch (prefix) {
+        case 0x66: return 1;
+        case 0xF3: return 2;
+        case 0xF2: return 3;
+        default: ASSERT(prefix == 0); return 0;
+    }
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
  * rtlfexc_to_bits:  Return an MXCSR bitmask corresponding to the
  * exception(s) specified by exc, or 0 if exc is invalid.
  */
@@ -287,13 +309,15 @@ static inline void append_vex_opcode(
      * 0F 38 escape bytes, so we always use the 3-byte VEX prefix.  For
      * plain 0F opcodes, we could potentially use the 2-byte VEX format
      * instead. */
-    ASSERT(opcode >= 0x660F3800 && opcode <= 0x660F38FF);
+    ASSERT((opcode & 0xFFFFFF) >= 0x0F3800 && (opcode & 0xFFFFFF) <= 0x0F38FF);
+    const uint8_t prefix_byte = opcode >> 24;
+    const uint8_t vex_pp = vex_pp_for_opcode_prefix(prefix_byte);
 
     ASSERT(code->len + 4 <= code->buffer_size);
     code->len += 4;
     *ptr++ = X86OP_VEX3;
     *ptr++ = ((vex_R<<7 | vex_X<<6 | vex_B<<5) ^ 0xE0) | 0x02;
-    *ptr++ = vex_W<<7 | (~vex_vvvv & 15) << 3 | vex_L<<2 | 0x01;
+    *ptr++ = vex_W<<7 | (~vex_vvvv & 15) << 3 | vex_L<<2 | vex_pp;
     *ptr++ = opcode & 0xFF;
 }
 
@@ -4162,16 +4186,32 @@ static bool translate_block(HostX86Context *ctx, int block_index)
             const X86Register host_dest = ctx->regs[dest].host_reg;
             const X86Register host_src1 = ctx->regs[src1].host_reg;
             const bool is64 = int_type_is_64(unit->regs[src1].type);
+            const int operand_size = is64 ? 64 : 32;
 
-            /* BEXTR (from BMI2) is another option for implementing this
-             * instruction, but it takes the source and count from a GPR
-             * rather than encoding them in the instruction (presumably
-             * due to ISA limitations), so we need an extra instruction
-             * to load the shift/count and thus probably won't save any
-             * time on average.  If anything, BEXTR has higher latency
-             * than SHR and AND, so if we can omit one of the two (as when
-             * extracting from one end of the register) we can actually
-             * save time by not using BEXTR. */
+            /* Despite documentation suggesting otherwise, it turns out
+             * BEXTR has slightly less latency than a MOV/SHR/AND sequence
+             * even including the extra instruction to load the control
+             * byte,  so we use it if extracting from the middle of a
+             * register. */
+            if ((handle->setup.host_features & BINREC_FEATURE_X86_BMI1)
+             && insn->bitfield.start != 0
+             && insn->bitfield.start + insn->bitfield.count < operand_size) {
+                /* For this case, we use dest as a temporary to hold the
+                 * control byte, so it needs to be separate from src1. */
+                ASSERT(host_dest != host_src1
+                       || is_spilled(ctx, insn_index, src1));
+                append_insn_R(&code, false, X86OP_MOV_rAX_Iv, host_dest);
+                append_imm32(&code,
+                             insn->bitfield.start | insn->bitfield.count << 8);
+                append_vex_insn_ModRM_ctx(
+                    &code, is64, false, X86OP_BEXTR,
+                    host_dest, ctx, insn_index, src1, host_dest);
+                if (handle->host_opt & BINREC_OPT_H_X86_CONDITION_CODES) {
+                    ctx->last_test_reg = dest;
+                    ctx->last_cmp_reg = 0;
+                }
+                break;
+            }
 
             X86Register host_shifted;
             if (insn->bitfield.start != 0) {
@@ -4189,7 +4229,6 @@ static bool translate_block(HostX86Context *ctx, int block_index)
                 host_shifted = host_src1;
             }
 
-            const int operand_size = is64 ? 64 : 32;
             if (insn->bitfield.start + insn->bitfield.count < operand_size) {
                 if (insn->bitfield.count < 8) {
                     if (host_shifted != host_dest) {
@@ -4240,6 +4279,11 @@ static bool translate_block(HostX86Context *ctx, int block_index)
                                       host_dest, host_shifted);
             }
 
+            /* Whether flags are set depends on the location of the
+             * bitfield in the source value.  There probably aren't many
+             * cases in which we'll want to save flags from a BFEXT anyway,
+             * so we don't bother with the details and just clear the
+             * cached state unconditionally. */
             ctx->last_test_reg = 0;
             ctx->last_cmp_reg = 0;
             break;

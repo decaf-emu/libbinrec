@@ -1093,6 +1093,8 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
                      * for the destination, except for:
                      * - Shifts with src1 in rCX (since we need CL for the
                      *   count)
+                     * - BFEXT with BMI1 extensions extracting from the
+                     *   middle of the register (to use dest as a temporary)
                      * - BFINS with src1==src2 (since we need to write dest
                      *   before reading src2)
                      * - LOAD or LOAD_BR to an XMM register (different
@@ -1113,11 +1115,25 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
                                    && !(src1 == src2
                                         && ctx->reg_map[X86_CX] != 0));
                         break;
+                      case RTLOP_BFEXT: {
+                        const int operand_size =
+                            int_type_is_64(src1_reg->type) ? 64 : 32;
+                        const int start = insn->bitfield.start;
+                        const int count = insn->bitfield.count;
+                        src1_ok = !((ctx->handle->setup.host_features
+                                     & BINREC_FEATURE_X86_BMI1)
+                                    && start != 0
+                                    && start + count < operand_size);
+                        break;
+                      }
                       case RTLOP_BFINS:
                         src1_ok = (src1_info->host_reg != src2_info->host_reg);
                         break;
                       case RTLOP_LOAD:
                       case RTLOP_LOAD_BR:
+                        /* This will also cause the temporary to
+                         * (unnecessarily) avoid src1, but since it's only
+                         * a temporary we don't worry about it. */
                         src1_ok = rtl_register_is_int(dest_reg);
                         break;
                       default:
@@ -1127,8 +1143,12 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
                     if (src1_ok
                      && !(avoid_regs & (1 << src1_info->host_reg))) {
                         preferred_reg = src1_info->host_reg;
+                    } else {
+                        /* Make sure it's also not chosen by the regular
+                         * allocator. */
+                        avoid_regs |= 1 << src1_info->host_reg;
                     }
-                }  // if (src1 is reusable)
+                }  // if (src1 is available for reuse)
 
                 /* Check whether src2 needs to be avoided even if src1 is
                  * available, because we might override preferred_reg with
@@ -1163,25 +1183,25 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
                     };
                     ASSERT(insn->opcode >= RTLOP__FIRST
                            && insn->opcode <= RTLOP__LAST);
-                    bool is_noncom = (non_commutative[insn->opcode / 8]
-                                      & (1 << (insn->opcode % 8))) != 0;
+                    bool src2_ok = !(non_commutative[insn->opcode / 8]
+                                     & (1 << (insn->opcode % 8)));
                     if (!(ctx->handle->common_opt & BINREC_OPT_NATIVE_IEEE_NAN)
                      && (insn->opcode == RTLOP_FADD
                       || insn->opcode == RTLOP_FMUL)) {
                         /* FADD and FMUL are commutative in a mathematical
                          * sense, but we need to preserve operand order for
                          * correct NaN output when both operands are NaNs. */
-                        is_noncom = true;
+                        src2_ok = false;
                     }
-                    if (is_noncom) {
-                        /* Make sure it's also not chosen by the regular
-                         * allocator. */
+                    if (src2_ok
+                     && !(avoid_regs & (1 << src2_info->host_reg))) {
+                        if (preferred_reg < 0) {
+                            preferred_reg = src2_info->host_reg;
+                        }
+                    } else {
                         avoid_regs |= 1 << src2_info->host_reg;
-                    } else if (preferred_reg < 0
-                            && !(avoid_regs & (1 << src2_info->host_reg))) {
-                        preferred_reg = src2_info->host_reg;
                     }
-                }  // if (src2 is reusable)
+                }  // if (src2 is available for reuse)
 
                 break;
             }  // switch (insn->opcode)
@@ -1191,6 +1211,8 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
              * usable for this instruction, go ahead and choose it over
              * whatever the instruction may have preferred. */
             if (fixed_reg >= 0 && !(avoid_regs & (1 << fixed_reg))) {
+                /* Fixed registers should always block early merges. */
+                ASSERT(!(ctx->early_merge_regs & (1 << fixed_reg)));
                 preferred_reg = fixed_reg;
             }
 
