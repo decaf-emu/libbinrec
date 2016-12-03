@@ -1228,13 +1228,20 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
              * usable for this instruction, go ahead and choose it over
              * whatever the instruction may have preferred. */
             if (fixed_reg >= 0 && !(avoid_regs & (1 << fixed_reg))) {
-                /* Fixed registers should always block early merges. */
-                ASSERT(!(ctx->early_merge_regs & (1 << fixed_reg)));
                 preferred_reg = fixed_reg;
+                /* If there's also an early merge on this register, ignore
+                 * it and let it be cancelled when the GET_ALIAS is reached;
+                 * the cost of merging on a different register will probably
+                 * be less than the cost of swapping registers around for
+                 * the fixed operand. */
+            } else if (preferred_reg >= 0
+                       && (ctx->early_merge_regs & (1 << preferred_reg))) {
+                /* If the chosen register is only a preference, give early
+                 * merges priority. */
+                preferred_reg = -1;
             }
 
-            if (preferred_reg >= 0
-             && !(ctx->early_merge_regs & (1 << preferred_reg))) {
+            if (preferred_reg >= 0) {
                 dest_info->host_allocated = true;
                 dest_info->host_reg = preferred_reg;
                 assign_register(ctx, dest, preferred_reg);
