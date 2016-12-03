@@ -1226,8 +1226,12 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
             /* At this point, we know what registers we need to avoid, so
              * if we have a reserved register from FIXED_REGS and it's
              * usable for this instruction, go ahead and choose it over
-             * whatever the instruction may have preferred. */
-            if (fixed_reg >= 0 && !(avoid_regs & (1 << fixed_reg))) {
+             * whatever the instruction may have preferred.  If the fixed
+             * register matches preferred_reg, we accept it regardless of
+             * avoid_regs since avoid_regs may intentionally include the
+             * preferred register (see MULHU, for example). */
+            if (fixed_reg >= 0 && (fixed_reg == preferred_reg
+                                   || !(avoid_regs & (1 << fixed_reg)))) {
                 preferred_reg = fixed_reg;
                 /* If there's also an early merge on this register, ignore
                  * it and let it be cancelled when the GET_ALIAS is reached;
