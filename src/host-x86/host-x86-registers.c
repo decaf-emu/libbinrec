@@ -280,7 +280,8 @@ static X86Register allocate_register(
         /* Try to allocate a callee-saved register so we don't have to
          * save and restore this value across the call. */
         const uint32_t avoid_caller_saved =
-            avoid_regs | soft_avoid | ~ctx->callee_saved_regs;
+            avoid_regs | soft_avoid | ctx->early_merge_regs
+            | ~ctx->callee_saved_regs;
         if (is_gpr) {
             host_reg = get_gpr(ctx, avoid_caller_saved);
         } else {
@@ -289,15 +290,17 @@ static X86Register allocate_register(
     }
     if (host_reg < 0) {
         if (is_gpr) {
-            host_reg = get_gpr(ctx, avoid_regs | soft_avoid);
+            host_reg =
+                get_gpr(ctx, avoid_regs | soft_avoid | ctx->early_merge_regs);
         } else {
-            host_reg = get_xmm(ctx, avoid_regs | soft_avoid);
+            host_reg =
+                get_xmm(ctx, avoid_regs | soft_avoid | ctx->early_merge_regs);
         }
     }
     if (host_reg < 0 && soft_avoid != 0) {
         /* There are currently no cases in which we soft-avoid XMM regs. */
         ASSERT(is_gpr);
-        host_reg = get_gpr(ctx, avoid_regs);
+        host_reg = get_gpr(ctx, avoid_regs | ctx->early_merge_regs);
     }
     if (host_reg >= 0) {
         assign_register(ctx, reg_index, host_reg);
@@ -309,9 +312,9 @@ static X86Register allocate_register(
     /* If there are any pending merges from the MERGE_REGS optimization,
      * cancel the first one to make room for this register, in preference
      * to spilling a register already live in this unit. */
-    if (ctx->early_merge_regs & reg_type_mask) {
+    if (ctx->early_merge_regs & reg_type_mask & ~avoid_regs) {
         const X86Register merge_to_cancel =
-            ctz32(ctx->early_merge_regs & reg_type_mask);
+            ctz32(ctx->early_merge_regs & reg_type_mask & ~avoid_regs);
         ctx->early_merge_regs ^= 1 << merge_to_cancel;
         for (int alias = 1; ; alias++) {
             ASSERT(alias < unit->next_alias);
@@ -445,7 +448,7 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
 
     /* Bitmap of registers we need to avoid for output or temporary
      * register allocation. */
-    uint32_t avoid_regs = dest_info->avoid_regs | ctx->early_merge_regs;
+    uint32_t avoid_regs = dest_info->avoid_regs;
 
     /* Special cases for store-type instructions.  These don't have
      * destination register operands, and (except for SET_ALIAS) the
@@ -487,7 +490,7 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
             int value_temp;
             if (rtl_register_is_int(src2_reg)
              || insn->opcode == RTLOP_STORE_BR) {
-                value_temp = get_gpr(ctx, avoid_regs);
+                value_temp = get_gpr(ctx, avoid_regs | ctx->early_merge_regs);
                 if (value_temp < 0) {
                     if (insn->opcode == RTLOP_STORE) {
                         /* For a plain store, we can just reload into and
@@ -505,7 +508,7 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
                     }
                 }
             } else {  // non-integer, non-byte-reversed
-                value_temp = get_xmm(ctx, avoid_regs);
+                value_temp = get_xmm(ctx, avoid_regs | ctx->early_merge_regs);
                 if (value_temp < 0) {
                     value_temp = X86_XMM15;
                 }
@@ -661,14 +664,12 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
             }
         }
 
-        /*
-         * If loading from an alias which was written by a predecessor
+        /* If loading from an alias which was written by a predecessor
          * block, try to keep the value live in a host register.  We check
          * for this even if a host register was allocated for dest during
          * optimization, since we may still be able to reserve that
          * register as a block input or find another register to serve as
-         * an intermediary to avoid the memory store/load.
-         */
+         * an intermediary to avoid the memory store/load. */
         if (insn->opcode == RTLOP_GET_ALIAS) {
             const int alias = insn->alias;
             ASSERT(ctx->blocks[block_index].alias_load[alias] == dest);
@@ -696,11 +697,6 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
                 if (ctx->block_regs_touched & (1 << host_merge)) {
                     /* Can't use this register!  Oh well. */
                     dest_info->merge_alias = false;
-                    /* We don't touch avoid_regs just in case this bit was
-                     * also set for some other reason, so we'll fail to
-                     * use this register even if it would otherwise be
-                     * available, but that'll clear up for the next
-                     * instruction. */
                 } else {
                     avoid_regs ^= 1 << host_merge;
                 }
@@ -777,9 +773,9 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
                 const bool is_gpr = rtl_register_is_int(dest_reg);
                 int host_reg;
                 if (is_gpr) {
-                    host_reg = get_gpr(ctx, avoid_regs);
+                    host_reg = get_gpr(ctx, avoid_regs | ctx->early_merge_regs);
                 } else {
-                    host_reg = get_xmm(ctx, avoid_regs);
+                    host_reg = get_xmm(ctx, avoid_regs | ctx->early_merge_regs);
                 }
                 ctx->regs_free = saved_free;
                 if (host_reg >= 0) {
@@ -882,11 +878,15 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
                  * (which is clobbered by both input and output) in any
                  * case. */
                 if (!ctx->reg_map[X86_DX]) {
-                    if (!(avoid_regs & (1 << X86_DX))) {
-                        preferred_reg = X86_DX;
-                    } else {
-                        avoid_regs |= 1 << X86_DX;
-                    }
+                    /* Currently there are no cases in which a MULH/DIV/MOD
+                     * output register can be forced to avoid its natural
+                     * location.  Assert on that just to be safe. */
+                    ASSERT(!(avoid_regs & (1 << X86_DX)));
+                    preferred_reg = X86_DX;
+                    /* This looks like a contradiction to preferred_reg,
+                     * but it's needed in case preferred_reg is rejected
+                     * below due to early alias merges. */
+                    avoid_regs |= 1 << X86_DX;
                 }
                 avoid_regs |= 1 << X86_AX;
                 break;
@@ -897,9 +897,8 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
                  * src2 since we use dest to store src2 if src2 is in the
                  * way of the fixed input registers. */
                 if (!ctx->reg_map[X86_AX] && src2_info->host_reg != X86_AX) {
-                    if (!(avoid_regs & (1 << X86_AX))) {
-                        preferred_reg = X86_AX;
-                    }
+                    ASSERT(!(avoid_regs & (1 << X86_AX)));
+                    preferred_reg = X86_AX;
                 }
                 avoid_regs |= 1 << X86_AX
                             | 1 << X86_DX
@@ -910,9 +909,8 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
               case RTLOP_MODS:
                 /* As for DIVU/DIVS. */
                 if (!ctx->reg_map[X86_DX] && src2_info->host_reg != X86_DX) {
-                    if (!(avoid_regs & (1 << X86_DX))) {
-                        preferred_reg = X86_DX;
-                    }
+                    ASSERT(!(avoid_regs & (1 << X86_DX)));
+                    preferred_reg = X86_DX;
                 }
                 avoid_regs |= 1 << X86_AX
                             | 1 << X86_DX
@@ -1196,7 +1194,8 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
                 preferred_reg = fixed_reg;
             }
 
-            if (preferred_reg >= 0) {
+            if (preferred_reg >= 0
+             && !(ctx->early_merge_regs & (1 << preferred_reg))) {
                 dest_info->host_allocated = true;
                 dest_info->host_reg = preferred_reg;
                 assign_register(ctx, dest, preferred_reg);
@@ -1226,7 +1225,7 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
         /* Find a temporary register for instructions which need it. */
         bool need_temp;
         bool temp_is_fpr = false;
-        uint32_t temp_avoid = avoid_regs;
+        uint32_t temp_avoid = avoid_regs | ctx->early_merge_regs;
         switch (insn->opcode) {
           case RTLOP_MULHU:
           case RTLOP_MULHS:
@@ -1501,7 +1500,8 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
                     cmp1_temp = dest_info->host_reg;
                 } else {
                     const uint32_t cmp1_avoid_regs =
-                        1 << ctx->regs[cmp2].host_reg | avoid_regs;
+                        (1 << ctx->regs[cmp2].host_reg
+                         | avoid_regs | ctx->early_merge_regs);
                     if (rtl_register_is_int(&unit->regs[cmp1])) {
                         cmp1_temp = get_gpr(ctx, cmp1_avoid_regs);
                         if (cmp1_temp < 0) {
