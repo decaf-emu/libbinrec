@@ -890,7 +890,7 @@ typedef enum X86Opcode {
     X86OP_MOVBE_My_Gy   = 0x0F38F1,
     X86OP_MOVBE_Mw_Gw   = 0x660F38F1,
     X86OP_CRC32_Gd_Ey   = 0xF20F38F0,  // 16-bit with additional 0x66 prefix.
-    X86OP_ANDN_Gy_By_Ey = 0x0F38F2,  // VEX only.
+    X86OP_ANDN          = 0x0F38F2,  // VEX only.
     X86OP_BLS           = 0x0F38F3,  // VEX only.  See X86BLSOpcode for ModR/M.
     X86OP_BZHI          = 0x0F38F5,  // VEX only.
     X86OP_PEXT          = 0xF30F38F5,  // VEX only.

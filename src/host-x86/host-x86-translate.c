@@ -2858,7 +2858,7 @@ static bool translate_fcast(HostX86Context *ctx, int insn_index)
     ASSERT(ctx->regs[dest].temp_allocated);
     const X86Register temp_gpr = ctx->regs[dest].host_temp;
 
-    const int max_len = 147;  // See "//@" length comments below.
+    const int max_len = 146;  // See "//@" length comments below.
     if (UNLIKELY(ctx->handle->code_len + max_len
                  > ctx->handle->code_buffer_size)) {
         if (UNLIKELY(!binrec_ensure_code_space(ctx->handle, max_len))) {
@@ -2947,8 +2947,8 @@ static bool translate_fcast(HostX86Context *ctx, int insn_index)
                                  lc_offset);
 
     } else {
-        //@ f32x2: 4+11+9+8+5+6+10+6+4+8 = 71
-        //  f64x2: 4+10+10+8+5+6+9+6+4+8 = 70
+        //@ f32x2: 4+11+9+8+4+6+10+6+4+8 = 70
+        //  f64x2: 4+10+10+8+4+6+9+6+4+8 = 69
         /* For a vector, either or both of the elements could be SNaNs, so
          * we need to check each value independently.  We use a parallel
          * compare to isolate NaNs in the source vector, then invert and
@@ -2964,7 +2964,7 @@ static bool translate_fcast(HostX86Context *ctx, int insn_index)
         const X86Register temp_xmm = insn->host_data_16;
 
         /* We could almost avoid having to clobber dest and redo the
-         * conversion, but PANDN inverts the wrong operand!  Argh! */
+         * conversion, but ANDNPS inverts the wrong operand!  Argh! */
         //@ 4 = 45 0F 57 ModRM
         append_insn_ModRM_reg(&code, false, X86OP_XORPS, host_dest, host_dest);
         long lc_offset;
@@ -2988,9 +2988,8 @@ static bool translate_fcast(HostX86Context *ctx, int insn_index)
         //@ 8 = 44 0F 54 ModRM disp32
         append_insn_ModRM_riprel(&code, false, X86OP_ANDPS, host_dest,
                                  lc_offset);
-        //@ 5 = 66 45 0F DF ModRM
-        append_insn_ModRM_reg(&code, false, X86OP_PANDN_V,
-                              temp_xmm, host_dest);
+        //@ 4 = 45 0F 55 ModRM
+        append_insn_ModRM_reg(&code, false, X86OP_ANDNPS, temp_xmm, host_dest);
 
         /* temp_xmm now contains a quiet bit (in the source format) set in
          * only those elements which both are NaNs and did not have their
