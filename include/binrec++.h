@@ -38,11 +38,8 @@ namespace Feature {
     namespace X86 {
         const unsigned int FMA = BINREC_FEATURE_X86_FMA;
         const unsigned int MOVBE = BINREC_FEATURE_X86_MOVBE;
-        const unsigned int POPCNT = BINREC_FEATURE_X86_POPCNT;
-        const unsigned int AVX = BINREC_FEATURE_X86_AVX;
         const unsigned int LZCNT = BINREC_FEATURE_X86_LZCNT;
         const unsigned int BMI1 = BINREC_FEATURE_X86_BMI1;
-        const unsigned int AVX2 = BINREC_FEATURE_X86_AVX2;
         const unsigned int BMI2 = BINREC_FEATURE_X86_BMI2;
     }
 }

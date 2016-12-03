@@ -308,12 +308,9 @@ typedef enum binrec_loglevel_t {
  */
 #define BINREC_FEATURE_X86_FMA      (1U << 0)
 #define BINREC_FEATURE_X86_MOVBE    (1U << 1)
-#define BINREC_FEATURE_X86_POPCNT   (1U << 2)
-#define BINREC_FEATURE_X86_AVX      (1U << 3)
-#define BINREC_FEATURE_X86_LZCNT    (1U << 4)  // a.k.a. ABM
-#define BINREC_FEATURE_X86_BMI1     (1U << 5)
-#define BINREC_FEATURE_X86_AVX2     (1U << 6)
-#define BINREC_FEATURE_X86_BMI2     (1U << 7)
+#define BINREC_FEATURE_X86_LZCNT    (1U << 2)  // a.k.a. ABM
+#define BINREC_FEATURE_X86_BMI1     (1U << 3)
+#define BINREC_FEATURE_X86_BMI2     (1U << 4)
 
 /*--------------------------- Setup structure ---------------------------*/
 
@@ -332,9 +329,9 @@ typedef struct binrec_setup_t {
     binrec_arch_t host;
 
     /**
-     * host_features:  Bitwise-OR of feature flags for the selected host
-     * architecture, indicating which features should be assumed to be
-     * present for host code generation.
+     * host_features:  Bitwise-OR of feature flags (BINREC_FEATURE_*) for
+     * the selected host architecture, indicating which features should be
+     * assumed to be present when generating host code.
      */
     unsigned int host_features;
 
