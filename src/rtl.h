@@ -480,7 +480,7 @@ typedef enum RTLFloatException {
  * use with the FSETROUND instruction.
  */
 typedef enum RTLFloatRoundingMode {
-    RTLFROUND_NEAREST = 0,
+    RTLFROUND_NEAREST = 0,  // Ties round to even.
     RTLFROUND_TRUNC,
     RTLFROUND_FLOOR,
     RTLFROUND_CEIL,
