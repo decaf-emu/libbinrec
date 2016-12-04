@@ -771,6 +771,36 @@ typedef struct binrec_setup_t {
 #define BINREC_OPT_G_PPC_FAST_FCTIW  (1<<2)
 
 /**
+ * BINREC_OPT_G_PPC_FAST_FMADDS:  Use simple arithmetic conversion when
+ * rounding a double-precision multiply-add result to single precision.
+ *
+ * When using double-precision inputs to a single-precision fused
+ * multiply-add instruction like fmadds or ps_madd, the result must be
+ * rounded to single precision before storing it in the output register.
+ * Using simple arithmetic conversion for this rounding can change the
+ * result in certain cases, specifically under the following conditions:
+ * the rounding mode is set to round-to-nearest, the product is exactly
+ * halfway between two single-precision values (the low 29 bits of the
+ * double-precision mantissa are 0x1000_0000), and the addend is tiny with
+ * respect to the product.  In this case, the infinitely precise result is
+ * not exactly between two single-precision values, so it should round to
+ * the nearer one; but if the output of the double-precision operation is
+ * used for rounding, the addend will have been already rounded off, so
+ * the rounding input will be treated as a tie and may round in the wrong
+ * direction.
+ *
+ * Enabling this optimization allows the translator to ignore the
+ * possibility of the inaccuracy described above and round double-precision
+ * results with a simple arithmetic operation, which is significantly
+ * faster than checking for and correcting rounding error.
+ *
+ * This optimization is UNSAFE: if enabled, results of single-precision
+ * multiply-add operations with certain operands will differ in the lowest
+ * bit from the correct values.
+ */
+#define BINREC_OPT_G_PPC_FAST_FMADDS  (1<<3)
+
+/**
  * BINREC_OPT_G_PPC_FAST_FMULS:  Do not attempt to round the second
  * multiplicand (frC) to a single-precision multiply or multiply-add
  * instruction.
@@ -807,7 +837,7 @@ typedef struct binrec_setup_t {
  * the PowerPC architecture specification, it will behave correctly under
  * this optimization.
  */
-#define BINREC_OPT_G_PPC_FAST_FMULS  (1<<3)
+#define BINREC_OPT_G_PPC_FAST_FMULS  (1<<4)
 
 /**
  * BINREC_OPT_G_PPC_FAST_STFS:  Use mathematical rather than bitwise
@@ -837,7 +867,7 @@ typedef struct binrec_setup_t {
  * conversion behavior of stfs-group instructions, the translated code
  * will not behave correctly.
  */
-#define BINREC_OPT_G_PPC_FAST_STFS  (1<<4)
+#define BINREC_OPT_G_PPC_FAST_STFS  (1<<5)
 
 /**
  * BINREC_OPT_G_PPC_FNMADD_ZERO_SIGN:  Do not attempt to return the correct
@@ -860,7 +890,7 @@ typedef struct binrec_setup_t {
  * that most real-life PowerPC code does not differentiate between positive
  * and negative zero.
  */
-#define BINREC_OPT_G_PPC_FNMADD_ZERO_SIGN  (1<<5)
+#define BINREC_OPT_G_PPC_FNMADD_ZERO_SIGN  (1<<6)
 
 /**
  * BINREC_OPT_G_PPC_IGNORE_FPSCR_VXFOO:  Do not set FPSCR exception bits
@@ -886,7 +916,7 @@ typedef struct binrec_setup_t {
  * This optimization has no effect if BINREC_OPT_G_PPC_NO_FPSCR_STATE is
  * enabled.
  */
-#define BINREC_OPT_G_PPC_IGNORE_FPSCR_VXFOO  (1<<6)
+#define BINREC_OPT_G_PPC_IGNORE_FPSCR_VXFOO  (1<<7)
 
 /**
  * BINREC_OPT_G_PPC_NATIVE_RECIPROCAL:  Translate guest PowerPC
@@ -941,7 +971,7 @@ typedef struct binrec_setup_t {
  * the PowerPC architecture specification, it will behave correctly under
  * this optimization.
  */
-#define BINREC_OPT_G_PPC_NATIVE_RECIPROCAL  (1<<7)
+#define BINREC_OPT_G_PPC_NATIVE_RECIPROCAL  (1<<8)
 
 /**
  * BINREC_OPT_G_PPC_NO_FPSCR_STATE:  Do not write any state bits (exception
@@ -975,7 +1005,7 @@ typedef struct binrec_setup_t {
  * This optimization is UNSAFE: code which relies on any of the FPSCR
  * state bits will behave incorrectly if this optimization is enabled.
  */
-#define BINREC_OPT_G_PPC_NO_FPSCR_STATE  (1<<8)
+#define BINREC_OPT_G_PPC_NO_FPSCR_STATE  (1<<9)
 
 /**
  * BINREC_OPT_G_PPC_PAIRED_LWARX_STWCX:  Optimize the sequence of lwarx
@@ -986,7 +1016,7 @@ typedef struct binrec_setup_t {
  * lwarx to its associated stwcx., avoiding unnecessary accesses to the
  * processor state block.
  */
-#define BINREC_OPT_G_PPC_PAIRED_LWARX_STWCX  (1<<9)
+#define BINREC_OPT_G_PPC_PAIRED_LWARX_STWCX  (1<<10)
 
 /**
  * BINREC_OPT_G_PPC_PS_STORE_DENORMALS:  Do not flush denormals to zero
@@ -1002,7 +1032,7 @@ typedef struct binrec_setup_t {
  * flushed to zero by paired-single store instructions will behave
  * incorrectly if this optimization is enabled.
  */
-#define BINREC_OPT_G_PPC_PS_STORE_DENORMALS  (1<<10)
+#define BINREC_OPT_G_PPC_PS_STORE_DENORMALS  (1<<11)
 
 /**
  * BINREC_OPT_G_PPC_TRIM_CR_STORES:  Analyze the data flow through each
@@ -1021,7 +1051,7 @@ typedef struct binrec_setup_t {
  * This optimization has no effect unless BINREC_OPT_G_PPC_USE_SPLIT_FIELDS
  * is also enabled.
  */
-#define BINREC_OPT_G_PPC_TRIM_CR_STORES  (1<<11)
+#define BINREC_OPT_G_PPC_TRIM_CR_STORES  (1<<12)
 
 /**
  * BINREC_OPT_G_PPC_USE_SPLIT_FIELDS:  Treat subfields of certain registers
@@ -1040,7 +1070,7 @@ typedef struct binrec_setup_t {
  * in the processor state block.  System call and trap handlers are not
  * affected.
  */
-#define BINREC_OPT_G_PPC_USE_SPLIT_FIELDS  (1<<12)
+#define BINREC_OPT_G_PPC_USE_SPLIT_FIELDS  (1<<13)
 
 /*------------ Host-architecture-specific optimization flags ------------*/
 

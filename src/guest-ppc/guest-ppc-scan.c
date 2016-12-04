@@ -581,6 +581,13 @@ static inline void update_used_changed(
             break;
           case XO_PS_SUM0:
           case XO_PS_SUM1:
+            mark_fpr_used(block, insn_frA(insn), true);
+            mark_fpr_used(block, insn_frB(insn), true);
+            mark_fpr_used(block, insn_frC(insn), true);
+            mark_fpr_changed(block, insn_frD(insn), true);
+            fpscr_used_changed_unless_no_state(ctx, block);
+            check_fp_Rc(ctx, block, address, insn);
+            break;
           case XO_PS_MADDS0:
           case XO_PS_MADDS1:
           case XO_PS_MSUB:
@@ -591,6 +598,9 @@ static inline void update_used_changed(
             mark_fpr_used(block, insn_frB(insn), true);
             mark_fpr_used(block, insn_frC(insn), true);
             mark_fpr_changed(block, insn_frD(insn), true);
+            if (!(ctx->handle->guest_opt & BINREC_OPT_G_PPC_FAST_FMADDS)) {
+                mark_fpscr_used(block);
+            }
             fpscr_used_changed_unless_no_state(ctx, block);
             check_fp_Rc(ctx, block, address, insn);
             break;
@@ -978,6 +988,9 @@ static inline void update_used_changed(
             mark_fpr_used(block, insn_frB(insn), false);
             mark_fpr_used(block, insn_frC(insn), false);
             mark_fpr_changed(block, insn_frD(insn), false);
+            if (!(ctx->handle->guest_opt & BINREC_OPT_G_PPC_FAST_FMADDS)) {
+                mark_fpscr_used(block);
+            }
             fpscr_used_changed_unless_no_state(ctx, block);
             check_fp_Rc(ctx, block, address, insn);
             break;

@@ -1597,6 +1597,152 @@ static int gen_fprf(RTLUnit *unit, int value, int slot)
 /*-----------------------------------------------------------------------*/
 
 /**
+ * round_fma_result_to_single:  Round the result of a double-precision
+ * fused multiply-add operation to single precision, taking into account
+ * the possibility of rounding error caused by a tiny addend.
+ *
+ * See the documentation of BINREC_OPT_G_PPC_FAST_FMADDS for the rationale
+ * behind this function.
+ *
+ * [Parameters]
+ *     ctx: Translation context.
+ *     result: Operation result (of type FLOAT64).
+ *     rtlop: RTL opcode for the FMA operation.
+ *     frA, frB, frC: Operands (of type FLOAT64).
+ * [Return value]
+ *     Rounded value (of type FLOAT32).
+ */
+static int round_fma_result_to_single(
+    GuestPPCContext *ctx, int result, RTLOpcode rtlop,
+    int frA, int frB, int frC)
+{
+    RTLUnit * const unit = ctx->unit;
+    ASSERT(unit->regs[result].type == RTLTYPE_FLOAT64);
+    ASSERT(unit->regs[frA].type == RTLTYPE_FLOAT64);
+    ASSERT(unit->regs[frB].type == RTLTYPE_FLOAT64);
+    ASSERT(unit->regs[frC].type == RTLTYPE_FLOAT64);
+
+    const int result_alias = rtl_alloc_alias_register(unit, RTLTYPE_FLOAT32);
+    const int label_out = rtl_alloc_label(unit);
+
+    /* Generate the rounded result now since it's what we'll use the vast
+     * majority of the time.  This also ensures that appropriate exceptions
+     * from the rounding operation are set. */
+    const int result_rounded = rtl_alloc_register(unit, RTLTYPE_FLOAT32);
+    rtl_add_insn(unit, RTLOP_FCVT, result_rounded, result, 0, 0);
+    rtl_add_insn(unit, RTLOP_SET_ALIAS, 0, result_rounded, 0, result_alias);
+
+    /* If FPSCR[RN] is not round-to-nearest, we don't have to do anything. */
+    const int fpscr = get_fpscr(ctx);
+    const int rn = rtl_alloc_register(unit, RTLTYPE_INT32);
+    rtl_add_insn(unit, RTLOP_BFEXT, rn, fpscr, 0, FPSCR_RN_SHIFT | 2<<8);
+    rtl_add_insn(unit, RTLOP_GOTO_IF_NZ, 0, rn, 0, label_out);
+
+    /* If the result is out of single-precision range (or is a NaN), we
+     * don't have to do anything. */
+    const int result_bits = rtl_alloc_register(unit, RTLTYPE_INT64);
+    rtl_add_insn(unit, RTLOP_BITCAST, result_bits, result, 0, 0);
+    const int exponent64 = rtl_alloc_register(unit, RTLTYPE_INT64);
+    rtl_add_insn(unit, RTLOP_BFEXT, exponent64, result_bits, 0, 52 | 11<<8);
+    const int exponent = rtl_alloc_register(unit, RTLTYPE_INT32);
+    rtl_add_insn(unit, RTLOP_ZCAST, exponent, exponent64, 0, 0);
+    const int exponent_temp = rtl_alloc_register(unit, RTLTYPE_INT32);
+    rtl_add_insn(unit, RTLOP_ADDI, exponent_temp, exponent, result_bits, -874);
+    const int exponent_test = rtl_alloc_register(unit, RTLTYPE_INT32);
+    rtl_add_insn(unit, RTLOP_SLTUI, exponent_test, exponent_temp, 0, 1151-874);
+    rtl_add_insn(unit, RTLOP_GOTO_IF_Z, 0, exponent_test, 0, label_out);
+
+    /* If the result is not exactly between two single-precision values,
+     * we don't have to do anything.  This is a bit tricky because we
+     * have to take denormals into account as well. */
+    const int mantissa = rtl_alloc_register(unit, RTLTYPE_INT64);
+    rtl_add_insn(unit, RTLOP_BFEXT, mantissa, result_bits, 0, 0 | 52<<8);
+    const int mantissa_shift_denorm = rtl_alloc_register(unit, RTLTYPE_INT32);
+    rtl_add_insn(unit, RTLOP_ADDI, mantissa_shift_denorm, exponent, 0, -862);
+    const int is_denormal = rtl_alloc_register(unit, RTLTYPE_INT32);
+    rtl_add_insn(unit, RTLOP_SLTUI, is_denormal, exponent, 0, 897);
+    const int mantissa_shift_norm = rtl_imm32(unit, 35);
+    const int mantissa_shift = rtl_alloc_register(unit, RTLTYPE_INT32);
+    rtl_add_insn(unit, RTLOP_SELECT, mantissa_shift,
+                 mantissa_shift_denorm, mantissa_shift_norm, is_denormal);
+    const int tie_test = rtl_alloc_register(unit, RTLTYPE_INT64);
+    rtl_add_insn(unit, RTLOP_SLL, tie_test, mantissa, mantissa_shift, 0);
+    const int tie_value = rtl_imm64(unit, UINT64_C(1)<<63);
+    const int is_tie = rtl_alloc_register(unit, RTLTYPE_INT32);
+    rtl_add_insn(unit, RTLOP_SEQ, is_tie, tie_test, tie_value, 0);
+    rtl_add_insn(unit, RTLOP_GOTO_IF_Z, 0, is_tie, 0, label_out);
+
+    /*
+     * The result is a tie between two single-precision values, so we may
+     * need to re-round it.  We do this by rerunning the operation in
+     * round-toward-zero mode and checking the value and exactness of the
+     * result.
+     *
+     * - If the result is exact, we don't need to do anything.
+     *
+     * - If the result has changed, then the exact result must be less than
+     *   the double-precision representation, so we subtract 1 from the bit
+     *   pattern and convert it to single precision.
+     *
+     * - If the result is unchanged but inexact, then the exact result must
+     *   be greater than the double-precision representation, so we add 1
+     *   to the bit pattern and convert it to single precision.
+     */
+
+    const int fpstate = rtl_alloc_register(unit, RTLTYPE_FPSTATE);
+    rtl_add_insn(unit, RTLOP_FGETSTATE, fpstate, 0, 0, 0);
+    const int clearexc = rtl_alloc_register(unit, RTLTYPE_FPSTATE);
+    rtl_add_insn(unit, RTLOP_FCLEAREXC, clearexc, fpstate, 0, 0);
+    const int trunc_mode = rtl_alloc_register(unit, RTLTYPE_FPSTATE);
+    rtl_add_insn(unit, RTLOP_FSETROUND,
+                 trunc_mode, clearexc, 0, RTLFROUND_TRUNC);
+    rtl_add_insn(unit, RTLOP_FSETSTATE, 0, trunc_mode, 0, 0);
+    const int test_result = rtl_alloc_register(unit, RTLTYPE_FLOAT64);
+    rtl_add_insn(unit, rtlop, test_result, frA, frC, frB);
+    const int test_fpstate = rtl_alloc_register(unit, RTLTYPE_FPSTATE);
+    rtl_add_insn(unit, RTLOP_FGETSTATE, test_fpstate, 0, 0, 0);
+    rtl_add_insn(unit, RTLOP_FSETSTATE, 0, fpstate, 0, 0);
+    const int test_bits = rtl_alloc_register(unit, RTLTYPE_INT64);
+    rtl_add_insn(unit, RTLOP_BITCAST, test_bits, test_result, 0, 0);
+    const int test_inexact = rtl_alloc_register(unit, RTLTYPE_INT32);
+    rtl_add_insn(unit, RTLOP_FTESTEXC,
+                 test_inexact, test_fpstate, 0, RTLFEXC_INEXACT);
+    rtl_add_insn(unit, RTLOP_GOTO_IF_Z, 0, test_inexact, 0, label_out);
+
+    const int test_mantissa = rtl_alloc_register(unit, RTLTYPE_INT64);
+    rtl_add_insn(unit, RTLOP_BFEXT, test_mantissa, test_bits, 0, 0 | 52<<8);
+    const int unchanged = rtl_alloc_register(unit, RTLTYPE_INT32);
+    rtl_add_insn(unit, RTLOP_SEQ, unchanged, test_mantissa, mantissa, 0);
+    const int label_round_up = rtl_alloc_label(unit);
+    rtl_add_insn(unit, RTLOP_GOTO_IF_NZ, 0, unchanged, 0, label_round_up);
+
+    const int rounded_down_bits = rtl_alloc_register(unit, RTLTYPE_INT64);
+    rtl_add_insn(unit, RTLOP_ADDI, rounded_down_bits, result_bits, 0, -1);
+    const int rounded_down = rtl_alloc_register(unit, RTLTYPE_FLOAT64);
+    rtl_add_insn(unit, RTLOP_BITCAST, rounded_down, rounded_down_bits, 0, 0);
+    const int result_down = rtl_alloc_register(unit, RTLTYPE_FLOAT32);
+    rtl_add_insn(unit, RTLOP_FCVT, result_down, rounded_down, 0, 0);
+    rtl_add_insn(unit, RTLOP_SET_ALIAS, 0, result_down, 0, result_alias);
+    rtl_add_insn(unit, RTLOP_GOTO, 0, 0, 0, label_out);
+
+    rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, label_round_up);
+    const int rounded_up_bits = rtl_alloc_register(unit, RTLTYPE_INT64);
+    rtl_add_insn(unit, RTLOP_ADDI, rounded_up_bits, result_bits, 0, 1);
+    const int rounded_up = rtl_alloc_register(unit, RTLTYPE_FLOAT64);
+    rtl_add_insn(unit, RTLOP_BITCAST, rounded_up, rounded_up_bits, 0, 0);
+    const int result_up = rtl_alloc_register(unit, RTLTYPE_FLOAT32);
+    rtl_add_insn(unit, RTLOP_FCVT, result_up, rounded_up, 0, 0);
+    rtl_add_insn(unit, RTLOP_SET_ALIAS, 0, result_up, 0, result_alias);
+
+    rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, label_out);
+    const int result32 = rtl_alloc_register(unit, RTLTYPE_FLOAT32);
+    rtl_add_insn(unit, RTLOP_GET_ALIAS, result32, 0, 0, result_alias);
+    return result32;
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
  * round_for_multiply:  Round a double-precision floating-point value
  * to be used as the frC operand to a single-precision multiply or
  * multiply-add operation.  Depending on the value of frC, the value of
@@ -3634,6 +3780,7 @@ static void translate_fp_fma(
 
     int result = rtl_alloc_register(unit, type);
     rtl_add_insn(unit, rtlop, result, frA, frC, frB);
+
     if (negate) {
         result = fma_negate(ctx, result);
     }
@@ -3650,9 +3797,14 @@ static void translate_fp_fma(
     }
 
     if (is_single && !use_float32) {
-        const int result64 = result;
-        result = rtl_alloc_register(unit, RTLTYPE_FLOAT32);
-        rtl_add_insn(unit, RTLOP_FCVT, result, result64, 0, 0);
+        if (ctx->handle->guest_opt & BINREC_OPT_G_PPC_FAST_FMADDS) {
+            const int result64 = result;
+            result = rtl_alloc_register(unit, RTLTYPE_FLOAT32);
+            rtl_add_insn(unit, RTLOP_FCVT, result, result64, 0, 0);
+        } else {
+            result = round_fma_result_to_single(
+                ctx, result, rtlop, frA, frB, frC);
+        }
     }
 
     check_fp_underflow(ctx, result, rtlop, frA, frC, frB, is_single, false,
@@ -5762,6 +5914,7 @@ static void translate_ps_fma(
      * in each of the paired-single slots becomes prohibitive. */
     if (!negate
      && (ctx->handle->common_opt & BINREC_OPT_NATIVE_IEEE_NAN)
+     && (ctx->handle->guest_opt & BINREC_OPT_G_PPC_FAST_FMADDS)
      && (ctx->handle->guest_opt & (BINREC_OPT_G_PPC_IGNORE_FPSCR_VXFOO
                                    | BINREC_OPT_G_PPC_NO_FPSCR_STATE))) {
 
@@ -5883,9 +6036,15 @@ static void translate_ps_fma(
                     ctx, result, frA_ps[slot], frB_ps[slot], frC_ps[slot]);
             }
             if (!use_float32) {
-                const int result64 = result;
-                result = rtl_alloc_register(unit, RTLTYPE_FLOAT32);
-                rtl_add_insn(unit, RTLOP_FCVT, result, result64, 0, 0);
+                if (ctx->handle->guest_opt & BINREC_OPT_G_PPC_FAST_FMADDS) {
+                    const int result64 = result;
+                    result = rtl_alloc_register(unit, RTLTYPE_FLOAT32);
+                    rtl_add_insn(unit, RTLOP_FCVT, result, result64, 0, 0);
+                } else {
+                    result = round_fma_result_to_single(
+                        ctx, result, rtlop,
+                        frA_ps[slot], frB_ps[slot], frC_ps[slot]);
+                }
             }
             check_fp_underflow(ctx, result, rtlop,
                                frA_ps[slot], frC_ps[slot], frB_ps[slot],

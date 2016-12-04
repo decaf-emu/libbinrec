@@ -3,6 +3,10 @@
 # No copyright is claimed on this file.
 #
 # Update history:
+#    - 2016-12-04: Added tests to verify that the result of fmadds/ps_madd
+#         is not rounded twice (to double and then to single precision).
+#    - 2016-12-04: Added a test for fmadds to verify non-rounding of the
+#         product using single-precision inputs.
 #    - 2016-11-24: Renamed the ESPRESSO define to HAVE_UGQR to better
 #         reflect its purpose (since other processor versions might also
 #         have UGQRs), and changed the CAN_SET_GQR default to 0 so the code
@@ -5709,6 +5713,9 @@ get_load_address:
    .int 0x00FFFFFF              #  52(%r30): minimum single normal * 2 - 1ulp
    .int 0x001FFE00              #  56(%r30): 1/HUGE_VALF*4095/4096 (fres bound)
    .int 0x00200200              #  60(%r30): 1/HUGE_VALF*4097/4096 (fres bound)
+   .int 0x7EFF0100              #  64(%r30): 65281.0f/65536.0f * 2^127
+   .int 0x3F808000              #  68(%r30): 257.0f/256.0f
+   .int 0x7F000001              #  72(%r30): fma(64(%r30), 68(%r30), 44(%r30))
    .balign 8
 3: .int 0x00000000,0x00000000   #   0(%r31): 0.0
    .int 0x3FF00000,0x00000000   #   8(%r31): 1.0
@@ -9713,7 +9720,7 @@ get_load_address:
    lfd %f4,304(%r31)
    bl check_fpu_pnorm_inex
    lfd %f4,312(%r31)
-   fadd %f3,%f3,%r4         # Adding 1ulp to the result should not change it.
+   fadd %f3,%f3,%f4         # Adding 1ulp to the result should not change it.
    lfd %f4,304(%r31)
    bl check_fpu_pnorm_inex
    mtfsfi 7,0
@@ -9828,6 +9835,64 @@ get_load_address:
    fneg %f4,%f4
    bl add_fpscr_ux
    bl check_fpu_nnorm_inex
+0: mtfsfi 7,2                 # 1.333... * 1.5 + 0 (round toward +inf)
+   lfs %f3,28(%r30)
+   lfs %f13,32(%r30)
+   fmadds %f4,%f3,%f13,%f0    # Should round to (2.0 + 1ulp).
+   bl record
+   fmr %f3,%f4
+   lfs %f4,40(%r30)
+   fadds %f3,%f3,%f4          # Should not change the result.
+   lfs %f4,36(%r30)
+   bl check_fpu_pnorm_inex
+   mtfsfi 7,0
+0: mtfsfi 7,2                 # 1.333... * 1.5 + -1ulp (round toward +inf)
+   lfs %f3,28(%r30)
+   lfs %f13,32(%r30)
+   lfs %f4,40(%r30)
+   fmadds %f4,%f3,%f13,%f4   # Should be exactly 2.0.
+   fmr %f3,%f4
+   bl record
+   fmr %f4,%f2
+   bl check_fpu_pnorm
+   mtfsfi 7,0
+0: fneg %f13,%f7            # HUGE_VALF * 2 + -HUGE_VALF
+   fmadds %f3,%f7,%f2,%f13
+   bl record
+   fmr %f4,%f7
+   bl check_fpu_pnorm
+0: fneg %f13,%f7            # 2 * HUGE_VALF + -HUGE_VALF
+   fmadds %f3,%f2,%f7,%f13
+   bl record
+   fmr %f4,%f7
+   bl check_fpu_pnorm
+   # Check that if the infinitely precise result is not exactly between
+   # two representable values but the result of rounding to double
+   # precision is, the value is still rounded based on the infinitely
+   # precise result, rather than first rounding to double precision and
+   # then again to single precision.
+0: lfs %f3,64(%r30)         # (65281/65536*2^127) * (257/256) + minimum_denormal
+   lfs %f13,68(%r30)
+   lfs %f14,44(%r30)
+   fmadds %f3,%f3,%f13,%f14 # Addend should force rounding away from even.
+   bl record
+   lfs %f4,72(%r30)
+   bl check_fpu_pnorm_inex
+0: lfs %f4,64(%r30)         # Same test, loading from double-precision values
+   stfd %f4,0(%r4)
+   lfs %f4,68(%r30)
+   stfd %f4,8(%r4)
+   lfd %f3,0(%r4)
+   lfd %f13,8(%r4)
+   lfd %f15,136(%r31)
+   fmadds %f3,%f3,%f13,%f15
+   bl record
+   lfs %f4,72(%r30)
+   bl check_fpu_pnorm_inex
+
+   # fmadds (excess precision on input)
+   # The following cases are technically undefined behavior, but we test
+   # for the actual behavior of the 750CL.
 0: mtfsfi 7,1               # 1.333... * 1.5 + 1ulp (round toward zero)
    lfd %f3,288(%r31)
    lfd %f13,296(%r31)
@@ -9849,18 +9914,6 @@ get_load_address:
    lfs %f4,0(%r4)
    bl check_fpu_pnorm_inex
    mtfsfi 7,0
-0: fneg %f13,%f7            # HUGE_VALF * 2 + -HUGE_VALF
-   fmadds %f3,%f7,%f2,%f13
-   bl record
-   fmr %f4,%f7
-   bl check_fpu_pnorm
-0: fneg %f13,%f7            # 2 * HUGE_VALF + -HUGE_VALF
-   fmadds %f3,%f2,%f7,%f13
-   bl record
-   fmr %f4,%f7
-   bl check_fpu_pnorm
-   # The following cases are technically undefined behavior, but we test
-   # for the actual behavior of the 750CL.
 0: lfd %f13,336(%r31)       # 2^128 * 0.5 + 0
    lfd %f4,64(%r31)
    fmadds %f3,%f13,%f4,%f0
@@ -9945,6 +9998,15 @@ get_load_address:
    bl record
    fmr %f4,%f10
    bl check_fpu_nan
+0: lfs %f3,44(%r30)         # min_denormal_f * 1.5 - min_denormal_d
+   lfs %f14,32(%r30)
+   lfd %f15,376(%r31)
+   fneg %f15,%f15
+   fmadds %f3,%f3,%f14,%f15
+   bl record
+   lfs %f4,44(%r30)
+   bl add_fpscr_ux
+   bl check_fpu_pdenorm_inex
 
    # fmadds.
 0: fmadds. %f3,%f1,%f11,%f2 # normal * SNaN + normal
@@ -10204,6 +10266,16 @@ get_load_address:
    fneg %f4,%f4
    bl add_fpscr_ux
    bl check_fpu_nnorm_inex
+0: fmsubs %f3,%f7,%f2,%f7   # HUGE_VALF * 2 - HUGE_VALF
+   bl record
+   fmr %f4,%f7
+   bl check_fpu_pnorm
+0: fmsubs %f3,%f2,%f7,%f7   # 2 * HUGE_VALF - HUGE_VALF
+   bl record
+   fmr %f4,%f7
+   bl check_fpu_pnorm
+
+   # fmsubs (excess precision on input)
 0: mtfsfi 7,1               # 1.333... * 1.5 - -1ulp (round toward zero)
    lfd %f3,288(%r31)
    lfd %f13,296(%r31)
@@ -10227,14 +10299,6 @@ get_load_address:
    lfs %f4,0(%r4)
    bl check_fpu_pnorm_inex
    mtfsfi 7,0
-0: fmsubs %f3,%f7,%f2,%f7   # HUGE_VALF * 2 - HUGE_VALF
-   bl record
-   fmr %f4,%f7
-   bl check_fpu_pnorm
-0: fmsubs %f3,%f2,%f7,%f7   # 2 * HUGE_VALF - HUGE_VALF
-   bl record
-   fmr %f4,%f7
-   bl check_fpu_pnorm
 0: lfd %f13,336(%r31)       # 2^128 * 0.5 - 0
    lfd %f4,64(%r31)
    fmsubs %f3,%f13,%f4,%f0
@@ -10579,6 +10643,18 @@ get_load_address:
    lfs %f4,12(%r30)
    bl add_fpscr_ux
    bl check_fpu_pnorm_inex
+0: fneg %f13,%f7            # HUGE_VALF * 2 + -HUGE_VALF
+   fnmadds %f3,%f7,%f2,%f13
+   bl record
+   fneg %f4,%f7
+   bl check_fpu_nnorm
+0: fneg %f13,%f7            # 2 * HUGE_VALF + -HUGE_VALF
+   fnmadds %f3,%f2,%f7,%f13
+   bl record
+   fneg %f4,%f7
+   bl check_fpu_nnorm
+
+   # fnmadds (excess precision on input)
 0: mtfsfi 7,1               # 1.333... * 1.5 + 1ulp (round toward zero)
    lfd %f3,288(%r31)
    lfd %f13,296(%r31)
@@ -10600,16 +10676,6 @@ get_load_address:
    lfs %f4,0(%r4)
    bl check_fpu_nnorm_inex
    mtfsfi 7,0
-0: fneg %f13,%f7            # HUGE_VALF * 2 + -HUGE_VALF
-   fnmadds %f3,%f7,%f2,%f13
-   bl record
-   fneg %f4,%f7
-   bl check_fpu_nnorm
-0: fneg %f13,%f7            # 2 * HUGE_VALF + -HUGE_VALF
-   fnmadds %f3,%f2,%f7,%f13
-   bl record
-   fneg %f4,%f7
-   bl check_fpu_nnorm
 0: lfd %f13,336(%r31)       # 2^128 * 0.5 + 0
    lfd %f4,64(%r31)
    fnmadds %f3,%f13,%f4,%f0
@@ -10955,6 +11021,16 @@ get_load_address:
    lfs %f4,12(%r30)
    bl add_fpscr_ux
    bl check_fpu_pnorm_inex
+0: fnmsubs %f3,%f7,%f2,%f7   # HUGE_VALF * 2 - HUGE_VALF
+   bl record
+   fneg %f4,%f7
+   bl check_fpu_nnorm
+0: fnmsubs %f3,%f2,%f7,%f7   # 2 * HUGE_VALF - HUGE_VALF
+   bl record
+   fneg %f4,%f7
+   bl check_fpu_nnorm
+
+   # fnmsubs (excess precision on input)
 0: mtfsfi 7,1               # 1.333... * 1.5 - -1ulp (round toward zero)
    lfd %f3,288(%r31)
    lfd %f13,296(%r31)
@@ -10978,14 +11054,6 @@ get_load_address:
    lfs %f4,0(%r4)
    bl check_fpu_nnorm_inex
    mtfsfi 7,0
-0: fnmsubs %f3,%f7,%f2,%f7   # HUGE_VALF * 2 - HUGE_VALF
-   bl record
-   fneg %f4,%f7
-   bl check_fpu_nnorm
-0: fnmsubs %f3,%f2,%f7,%f7   # 2 * HUGE_VALF - HUGE_VALF
-   bl record
-   fneg %f4,%f7
-   bl check_fpu_nnorm
 0: lfd %f13,336(%r31)       # 2^128 * 0.5 - 0
    lfd %f4,64(%r31)
    fnmsubs %f3,%f13,%f4,%f0
@@ -18210,7 +18278,7 @@ get_load_address:
    ps_madd %f3,%f3,%f13,%f0   # Should round to (2.0 + 1ulp).
    bl record
    lfs %f4,40(%r30)
-   ps_add %f3,%f3,%r4         # Should not change the result.
+   ps_add %f3,%f3,%f4         # Should not change the result.
    lfs %f4,36(%r30)
    fmr %f5,%f4
    bl check_ps_pnorm_inex
@@ -18225,6 +18293,39 @@ get_load_address:
    fmr %f5,%f4
    bl check_ps_pnorm
    mtfsfi 7,0
+0: ps_neg %f13,%f7          # HUGE_VALF * 2 + -HUGE_VALF
+   ps_madd %f3,%f7,%f2,%f13
+   bl record
+   fmr %f4,%f7
+   fmr %f5,%f7
+   bl check_ps_pnorm
+0: ps_neg %f13,%f7          # 2 * HUGE_VALF + -HUGE_VALF
+   ps_madd %f3,%f2,%f7,%f13
+   bl record
+   fmr %f4,%f7
+   fmr %f5,%f7
+   bl check_ps_pnorm
+0: lfs %f3,64(%r30)         # (65281/65536*2^127) * (257/256) + minimum_denormal
+   lfs %f13,68(%r30)
+   lfs %f14,44(%r30)
+   ps_madd %f3,%f3,%f13,%f14  # Addend should force rounding away from even.
+   bl record
+   lfs %f4,72(%r30)
+   fmr %f5,%f4
+   bl check_ps_pnorm_inex
+0: lfs %f4,64(%r30)         # Same test, with doubles loaded into ps0
+   stfd %f4,0(%r4)
+   lfd_ps %f3,0(%r4),%f4
+   lfs %f4,68(%r30)
+   stfd %f4,8(%r4)
+   lfd_ps %f13,8(%r4),%f4
+   lfs %f4,44(%r30)
+   lfd_ps %f15,136(%r31),%f4
+   ps_madd %f3,%f3,%f13,%f15
+   bl record
+   lfs %f4,72(%r30)
+   fmr %f5,%f4
+   bl check_ps_pnorm_inex
 
    # ps_madd (FPSCR[FX] handling)
 0: ps_mr %f14,%f11
@@ -18326,18 +18427,6 @@ get_load_address:
    fmr %f5,%f0
    bl check_ps_pnorm_inex
    mtfsfi 7,0
-0: ps_neg %f13,%f7          # HUGE_VALF * 2 + -HUGE_VALF
-   ps_madd %f3,%f7,%f2,%f13
-   bl record
-   fmr %f4,%f7
-   fmr %f5,%f7
-   bl check_ps_pnorm
-0: ps_neg %f13,%f7          # 2 * HUGE_VALF + -HUGE_VALF
-   ps_madd %f3,%f2,%f7,%f13
-   bl record
-   fmr %f4,%f7
-   fmr %f5,%f7
-   bl check_ps_pnorm
 0: lfd_ps %f13,336(%r31),%f0  # 2^128 * 0.5 + 0
    lfd_ps %f4,64(%r31),%f0
    ps_madd %f3,%f13,%f4,%f0
@@ -18435,6 +18524,20 @@ get_load_address:
    fmr %f4,%f10
    fmr %f5,%f10
    bl check_ps_nan
+0: lfs %f3,44(%r30)         # min_denormal_f * 1.5 - min_denormal_d
+   lfs %f14,32(%r30)
+   lfd %f4,376(%r31)
+   fneg %f4,%f4
+   stfd %f4,0(%r4)
+   lfd_ps %f15,0(%r4),%f0
+   ps_madd %f3,%f3,%f14,%f15
+   bl record
+   lfs %f4,44(%r30)
+   li %r3,2
+   stw %r3,0(%r4)
+   lfs %r5,0(%r4)
+   bl add_fpscr_ux
+   bl check_ps_pdenorm_inex
 
    # ps_madd.
 0: ps_madd. %f3,%f1,%f11,%f2  # normal * SNaN + normal
@@ -18805,6 +18908,16 @@ get_load_address:
    fmr %f5,%f4
    bl check_ps_noresult
    mtfsb0 24
+0: ps_msub %f3,%f7,%f2,%f7  # HUGE_VALF * 2 - HUGE_VALF
+   bl record
+   fmr %f4,%f7
+   fmr %f5,%f7
+   bl check_ps_pnorm
+0: ps_msub %f3,%f2,%f7,%f7  # 2 * HUGE_VALF - HUGE_VALF
+   bl record
+   fmr %f4,%f7
+   fmr %f5,%f7
+   bl check_ps_pnorm
 
    # ps_msub (FPSCR[FX] handling)
 0: ps_mr %f14,%f11
@@ -18902,16 +19015,6 @@ get_load_address:
    fmr %f5,%f0
    bl check_ps_pnorm_inex
    mtfsfi 7,0
-0: ps_msub %f3,%f7,%f2,%f7  # HUGE_VALF * 2 - HUGE_VALF
-   bl record
-   fmr %f4,%f7
-   fmr %f5,%f7
-   bl check_ps_pnorm
-0: ps_msub %f3,%f2,%f7,%f7  # 2 * HUGE_VALF - HUGE_VALF
-   bl record
-   fmr %f4,%f7
-   fmr %f5,%f7
-   bl check_ps_pnorm
 0: lfd_ps %f13,336(%r31),%f0  # 2^128 * 0.5 - 0
    lfd_ps %f4,64(%r31),%f0
    ps_msub %f3,%f13,%f4,%f0
@@ -19195,6 +19298,18 @@ get_load_address:
    fmr %f5,%f4
    bl check_ps_noresult
    mtfsb0 24
+0: ps_neg %f13,%f7          # HUGE_VALF * 2 + -HUGE_VALF
+   ps_nmadd %f3,%f7,%f2,%f13
+   bl record
+   fneg %f4,%f7
+   fneg %f5,%f7
+   bl check_ps_nnorm
+0: ps_neg %f13,%f7          # 2 * HUGE_VALF + -HUGE_VALF
+   ps_nmadd %f3,%f2,%f7,%f13
+   bl record
+   fneg %f4,%f7
+   fneg %f5,%f7
+   bl check_ps_nnorm
 
    # ps_nmadd (FPSCR[FX] handling)
 0: ps_mr %f14,%f11
@@ -19287,18 +19402,6 @@ get_load_address:
    fneg %f5,%f0
    bl check_ps_nnorm_inex
    mtfsfi 7,0
-0: ps_neg %f13,%f7          # HUGE_VALF * 2 + -HUGE_VALF
-   ps_nmadd %f3,%f7,%f2,%f13
-   bl record
-   fneg %f4,%f7
-   fneg %f5,%f7
-   bl check_ps_nnorm
-0: ps_neg %f13,%f7          # 2 * HUGE_VALF + -HUGE_VALF
-   ps_nmadd %f3,%f2,%f7,%f13
-   bl record
-   fneg %f4,%f7
-   fneg %f5,%f7
-   bl check_ps_nnorm
 0: lfd_ps %f13,336(%r31),%f0  # 2^128 * 0.5 + 0
    lfd_ps %f4,64(%r31),%f0
    ps_nmadd %f3,%f13,%f4,%f0
@@ -19591,6 +19694,16 @@ get_load_address:
    fmr %f5,%f4
    bl check_ps_noresult
    mtfsb0 24
+0: ps_nmsub %f3,%f7,%f2,%f7  # HUGE_VALF * 2 - HUGE_VALF
+   bl record
+   fneg %f4,%f7
+   fneg %f5,%f7
+   bl check_ps_nnorm
+0: ps_nmsub %f3,%f2,%f7,%f7  # 2 * HUGE_VALF - HUGE_VALF
+   bl record
+   fneg %f4,%f7
+   fneg %f5,%f7
+   bl check_ps_nnorm
 
    # ps_nmsub (FPSCR[FX] handling)
 0: ps_mr %f14,%f11
@@ -19689,16 +19802,6 @@ get_load_address:
    fneg %f5,%f0
    bl check_ps_nnorm_inex
    mtfsfi 7,0
-0: ps_nmsub %f3,%f7,%f2,%f7  # HUGE_VALF * 2 - HUGE_VALF
-   bl record
-   fneg %f4,%f7
-   fneg %f5,%f7
-   bl check_ps_nnorm
-0: ps_nmsub %f3,%f2,%f7,%f7  # 2 * HUGE_VALF - HUGE_VALF
-   bl record
-   fneg %f4,%f7
-   fneg %f5,%f7
-   bl check_ps_nnorm
 0: lfd_ps %f13,336(%r31),%f0  # 2^128 * 0.5 - 0
    lfd_ps %f4,64(%r31),%f0
    ps_nmsub %f3,%f13,%f4,%f0
