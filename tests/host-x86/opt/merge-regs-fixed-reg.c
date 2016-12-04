@@ -13,7 +13,6 @@
 
 static const binrec_setup_t setup = {
     .host = BINREC_ARCH_X86_64_SYSV,
-    .host_features = BINREC_FEATURE_X86_MOVBE,
 };
 static const unsigned int host_opt = BINREC_OPT_H_X86_FIXED_REGS
                                    | BINREC_OPT_H_X86_MERGE_REGS;
@@ -37,14 +36,26 @@ static int add_rtl(RTLUnit *unit)
     int reg4, reg5, reg6, reg7, label;
     EXPECT(label = rtl_alloc_label(unit));
     EXPECT(rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, label));
-    EXPECT(reg4 = rtl_alloc_register(unit, RTLTYPE_INT32));
     /* reg4 should get ECX by fixed-regs, cancelling the early merge from
      * reg3. */
+    EXPECT(reg4 = rtl_alloc_register(unit, RTLTYPE_INT32));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg4, 0, 0, 4));
     EXPECT(reg5 = rtl_alloc_register(unit, RTLTYPE_INT32));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg5, 0, 0, 5));
+    /* If we fill up the host register file, the allocator shouldn't get
+     * confused by the merge having already been cancelled. */
+    int fill_regs[12];
+    for (int i = 0; i < lenof(fill_regs); i++) {
+        EXPECT(fill_regs[i] = rtl_alloc_register(unit, RTLTYPE_INT32));
+        EXPECT(rtl_add_insn(unit, RTLOP_NOP, fill_regs[i], 0, 0, 0));
+    }
+    for (int i = 0; i < lenof(fill_regs); i++) {
+        EXPECT(rtl_add_insn(unit, RTLOP_NOP, 0, fill_regs[i], 0, 0));
+    }
     EXPECT(reg6 = rtl_alloc_register(unit, RTLTYPE_INT32));
     EXPECT(rtl_add_insn(unit, RTLOP_SLL, reg6, reg5, reg4, 0));
+    /* Make sure reg5 (instead of reg4) is spilled by fill_regs. */
+    EXPECT(rtl_add_insn(unit, RTLOP_NOP, 0, reg5, 0, 0));
     EXPECT(reg7 = rtl_alloc_register(unit, RTLTYPE_INT32));
     EXPECT(rtl_add_insn(unit, RTLOP_GET_ALIAS, reg7, 0, 0, alias));
     EXPECT(rtl_add_insn(unit, RTLOP_SET_ALIAS, 0, reg7, 0, alias));
@@ -54,15 +65,28 @@ static int add_rtl(RTLUnit *unit)
 }
 
 static const uint8_t expected_code[] = {
-    0x48,0x83,0xEC,0x08,                // sub $8,%rsp
+    0x53,                               // push %rbx
+    0x55,                               // push %rbp
+    0x41,0x54,                          // push %r12
+    0x41,0x55,                          // push %r13
+    0x41,0x56,                          // push %r14
+    0x48,0x83,0xEC,0x10,                // sub $16,%rsp
     0xB8,0x02,0x00,0x00,0x00,           // mov $2,%eax
     0xB9,0x03,0x00,0x00,0x00,           // mov $3,%ecx
-    0x8B,0xD1,                          // mov %ecx,%edx
+    0x89,0x8F,0x34,0x12,0x00,0x00,      // mov %ecx,0x1234(%rdi)
     0xB9,0x04,0x00,0x00,0x00,           // mov $4,%ecx
     0xB8,0x05,0x00,0x00,0x00,           // mov $5,%eax
+    0x89,0x04,0x24,                     // mov %eax,(%rsp)
+    0x8B,0x04,0x24,                     // mov (%rsp),%eax
     0xD3,0xE0,                          // shl %cl,%eax
-    0x89,0x97,0x34,0x12,0x00,0x00,      // mov %edx,0x1234(%rdi)
-    0x48,0x83,0xC4,0x08,                // add $8,%rsp
+    0x8B,0x87,0x34,0x12,0x00,0x00,      // mov %eax,0x1234(%rdi)
+    0x89,0x87,0x34,0x12,0x00,0x00,      // mov %eax,0x1234(%rdi)
+    0x48,0x83,0xC4,0x10,                // add $16,%rsp
+    0x41,0x5E,                          // pop %r14
+    0x41,0x5D,                          // pop %r13
+    0x41,0x5C,                          // pop %r12
+    0x5D,                               // pop %rbp
+    0x5B,                               // pop %rbx
     0xC3,                               // ret
 };
 

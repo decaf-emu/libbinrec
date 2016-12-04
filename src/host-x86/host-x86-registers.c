@@ -245,6 +245,35 @@ static int allocate_frame_slot(HostX86Context *ctx, RTLDataType type)
 /*-----------------------------------------------------------------------*/
 
 /**
+ * cancel_early_merge:  Cancel a pending merge from the MERGE_REGS
+ * optimization.
+ *
+ * [Parameters]
+ *     ctx: Translation context.
+ *     block_index: Index of basic block containing current instruction.
+ *     host_reg: X86Register whose merge is to be cancelled.
+ */
+static void cancel_early_merge(HostX86Context *ctx, int block_index,
+                               X86Register host_reg)
+{
+    ASSERT(ctx->early_merge_regs & (1 << host_reg));
+    ctx->early_merge_regs ^= 1 << host_reg;
+
+    const RTLUnit * const unit = ctx->unit;
+    for (int alias = 1; ; alias++) {
+        ASSERT(alias < unit->next_alias);
+        const int load_reg = ctx->blocks[block_index].alias_load[alias];
+        if (load_reg && ctx->regs[load_reg].merge_alias
+         && ctx->regs[load_reg].host_merge == host_reg) {
+            ctx->regs[load_reg].merge_alias = false;
+            break;
+        }
+    }
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
  * allocate_register:  Allocate a host register for the given RTL register.
  * The HostX86RegInfo.host_allocated flag is not modified.
  *
@@ -315,16 +344,7 @@ static X86Register allocate_register(
     if (ctx->early_merge_regs & reg_type_mask & ~avoid_regs) {
         const X86Register merge_to_cancel =
             ctz32(ctx->early_merge_regs & reg_type_mask & ~avoid_regs);
-        ctx->early_merge_regs ^= 1 << merge_to_cancel;
-        for (int alias = 1; ; alias++) {
-            ASSERT(alias < unit->next_alias);
-            const int load_reg = ctx->blocks[block_index].alias_load[alias];
-            if (load_reg && ctx->regs[load_reg].merge_alias
-             && ctx->regs[load_reg].host_merge == merge_to_cancel) {
-                ctx->regs[load_reg].merge_alias = false;
-                break;
-            }
-        }
+        cancel_early_merge(ctx, block_index, merge_to_cancel);
         assign_register(ctx, reg_index, merge_to_cancel);
         return merge_to_cancel;
     }
@@ -1233,11 +1253,13 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
             if (fixed_reg >= 0 && (fixed_reg == preferred_reg
                                    || !(avoid_regs & (1 << fixed_reg)))) {
                 preferred_reg = fixed_reg;
-                /* If there's also an early merge on this register, ignore
-                 * it and let it be cancelled when the GET_ALIAS is reached;
-                 * the cost of merging on a different register will probably
-                 * be less than the cost of swapping registers around for
-                 * the fixed operand. */
+                /* If there's also an early merge on this register, cancel
+                 * it; the cost of merging on a different register will
+                 * probably be less than the cost of swapping registers
+                 * around for the fixed operand. */
+                if (ctx->early_merge_regs & (1 << fixed_reg)) {
+                    cancel_early_merge(ctx, block_index, fixed_reg);
+                }
             } else if (preferred_reg >= 0
                        && (ctx->early_merge_regs & (1 << preferred_reg))) {
                 /* If the chosen register is only a preference, give early
