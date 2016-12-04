@@ -18,26 +18,24 @@ static const unsigned int host_opt = BINREC_OPT_H_X86_FIXED_REGS;
 
 static int add_rtl(RTLUnit *unit)
 {
-    int reg1, reg2, reg3;
+    alloc_dummy_registers(unit, 1, RTLTYPE_INT32);
+
+    int reg1, reg2;
     EXPECT(reg1 = rtl_alloc_register(unit, RTLTYPE_INT32));
-    /* reg1 should not get EAX since reg3 gets it in the fixed-alloc pass. */
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg1, 0, 0, 1));
     EXPECT(reg2 = rtl_alloc_register(unit, RTLTYPE_INT32));
-    EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg2, 0, 0, 2));
-    EXPECT(reg3 = rtl_alloc_register(unit, RTLTYPE_INT32));
-    EXPECT(rtl_add_insn(unit, RTLOP_DIVU, reg3, reg1, reg2, 0));
-    EXPECT(rtl_add_insn(unit, RTLOP_NOP, 0, reg1, reg2, 0));
+    EXPECT(rtl_add_insn(unit, RTLOP_MULHU, reg2, reg1, reg1, 0));
+    EXPECT(rtl_add_insn(unit, RTLOP_NOP, 0, reg1, 0, 0));
 
     return EXIT_SUCCESS;
 }
 
 static const uint8_t expected_code[] = {
     0x48,0x83,0xEC,0x08,                // sub $8,%rsp
-    0xB9,0x01,0x00,0x00,0x00,           // mov $1,%ecx
-    0xBE,0x02,0x00,0x00,0x00,           // mov $2,%esi
-    0x8B,0xC1,                          // mov %ecx,%eax
-    0x33,0xD2,                          // xor %edx,%edx
-    0xF7,0xF6,                          // div %esi
+    0xB8,0x01,0x00,0x00,0x00,           // mov $1,%eax
+    0x48,0x8B,0xF0,                     // mov %rax,%rsi
+    0xF7,0xE0,                          // mul %eax
+    0x48,0x8B,0xC6,                     // mov %rsi,%rax
     0x48,0x83,0xC4,0x08,                // add $8,%rsp
     0xC3,                               // ret
 };

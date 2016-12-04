@@ -1873,50 +1873,95 @@ static void first_pass_for_block(HostX86Context *ctx, int block_index)
             const RTLRegister *src2_reg = &unit->regs[insn->src2];
             HostX86RegInfo *src2_info = &ctx->regs[insn->src2];
 
-            if (ctx->last_dx_death <= insn_index) {
+            const int prev_dx_death = ctx->last_dx_death;
+            if (prev_dx_death <= insn_index) {
                 ASSERT(dest_reg->birth == insn_index);
-                /* Currently, all cases where we avoid rDX are for
-                 * registers born before the most recent death of rDX, so
-                 * we don't need to check avoid_regs here (and we omit the
-                 * check since there's no way to test it).  We do keep
-                 * assertions around to catch problems in case future
-                 * additions to the logic render this assumption invalid. */
-                ASSERT(!(dest_info->avoid_regs & (1 << X86_DX)));
+                /* This is the first pass, so a newly born RTL register
+                 * can't have any host registers in its avoid set, but
+                 * assert on that in case future additions to the program
+                 * change things. */
+                ASSERT(!dest_info->avoid_regs);
                 dest_info->host_allocated = true;
                 dest_info->host_reg = X86_DX;
-                /* If both src1 and src2 are candidates for getting rDX,
-                 * choose the one which was born earlier, since the other
-                 * will have a better chance of getting rAX below. */
-                const bool src1_ok = (!src1_info->host_allocated
-                                      && src1_reg->death == insn_index
-                                      && src1_reg->birth >= ctx->last_dx_death);
-                const bool src2_ok = (!src2_info->host_allocated
-                                      && src2_reg->death == insn_index
-                                      && src2_reg->birth >= ctx->last_dx_death);
-                if (src1_ok && (!src2_ok || src1_reg->birth < src2_reg->birth)) {
-                    ASSERT(!(src1_info->avoid_regs & (1 << X86_DX)));
-                    src1_info->host_allocated = true;
-                    src1_info->host_reg = X86_DX;
-                } else if (src2_ok) {
-                    ASSERT(!(src2_info->avoid_regs & (1 << X86_DX)));
-                    src2_info->host_allocated = true;
-                    src2_info->host_reg = X86_DX;
-                }
                 ctx->last_dx_death = dest_reg->death;
             }
 
-            if (!src1_info->host_allocated
-             && !(src1_info->avoid_regs & (1 << X86_AX))
-             && src1_reg->birth >= ctx->last_ax_death) {
+            /* Check which of rAX and rDX we can allocate to src1 and src2.
+             * We prioritize putting at least one operand in rAX to save a
+             * move operation; the only benefit to using rDX is that if the
+             * operand dies here, assigning it to rDX ensures there are no
+             * "holes" where rDX is not in use but can't be allocated due
+             * to dest having it reserved.  Naturally, if we couldn't
+             * allocate rDX for dest then we won't be able to allocate it
+             * for either source operand, so we skip the rDX tests in that
+             * case. */
+
+            const bool src1_ax_ok = (!src1_info->host_allocated
+                                     && !(src1_info->avoid_regs & (1 << X86_AX))
+                                     && src1_reg->birth >= ctx->last_ax_death);
+            const bool src2_ax_ok = (insn->src2 != insn->src1
+                                     && !src2_info->host_allocated
+                                     && !(src2_info->avoid_regs & (1 << X86_AX))
+                                     && src2_reg->birth >= ctx->last_ax_death);
+            const bool src1_dx_ok = (dest_info->host_allocated
+                                     && !src1_info->host_allocated
+                                     && !(src1_info->avoid_regs & (1 << X86_DX))
+                                     && src1_reg->death == insn_index
+                                     && src1_reg->birth >= prev_dx_death);
+            const bool src2_dx_ok = (insn->src2 != insn->src1
+                                     && dest_info->host_allocated
+                                     && !src2_info->host_allocated
+                                     && !(src2_info->avoid_regs & (1 << X86_DX))
+                                     && src2_reg->death == insn_index
+                                     && src2_reg->birth >= prev_dx_death);
+
+            int ax_src = 0, dx_src = 0;  // 1 (src1), 2 (src2), or 0 (none)
+            if (src1_ax_ok && src2_ax_ok) {
+                /* Either operand can go in rAX, so choose the one (if any)
+                 * that can't get rDX. */
+                if (src1_dx_ok) {
+                    dx_src = 1;
+                    ax_src = 2;
+                } else {
+                    ax_src = 1;
+                    if (src2_dx_ok) {
+                        dx_src = 2;
+                    }
+                }
+            } else if (src1_ax_ok) {
+                ax_src = 1;
+                if (src2_dx_ok) {
+                    dx_src = 2;
+                }
+            } else if (src2_ax_ok) {
+                ax_src = 2;
+                if (src1_dx_ok) {
+                    dx_src = 1;
+                }
+            } else {
+                if (src1_dx_ok) {
+                    dx_src = 1;
+                } else if (src2_dx_ok) {
+                    dx_src = 2;
+                }
+            }
+
+            if (ax_src == 1) {
                 src1_info->host_allocated = true;
                 src1_info->host_reg = X86_AX;
                 ctx->last_ax_death = src1_reg->death;
-            } else if (!src2_info->host_allocated
-                       && !(src2_info->avoid_regs & (1 << X86_AX))
-                       && src2_reg->birth >= ctx->last_ax_death) {
+            } else if (ax_src == 2) {
                 src2_info->host_allocated = true;
                 src2_info->host_reg = X86_AX;
                 ctx->last_ax_death = src2_reg->death;
+            }
+
+            if (dx_src == 1) {
+                src1_info->host_allocated = true;
+                src1_info->host_reg = X86_DX;
+            } else if (dx_src == 2) {
+                src2_info->host_allocated = true;
+                src2_info->host_reg = X86_DX;
             }
 
             break;
@@ -1927,6 +1972,7 @@ static void first_pass_for_block(HostX86Context *ctx, int block_index)
             if (!do_fixed_regs) {
                 break;
             }
+            HostX86RegInfo *src2_info = &ctx->regs[insn->src2];
             /* For div/mod, we only care about putting the result in rAX or
              * rDX (as appropriate) and the dividend in rAX.  Putting the
              * divisor in either rAX or rDX would just force us to move it
@@ -1938,26 +1984,25 @@ static void first_pass_for_block(HostX86Context *ctx, int block_index)
                 /* We require that dest and src2 not share the same
                  * register, so if src2 is already in rAX, we can't assign
                  * it to dest here. */
-                HostX86RegInfo *src2_info = &ctx->regs[insn->src2];
                 if (!(src2_info->host_allocated
                       && src2_info->host_reg == X86_AX)) {
-                    ASSERT(!(dest_info->avoid_regs & (1 << X86_AX)));
+                    ASSERT(!dest_info->avoid_regs);
                     dest_info->host_allocated = true;
                     dest_info->host_reg = X86_AX;
-                    /* Make sure src2 doesn't get rAX in the main
-                     * allocation pass. */
-                    src2_info->avoid_regs |= 1 << X86_AX;
                     const RTLRegister *src1_reg = &unit->regs[insn->src1];
                     HostX86RegInfo *src1_info = &ctx->regs[insn->src1];
                     if (!src1_info->host_allocated
+                     && !(src1_info->avoid_regs & (1 << X86_AX))
                      && src1_reg->death == insn_index
                      && src1_reg->birth >= ctx->last_ax_death) {
-                        ASSERT(!(src1_info->avoid_regs & (1 << X86_AX)));
                         src1_info->host_allocated = true;
                         src1_info->host_reg = X86_AX;
                     }
                     ctx->last_ax_death = dest_reg->death;
                 }
+            }
+            if (!src2_info->host_allocated) {
+                src2_info->avoid_regs |= 1<<X86_AX | 1<<X86_DX;
             }
             break;
           }  // case RTLOP_DIV[US]
@@ -1969,15 +2014,14 @@ static void first_pass_for_block(HostX86Context *ctx, int block_index)
             }
             const RTLRegister *dest_reg = &unit->regs[insn->dest];
             HostX86RegInfo *dest_info = &ctx->regs[insn->dest];
+            HostX86RegInfo *src2_info = &ctx->regs[insn->src2];
             if (ctx->last_dx_death <= insn_index) {
                 ASSERT(dest_reg->birth == insn_index);
-                HostX86RegInfo *src2_info = &ctx->regs[insn->src2];
                 if (!(src2_info->host_allocated
                       && src2_info->host_reg == X86_DX)) {
-                    ASSERT(!(dest_info->avoid_regs & (1 << X86_DX)));
+                    ASSERT(!dest_info->avoid_regs);
                     dest_info->host_allocated = true;
                     dest_info->host_reg = X86_DX;
-                    src2_info->avoid_regs |= 1 << X86_DX;
                     ctx->last_dx_death = dest_reg->death;
                 }
             }
@@ -1989,6 +2033,9 @@ static void first_pass_for_block(HostX86Context *ctx, int block_index)
                 src1_info->host_allocated = true;
                 src1_info->host_reg = X86_AX;
                 ctx->last_ax_death = src1_reg->death;
+            }
+            if (!src2_info->host_allocated) {
+                src2_info->avoid_regs |= 1<<X86_AX | 1<<X86_DX;
             }
             break;
           }  // case RTLOP_MOD[US]

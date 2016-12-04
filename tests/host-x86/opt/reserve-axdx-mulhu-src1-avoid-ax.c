@@ -28,13 +28,15 @@ static int add_rtl(RTLUnit *unit)
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg3, 0, 0, 3));
     EXPECT(reg4 = rtl_alloc_register(unit, RTLTYPE_INT32));
     EXPECT(rtl_add_insn(unit, RTLOP_CMPXCHG, reg4, reg1, reg2, reg3));
+    /* Extend reg3's live range so it doesn't claim EDX and block reg4
+     * from its fixed EDX allocation due to the CMPXCHG rules. */
+    EXPECT(rtl_add_insn(unit, RTLOP_NOP, 0, reg3, 0, 0));
 
     EXPECT(reg5 = rtl_alloc_register(unit, RTLTYPE_INT32));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg5, 0, 0, 5));
     EXPECT(reg6 = rtl_alloc_register(unit, RTLTYPE_INT32));
     /* reg4 should not get EAX since it's also a CMPXCHG output. */
     EXPECT(rtl_add_insn(unit, RTLOP_MULHU, reg6, reg4, reg5, 0));
-    EXPECT(rtl_add_insn(unit, RTLOP_NOP, 0, reg4, reg5, 0));
 
     return EXIT_SUCCESS;
 }
@@ -43,13 +45,11 @@ static const uint8_t expected_code[] = {
     0x41,0x57,                          // push %r15
     0xB9,0x01,0x00,0x00,0x00,           // mov $1,%ecx
     0xB8,0x02,0x00,0x00,0x00,           // mov $2,%eax
-    0xBA,0x03,0x00,0x00,0x00,           // mov $3,%edx
-    0xF0,0x0F,0xB1,0x11,                // lock cmpxchg %edx,(%rcx)
-    0x8B,0xF0,                          // mov %eax,%esi
+    0xBE,0x03,0x00,0x00,0x00,           // mov $3,%esi
+    0xF0,0x0F,0xB1,0x31,                // lock cmpxchg %esi,(%rcx)
+    0x8B,0xD0,                          // mov %eax,%edx
     0xB8,0x05,0x00,0x00,0x00,           // mov $5,%eax
-    0x48,0x8B,0xC8,                     // mov %rax,%rcx
-    0xF7,0xE6,                          // mul %esi
-    0x48,0x8B,0xC1,                     // mov %rcx,%rax
+    0xF7,0xE2,                          // mul %edx
     0x41,0x5F,                          // pop %r15
     0xC3,                               // ret
 };

@@ -46,12 +46,10 @@ static const uint8_t expected_code[] = {
     0xBA,0x03,0x00,0x00,0x00,           // mov $3,%edx
     0xF0,0x0F,0xB1,0x11,                // lock cmpxchg %edx,(%rcx)
     0x8B,0xF0,                          // mov %eax,%esi
-    0xB8,0x05,0x00,0x00,0x00,           // mov $5,%eax
-    0x48,0x8B,0xC8,                     // mov %rax,%rcx
+    0xB9,0x05,0x00,0x00,0x00,           // mov $5,%ecx
     0x8B,0xC6,                          // mov %esi,%eax
     0x33,0xD2,                          // xor %edx,%edx
     0xF7,0xF1,                          // div %ecx
-    0x48,0x8B,0xC1,                     // mov %rcx,%rax
     0x41,0x5F,                          // pop %r15
     0xC3,                               // ret
 };

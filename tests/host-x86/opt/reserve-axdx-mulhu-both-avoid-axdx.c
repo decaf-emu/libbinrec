@@ -18,32 +18,40 @@ static const unsigned int host_opt = BINREC_OPT_H_X86_FIXED_REGS;
 
 static int add_rtl(RTLUnit *unit)
 {
-    int reg1, reg2, reg3, reg4;
+    /* Block reg2 and reg5 from getting EAX or EDX. */
+    int reg1, reg2, reg3, reg4, reg5, reg6;
     EXPECT(reg1 = rtl_alloc_register(unit, RTLTYPE_INT32));
-    EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg1, 0, 0, 1));  // reg1=ECX
+    EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg1, 0, 0, 1));
     EXPECT(reg2 = rtl_alloc_register(unit, RTLTYPE_INT32));
-    EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg2, 0, 0, 2));  // reg2=ESI
+    EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg2, 0, 0, 2));
     EXPECT(reg3 = rtl_alloc_register(unit, RTLTYPE_INT32));
-    EXPECT(rtl_add_insn(unit, RTLOP_DIVU, reg3, reg1, reg2, 0));  // reg3=EAX
-
-    /* reg4 should not get EAX here due to the dest != src2 constraint. */
+    EXPECT(rtl_add_insn(unit, RTLOP_DIVU, reg3, reg1, reg2, 0));
     EXPECT(reg4 = rtl_alloc_register(unit, RTLTYPE_INT32));
-    EXPECT(rtl_add_insn(unit, RTLOP_DIVU, reg4, reg1, reg3, 0));  // reg4=ECX
+    EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg4, 0, 0, 4));
+    EXPECT(reg5 = rtl_alloc_register(unit, RTLTYPE_INT32));
+    EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg5, 0, 0, 5));
+    EXPECT(reg6 = rtl_alloc_register(unit, RTLTYPE_INT32));
+    EXPECT(rtl_add_insn(unit, RTLOP_DIVU, reg6, reg4, reg5, 0));
+
+    int reg7;
+    EXPECT(reg7 = rtl_alloc_register(unit, RTLTYPE_INT32));
+    EXPECT(rtl_add_insn(unit, RTLOP_MULHU, reg7, reg2, reg5, 0));
 
     return EXIT_SUCCESS;
 }
 
 static const uint8_t expected_code[] = {
     0x48,0x83,0xEC,0x08,                // sub $8,%rsp
-    0xB9,0x01,0x00,0x00,0x00,           // mov $1,%ecx
-    0xBE,0x02,0x00,0x00,0x00,           // mov $2,%esi
-    0x8B,0xC1,                          // mov %ecx,%eax
-    0x33,0xD2,                          // xor %edx,%edx
-    0xF7,0xF6,                          // div %esi
-    0x48,0x87,0xC8,                     // xchg %rcx,%rax
+    0xB8,0x01,0x00,0x00,0x00,           // mov $1,%eax
+    0xB9,0x02,0x00,0x00,0x00,           // mov $2,%ecx
     0x33,0xD2,                          // xor %edx,%edx
     0xF7,0xF1,                          // div %ecx
-    0x8B,0xC8,                          // mov %eax,%ecx
+    0xB8,0x04,0x00,0x00,0x00,           // mov $4,%eax
+    0xBE,0x05,0x00,0x00,0x00,           // mov $5,%esi
+    0x33,0xD2,                          // xor %edx,%edx
+    0xF7,0xF6,                          // div %esi
+    0x8B,0xC1,                          // mov %ecx,%eax
+    0xF7,0xE6,                          // mul %esi
     0x48,0x83,0xC4,0x08,                // add $8,%rsp
     0xC3,                               // ret
 };

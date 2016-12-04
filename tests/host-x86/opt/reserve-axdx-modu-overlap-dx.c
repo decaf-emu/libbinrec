@@ -18,7 +18,7 @@ static const unsigned int host_opt = BINREC_OPT_H_X86_FIXED_REGS;
 
 static int add_rtl(RTLUnit *unit)
 {
-    alloc_dummy_registers(unit, 1, RTLTYPE_INT32);
+    alloc_dummy_registers(unit, 1, RTLTYPE_INT32);  // Blocks ECX.
 
     int reg1, reg2, reg3, reg4, reg5;
     EXPECT(reg1 = rtl_alloc_register(unit, RTLTYPE_INT32));
@@ -49,14 +49,12 @@ static const uint8_t expected_code[] = {
     0x33,0xD2,                          // xor %edx,%edx
     0xF7,0xF6,                          // div %esi
     0x48,0x8B,0xC7,                     // mov %rdi,%rax
-    0xB8,0x04,0x00,0x00,0x00,           // mov $4,%eax
-    0x4C,0x8B,0xC0,                     // mov %rax,%r8
+    0xBF,0x04,0x00,0x00,0x00,           // mov $4,%edi
     0x8B,0xC6,                          // mov %esi,%eax
-    0x48,0x8B,0xFA,                     // mov %rdx,%rdi
+    0x4C,0x8B,0xC2,                     // mov %rdx,%r8
     0x33,0xD2,                          // xor %edx,%edx
-    0x41,0xF7,0xF0,                     // div %r8d
-    0x48,0x87,0xD7,                     // xchg %rdx,%rdi
-    0x49,0x8B,0xC0,                     // mov %r8,%rax
+    0xF7,0xF7,                          // div %rdi
+    0x49,0x87,0xD0,                     // xchg %rdx,%r8
     0x48,0x83,0xC4,0x08,                // add $8,%rsp
     0xC3,                               // ret
 };
