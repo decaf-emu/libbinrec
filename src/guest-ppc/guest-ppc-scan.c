@@ -1173,8 +1173,9 @@ static void scan_branches(GuestPPCContext *ctx)
                 target = address + disp;
             }
             block->branch_block = get_block(ctx, target, false);
-        } else if (block->has_trap) {
-            /* Treat this as an unconditional branch to the next
+        } else {
+            /* This is a block that ends in a trap or falls into a branch
+             * target.  We treat it as an unconditional branch to the next
              * instruction, to simplify scan_used_changed() logic. */
             block->branch_block =
                 get_block(ctx, block->start + block->len, false);
@@ -1342,6 +1343,7 @@ bool guest_ppc_scan(GuestPPCContext *ctx, uint32_t limit)
         if (is_direct_branch || is_indirect_branch || block->has_trap
          || is_invalid || is_icbi || is_sc || is_terminal_gqr_write) {
             block->len = (address + 4) - block->start;
+            block->has_branch = is_direct_branch || is_indirect_branch;
             block->is_conditional_branch =
                 ((is_direct_branch || is_indirect_branch)
                  && !is_unconditional_branch);
@@ -1428,6 +1430,12 @@ bool guest_ppc_scan(GuestPPCContext *ctx, uint32_t limit)
             if (block->start - prev->start < prev->len) {
                 block->len = prev->len - (block->start - prev->start);
                 prev->len = block->start - prev->start;
+                block->has_trap = prev->has_trap;
+                block->has_branch = prev->has_branch;
+                block->is_conditional_branch = prev->is_conditional_branch;
+                prev->has_trap = 0;
+                prev->has_branch = 0;
+                prev->is_conditional_branch = 0;
             }
         }
     }

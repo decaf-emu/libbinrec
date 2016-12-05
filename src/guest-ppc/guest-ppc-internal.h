@@ -317,10 +317,10 @@ typedef struct GuestPPCBlockInfo {
 
     /* Does this block contain a trap instruction (tw/twi)? */
     bool has_trap;
-
+    /* Does this block end in a branch of any sort? */
+    bool has_branch;
     /* Does this block end in a conditional branch? */
     bool is_conditional_branch;
-
     /* Is this block a branch target?  (Labels are only allocated for
      * branch targets.) */
     bool is_branch_target;
@@ -488,16 +488,18 @@ typedef struct GuestPPCContext {
  *         branches).
  *     crb_store_branch_ret: Pointer to variable to receive the bitmask of
  *         CR bits (LSB = CR bit 0) to be stored on the branch-taken code
- *         path only.
+ *         path only.  May be NULL for unconditional branches.
  *     crb_store_next_ret: Pointer to variable to receive the bitmask of
  *         CR bits (LSB = CR bit 0) to be stored on the branch-not-taken
- *         code path only.
+ *         code path only.  May be NULL for unconditional branches.
  *     crb_reg_ret: Pointer to 32-element array to receive the RTL register
- *         containing the value for each set bit in crb_store_*_ret.
+ *         containing the value for each set bit in crb_store_*_ret.  May
+ *         be NULL for unconditional branches.
  *     crb_insn_ret: Pointer to 32-element array to receive the RTL
  *         instruction which sets the value for each set bit in
  *         crb_store_*_ret.  An opcode value of zero indicates that no
  *         setting instruction should be added on the relevant code path.
+ *         May be NULL for unconditional branches.
  */
 #define guest_ppc_trim_cr_stores INTERNAL(guest_ppc_trim_cr_stores)
 extern void guest_ppc_trim_cr_stores(

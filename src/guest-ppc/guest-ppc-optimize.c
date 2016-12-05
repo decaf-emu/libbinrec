@@ -143,14 +143,17 @@ void guest_ppc_trim_cr_stores(
     RTLInsn *crb_insn_ret)
 {
     ASSERT(ctx);
-    ASSERT(crb_store_branch_ret);
-    ASSERT(crb_store_next_ret);
-    ASSERT(crb_reg_ret);
-    ASSERT(crb_insn_ret);
 
     const bool is_conditional = ((BO & 0x14) != 0x14);
     const int branch_block = ctx->blocks[ctx->current_block].branch_block;
     const int next_block = ctx->blocks[ctx->current_block].next_block;
+
+    if (is_conditional) {
+        ASSERT(crb_store_branch_ret);
+        ASSERT(crb_store_next_ret);
+        ASSERT(crb_reg_ret);
+        ASSERT(crb_insn_ret);
+    }
 
     /*
      * Note that this function does not attempt to handle the case where
@@ -187,9 +190,9 @@ void guest_ppc_trim_cr_stores(
          next_block < 0 ? 0 :
              ctx->blocks[next_block].crb_changed_recursive & crb_dirty);
     const uint32_t crb_to_kill = crb_dead_branch & crb_dead_next;
-    *crb_store_branch_ret = crb_dead_next & ~crb_to_kill;
-    *crb_store_next_ret = crb_dead_branch & ~crb_to_kill;
-    ASSERT((*crb_store_branch_ret & *crb_store_next_ret) == 0);
+    const uint32_t crb_store_branch = crb_dead_next & ~crb_to_kill;
+    const uint32_t crb_store_next = crb_dead_branch & ~crb_to_kill;
+    ASSERT((crb_store_branch & crb_store_next) == 0);
     /* These stores are unconditionally dead, so we don't need to save
      * the associated register or value-setting instruction. */
     kill_cr_stores(ctx, BO, BI, crb_to_kill, NULL, NULL);
@@ -199,9 +202,16 @@ void guest_ppc_trim_cr_stores(
      * dead, so we kill the original SET_ALIAS instructions and (if
      * possible) the instructions which set the corresponding RTL register,
      * then re-add them at the branch or fall-through point. */
-    const uint32_t crb_to_save = *crb_store_branch_ret | *crb_store_next_ret;
+    const uint32_t crb_to_save = crb_store_branch | crb_store_next;
     ASSERT(!(crb_to_kill & crb_to_save));
     kill_cr_stores(ctx, BO, BI, crb_to_save, crb_reg_ret, crb_insn_ret);
+
+    if (crb_store_branch_ret) {
+        *crb_store_branch_ret = crb_store_branch;
+    }
+    if (crb_store_next_ret) {
+        *crb_store_next_ret = crb_store_next;
+    }
 }
 
 /*************************************************************************/

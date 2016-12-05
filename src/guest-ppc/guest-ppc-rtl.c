@@ -8526,6 +8526,12 @@ bool guest_ppc_translate_block(GuestPPCContext *ctx, int index)
         }
     }
 
+    /* If the last instruction of the block is not a branch or trap, check
+     * for dead CR stores (if requested) before entering the next block. */
+    if (ctx->trim_cr_stores && !block->has_branch && !block->has_trap) {
+        guest_ppc_trim_cr_stores(ctx, 0x14, 0, NULL, NULL, NULL, NULL);
+    }
+
     flush_live_regs(ctx, true);
     set_nia_imm(ctx, start + block->len);
     if (UNLIKELY(rtl_get_error_state(unit))) {
