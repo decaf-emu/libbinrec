@@ -1537,7 +1537,7 @@ extern void binrec_set_post_insn_callback(binrec_t *handle,
  * to generate more efficient code under the assumption that certain
  * elements of the processor state will remain constant for every call
  * to the translated code.  If NULL is passed, such optimizations will be
- * implicitly disabled for the current binrec_translate() call. 
+ * implicitly disabled for the current binrec_translate() call.
  *
  * On success, the returned block can be executed by calling it as a
  * function with the following signature:

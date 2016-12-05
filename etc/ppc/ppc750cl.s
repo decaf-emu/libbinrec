@@ -3,6 +3,10 @@
 # No copyright is claimed on this file.
 #
 # Update history:
+#    - 2016-12-05: Added tests to verify behavior of fctiw with inputs near
+#         the minimum and maximum integer values.
+#    - 2016-12-05: Fixed fctiw exception-enabled tests to properly record
+#         the erroneous output value.
 #    - 2016-12-04: Added tests to verify that the result of fmadds/ps_madd
 #         is not rounded twice (to double and then to single precision).
 #    - 2016-12-04: Added a test for fmadds to verify non-rounding of the
@@ -11170,6 +11174,7 @@ get_load_address:
    lfd %f29,216(%r31)  # (double) -(2^31+1)
    lfd %f7,64(%r31)    # 0.5
    fadd %f8,%f7,%f1    # 1.5
+   fmul %f13,%f7,%f7    # 0.25
    lis %r24,0x40       # 4194304
    addi %r25,%r24,1    # 4194305
    neg %r26,%r24       # -4194304
@@ -11243,62 +11248,142 @@ get_load_address:
    bl add_fpscr_vxsnan
    bl add_fpscr_vxcvi
    bl check_fctiw
+0: fsub %f14,%f28,%f7
+   fctiw %f3,%f14
+   bl record
+   mr %r7,%r28
+   bl add_fpscr_vxcvi
+   bl check_fctiw
+0: fsub %f15,%f14,%f13
+   fctiw %f3,%f15
+   bl record
+   mr %r7,%r28
+   bl check_fctiw_inex
+0: fadd %f14,%f29,%f7
+   fctiw %f15,%f14
+   bl record
+   fmr %f3,%f15
+   mr %r7,%r29
+   bl check_fctiw_inex
+0: fsub %f15,%f14,%f13
+   fctiw %f15,%f15
+   bl record
+   fmr %f3,%f15
+   mr %r7,%r29
+   bl add_fpscr_vxcvi
+   bl check_fctiw
 
    # fctiw (RN = round toward zero)
 0: mtfsfi 7,1
-   fctiw %f3,%f24
+   fctiw %f4,%f24
    bl record
+   fmr %f3,%f4
    mr %r7,%r24
    bl check_fctiw_inex
-0: fctiw %f3,%f25
+0: fctiw %f4,%f25
    bl record
+   fmr %f3,%f4
    mr %r7,%r26
+   bl check_fctiw_inex
+0: fsub %f14,%f28,%f13
+   fctiw %f4,%f14
+   bl record
+   fmr %f3,%f4
+   mr %r7,%r28
+   bl check_fctiw_inex
+0: fadd %f15,%f29,%f13
+   fctiw %f4,%f15
+   bl record
+   fmr %f3,%f4
+   mr %r7,%r29
    bl check_fctiw_inex
 
    # fctiw (RN = round toward +infinity)
 0: mtfsfi 7,2
-   fctiw %f3,%f24
+   fctiw %f5,%f24
    bl record
+   fmr %f3,%f5
    mr %r7,%r25
    bl check_fctiw_inex
-0: fctiw %f3,%f25
+0: fctiw %f5,%f25
    bl record
+   fmr %f3,%f5
    mr %r7,%r26
+   bl check_fctiw_inex
+0: fsub %f14,%f28,%f7
+   fsub %f14,%f14,%f13
+   fctiw %f5,%f14
+   bl record
+   fmr %f3,%f5
+   mr %r7,%r28
+   bl add_fpscr_vxcvi
+   bl check_fctiw
+0: fadd %f15,%f29,%f13
+   fctiw %f5,%f15
+   bl record
+   fmr %f3,%f5
+   mr %r7,%r29
    bl check_fctiw_inex
 
    # fctiw (RN = round toward -infinity)
 0: mtfsfi 7,3
-   fctiw %f3,%f24
+   fctiw %f14,%f24
    bl record
+   fmr %f3,%f14
    mr %r7,%r24
    bl check_fctiw_inex
-0: fctiw %f3,%f25
+0: fctiw %f14,%f25
    bl record
+   fmr %f3,%f14
    mr %r7,%r27
    bl check_fctiw_inex
+0: fsub %f14,%f28,%f13
+   fctiw %f14,%f14
+   bl record
+   fmr %f3,%f14
+   mr %r7,%r28
+   bl check_fctiw_inex
+0: fadd %f15,%f29,%f7
+   fadd %f15,%f15,%f13
+   fctiw %f14,%f15
+   bl record
+   fmr %f3,%f14
+   mr %r7,%r29
+   bl add_fpscr_vxcvi
+   bl check_fctiw
 
    # fctiw (exceptions enabled)
 0: mtfsfi 7,0
    mtfsb1 24
-   fmr %f3,%f1
    fmr %f4,%f1
    fctiw %f4,%f26
    bl record
+   fmr %f3,%f4
+   fmr %f4,%f1
    bl add_fpscr_fex
    bl add_fpscr_vxcvi
    bl check_fpu_noresult_nofprf
-0: fctiw %f4,%f28
+0: fmr %f4,%f1
+   fctiw %f4,%f28
    bl record
+   fmr %f3,%f4
+   fmr %f4,%f1
    bl add_fpscr_fex
    bl add_fpscr_vxcvi
    bl check_fpu_noresult_nofprf
-0: fctiw %f4,%f10
+0: fmr %f4,%f1
+   fctiw %f4,%f10
    bl record
+   fmr %f3,%f4
+   fmr %f4,%f1
    bl add_fpscr_fex
    bl add_fpscr_vxcvi
    bl check_fpu_noresult_nofprf
-0: fctiw %f4,%f11
+0: fmr %f4,%f1
+   fctiw %f4,%f11
    bl record
+   fmr %f3,%f4
+   fmr %f4,%f1
    bl add_fpscr_fex
    bl add_fpscr_vxsnan
    bl add_fpscr_vxcvi

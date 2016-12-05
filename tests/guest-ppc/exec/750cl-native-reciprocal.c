@@ -19,7 +19,7 @@
 
 static const FailureRecord expected_error_list[] = {
     EXPECTED_ERRORS_NATIVE_RECIPROCAL,
-    EXPECTED_ERRORS_COMMON_NO_RECIPROCAL_TABLES,
+    EXPECTED_ERRORS_COMMON,
 };
 
 
