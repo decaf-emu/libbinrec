@@ -31,9 +31,8 @@ static const uint8_t expected_code[] = {
     0x53,                               // push %rbx
     0x48,0x83,0xEC,0x10,                // sub $16,%rsp
     0x48,0x8B,0xDF,                     // mov %rdi,%rbx
-    0xFF,0xD3,                          // call *%rbx
     0x0F,0xAE,0x1C,0x24,                // stmxcsr (%rsp)
-    0x83,0x24,0x24,0xC0,                // andl $-64,(%rsp)
+    0xFF,0xD3,                          // call *%rbx
     0x0F,0xAE,0x14,0x24,                // ldmxcsr (%rsp)
     0x48,0x83,0xC4,0x10,                // add $16,%rsp
     0x5B,                               // pop %rbx

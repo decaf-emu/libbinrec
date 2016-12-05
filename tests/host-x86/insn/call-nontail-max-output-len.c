@@ -25,27 +25,35 @@ static int add_rtl(RTLUnit *unit)
     }
     alloc_dummy_registers(unit, 15, RTLTYPE_FLOAT32);
 
-    int reg1, reg2, reg3, reg4;
+    int reg1, reg2, reg3, reg4, reg5, reg6, reg7;
     EXPECT(reg1 = rtl_alloc_register(unit, RTLTYPE_ADDRESS));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg1, 0, 0, 1));
-    rtl_make_unfoldable(unit, reg1);
     EXPECT(reg2 = rtl_alloc_register(unit, RTLTYPE_INT64));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg2, 0, 0, 2));
-    rtl_make_unfoldable(unit, reg2);
     EXPECT(reg3 = rtl_alloc_register(unit, RTLTYPE_INT64));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg3, 0, 0, 3));
-    rtl_make_unfoldable(unit, reg3);
-    /* Touch XMM15 (though that shouldn't affect the output). */
+    /* These three immediates will be loaded at the call site. */
+    EXPECT(reg4 = rtl_alloc_register(unit, RTLTYPE_ADDRESS));
+    EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM,
+                        reg4, 0, 0, UINT64_C(0x400000004)));
+    EXPECT(reg5 = rtl_alloc_register(unit, RTLTYPE_INT64));
+    EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM,
+                        reg5, 0, 0, UINT64_C(0x500000005)));
+    EXPECT(reg6 = rtl_alloc_register(unit, RTLTYPE_INT64));
+    EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM,
+                        reg6, 0, 0, UINT64_C(0x600000006)));
+    /* Touch XMM15 to check that it doesn't affect the output (since XMM15
+     * isn't live across the call). */
     EXPECT(rtl_add_insn(unit, RTLOP_STORE, 0, reg1, reg2, 0));
-    EXPECT(reg4 = rtl_alloc_register(unit, RTLTYPE_INT64));
-    EXPECT(rtl_add_insn(unit, RTLOP_CALL, reg4, reg1, reg2, reg3));
+    EXPECT(reg7 = rtl_alloc_register(unit, RTLTYPE_INT64));
+    EXPECT(rtl_add_insn(unit, RTLOP_CALL, reg7, reg4, reg5, reg6));
     for (int i = 0; i < lenof(dummy_regs); i++) {
         if (i != 2) {
             EXPECT(rtl_add_insn(unit, RTLOP_NOP, 0, dummy_regs[i], 0, 0));
         }
     }
     EXPECT(rtl_add_insn(unit, RTLOP_NOP, 0, reg1, reg2, 0));
-    EXPECT(rtl_add_insn(unit, RTLOP_NOP, 0, reg3, reg4, 0));
+    EXPECT(rtl_add_insn(unit, RTLOP_NOP, 0, reg3, reg7, 0));
     EXPECT(rtl_add_insn(unit, RTLOP_NOP, 0, dummy_regs[2], 0, 0));
 
     return EXIT_SUCCESS;
@@ -85,6 +93,7 @@ static const uint8_t expected_code[] = {
       0x00,
     0xF2,0x45,0x0F,0x11,0x3F,                     // movsd %xmm15,(%r15)
     0x4C,0x89,0xA4,0x24,0xD8,0x01,0x00,0x00,      // mov %r12,472(%rsp)
+
     0x48,0x89,0x84,0x24,0x90,0x00,0x00,0x00,      // mov %rax,144(%rsp)
     0x48,0x89,0x8C,0x24,0x98,0x00,0x00,0x00,      // mov %rcx,152(%rsp)
     0x48,0x89,0x94,0x24,0xA0,0x00,0x00,0x00,      // mov %rdx,160(%rsp)
@@ -109,13 +118,15 @@ static const uint8_t expected_code[] = {
     0x44,0x0F,0x29,0xA4,0x24,0xA0,0x01,0x00,0x00, // movaps %xmm12,416(%rsp)
     0x44,0x0F,0x29,0xAC,0x24,0xB0,0x01,0x00,0x00, // movaps %xmm13,432(%rsp)
     0x44,0x0F,0x29,0xB4,0x24,0xC0,0x01,0x00,0x00, // movaps %xmm14,448(%rsp)
-    0x48,0x8B,0xBC,0x24,0x88,0x00,0x00,0x00,      // mov 136(%rsp),%rdi
-    0x48,0x8B,0xB4,0x24,0xD8,0x01,0x00,0x00,      // mov 472(%rsp),%rsi
-    0x48,0x8B,0x84,0x24,0x80,0x00,0x00,0x00,      // mov 128(%rsp),%rax
+    0x0F,0xAE,0x9C,0x24,0xD0,0x01,0x00,0x00,      // stmxcsr 464(%rsp)
+    0x48,0xBF,0x05,0x00,0x00,0x00,0x05,0x00,0x00, // mov $0x500000005,%rdi
+      0x00,
+    0x48,0xBE,0x06,0x00,0x00,0x00,0x06,0x00,0x00, // mov $0x600000006,%rsi
+      0x00,
+    0x48,0xB8,0x04,0x00,0x00,0x00,0x04,0x00,0x00, // mov $0x400000004,%rax
+      0x00,
     0xFF,0xD0,                                    // call *%rax
     0x4C,0x8B,0xE0,                               // mov %rax,%r12
-    0x0F,0xAE,0x9C,0x24,0xD0,0x01,0x00,0x00,      // stmxcsr 464(%rsp)
-    0x83,0xA4,0x24,0xD0,0x01,0x00,0x00,0xC0,      // andl $-64,464(%rsp)
     0x0F,0xAE,0x94,0x24,0xD0,0x01,0x00,0x00,      // ldmxcsr 464(%rsp)
     0x48,0x8B,0x84,0x24,0x90,0x00,0x00,0x00,      // mov 144(%rsp),%rax
     0x48,0x8B,0x8C,0x24,0x98,0x00,0x00,0x00,      // mov 152(%rsp),%rcx
@@ -141,6 +152,7 @@ static const uint8_t expected_code[] = {
     0x44,0x0F,0x28,0xA4,0x24,0xA0,0x01,0x00,0x00, // movaps 416(%rsp),%xmm12
     0x44,0x0F,0x28,0xAC,0x24,0xB0,0x01,0x00,0x00, // movaps 432(%rsp),%xmm13
     0x44,0x0F,0x28,0xB4,0x24,0xC0,0x01,0x00,0x00, // movaps 448(%rsp),%xmm14
+
     0x48,0x81,0xC4,0xE8,0x01,0x00,0x00,           // add $488,%rsp
     0x41,0x5F,                                    // pop %r15
     0x41,0x5E,                                    // pop %r14
@@ -151,6 +163,12 @@ static const uint8_t expected_code[] = {
     0xC3,                                         // ret
 };
 
-static const char expected_log[] = "";
+static const char expected_log[] =
+    #ifdef RTL_DEBUG_OPTIMIZE
+        "[info] Killing instruction 47\n"
+        "[info] Killing instruction 48\n"
+        "[info] Killing instruction 49\n"
+    #endif
+    "";
 
 #include "tests/rtl-translate-test.i"

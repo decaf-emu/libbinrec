@@ -2544,12 +2544,12 @@ static bool translate_call(HostX86Context *ctx, int block_index,
     /* Tail calls: worst case epilogue (107 bytes, see append_epilogue()) +
      * JMP Ev (without REX, since src1 is loaded to RAX) */
     const int MAX_TAIL_CALL_LEN = MAX_SETUP_LEN + 107 + 2;
-    /* Nontail calls: CALL Ev (without REX, since spilled src1 is always
-     * loaded to RAX) + return value copy (with REX) + MXCSR exception
-     * clear (24) + worst case save/restore for System V ABI (9x REX GPR
-     * store, 8x non-REX XMM store, 7x REX XMM store) */
+    /* Nontail calls: CALL Ev (without REX, since spilled or immediate src1
+     * is always loaded to RAX) + return value copy (with REX) + MXCSR
+     * save/load (16) + worst case save/restore for System V ABI (9x REX
+     * GPR store, 8x non-REX XMM store, 7x REX XMM store, all doubled) */
     const int MAX_NONTAIL_CALL_LEN =
-        MAX_SETUP_LEN + 2 + 3 + 24 + 2 * (9*8 + 8*8 + 7*9);
+        MAX_SETUP_LEN + 2 + 3 + 16 + (2 * (9*8 + 8*8 + 7*9));
     const int max_len = is_tail ? MAX_TAIL_CALL_LEN : MAX_NONTAIL_CALL_LEN;
     if (UNLIKELY(handle->code_len + max_len > handle->code_buffer_size)
      && UNLIKELY(!binrec_ensure_code_space(handle, max_len))) {
@@ -2588,6 +2588,12 @@ static bool translate_call(HostX86Context *ctx, int block_index,
                                       X86_SP, -1, ctx->stack_callsave[reg]);
             }
         }
+
+        /* We also save MXCSR since its value is volatile in all x86 ABIs. */
+        ASSERT(ctx->stack_mxcsr >= 0);
+        append_insn_ModRM_mem(
+            &code, false, X86OP_MISC_0FAE, X86OP_MISC0FAE_STMXCSR,
+            X86_SP, -1, ctx->stack_mxcsr);
     }
 
     /* Get arguments into the right place. */
@@ -2644,20 +2650,10 @@ static bool translate_call(HostX86Context *ctx, int block_index,
                             ctx->regs[dest].host_reg, X86_AX);
         }
 
-        /* Clear any MXCSR exception flags that might have been set by the
-         * callee. */
-        ASSERT(ctx->stack_mxcsr >= 0);
-        append_insn_ModRM_mem(
-            &code, false, X86OP_MISC_0FAE, X86OP_MISC0FAE_STMXCSR,
-            X86_SP, -1, ctx->stack_mxcsr);
-        append_insn_ModRM_mem(&code, false, X86OP_IMM_Ev_Ib, X86OP_IMM_AND,
-                              X86_SP, -1, ctx->stack_mxcsr);
-        append_imm8(&code, 0xC0);
+        /* Restore all registers we saved before the call. */
         append_insn_ModRM_mem(
             &code, false, X86OP_MISC_0FAE, X86OP_MISC0FAE_LDMXCSR,
             X86_SP, -1, ctx->stack_mxcsr);
-
-        /* Restore all registers we saved before the call. */
         uint32_t save_regs = insn->host_data_32;
         while (save_regs) {
             const int reg = ctz32(save_regs);
