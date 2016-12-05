@@ -171,6 +171,13 @@ extern "C" {
  * this behavior is not desired, the system call handler can simply treat
  * any instruction word other than 0x4400_0002 as an illegal instruction.
  *
+ * libbinrec ignores the icbi instruction, except in that execution will
+ * always return to the caller after icbi.  If the guest program generates
+ * and executes new (guest) code on the fly, the libbinrec client should
+ * check after each block of translated code returns whether the
+ * instruction immediately preceding NIA is an icbi instruction, and take
+ * appropriate action if so.
+ *
  * If a D-form (immediate offset) load or store instruction has an offset
  * which causes the final address to wrap around the 32-bit address space,
  * such as lwz rD,16(rA) where the value of rA is 0xFFFF_FFF0 or greater,
