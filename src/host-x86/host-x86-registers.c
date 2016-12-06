@@ -1051,6 +1051,7 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
                 }
                 break;
 
+              case RTLOP_FCAST:
               case RTLOP_VFCAST:
                 /* If converting between different types, we use dest as a
                  * temporary, so make sure not to overwrite src1. */
@@ -1381,6 +1382,12 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
                         | 1 << src2_info->host_reg;
             break;
 
+          case RTLOP_FCAST:
+            /* Temporary GPR needed if the source and destination are
+             * different types. */
+            need_temp = (src1_reg->type != dest_reg->type);
+            break;
+
           case RTLOP_FZCAST:
             /* Temporary needed if converting a 64-bit or spilled 32-bit
              * value. */
@@ -1434,7 +1441,6 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
             }
             break;
 
-          case RTLOP_FCAST:
           case RTLOP_VFCAST:
             /* Temporary GPR needed if the source and destination are
              * different types. */
@@ -2092,7 +2098,7 @@ static void first_pass_for_block(HostX86Context *ctx, int block_index)
           }  // case RTLOP_{ROL,ROR} (and non-BMI2 SLL/SRL/SRA)
 
           case RTLOP_FCAST:
-            /* FCAST touches MXCSR and uses a constant if the types are
+            /* FCAST touches MXCSR and uses constants if the types are
              * different. */
             if (unit->regs[insn->dest].type != unit->regs[insn->src1].type) {
                 if (ctx->stack_mxcsr < 0) {
@@ -2102,6 +2108,12 @@ static void first_pass_for_block(HostX86Context *ctx, int block_index)
                     ctx->const_loc[LC_FLOAT64_INV_QUIETBIT] = 1;
                 } else {
                     ctx->const_loc[LC_FLOAT32_INV_QUIETBIT] = 1;
+                    /* This should technically not be V2_FLOAT64, but we
+                     * read it as an integer, so the high 8 bytes don't
+                     * matter, and this lets us share the constant with
+                     * other instructions instead of requiring our own
+                     * separate constant. */
+                    ctx->const_loc[LC_V2_FLOAT64_QUIETBIT] = 1;
                 }
             }
             break;
