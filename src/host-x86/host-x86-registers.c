@@ -62,9 +62,9 @@
  *   a bitmask of host registers which should be saved and restored around
  *   the call by the code generator.
  *
- * - We record any floating-point constants required by the unit, so they
- *   can be inserted between the prologue and the first translated
- *   instruction.
+ * - We modify instructions or operands where necessary for optimal code
+ *   generation (for example, inverting the operands and comparison sense
+ *   for an FCMP instruction with a less-than comparison).
  *
  * During the first pass, we also perform any enabled optimizations on the
  * RTL instruction stream; we do this as part of the same pass to avoid the
@@ -129,7 +129,7 @@
 #define RESERVED_REGS  (1<<X86_SP | 1<<X86_R15 | 1<<X86_XMM15)
 
 /*************************************************************************/
-/**************************** Local routines *****************************/
+/***************** Register allocation utility routines ******************/
 /*************************************************************************/
 
 /**
@@ -426,7 +426,9 @@ static void allocate_callsave_slots(HostX86Context *ctx, uint32_t regset)
     }
 }
 
-/*-----------------------------------------------------------------------*/
+/*************************************************************************/
+/*********************** Register allocation core ************************/
+/*************************************************************************/
 
 /**
  * allocate_regs_for_insn:  Allocate host registers for the given RTL
@@ -1585,9 +1587,19 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
         }
     }
 
-    /* Mark as touched any fixed registers used by the instruction, since
-     * they may not have any associated RTL registers but we still need to
-     * prevent merging through them. */
+    /*
+     * Perform any final instruction-specific handling required:
+     *
+     * - Mark as touched any fixed registers used by the instruction, since
+     *   they may not have any associated RTL registers but we still need
+     *   to prevent merging through them.
+     *
+     * - Record any constant data used by the instruction, so it can be
+     *   inserted into the function prologue.
+     *
+     * - Allocate a stack frame slot for MXCSR if the instruction needs it
+     *   (and if a slot isn't already allocated for that purpose).
+     */
     switch (insn->opcode) {
       case RTLOP_MULHU:
       case RTLOP_MULHS:
@@ -1609,6 +1621,86 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
       case RTLOP_ROL:
       case RTLOP_ROR:
         ctx->block_regs_touched |= 1 << X86_CX;
+        break;
+
+      case RTLOP_FNEG:
+      case RTLOP_FNABS:
+        switch ((RTLDataType)unit->regs[insn->dest].type) {
+          case RTLTYPE_FLOAT32:
+            ctx->const_loc[LC_FLOAT32_SIGNBIT] = 1;
+            break;
+          case RTLTYPE_FLOAT64:
+            ctx->const_loc[LC_FLOAT64_SIGNBIT] = 1;
+            break;
+          case RTLTYPE_V2_FLOAT32:
+            ctx->const_loc[LC_V2_FLOAT32_SIGNBIT] = 1;
+            break;
+          default:
+            ASSERT(unit->regs[insn->dest].type == RTLTYPE_V2_FLOAT64);
+            ctx->const_loc[LC_V2_FLOAT64_SIGNBIT] = 1;
+            break;
+        }
+        break;
+
+      case RTLOP_FABS:
+        switch ((RTLDataType)unit->regs[insn->dest].type) {
+          case RTLTYPE_FLOAT32:
+            ctx->const_loc[LC_FLOAT32_INV_SIGNBIT] = 1;
+            break;
+          case RTLTYPE_FLOAT64:
+            ctx->const_loc[LC_FLOAT64_INV_SIGNBIT] = 1;
+            break;
+          case RTLTYPE_V2_FLOAT32:
+            ctx->const_loc[LC_V2_FLOAT32_INV_SIGNBIT] = 1;
+            break;
+          default:
+            ASSERT(unit->regs[insn->dest].type == RTLTYPE_V2_FLOAT64);
+            ctx->const_loc[LC_V2_FLOAT64_INV_SIGNBIT] = 1;
+            break;
+        }
+        break;
+
+      case RTLOP_FDIV:
+        if (unit->regs[insn->dest].type == RTLTYPE_V2_FLOAT32) {
+            ctx->const_loc[LC_V2_FLOAT32_HIGH_ONES] = 1;
+        }
+        break;
+
+      case RTLOP_FNMADD:
+      case RTLOP_FNMSUB:
+        if (!(ctx->handle->setup.host_features & BINREC_FEATURE_X86_FMA)) {
+            switch ((RTLDataType)unit->regs[insn->dest].type) {
+              case RTLTYPE_FLOAT32:
+                ctx->const_loc[LC_FLOAT32_SIGNBIT] = 1;
+                break;
+              case RTLTYPE_FLOAT64:
+                ctx->const_loc[LC_FLOAT64_SIGNBIT] = 1;
+                break;
+              case RTLTYPE_V2_FLOAT32:
+                ctx->const_loc[LC_V2_FLOAT32_SIGNBIT] = 1;
+                break;
+              default:
+                ASSERT(unit->regs[insn->dest].type == RTLTYPE_V2_FLOAT64);
+                ctx->const_loc[LC_V2_FLOAT64_SIGNBIT] = 1;
+                break;
+            }
+        }
+        break;
+
+      case RTLOP_FZCAST:
+        if (!int_type_is_64(unit->regs[insn->src1].type)) {
+            break;  // MXCSR not needed for converting from uint32. */
+        }
+        /* Fall through to MXCSR frame slot allocation. */
+      case RTLOP_FGETSTATE:
+      case RTLOP_FCLEAREXC:
+      case RTLOP_FSETROUND:
+        /* These instructions touch MXCSR, which requires a memory
+         * location rather than a register, so ensure that we have a
+         * frame slot allocated. */
+        if (ctx->stack_mxcsr < 0) {
+            ctx->stack_mxcsr = allocate_frame_slot(ctx, RTLTYPE_INT32);
+        }
         break;
 
       case RTLOP_CMPXCHG:
@@ -1730,7 +1822,9 @@ static bool allocate_regs_for_block(HostX86Context *ctx, int block_index)
     return true;
 }
 
-/*-----------------------------------------------------------------------*/
+/*************************************************************************/
+/************** First-pass scanner and other local routines **************/
+/*************************************************************************/
 
 /**
  * maybe_optimize_call_immediate:  Check whether the given register is a
@@ -1775,6 +1869,279 @@ static void optimize_call_immediates(RTLUnit *unit, int insn_index)
         if (src3 && src3 != src1 && src3 != src2) {
             maybe_optimize_call_immediate(unit, insn_index, src3);
         }
+    }
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
+ * alloc_fixed_regs_mulh:  Allocate fixed registers for a MULHU or MULHS
+ * instruction.
+ */
+static void alloc_fixed_regs_mulh(HostX86Context *ctx, RTLUnit *unit,
+                                  int insn_index)
+{
+    RTLInsn * const insn = &unit->insns[insn_index];
+    const RTLRegister *dest_reg = &unit->regs[insn->dest];
+    HostX86RegInfo *dest_info = &ctx->regs[insn->dest];
+    const RTLRegister *src1_reg = &unit->regs[insn->src1];
+    HostX86RegInfo *src1_info = &ctx->regs[insn->src1];
+    const RTLRegister *src2_reg = &unit->regs[insn->src2];
+    HostX86RegInfo *src2_info = &ctx->regs[insn->src2];
+
+    /* MUL and IMUL read rAX and write rDX:rAX, so ideally we want one
+     * input operand in rAX, the other in rDX if it dies at this
+     * instruction, and the result in rDX since these instructions return
+     * the high word of the result. */
+
+    const int prev_dx_death = ctx->last_dx_death;
+    if (prev_dx_death <= insn_index) {
+        ASSERT(dest_reg->birth == insn_index);
+        /* This assignment is done in the first pass, so a newly born RTL
+         * register can't have any host registers in its avoid set, but
+         * assert on that in case future additions to the program break
+         * that assumption. */
+        ASSERT(!dest_info->avoid_regs);
+        dest_info->host_allocated = true;
+        dest_info->host_reg = X86_DX;
+        ctx->last_dx_death = dest_reg->death;
+    }
+
+    /* Check which of rAX and rDX we can allocate to src1 and src2.
+     * We prioritize putting at least one operand in rAX to save a move
+     * operation; the only benefit to using rDX is that if the operand
+     * dies here, assigning it to rDX ensures there are no "holes" where
+     * rDX is not in use but can't be allocated due to dest having it
+     * reserved.  Naturally, if we couldn't allocate rDX for dest then we
+     * won't be able to allocate it for either source operand, so we skip
+     * the rDX tests in that case. */
+
+    const bool src1_ax_ok = (!src1_info->host_allocated
+                             && !(src1_info->avoid_regs & (1 << X86_AX))
+                             && src1_reg->birth >= ctx->last_ax_death);
+    const bool src2_ax_ok = (insn->src2 != insn->src1
+                             && !src2_info->host_allocated
+                             && !(src2_info->avoid_regs & (1 << X86_AX))
+                             && src2_reg->birth >= ctx->last_ax_death);
+    const bool src1_dx_ok = (dest_info->host_allocated
+                             && !src1_info->host_allocated
+                             && !(src1_info->avoid_regs & (1 << X86_DX))
+                             && src1_reg->death == insn_index
+                             && src1_reg->birth >= prev_dx_death);
+    const bool src2_dx_ok = (insn->src2 != insn->src1
+                             && dest_info->host_allocated
+                             && !src2_info->host_allocated
+                             && !(src2_info->avoid_regs & (1 << X86_DX))
+                             && src2_reg->death == insn_index
+                             && src2_reg->birth >= prev_dx_death);
+
+    int ax_src = 0, dx_src = 0;  // 1 (src1), 2 (src2), or 0 (none)
+    if (src1_ax_ok && src2_ax_ok) {
+        /* Either operand can go in rAX, so choose the one (if any) that
+         * can't get rDX. */
+        if (src1_dx_ok) {
+            dx_src = 1;
+            ax_src = 2;
+        } else {
+            ax_src = 1;
+            if (src2_dx_ok) {
+                dx_src = 2;
+            }
+        }
+    } else if (src1_ax_ok) {
+        ax_src = 1;
+        if (src2_dx_ok) {
+            dx_src = 2;
+        }
+    } else if (src2_ax_ok) {
+        ax_src = 2;
+        if (src1_dx_ok) {
+            dx_src = 1;
+        }
+    } else {
+        if (src1_dx_ok) {
+            dx_src = 1;
+        } else if (src2_dx_ok) {
+            dx_src = 2;
+        }
+    }
+
+    if (ax_src == 1) {
+        src1_info->host_allocated = true;
+        src1_info->host_reg = X86_AX;
+        ctx->last_ax_death = src1_reg->death;
+    } else if (ax_src == 2) {
+        src2_info->host_allocated = true;
+        src2_info->host_reg = X86_AX;
+        ctx->last_ax_death = src2_reg->death;
+    }
+
+    if (dx_src == 1) {
+        src1_info->host_allocated = true;
+        src1_info->host_reg = X86_DX;
+    } else if (dx_src == 2) {
+        src2_info->host_allocated = true;
+        src2_info->host_reg = X86_DX;
+    }
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
+ * alloc_fixed_regs_div:  Allocate fixed registers for a DIVU or DIVS
+ * instruction.
+ */
+static void alloc_fixed_regs_div(HostX86Context *ctx, RTLUnit *unit,
+                                 int insn_index)
+{
+    RTLInsn * const insn = &unit->insns[insn_index];
+    const RTLRegister *dest_reg = &unit->regs[insn->dest];
+    HostX86RegInfo *dest_info = &ctx->regs[insn->dest];
+    const RTLRegister *src1_reg = &unit->regs[insn->src1];
+    HostX86RegInfo *src1_info = &ctx->regs[insn->src1];
+    HostX86RegInfo *src2_info = &ctx->regs[insn->src2];
+
+    /* For div/mod, we only care about putting the result in rAX or rDX (as
+     * appropriate) and the dividend in rAX.  Putting the divisor in either
+     * rAX or rDX would just force us to move it out of the way later. */
+    if (ctx->last_ax_death <= insn_index) {
+        ASSERT(dest_reg->birth == insn_index);
+        /* We require that dest and src2 not share the same
+         * register, so if src2 is already in rAX, we can't assign
+         * it to dest here. */
+        if (!(src2_info->host_allocated && src2_info->host_reg == X86_AX)) {
+            ASSERT(!dest_info->avoid_regs);
+            dest_info->host_allocated = true;
+            dest_info->host_reg = X86_AX;
+            if (!src1_info->host_allocated
+             && !(src1_info->avoid_regs & (1 << X86_AX))
+             && src1_reg->death == insn_index
+             && src1_reg->birth >= ctx->last_ax_death) {
+                src1_info->host_allocated = true;
+                src1_info->host_reg = X86_AX;
+            }
+            ctx->last_ax_death = dest_reg->death;
+        }
+    }
+
+    if (!src2_info->host_allocated) {
+        src2_info->avoid_regs |= 1<<X86_AX | 1<<X86_DX;
+    }
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
+ * alloc_fixed_regs_mod:  Allocate fixed registers for a MODU or MODS
+ * instruction.
+ */
+static void alloc_fixed_regs_mod(HostX86Context *ctx, RTLUnit *unit,
+                                 int insn_index)
+{
+    RTLInsn * const insn = &unit->insns[insn_index];
+    const RTLRegister *dest_reg = &unit->regs[insn->dest];
+    HostX86RegInfo *dest_info = &ctx->regs[insn->dest];
+    const RTLRegister *src1_reg = &unit->regs[insn->src1];
+    HostX86RegInfo *src1_info = &ctx->regs[insn->src1];
+    HostX86RegInfo *src2_info = &ctx->regs[insn->src2];
+
+    if (ctx->last_dx_death <= insn_index) {
+        ASSERT(dest_reg->birth == insn_index);
+        if (!(src2_info->host_allocated && src2_info->host_reg == X86_DX)) {
+            ASSERT(!dest_info->avoid_regs);
+            dest_info->host_allocated = true;
+            dest_info->host_reg = X86_DX;
+            ctx->last_dx_death = dest_reg->death;
+        }
+    }
+
+    if (!src1_info->host_allocated
+     && !(src1_info->avoid_regs & (1 << X86_AX))
+     && src1_reg->birth > ctx->last_ax_death) {
+        src1_info->host_allocated = true;
+        src1_info->host_reg = X86_AX;
+        ctx->last_ax_death = src1_reg->death;
+    }
+
+    if (!src2_info->host_allocated) {
+        src2_info->avoid_regs |= 1<<X86_AX | 1<<X86_DX;
+    }
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
+ * alloc_fixed_regs_shift:  Allocate fixed registers for a variable-count
+ * shift or rotate instruction.
+ */
+static void alloc_fixed_regs_shift(HostX86Context *ctx, RTLUnit *unit,
+                                   int insn_index)
+{
+    RTLInsn * const insn = &unit->insns[insn_index];
+    const RTLRegister *src2_reg = &unit->regs[insn->src2];
+    HostX86RegInfo *src2_info = &ctx->regs[insn->src2];
+
+    if (!src2_info->host_allocated
+     && !(src2_info->avoid_regs & (1 << X86_CX))
+     && src2_reg->birth >= ctx->last_cx_death) {
+        src2_info->host_allocated = true;
+        src2_info->host_reg = X86_CX;
+        ctx->last_cx_death = src2_reg->death;
+    }
+
+    /* Make sure rCX isn't allocated to the destination register even if
+     * it's later used as a shift count, since the translator doesn't
+     * support rCX as a shift destination. */
+    ctx->regs[insn->dest].avoid_regs |= 1 << X86_CX;
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
+ * alloc_fixed_regs_cmpxchg:  Allocate fixed registers for a CMPXCHG
+ * instruction.
+ */
+static void alloc_fixed_regs_cmpxchg(HostX86Context *ctx, RTLUnit *unit,
+                                     int insn_index)
+{
+    RTLInsn * const insn = &unit->insns[insn_index];
+    const RTLRegister *src2_reg = &unit->regs[insn->src2];
+    HostX86RegInfo *src2_info = &ctx->regs[insn->src2];
+
+    if (!src2_info->host_allocated
+     && !(src2_info->avoid_regs & (1 << X86_AX))
+     && src2_reg->birth >= ctx->last_ax_death) {
+        src2_info->host_allocated = true;
+        src2_info->host_reg = X86_AX;
+        ctx->last_ax_death = src2_reg->death;
+    }
+
+    /* We never allocate CMPXCHG ouptuts in rAX (see notes in the primary
+     * allocator). */
+    ctx->regs[insn->dest].avoid_regs |= 1 << X86_AX;
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
+ * alloc_fixed_regs_return:  Allocate fixed registers for a RETURN
+ * instruction.
+ */
+static void alloc_fixed_regs_return(HostX86Context *ctx, RTLUnit *unit,
+                                     int insn_index)
+{
+    RTLInsn * const insn = &unit->insns[insn_index];
+
+    if (insn->src1) {
+                const RTLRegister *src1_reg = &unit->regs[insn->src1];
+                HostX86RegInfo *src1_info = &ctx->regs[insn->src1];
+                if (!src1_info->host_allocated
+                 && !(src1_info->avoid_regs & (1 << X86_AX))
+                 && src1_reg->birth >= ctx->last_ax_death) {
+                    src1_info->host_allocated = true;
+                    src1_info->host_reg = X86_AX;
+                    ctx->last_ax_death = src1_reg->death;
+                }
     }
 }
 
@@ -1861,189 +2228,25 @@ static void first_pass_for_block(HostX86Context *ctx, int block_index)
             break;
 
           case RTLOP_MULHU:
-          case RTLOP_MULHS: {
-            if (!do_fixed_regs) {
-                break;
+          case RTLOP_MULHS:
+            if (do_fixed_regs) {
+                alloc_fixed_regs_mulh(ctx, unit, insn_index);
             }
-
-            /* MUL and IMUL read rAX and write rDX:rAX, so ideally we want
-             * one input operand in rAX, the other in rDX if it dies at this
-             * instruction, and the result in rDX since these instructions
-             * return the high word of the result. */
-
-            const RTLRegister *dest_reg = &unit->regs[insn->dest];
-            HostX86RegInfo *dest_info = &ctx->regs[insn->dest];
-            const RTLRegister *src1_reg = &unit->regs[insn->src1];
-            HostX86RegInfo *src1_info = &ctx->regs[insn->src1];
-            const RTLRegister *src2_reg = &unit->regs[insn->src2];
-            HostX86RegInfo *src2_info = &ctx->regs[insn->src2];
-
-            const int prev_dx_death = ctx->last_dx_death;
-            if (prev_dx_death <= insn_index) {
-                ASSERT(dest_reg->birth == insn_index);
-                /* This is the first pass, so a newly born RTL register
-                 * can't have any host registers in its avoid set, but
-                 * assert on that in case future additions to the program
-                 * change things. */
-                ASSERT(!dest_info->avoid_regs);
-                dest_info->host_allocated = true;
-                dest_info->host_reg = X86_DX;
-                ctx->last_dx_death = dest_reg->death;
-            }
-
-            /* Check which of rAX and rDX we can allocate to src1 and src2.
-             * We prioritize putting at least one operand in rAX to save a
-             * move operation; the only benefit to using rDX is that if the
-             * operand dies here, assigning it to rDX ensures there are no
-             * "holes" where rDX is not in use but can't be allocated due
-             * to dest having it reserved.  Naturally, if we couldn't
-             * allocate rDX for dest then we won't be able to allocate it
-             * for either source operand, so we skip the rDX tests in that
-             * case. */
-
-            const bool src1_ax_ok = (!src1_info->host_allocated
-                                     && !(src1_info->avoid_regs & (1 << X86_AX))
-                                     && src1_reg->birth >= ctx->last_ax_death);
-            const bool src2_ax_ok = (insn->src2 != insn->src1
-                                     && !src2_info->host_allocated
-                                     && !(src2_info->avoid_regs & (1 << X86_AX))
-                                     && src2_reg->birth >= ctx->last_ax_death);
-            const bool src1_dx_ok = (dest_info->host_allocated
-                                     && !src1_info->host_allocated
-                                     && !(src1_info->avoid_regs & (1 << X86_DX))
-                                     && src1_reg->death == insn_index
-                                     && src1_reg->birth >= prev_dx_death);
-            const bool src2_dx_ok = (insn->src2 != insn->src1
-                                     && dest_info->host_allocated
-                                     && !src2_info->host_allocated
-                                     && !(src2_info->avoid_regs & (1 << X86_DX))
-                                     && src2_reg->death == insn_index
-                                     && src2_reg->birth >= prev_dx_death);
-
-            int ax_src = 0, dx_src = 0;  // 1 (src1), 2 (src2), or 0 (none)
-            if (src1_ax_ok && src2_ax_ok) {
-                /* Either operand can go in rAX, so choose the one (if any)
-                 * that can't get rDX. */
-                if (src1_dx_ok) {
-                    dx_src = 1;
-                    ax_src = 2;
-                } else {
-                    ax_src = 1;
-                    if (src2_dx_ok) {
-                        dx_src = 2;
-                    }
-                }
-            } else if (src1_ax_ok) {
-                ax_src = 1;
-                if (src2_dx_ok) {
-                    dx_src = 2;
-                }
-            } else if (src2_ax_ok) {
-                ax_src = 2;
-                if (src1_dx_ok) {
-                    dx_src = 1;
-                }
-            } else {
-                if (src1_dx_ok) {
-                    dx_src = 1;
-                } else if (src2_dx_ok) {
-                    dx_src = 2;
-                }
-            }
-
-            if (ax_src == 1) {
-                src1_info->host_allocated = true;
-                src1_info->host_reg = X86_AX;
-                ctx->last_ax_death = src1_reg->death;
-            } else if (ax_src == 2) {
-                src2_info->host_allocated = true;
-                src2_info->host_reg = X86_AX;
-                ctx->last_ax_death = src2_reg->death;
-            }
-
-            if (dx_src == 1) {
-                src1_info->host_allocated = true;
-                src1_info->host_reg = X86_DX;
-            } else if (dx_src == 2) {
-                src2_info->host_allocated = true;
-                src2_info->host_reg = X86_DX;
-            }
-
             break;
-          }  // case RTLOP_MULH[US]
 
           case RTLOP_DIVU:
-          case RTLOP_DIVS: {
-            if (!do_fixed_regs) {
-                break;
-            }
-            HostX86RegInfo *src2_info = &ctx->regs[insn->src2];
-            /* For div/mod, we only care about putting the result in rAX or
-             * rDX (as appropriate) and the dividend in rAX.  Putting the
-             * divisor in either rAX or rDX would just force us to move it
-             * out of the way later. */
-            const RTLRegister *dest_reg = &unit->regs[insn->dest];
-            HostX86RegInfo *dest_info = &ctx->regs[insn->dest];
-            if (ctx->last_ax_death <= insn_index) {
-                ASSERT(dest_reg->birth == insn_index);
-                /* We require that dest and src2 not share the same
-                 * register, so if src2 is already in rAX, we can't assign
-                 * it to dest here. */
-                if (!(src2_info->host_allocated
-                      && src2_info->host_reg == X86_AX)) {
-                    ASSERT(!dest_info->avoid_regs);
-                    dest_info->host_allocated = true;
-                    dest_info->host_reg = X86_AX;
-                    const RTLRegister *src1_reg = &unit->regs[insn->src1];
-                    HostX86RegInfo *src1_info = &ctx->regs[insn->src1];
-                    if (!src1_info->host_allocated
-                     && !(src1_info->avoid_regs & (1 << X86_AX))
-                     && src1_reg->death == insn_index
-                     && src1_reg->birth >= ctx->last_ax_death) {
-                        src1_info->host_allocated = true;
-                        src1_info->host_reg = X86_AX;
-                    }
-                    ctx->last_ax_death = dest_reg->death;
-                }
-            }
-            if (!src2_info->host_allocated) {
-                src2_info->avoid_regs |= 1<<X86_AX | 1<<X86_DX;
+          case RTLOP_DIVS:
+            if (do_fixed_regs) {
+                alloc_fixed_regs_div(ctx, unit, insn_index);
             }
             break;
-          }  // case RTLOP_DIV[US]
 
           case RTLOP_MODU:
-          case RTLOP_MODS: {
-            if (!do_fixed_regs) {
-                break;
-            }
-            const RTLRegister *dest_reg = &unit->regs[insn->dest];
-            HostX86RegInfo *dest_info = &ctx->regs[insn->dest];
-            HostX86RegInfo *src2_info = &ctx->regs[insn->src2];
-            if (ctx->last_dx_death <= insn_index) {
-                ASSERT(dest_reg->birth == insn_index);
-                if (!(src2_info->host_allocated
-                      && src2_info->host_reg == X86_DX)) {
-                    ASSERT(!dest_info->avoid_regs);
-                    dest_info->host_allocated = true;
-                    dest_info->host_reg = X86_DX;
-                    ctx->last_dx_death = dest_reg->death;
-                }
-            }
-            const RTLRegister *src1_reg = &unit->regs[insn->src1];
-            HostX86RegInfo *src1_info = &ctx->regs[insn->src1];
-            if (!src1_info->host_allocated
-             && !(src1_info->avoid_regs & (1 << X86_AX))
-             && src1_reg->birth > ctx->last_ax_death) {
-                src1_info->host_allocated = true;
-                src1_info->host_reg = X86_AX;
-                ctx->last_ax_death = src1_reg->death;
-            }
-            if (!src2_info->host_allocated) {
-                src2_info->avoid_regs |= 1<<X86_AX | 1<<X86_DX;
+          case RTLOP_MODS:
+            if (do_fixed_regs) {
+                alloc_fixed_regs_mod(ctx, unit, insn_index);
             }
             break;
-          }  // case RTLOP_MOD[US]
 
           case RTLOP_SLL:
           case RTLOP_SRL:
@@ -2054,66 +2257,9 @@ static void first_pass_for_block(HostX86Context *ctx, int block_index)
             /* Otherwise fall through. */
 
           case RTLOP_ROL:
-          case RTLOP_ROR: {
-            if (!do_fixed_regs) {
-                break;
-            }
-            const RTLRegister *src2_reg = &unit->regs[insn->src2];
-            HostX86RegInfo *src2_info = &ctx->regs[insn->src2];
-            if (!src2_info->host_allocated
-             && !(src2_info->avoid_regs & (1 << X86_CX))
-             && src2_reg->birth >= ctx->last_cx_death) {
-                src2_info->host_allocated = true;
-                src2_info->host_reg = X86_CX;
-                ctx->last_cx_death = src2_reg->death;
-            }
-            /* Make sure rCX isn't allocated to the destination register
-             * even if it's later used as a shift count, since the
-             * translator doesn't support rCX as a shift destination. */
-            ctx->regs[insn->dest].avoid_regs |= 1 << X86_CX;
-            break;
-          }  // case RTLOP_{ROL,ROR} (and non-BMI2 SLL/SRL/SRA)
-
-          case RTLOP_FNEG:
-          case RTLOP_FNABS:
-            switch ((RTLDataType)unit->regs[insn->dest].type) {
-              case RTLTYPE_FLOAT32:
-                ctx->const_loc[LC_FLOAT32_SIGNBIT] = 1;
-                break;
-              case RTLTYPE_FLOAT64:
-                ctx->const_loc[LC_FLOAT64_SIGNBIT] = 1;
-                break;
-              case RTLTYPE_V2_FLOAT32:
-                ctx->const_loc[LC_V2_FLOAT32_SIGNBIT] = 1;
-                break;
-              default:
-                ASSERT(unit->regs[insn->dest].type == RTLTYPE_V2_FLOAT64);
-                ctx->const_loc[LC_V2_FLOAT64_SIGNBIT] = 1;
-                break;
-            }
-            break;
-
-          case RTLOP_FABS:
-            switch ((RTLDataType)unit->regs[insn->dest].type) {
-              case RTLTYPE_FLOAT32:
-                ctx->const_loc[LC_FLOAT32_INV_SIGNBIT] = 1;
-                break;
-              case RTLTYPE_FLOAT64:
-                ctx->const_loc[LC_FLOAT64_INV_SIGNBIT] = 1;
-                break;
-              case RTLTYPE_V2_FLOAT32:
-                ctx->const_loc[LC_V2_FLOAT32_INV_SIGNBIT] = 1;
-                break;
-              default:
-                ASSERT(unit->regs[insn->dest].type == RTLTYPE_V2_FLOAT64);
-                ctx->const_loc[LC_V2_FLOAT64_INV_SIGNBIT] = 1;
-                break;
-            }
-            break;
-
-          case RTLOP_FDIV:
-            if (unit->regs[insn->dest].type == RTLTYPE_V2_FLOAT32) {
-                ctx->const_loc[LC_V2_FLOAT32_HIGH_ONES] = 1;
+          case RTLOP_ROR:
+            if (do_fixed_regs) {
+                alloc_fixed_regs_shift(ctx, unit, insn_index);
             }
             break;
 
@@ -2135,43 +2281,6 @@ static void first_pass_for_block(HostX86Context *ctx, int block_index)
             }
             break;
           }  // case RTLOP_FCMP, RTLOP_VFCMP
-
-          case RTLOP_FNMADD:
-          case RTLOP_FNMSUB:
-            if (!(ctx->handle->setup.host_features & BINREC_FEATURE_X86_FMA)) {
-                switch ((RTLDataType)unit->regs[insn->dest].type) {
-                  case RTLTYPE_FLOAT32:
-                    ctx->const_loc[LC_FLOAT32_SIGNBIT] = 1;
-                    break;
-                  case RTLTYPE_FLOAT64:
-                    ctx->const_loc[LC_FLOAT64_SIGNBIT] = 1;
-                    break;
-                  case RTLTYPE_V2_FLOAT32:
-                    ctx->const_loc[LC_V2_FLOAT32_SIGNBIT] = 1;
-                    break;
-                  default:
-                    ASSERT(unit->regs[insn->dest].type == RTLTYPE_V2_FLOAT64);
-                    ctx->const_loc[LC_V2_FLOAT64_SIGNBIT] = 1;
-                    break;
-                }
-            }
-            break;
-
-          case RTLOP_FZCAST:
-            if (!int_type_is_64(unit->regs[insn->src1].type)) {
-                break;  // MXCSR not needed for converting from uint32. */
-            }
-            /* Fall through to MXCSR frame slot allocation. */
-          case RTLOP_FGETSTATE:
-          case RTLOP_FCLEAREXC:
-          case RTLOP_FSETROUND:
-            /* These instructions touch MXCSR, which requires a memory
-             * location rather than a register, so ensure that we have a
-             * frame slot allocated. */
-            if (ctx->stack_mxcsr < 0) {
-                ctx->stack_mxcsr = allocate_frame_slot(ctx, RTLTYPE_INT32);
-            }
-            break;
 
           case RTLOP_VBROADCAST:
             if (ctx->handle->common_opt & BINREC_OPT_DSE) {
@@ -2224,31 +2333,16 @@ static void first_pass_for_block(HostX86Context *ctx, int block_index)
             }
             break;
 
-          case RTLOP_CMPXCHG: {
+          case RTLOP_CMPXCHG:
             insn->host_data_16 = 0;  // Address optimization, as above.
             insn->host_data_32 = 0;
             if (ctx->handle->host_opt & BINREC_OPT_H_X86_ADDRESS_OPERANDS) {
                 host_x86_optimize_address(ctx, insn_index);
             }
-
-            if (!do_fixed_regs) {
-                break;
+            if (do_fixed_regs) {
+                alloc_fixed_regs_cmpxchg(ctx, unit, insn_index);
             }
-
-            const RTLRegister *src2_reg = &unit->regs[insn->src2];
-            HostX86RegInfo *src2_info = &ctx->regs[insn->src2];
-            if (!src2_info->host_allocated
-             && !(src2_info->avoid_regs & (1 << X86_AX))
-             && src2_reg->birth >= ctx->last_ax_death) {
-                src2_info->host_allocated = true;
-                src2_info->host_reg = X86_AX;
-                ctx->last_ax_death = src2_reg->death;
-            }
-            /* We never allocate CMPXCHG ouptuts in rAX (see notes in the
-             * primary allocator). */
-            ctx->regs[insn->dest].avoid_regs |= 1 << X86_AX;
             break;
-          }  // case RTLOP_CMPXCHG
 
           case RTLOP_GOTO_IF_Z:
           case RTLOP_GOTO_IF_NZ:
@@ -2322,19 +2416,8 @@ static void first_pass_for_block(HostX86Context *ctx, int block_index)
             break;
 
           case RTLOP_RETURN:
-            if (!do_fixed_regs) {
-                break;
-            }
-            if (insn->src1) {
-                const RTLRegister *src1_reg = &unit->regs[insn->src1];
-                HostX86RegInfo *src1_info = &ctx->regs[insn->src1];
-                if (!src1_info->host_allocated
-                 && !(src1_info->avoid_regs & (1 << X86_AX))
-                 && src1_reg->birth >= ctx->last_ax_death) {
-                    src1_info->host_allocated = true;
-                    src1_info->host_reg = X86_AX;
-                    ctx->last_ax_death = src1_reg->death;
-                }
+            if (do_fixed_regs) {
+                alloc_fixed_regs_return(ctx, unit, insn_index);
             }
             break;
 
