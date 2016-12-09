@@ -416,7 +416,8 @@ typedef enum RTLOpcode {
      * (src1, which must be of type ADDRESS) if it is not NULL.  other is
      * the instruction index of the CHAIN instruction to modify, as
      * returned from rtl_add_chain_insn().  If the next instruction is not
-     * RETURN, incorrect code may be generated. */
+     * RETURN, or if src1 is used as an operand to the CHAIN instruction,
+     * incorrect code may be generated. */
     RTLOP_CHAIN_RESOLVE,  // if (src1) set_chain_target(IMMEDIATE(other), src1)
 
     /* Explicit illegal instruction; will trigger an illegal-instruction

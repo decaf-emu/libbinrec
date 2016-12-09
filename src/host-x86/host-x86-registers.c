@@ -2414,6 +2414,22 @@ static void first_pass_for_block(HostX86Context *ctx, int block_index)
             optimize_call_immediates(unit, insn_index);
             break;
 
+          case RTLOP_CHAIN_RESOLVE: {
+            /* Make sure the function arguments passed to the chained code
+             * are live through this instruction, so we can jump directly
+             * back to the CHAIN after modifying it. */
+            const RTLInsn *chain_insn = &unit->insns[insn->src_imm];
+            const int arg0 = chain_insn->src1;
+            const int arg1 = chain_insn->src2;
+            if (arg0 && unit->regs[arg0].death < insn_index) {
+                unit->regs[arg0].death = insn_index;
+            }
+            if (arg1 && unit->regs[arg1].death < insn_index) {
+                unit->regs[arg1].death = insn_index;
+            }
+            break;
+          }  // case RTLOP_CHAIN_RESOLVE
+
           case RTLOP_RETURN:
             if (do_fixed_regs) {
                 alloc_fixed_regs_return(ctx, unit, insn_index);

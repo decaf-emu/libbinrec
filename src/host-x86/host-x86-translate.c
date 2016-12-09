@@ -2804,31 +2804,28 @@ static void translate_chain_resolve(HostX86Context *ctx, CodeBuffer *code,
 
     /* Don't resolve the chain if the pointer is null. */
     append_insn_ModRM_reg(code, true, X86OP_TEST_Ev_Gv, host_src1, host_src1);
-    /* The size of this code is constant regardless of host_src1 due to
-     * REX.W prefixes. */
-    const int skip_disp = 34;
-    append_jump_raw(code, X86OP_JZ_Jb, skip_disp);
+    append_jump_raw(code, X86OP_JZ_Jb, 0);
     const long skip_from = code->len;
 
     /* If the high 16 bits of the value are nonzero, first store those to
-     * the high bits of the immediate.  Note that all caller-saved
-     * registers are now free to use because RTL mandates that a
-     * CHAIN_RESOLVE instruction is immediately followed by RETURN. */
-    const X86Register host_temp = (host_src1 == X86_AX) ? X86_CX : X86_AX;
-    append_insn_ModRM_reg(code, true, X86OP_MOV_Gv_Ev, host_temp, host_src1);
+     * the high bits of the immediate.  R15 is guaranteed to be saved by
+     * the prologue due to the CHAIN instruction, so we can safely use it
+     * as a temporary here. */
+    append_insn_ModRM_reg(code, true, X86OP_MOV_Gv_Ev, X86_R15, host_src1);
     append_insn_ModRM_reg(code, true, X86OP_SHIFT_Ev_Ib, X86OP_SHIFT_SHR,
-                          host_temp);
+                          X86_R15);
     append_imm8(code, 48);
-    append_jump_raw(code, X86OP_JZ_Jb, 7);
+    append_jump_raw(code, X86OP_JZ_Jb, 8);
     const long low48_from = code->len;
     append_opcode(code, X86OP_OPERAND_SIZE);
     append_insn_ModRM_riprel(code, false, X86OP_MOV_Ev_Gv,
-                             host_temp, target_offset + 8);
-    ASSERT(code->len == low48_from + 7);
+                             X86_R15, target_offset + 8);
+    ASSERT(code->len == low48_from + 8);
 
     /* Shift the MOV R15 opcode into the bottom of the address and store
-     * it over the branch.  Again, we can destroy the existing value
-     * because it dies here by contract. */
+     * it over the branch.  We can safely destroy the existing value
+     * because it dies here by contract (RTL mandates that a CHAIN_RESOLVE
+     * instruction is immediately followed by RETURN). */
     append_insn_ModRM_reg(code, true, X86OP_SHIFT_Ev_Ib, X86OP_SHIFT_SHL,
                           host_src1);
     append_imm8(code, 16);
@@ -2838,7 +2835,19 @@ static void translate_chain_resolve(HostX86Context *ctx, CodeBuffer *code,
     append_insn_ModRM_riprel(code, true, X86OP_MOV_Ev_Gv,
                              host_src1, target_offset);
 
-    ASSERT(code->len - skip_from == skip_disp);
+    /* Jump directly to the chain code so we don't force the caller to
+     * look up the translated code for the target address a second time. */
+    const long disp = target_offset - code->len;
+    ASSERT(disp < 0);
+    if (disp-2 >= -128) {
+        append_jump_raw(code, X86OP_JMP_Jb, disp-2);
+    } else {
+        append_jump_raw(code, X86OP_JMP_Jz, disp-5);
+    }
+
+    const long skip_to = code->len;
+    ASSERT(skip_to - skip_from < 128);
+    code->buffer[skip_from - 1] = (uint8_t)(skip_to - skip_from);
 }
 
 /*-----------------------------------------------------------------------*/
