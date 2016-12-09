@@ -1599,6 +1599,8 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
      *
      * - Allocate a stack frame slot for MXCSR if the instruction needs it
      *   (and if a slot isn't already allocated for that purpose).
+     *
+     * - Record labels which are targeted by backward branches.
      */
     switch (insn->opcode) {
       case RTLOP_MULHU:
@@ -1704,6 +1706,19 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
 
       case RTLOP_CMPXCHG:
         ctx->block_regs_touched |= 1 << X86_AX;
+        break;
+
+      case RTLOP_GOTO:
+      case RTLOP_GOTO_IF_Z:
+      case RTLOP_GOTO_IF_NZ:
+        if (unit->label_blockmap[insn->label] <= block_index) {
+            const RTLBlock *target_block =
+                &unit->blocks[unit->label_blockmap[insn->label]];
+            RTLInsn *target_insn = &unit->insns[target_block->first_insn];
+            ASSERT(target_insn->opcode == RTLOP_LABEL);
+            ASSERT(target_insn->label == insn->label);
+            target_insn->host_data_16 = 1;
+        }
         break;
     }
 

@@ -18,9 +18,9 @@ static const unsigned int host_opt = BINREC_OPT_H_X86_BRANCH_ALIGNMENT;
 
 static int add_rtl(RTLUnit *unit)
 {
-    const int target = 0x8;
+    const int target = 0xB;
 
-    int size = 9;
+    int size = 4;
     while ((size & 15) != target) {
         int reg;
         EXPECT(reg = rtl_alloc_register(unit, RTLTYPE_INT32));
@@ -35,7 +35,6 @@ static int add_rtl(RTLUnit *unit)
 
     int label;
     EXPECT(label = rtl_alloc_label(unit));
-    EXPECT(rtl_add_insn(unit, RTLOP_GOTO, 0, 0, 0, label));
     EXPECT(rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, label));
 
     return EXIT_SUCCESS;
@@ -44,11 +43,8 @@ static int add_rtl(RTLUnit *unit)
 static const uint8_t expected_code[] = {
     0x48,0x83,0xEC,0x08,                // sub $8,%rsp
     0xB8,0x01,0x00,0x00,0x00,           // mov $1,%eax
-    0xB8,0x01,0x00,0x00,0x00,           // mov $1,%eax
-    0xB8,0x01,0x00,0x00,0x00,           // mov $1,%eax
-    0xE9,0x08,0x00,0x00,0x00,           // jmp L1
-    0x0F,0x1F,0x84,0x00,0x00,0x00,0x00, // nopl 0(%rax,%rax)
-      0x00,
+    0x33,0xC0,                          // xor %eax,%eax
+    /* Not aligned due to too much distance to the next 16-byte line. */
     0x48,0x83,0xC4,0x08,                // L1: add $8,%rsp
     0xC3,                               // ret
 };

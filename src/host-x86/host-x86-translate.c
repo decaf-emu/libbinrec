@@ -5660,10 +5660,61 @@ static bool translate_block(HostX86Context *ctx, int block_index)
             ASSERT(insn->label > 0);
             ASSERT(insn->label < unit->next_label);
             ASSERT(ctx->label_offsets[insn->label] < 0);
+
             if (handle->host_opt & BINREC_OPT_H_X86_BRANCH_ALIGNMENT) {
-                append_nops(&code, (16 - code.len) & 15);
-                ASSERT((code.len & 15) == 0);
+                /*
+                 * Intel's documentation recommends aligning all branch
+                 * targets to a multiple of 16 byte so that the instruction
+                 * decoder (which fetches aligned 16-byte blocks) can read
+                 * as many instructions as possible.  However, we have to
+                 * balance that with the fact that all NOPs which appear
+                 * in the actual code path have to be decoded and executed
+                 * just like other instructions.  So we use the following
+                 * heuristic to decide whether to align a label:
+                 *
+                 * - If the label follows an unconditional branch, so that
+                 *   execution never falls into the block, always align
+                 *   the label since there's no penalty (other than
+                 *   increased code size) for doing so.
+                 *
+                 * - Otherwise, if the label is the target of a backward
+                 *   branch, align it if there are less than 10 bytes left
+                 *   in the current 16-byte line, since backward branches
+                 *   generally indicate loops and thus will be reached by
+                 *   branching more often than by falling through.
+                 *
+                 * - Otherwise, only align the label if there are less
+                 *   than 5 bytes left in the current 16-byte line.
+                 */
+
+                bool follows_uncond = false;
+                if (block->prev_block >= 0) {
+                    const RTLBlock *prev_block =
+                        &unit->blocks[block->prev_block];
+                    const RTLInsn *prev_insn =
+                        &unit->insns[prev_block->last_insn];
+                    follows_uncond = (prev_insn->opcode == RTLOP_GOTO
+                                   || prev_insn->opcode == RTLOP_RETURN);
+                }
+                const int align_distance = (16 - code.len) & 15;
+
+                bool should_align;
+                if (follows_uncond) {
+                    should_align = true;
+                } else if (insn->host_data_16) {
+                    /* host_data_16 is set to nonzero if the label is
+                     * targeted by a backward branch. */
+                    should_align = (align_distance < 10);
+                } else {
+                    should_align = (align_distance < 5);
+                }
+
+                if (should_align) {
+                    append_nops(&code, align_distance);
+                    ASSERT((code.len & 15) == 0);
+                }
             }
+
             ctx->label_offsets[insn->label] = code.len;
             break;
 

@@ -1104,7 +1104,7 @@ typedef struct binrec_setup_t {
 /**
  * BINREC_OPT_H_X86_BRANCH_ALIGNMENT:  Align branch targets to a multiple
  * of 16 bytes by inserting NOP instructions at appropriate points in the
- * generated code stream.
+ * generated code stream, when doing so seems likely to improve performance.
  */
 #define BINREC_OPT_H_X86_BRANCH_ALIGNMENT  (1<<1)
 

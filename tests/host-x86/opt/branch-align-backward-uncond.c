@@ -18,7 +18,7 @@ static const unsigned int host_opt = BINREC_OPT_H_X86_BRANCH_ALIGNMENT;
 
 static int add_rtl(RTLUnit *unit)
 {
-    const int target = 0x8;
+    const int target = 0x1;
 
     int size = 9;
     while ((size & 15) != target) {
@@ -37,19 +37,26 @@ static int add_rtl(RTLUnit *unit)
     EXPECT(label = rtl_alloc_label(unit));
     EXPECT(rtl_add_insn(unit, RTLOP_GOTO, 0, 0, 0, label));
     EXPECT(rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, label));
+    EXPECT(rtl_add_insn(unit, RTLOP_GOTO, 0, 0, 0, label));
 
     return EXIT_SUCCESS;
 }
 
 static const uint8_t expected_code[] = {
     0x48,0x83,0xEC,0x08,                // sub $8,%rsp
-    0xB8,0x01,0x00,0x00,0x00,           // mov $1,%eax
-    0xB8,0x01,0x00,0x00,0x00,           // mov $1,%eax
-    0xB8,0x01,0x00,0x00,0x00,           // mov $1,%eax
-    0xE9,0x08,0x00,0x00,0x00,           // jmp L1
-    0x0F,0x1F,0x84,0x00,0x00,0x00,0x00, // nopl 0(%rax,%rax)
-      0x00,
-    0x48,0x83,0xC4,0x08,                // L1: add $8,%rsp
+    0x33,0xC0,                          // xor %eax,%eax
+    0x33,0xC0,                          // xor %eax,%eax
+    0x33,0xC0,                          // xor %eax,%eax
+    0x33,0xC0,                          // xor %eax,%eax
+    0xE9,0x0F,0x00,0x00,0x00,           // jmp L1
+    /* The presence of a backward branch (below) shouldn't keep this from
+     * being aligned, since the code can't fall through from the previous
+     * block. */
+    0x66,0x0F,0x1F,0x44,0x00,0x00,      // nopw 0(%rax,%rax)
+    0x66,0x0F,0x1F,0x84,0x00,0x00,0x00, // nopw 0(%rax,%rax)
+      0x00,0x00,
+    0xEB,0xFE,                          // L1: jmp L1
+    0x48,0x83,0xC4,0x08,                // add $8,%rsp
     0xC3,                               // ret
 };
 

@@ -20,10 +20,6 @@ static int add_rtl(RTLUnit *unit)
 {
     const int target = 0x4;
 
-    int label;
-    EXPECT(label = rtl_alloc_label(unit));
-    EXPECT(rtl_add_insn(unit, RTLOP_GOTO, 0, 0, 0, label));
-
     int size = 9;
     while ((size & 15) != target) {
         int reg;
@@ -37,6 +33,9 @@ static int add_rtl(RTLUnit *unit)
         }
     }
 
+    int label;
+    EXPECT(label = rtl_alloc_label(unit));
+    EXPECT(rtl_add_insn(unit, RTLOP_GOTO, 0, 0, 0, label));
     EXPECT(rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, label));
 
     return EXIT_SUCCESS;
@@ -44,11 +43,11 @@ static int add_rtl(RTLUnit *unit)
 
 static const uint8_t expected_code[] = {
     0x48,0x83,0xEC,0x08,                // sub $8,%rsp
-    0xE9,0x17,0x00,0x00,0x00,           // jmp L1
     0xB8,0x01,0x00,0x00,0x00,           // mov $1,%eax
     0x33,0xC0,                          // xor %eax,%eax
     0x33,0xC0,                          // xor %eax,%eax
     0x33,0xC0,                          // xor %eax,%eax
+    0xE9,0x0C,0x00,0x00,0x00,           // jmp L1
     0x0F,0x1F,0x00,                     // nopl (%rax)
     0x66,0x0F,0x1F,0x84,0x00,0x00,0x00, // nopw 0(%rax,%rax)
       0x00,0x00,

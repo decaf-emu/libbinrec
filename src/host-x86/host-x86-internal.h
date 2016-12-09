@@ -34,22 +34,6 @@
  *
  * Usage of RTLInsn host_data_16 and host_data_32 fields:
  *
- * - For load-type and atomic instructions:
- *      - If host_data_16 is nonzero, it gives a register to be used as the
- *        index in a SIB-form memory access; src1 is then the SIB base.
- *      - If host_data_32 is nonzero, it gives a 32-bit access offset which
- *        overrides the value in the offset field.
- *
- * - For store-type instructions:
- *      - offset is not used; instead, if the value to store is spilled,
- *        src3 holds a temporary register (X86Register) for reloading it.
- *      - host_data_16 holds the optional index register, as for loads.
- *      - host_data_32 always holds the access offset (even if zero).
- *
- * - For the FCAST and VFCAST instructions:
- *      - host_data_16 holds a temporary XMM register (X86_XMM*) if the
- *        source and destination types are not the same.
- *
  * - For the SELECT instruction:
  *      - If host_data_16 is nonzero, it indicates that the comparands
  *        given in the condition register's result structure should be
@@ -66,6 +50,26 @@
  *        from the register's result structure.
  *      - host_data_32 holds the second comparand for a condition-forwarded
  *        operation, either a register index or an immediate value.
+ *
+ * - For the FCAST and VFCAST instructions:
+ *      - host_data_16 holds a temporary XMM register (X86_XMM*) if the
+ *        source and destination types are not the same.
+ *
+ * - For load-type and atomic instructions:
+ *      - If host_data_16 is nonzero, it gives a register to be used as the
+ *        index in a SIB-form memory access; src1 is then the SIB base.
+ *      - If host_data_32 is nonzero, it gives a 32-bit access offset which
+ *        overrides the value in the offset field.
+ *
+ * - For store-type instructions:
+ *      - offset is not used; instead, if the value to store is spilled,
+ *        src3 holds a temporary register (X86Register) for reloading it.
+ *      - host_data_16 holds the optional index register, as for loads.
+ *      - host_data_32 always holds the access offset (even if zero).
+ *
+ * - For the LABEL instruction:
+ *      - host_data_16 indicates whether the label is the target of any
+ *        backward branches (nonzero) or not (zero).
  *
  * - For conditional branch instructions (GOTO_IF_Z and GOTO_IF_NZ):
  *      - If host_data_16 is nonzero, it indicates that the comparands

@@ -20,10 +20,6 @@ static int add_rtl(RTLUnit *unit)
 {
     const int target = 0x9;
 
-    int label;
-    EXPECT(label = rtl_alloc_label(unit));
-    EXPECT(rtl_add_insn(unit, RTLOP_GOTO, 0, 0, 0, label));
-
     int size = 9;
     while ((size & 15) != target) {
         int reg;
@@ -37,6 +33,9 @@ static int add_rtl(RTLUnit *unit)
         }
     }
 
+    int label;
+    EXPECT(label = rtl_alloc_label(unit));
+    EXPECT(rtl_add_insn(unit, RTLOP_GOTO, 0, 0, 0, label));
     EXPECT(rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, label));
 
     return EXIT_SUCCESS;
