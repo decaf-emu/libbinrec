@@ -1689,12 +1689,11 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
 
       case RTLOP_FZCAST:
         if (!int_type_is_64(unit->regs[insn->src1].type)) {
-            break;  // MXCSR not needed for converting from uint32. */
+            break;  // MXCSR not needed for converting from INT32. */
         }
         /* Fall through to MXCSR frame slot allocation. */
       case RTLOP_FGETSTATE:
-      case RTLOP_FCLEAREXC:
-      case RTLOP_FSETROUND:
+      case RTLOP_FSETSTATE:
         /* These instructions touch MXCSR, which requires a memory
          * location rather than a register, so ensure that we have a
          * frame slot allocated. */
