@@ -39,9 +39,9 @@ static int add_rtl(RTLUnit *unit)
      * src1 fields, the reg4 optimization will only roll its death back
      * to the reg3 LOAD, and the x86 register allocator will see it as a
      * possible reuse target and attempt to assign a GPR to reg3 (a float
-     * value).  This FCAST will raise an assertion failure if that happens. */
+     * value).  This MOVE will raise an assertion failure if that happens. */
     EXPECT(reg5 = rtl_alloc_register(unit, RTLTYPE_FLOAT32));
-    EXPECT(rtl_add_insn(unit, RTLOP_FCAST, reg5, reg3, 0, 0));
+    EXPECT(rtl_add_insn(unit, RTLOP_MOVE, reg5, reg3, 0, 0));
     EXPECT(rtl_add_insn(unit, RTLOP_NOP, 0, reg3, reg4, 0));
     EXPECT(rtl_add_insn(unit, RTLOP_NOP, 0, reg5, 0, 0));
 

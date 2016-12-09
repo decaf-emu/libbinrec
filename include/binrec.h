@@ -73,11 +73,15 @@ extern "C" {
  * all possible combinations of exception conditions, though most of
  * those instructions will be skipped for any particular execution of the
  * operation.  Client programs should enable as many of the floating-point
- * optimization flags as possible for best performance (even those marked
- * UNSAFE are in fact safe for the vast majority of real-world code).  If
- * necessary, specific optimizations can be safely disabled for individual
- * blocks of guest code; changing optimization flags for one translation
- * unit will have no effect on the behavior of any other translated code.
+ * optimization flags as possible for best performance; even those marked
+ * UNSAFE are in fact safe for the vast majority of real-world code.  In
+ * particular, if the guest code does not read FPSCR or set any of the
+ * FPSCR exception enable bits, enabling BINREC_OPT_G_PPC_NO_FPSCR_STATE
+ * can improve performance of floating-point code by a factor of 10 or
+ * more.  If necessary, specific optimizations can be safely disabled for
+ * individual blocks of guest code; changing optimization flags for one
+ * translation unit will have no effect on the behavior of any other
+ * translated code.
  *
  * The FEX and VX bits in FPSCR are not written to the copy of FPSCR
  * stored in the PSB, but are instead generated when needed by a

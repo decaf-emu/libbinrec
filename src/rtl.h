@@ -261,12 +261,10 @@ typedef enum RTLOpcode {
      * FLOAT32/INT32, INT64/FLOAT64, etc. */
     RTLOP_BITCAST,      // bits(dest) = bits(src1)
 
-    /* Floating-point cast operations.  FCAST is a "pure" cast which
-     * preserves SNaNs and does not raise exceptions; FCVT is an
-     * arithmetic operations which quiets SNaNs and raises exceptions.
-     * Note that a narrowing FCAST may convert an SNaN to an infinity. */
-    RTLOP_FCAST,        // dest = raw_convert(typeof(dest), src1)
+    /* Floating-point typecast.  This is an arithmetic operation which
+     * can raise floating-point exceptions and quiets SNaN inputs. */
     RTLOP_FCVT,         // dest = (typeof(dest))src1
+                        //    [dest and src1 must be of different types]
 
     /* Integer-to-FP cast operations. */
     RTLOP_FZCAST,       // dest = (typeof(dest))((unsigned)src1)
@@ -329,11 +327,17 @@ typedef enum RTLOpcode {
     RTLOP_VBROADCAST,   // dest[*] = src1
     RTLOP_VEXTRACT,     // dest = src1[other]
     RTLOP_VINSERT,      // dest = src1; dest[other] = src2
-    RTLOP_VFCAST,       // dest[*] = (typeof(dest[*]))src1[*]
-                        //    [does not quiet SNaNs or raise exceptions]
     RTLOP_VFCVT,        // dest[*] = (typeof(dest[*]))src1[*]
-                        //    [arithmetic conversion, can raise exceptions;
-                        //     dest and src1 must be different types]
+                        //    [dest and src1 must be of different types]
+
+    /* Vector floating-point compare instruction.  dest must be of INT64
+     * type; other is an immediate value giving the comparison type
+     * (RTLFCMP_*).  The low 32 bits of the result are set to all 1 if the
+     * first element of the vector passes the comparison, all 0 otherwise;
+     * the high 32 bits of the result are set similarly for the second
+     * element. */
+    RTLOP_VFCMP,        // dest = -fcmp(src1[0], src2[0], IMMEDIATE(other))
+                        //      | -fcmp(src1[1], src2[1], IMMEDIATE(other))<<32
 
     /* Non-memory load operations.  If LOAD_ARG instructions are used,
      * they must be the first instructions in the unit, or the argument

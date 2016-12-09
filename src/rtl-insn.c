@@ -747,10 +747,10 @@ static bool make_bitcast(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
 /*-----------------------------------------------------------------------*/
 
 /**
- * make_fcast:  Encode an FCAST or FCVT instruction.
+ * make_fcvt:  Encode an FCVT instruction.
  */
-static bool make_fcast(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
-                       int src2, uint64_t other)
+static bool make_fcvt(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
+                      int src2, uint64_t other)
 {
     ASSERT(unit != NULL);
     ASSERT(unit->regs != NULL);
@@ -1471,10 +1471,10 @@ static bool make_vinsert(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
 /*-----------------------------------------------------------------------*/
 
 /**
- * make_vfcast:  Encode a VFCAST or VFCVT instruction.
+ * make_vfcvt:  Encode a VFCVT instruction.
  */
-static bool make_vfcast(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
-                        int src2, uint64_t other)
+static bool make_vfcvt(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
+                       int src2, uint64_t other)
 {
     ASSERT(unit != NULL);
     ASSERT(unit->regs != NULL);
@@ -1509,6 +1509,58 @@ static bool make_vfcast(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
     destreg->result.src1 = src1;
     rtl_mark_live(unit, insn_index, destreg, dest);
     rtl_mark_live(unit, insn_index, src1reg, src1);
+
+    return true;
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
+ * make_vfcmp:  Encode a VFCMP instruction.
+ */
+static bool make_vfcmp(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
+                       int src2, uint64_t other)
+{
+    ASSERT(unit != NULL);
+    ASSERT(unit->regs != NULL);
+    ASSERT(insn != NULL);
+    ASSERT(dest >= 0 && dest < unit->next_reg);
+    ASSERT(src1 >= 0 && src1 < unit->next_reg);
+    ASSERT(src2 >= 0 && src2 < unit->next_reg);
+
+#ifdef ENABLE_OPERAND_SANITY_CHECKS
+    OPERAND_ASSERT(dest != 0);
+    OPERAND_ASSERT(src1 != 0);
+    OPERAND_ASSERT(src2 != 0);
+    OPERAND_ASSERT(unit->regs[dest].source == RTLREG_UNDEFINED);
+    OPERAND_ASSERT(unit->regs[src1].source != RTLREG_UNDEFINED);
+    OPERAND_ASSERT(unit->regs[src2].source != RTLREG_UNDEFINED);
+    OPERAND_ASSERT(unit->regs[dest].type == RTLTYPE_INT64);
+    OPERAND_ASSERT(rtl_register_is_vector(&unit->regs[src1]));
+    OPERAND_ASSERT(rtl_type_is_float(rtl_vector_element_type(unit->regs[src1].type)));
+    OPERAND_ASSERT(unit->regs[src2].type == unit->regs[src1].type);
+    OPERAND_ASSERT(other <= 31);
+    OPERAND_ASSERT((other & 7) <= RTLFCMP_UN);
+#endif
+
+    insn->dest = dest;
+    insn->src1 = src1;
+    insn->src2 = src2;
+    insn->fcmp = other;
+
+    RTLRegister * const destreg = &unit->regs[dest];
+    RTLRegister * const src1reg = &unit->regs[src1];
+    RTLRegister * const src2reg = &unit->regs[src2];
+    const int insn_index = unit->num_insns;
+    destreg->source = RTLREG_RESULT;
+    destreg->result.opcode = insn->opcode;
+    destreg->result.is_imm = 0;
+    destreg->result.src1 = src1;
+    destreg->result.src2 = src2;
+    destreg->result.fcmp = other;
+    rtl_mark_live(unit, insn_index, destreg, dest);
+    rtl_mark_live(unit, insn_index, src1reg, src1);
+    rtl_mark_live(unit, insn_index, src2reg, src2);
 
     return true;
 }
@@ -2201,8 +2253,7 @@ bool (* const makefunc_table[])(RTLUnit *, RTLInsn *, int, int, int,
     [RTLOP_SGTUI     ] = make_cmp_imm,
     [RTLOP_SGTSI     ] = make_cmp_imm,
     [RTLOP_BITCAST   ] = make_bitcast,
-    [RTLOP_FCAST     ] = make_fcast,
-    [RTLOP_FCVT      ] = make_fcast,
+    [RTLOP_FCVT      ] = make_fcvt,
     [RTLOP_FZCAST    ] = make_ficast,
     [RTLOP_FSCAST    ] = make_ficast,
     [RTLOP_FROUNDI   ] = make_froundi,
@@ -2230,8 +2281,8 @@ bool (* const makefunc_table[])(RTLUnit *, RTLInsn *, int, int, int,
     [RTLOP_VBROADCAST] = make_vbroadcast,
     [RTLOP_VEXTRACT  ] = make_vextract,
     [RTLOP_VINSERT   ] = make_vinsert,
-    [RTLOP_VFCAST    ] = make_vfcast,
-    [RTLOP_VFCVT     ] = make_vfcast,
+    [RTLOP_VFCVT     ] = make_vfcvt,
+    [RTLOP_VFCMP     ] = make_vfcmp,
     [RTLOP_LOAD_IMM  ] = make_load_imm,
     [RTLOP_LOAD_ARG  ] = make_load_arg,
     [RTLOP_LOAD      ] = make_load,

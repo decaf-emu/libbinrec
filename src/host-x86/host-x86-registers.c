@@ -979,6 +979,7 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
               case RTLOP_FROUNDI:
               case RTLOP_FTRUNCI:
               case RTLOP_FCMP:
+              case RTLOP_VFCMP:
                 /* These instructions operate between registers of
                  * different types, so we can never reuse src1.  The
                  * standard algorithm will never select src1, but we need
@@ -1048,15 +1049,6 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
                  * avoid anything. */
                 if (!src1_info->spilled && insn->src_imm != RTLFEXC_INVALID) {
                     soft_avoid |= 1 << src1_info->host_reg;
-                }
-                break;
-
-              case RTLOP_FCAST:
-              case RTLOP_VFCAST:
-                /* If converting between different types, we use dest as a
-                 * temporary, so make sure not to overwrite src1. */
-                if (dest_reg->type != src1_reg->type && !src1_info->spilled) {
-                    avoid_regs |= 1 << src1_info->host_reg;
                 }
                 break;
 
@@ -1382,12 +1374,6 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
                         | 1 << src2_info->host_reg;
             break;
 
-          case RTLOP_FCAST:
-            /* Temporary GPR needed if the source and destination are
-             * different types. */
-            need_temp = (src1_reg->type != dest_reg->type);
-            break;
-
           case RTLOP_FZCAST:
             /* Temporary needed if converting a 64-bit or spilled 32-bit
              * value. */
@@ -1441,10 +1427,10 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
             }
             break;
 
-          case RTLOP_VFCAST:
-            /* Temporary GPR needed if the source and destination are
-             * different types. */
-            need_temp = (src1_reg->type != dest_reg->type);
+          case RTLOP_VFCMP:
+            /* Temporary needed to hold the compare result. */
+            need_temp = true;
+            temp_is_fpr = true;
             break;
 
           case RTLOP_LOAD_IMM:
@@ -1528,15 +1514,6 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
             dest_info->host_temp = (uint8_t)temp_reg;
             dest_info->temp_allocated = true;
             ctx->block_regs_touched |= 1 << temp_reg;
-            if (insn->opcode == RTLOP_VFCAST) {
-                /* This needs an additional XMM temporary. */
-                int temp_xmm = get_xmm(ctx, temp_avoid);
-                if (temp_xmm < 0) {
-                    temp_xmm = X86_XMM15;
-                }
-                insn->host_data_16 = temp_xmm;
-                ctx->block_regs_touched |= 1 << temp_xmm;
-            }
         }
 
         /* Mark additional touched registers for specific instructions. */
@@ -2097,27 +2074,6 @@ static void first_pass_for_block(HostX86Context *ctx, int block_index)
             break;
           }  // case RTLOP_{ROL,ROR} (and non-BMI2 SLL/SRL/SRA)
 
-          case RTLOP_FCAST:
-            /* FCAST touches MXCSR and uses constants if the types are
-             * different. */
-            if (unit->regs[insn->dest].type != unit->regs[insn->src1].type) {
-                if (ctx->stack_mxcsr < 0) {
-                    ctx->stack_mxcsr = allocate_frame_slot(ctx, RTLTYPE_INT32);
-                }
-                if (unit->regs[insn->dest].type == RTLTYPE_FLOAT64) {
-                    ctx->const_loc[LC_FLOAT64_INV_QUIETBIT] = 1;
-                } else {
-                    ctx->const_loc[LC_FLOAT32_INV_QUIETBIT] = 1;
-                    /* This should technically not be V2_FLOAT64, but we
-                     * read it as an integer, so the high 8 bytes don't
-                     * matter, and this lets us share the constant with
-                     * other instructions instead of requiring our own
-                     * separate constant. */
-                    ctx->const_loc[LC_V2_FLOAT64_QUIETBIT] = 1;
-                }
-            }
-            break;
-
           case RTLOP_FNEG:
           case RTLOP_FNABS:
             switch ((RTLDataType)unit->regs[insn->dest].type) {
@@ -2161,7 +2117,8 @@ static void first_pass_for_block(HostX86Context *ctx, int block_index)
             }
             break;
 
-          case RTLOP_FCMP: {
+          case RTLOP_FCMP:
+          case RTLOP_VFCMP: {
             /* For less-than comparisons, it's faster to swap the operands
              * and the sense of the comparison so we don't need to check
              * the parity flag. */
@@ -2177,7 +2134,7 @@ static void first_pass_for_block(HostX86Context *ctx, int block_index)
                 dest_reg->result.fcmp = insn->fcmp;
             }
             break;
-          }  // case RTLOP_FCMP
+          }  // case RTLOP_FCMP, RTLOP_VFCMP
 
           case RTLOP_FNMADD:
           case RTLOP_FNMSUB:
@@ -2233,21 +2190,6 @@ static void first_pass_for_block(HostX86Context *ctx, int block_index)
                         rtl_opt_kill_insn(unit, src1_reg->birth, ignore_fexc,
                                           true);
                     }
-                }
-            }
-            break;
-
-          case RTLOP_VFCAST:
-            /* VFCAST both touches MXCSR and needs a constant for fixing up
-             * SNaNs after conversion if the types are different. */
-            if (unit->regs[insn->dest].type != unit->regs[insn->src1].type) {
-                if (ctx->stack_mxcsr < 0) {
-                    ctx->stack_mxcsr = allocate_frame_slot(ctx, RTLTYPE_INT32);
-                }
-                if (unit->regs[insn->src1].type == RTLTYPE_V2_FLOAT64) {
-                    ctx->const_loc[LC_V2_FLOAT64_QUIETBIT] = 1;
-                } else {
-                    ctx->const_loc[LC_V2_FLOAT32_QUIETBIT] = 1;
                 }
             }
             break;

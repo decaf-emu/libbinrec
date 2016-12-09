@@ -25,19 +25,14 @@ static const struct {
 } local_constants[NUM_LOCAL_CONSTANTS] = {
     [LC_FLOAT32_SIGNBIT       ] = {{0x00,0x00,0x00,0x80}},
     [LC_FLOAT32_INV_SIGNBIT   ] = {{0xFF,0xFF,0xFF,0x7F}},
-    [LC_FLOAT32_INV_QUIETBIT  ] = {{0xFF,0xFF,0xBF,0xFF}},
     [LC_FLOAT64_SIGNBIT       ] = {{0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x80}},
     [LC_FLOAT64_INV_SIGNBIT   ] = {{0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0x7F}},
-    [LC_FLOAT64_INV_QUIETBIT  ] = {{0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xF7,0xFF}},
     [LC_V2_FLOAT32_SIGNBIT    ] = {{0x00,0x00,0x00,0x80,0x00,0x00,0x00,0x80}},
     [LC_V2_FLOAT32_INV_SIGNBIT] = {{0xFF,0xFF,0xFF,0x7F,0xFF,0xFF,0xFF,0x7F}},
     [LC_V2_FLOAT64_SIGNBIT    ] = {{0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x80,
                                     0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x80}},
     [LC_V2_FLOAT64_INV_SIGNBIT] = {{0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0x7F,
                                     0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0x7F}},
-    [LC_V2_FLOAT32_QUIETBIT   ] = {{0x00,0x00,0x40,0x00,0x00,0x00,0x40,0x00}},
-    [LC_V2_FLOAT64_QUIETBIT   ] = {{0x00,0x00,0x00,0x00,0x00,0x00,0x08,0x00,
-                                    0x00,0x00,0x00,0x00,0x00,0x00,0x08,0x00}},
     [LC_V2_FLOAT32_HIGH_ONES  ] = {{0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
                                     0x00,0x00,0x80,0x3F,0x00,0x00,0x80,0x3F}},
 };
@@ -2849,373 +2844,6 @@ static void translate_chain_resolve(HostX86Context *ctx, CodeBuffer *code,
 /*-----------------------------------------------------------------------*/
 
 /**
- * translate_fcast:  Translate an FCAST instruction.  The input and output
- * are assumed to be of different types.
- *
- * [Parameters]
- *     ctx: Translation context.
- *     insn_index: Index of instruction in ctx->unit->insns[].
- * [Return value]
- *     True on success, false if out of memory.
- */
-static bool translate_fcast(HostX86Context *ctx, int insn_index)
-{
-    ASSERT(ctx);
-    ASSERT(ctx->handle);
-    ASSERT(ctx->unit);
-    ASSERT(insn_index >= 0);
-    ASSERT((uint32_t)insn_index < ctx->unit->num_insns);
-
-    CodeBuffer code = {.buffer = ctx->handle->code_buffer,
-                       .buffer_size = ctx->handle->code_buffer_size,
-                       .len = ctx->handle->code_len};
-    const long initial_len = code.len;
-
-    const RTLUnit * const unit = ctx->unit;
-    const RTLInsn * const insn = &unit->insns[insn_index];
-    const int dest = insn->dest;
-    const int src1 = insn->src1;
-    const bool src1_is64 = (unit->regs[src1].type == RTLTYPE_FLOAT64);
-    const X86Register host_dest = ctx->regs[dest].host_reg;
-    ASSERT(ctx->regs[dest].temp_allocated);
-    const X86Register host_temp = ctx->regs[dest].host_temp;
-
-    const int max_len = 59;  // See "//@" length comments below.
-    if (UNLIKELY(ctx->handle->code_len + max_len
-                 > ctx->handle->code_buffer_size)) {
-        if (UNLIKELY(!binrec_ensure_code_space(ctx->handle, max_len))) {
-            log_error(ctx->handle, "No memory for FCAST instruction");
-            return false;
-        }
-        code.buffer = ctx->handle->code_buffer;
-        code.buffer_size = ctx->handle->code_buffer_size;
-    }
-
-    /* Save the initial state of MXCSR for later restoring. */
-    //@ 8 = 0F AE ModRM SIB disp32
-    append_insn_ModRM_mem(
-        &code, false, X86OP_MISC_0FAE, X86OP_MISC0FAE_STMXCSR,
-        X86_SP, -1, ctx->stack_mxcsr);
-
-    /* If the input is spilled, load it first so we don't have to read from
-     * memory twice.  In this case we also have to load our temporary GPR
-     * here before we clobber the value with the conversion result. */
-    const bool src1_spilled = is_spilled(ctx, insn_index, src1);
-    X86Register cvt_src;
-    if (src1_spilled) {
-        cvt_src = host_dest;
-        //@ 10 = F3/F2 44 0F 10 ModRM SIB disp32
-        append_load(&code, unit->regs[src1].type, cvt_src,
-                    X86_SP, -1, ctx->regs[src1].spill_offset);
-        //@ 5 = 66 4D 0F 7E ModRM
-        append_insn_ModRM_reg(&code, src1_is64, X86OP_MOVD_E_V,
-                              cvt_src, host_temp);
-    } else {
-        cvt_src = ctx->regs[src1].host_reg;
-        ASSERT(host_dest != cvt_src);
-    }
-
-    /* Compare the value against itself to check for NaN-ness.  If the
-     * value isn't a NaN, it obviously can't be an SNaN, so we can skip
-     * the moderately expensive SNaN test. */
-    //@ 4 = 45 0F 2E ModRM
-    append_insn_ModRM_reg(&code, false,
-                          src1_is64 ? X86OP_UCOMISD : X86OP_UCOMISS,
-                          cvt_src, cvt_src);
-
-    /* Perform the actual conversion. */
-    //@ 5 = F3/F2 44 0F 5A ModRM
-    if (unit->regs[dest].type == RTLTYPE_FLOAT64) {
-        ASSERT(unit->regs[src1].type == RTLTYPE_FLOAT32);
-        append_insn_ModRM_reg(&code, false, X86OP_CVTSS2SD,
-                              host_dest, cvt_src);
-    } else {
-        ASSERT(unit->regs[dest].type == RTLTYPE_FLOAT32);
-        ASSERT(unit->regs[src1].type == RTLTYPE_FLOAT64);
-        append_insn_ModRM_reg(&code, false, X86OP_CVTSD2SS,
-                              host_dest, cvt_src);
-    }
-
-    /* If the value isn't a NaN, we're done.  We don't reload MXCSR until
-     * after the jump because the STMXCSR -> LDMXCSR delay is long (though
-     * not as long as STMXCSR -> MOV to GPR), so we want to consume as
-     * many cycles as possible before executing LDMXCSR. */
-    //@ 2 = 7B 00
-    append_jump_raw(&code, X86OP_JNP_Jb, 0);
-    const long jump_from_notnan = code.len;
-
-    /* Check whether the input was a SNaN.  We already know it was a NaN,
-     * so we only need to test the quiet bit. */
-    if (!src1_spilled) {
-        //@ 5 = 66 4D 0F 7E ModRM
-        append_insn_ModRM_reg(&code, src1_is64, X86OP_MOVD_E_V,
-                              cvt_src, host_temp);
-    }
-    if (src1_is64) {
-        //@ 7 = 4C 85 ModRM disp32
-        append_insn_ModRM_riprel(&code, true, X86OP_TEST_Ev_Gv, host_temp,
-                                 ctx->const_loc[LC_V2_FLOAT64_QUIETBIT]);
-    } else {
-        //@ 7 = 41 F7 Cx 00 00 40 00
-        append_insn_ModRM_reg(&code, false, X86OP_UNARY_Ev, X86OP_UNARY_TEST,
-                              host_temp);
-        append_imm32(&code, 1<<22);
-    }
-    //@ 2 = 75 00
-    append_jump_raw(&code, X86OP_JNZ_Jb, 0);
-    const long jump_from_notsnan = code.len;
-
-    /* The input was a SNaN, so adjust the output. */
-    const int lc_id = (unit->regs[dest].type == RTLTYPE_FLOAT64)
-        ? LC_FLOAT64_INV_QUIETBIT : LC_FLOAT32_INV_QUIETBIT;
-    const long lc_offset = ctx->const_loc[lc_id];
-    ASSERT(lc_offset);
-    //@ 8 = 44 0F 54 ModRM disp32
-    append_insn_ModRM_riprel(&code, false, X86OP_ANDPS, host_dest, lc_offset);
-
-    const long jump_to = code.len;
-    ASSERT(jump_to - jump_from_notnan < 128);
-    code.buffer[jump_from_notnan - 1] = jump_to - jump_from_notnan;
-    code.buffer[jump_from_notsnan - 1] = jump_to - jump_from_notsnan;
-
-    /* Restore the old value of MXCSR. */
-    //@ 8 = 0F AE ModRM SIB disp32
-    append_insn_ModRM_mem(
-        &code, false, X86OP_MISC_0FAE, X86OP_MISC0FAE_LDMXCSR,
-        X86_SP, -1, ctx->stack_mxcsr);
-
-    ctx->last_test_reg = 0;
-    ctx->last_cmp_reg = 0;
-    ctx->last_cmp_target = 0;
-    ctx->last_cmp_imm = 0;
-
-    ASSERT(code.len - initial_len <= max_len);
-    ctx->handle->code_len = code.len;
-    return true;
-}
-
-/*-----------------------------------------------------------------------*/
-
-/**
- * translate_fcast_v:  Translate a VFCAST instruction.  The input and
- * output are assumed to be of different types.
- *
- * [Parameters]
- *     ctx: Translation context.
- *     insn_index: Index of instruction in ctx->unit->insns[].
- * [Return value]
- *     True on success, false if out of memory.
- */
-static bool translate_fcast_v(HostX86Context *ctx, int insn_index)
-{
-    ASSERT(ctx);
-    ASSERT(ctx->handle);
-    ASSERT(ctx->unit);
-    ASSERT(insn_index >= 0);
-    ASSERT((uint32_t)insn_index < ctx->unit->num_insns);
-
-    CodeBuffer code = {.buffer = ctx->handle->code_buffer,
-                       .buffer_size = ctx->handle->code_buffer_size,
-                       .len = ctx->handle->code_len};
-    const long initial_len = code.len;
-
-    const RTLUnit * const unit = ctx->unit;
-    const RTLInsn * const insn = &unit->insns[insn_index];
-    const int dest = insn->dest;
-    const int src1 = insn->src1;
-    const X86Register host_dest = ctx->regs[dest].host_reg;
-    ASSERT(ctx->regs[dest].temp_allocated);
-    const X86Register temp_gpr = ctx->regs[dest].host_temp;
-
-    const int max_len = 146;  // See "//@" length comments below.
-    if (UNLIKELY(ctx->handle->code_len + max_len
-                 > ctx->handle->code_buffer_size)) {
-        if (UNLIKELY(!binrec_ensure_code_space(ctx->handle, max_len))) {
-            log_error(ctx->handle, "No memory for FCAST/VFCAST instruction");
-            return false;
-        }
-        code.buffer = ctx->handle->code_buffer;
-        code.buffer_size = ctx->handle->code_buffer_size;
-    }
-
-    /* Save the initial state of MXCSR for later restoring, then clear the
-     * invalid exception bit so we can detect an exception if it occurs. */
-    //@ 8 = 0F AE ModRM SIB disp32
-    append_insn_ModRM_mem(
-        &code, false, X86OP_MISC_0FAE, X86OP_MISC0FAE_STMXCSR,
-        X86_SP, -1, ctx->stack_mxcsr);
-    //@ 8 = 44 8B ModRM SIB disp32
-    append_load_gpr(&code, RTLTYPE_INT32, temp_gpr, X86_SP, ctx->stack_mxcsr);
-    //@ 8 = 83 ModRM SIB disp32 FE
-    append_insn_ModRM_mem(&code, false, X86OP_IMM_Ev_Ib, X86OP_IMM_AND,
-                          X86_SP, -1, ctx->stack_mxcsr);
-    append_imm8(&code, 0xFE);
-    //@ 8 = 0F AE ModRM SIB disp32
-    append_insn_ModRM_mem(
-        &code, false, X86OP_MISC_0FAE, X86OP_MISC0FAE_LDMXCSR,
-        X86_SP, -1, ctx->stack_mxcsr);
-
-    /* Do the actual conversion. */
-    //@ 10 = 66/F3/F2 44 0F 5A ModRM SIB disp32
-    if (rtl_register_is_scalar(&unit->regs[dest])) {
-        if (unit->regs[dest].type == RTLTYPE_FLOAT64) {
-            ASSERT(unit->regs[src1].type == RTLTYPE_FLOAT32);
-            append_insn_ModRM_ctx(&code, false, X86OP_CVTSS2SD,
-                                  host_dest, ctx, insn_index, src1);
-        } else {
-            ASSERT(unit->regs[dest].type == RTLTYPE_FLOAT32);
-            ASSERT(unit->regs[src1].type == RTLTYPE_FLOAT64);
-            append_insn_ModRM_ctx(&code, false, X86OP_CVTSD2SS,
-                                  host_dest, ctx, insn_index, src1);
-        }
-    } else {
-        if (unit->regs[dest].type == RTLTYPE_V2_FLOAT64) {
-            ASSERT(unit->regs[src1].type == RTLTYPE_V2_FLOAT32);
-            append_insn_ModRM_ctx(&code, false, X86OP_CVTPS2PD,
-                                  host_dest, ctx, insn_index, src1);
-        } else {
-            ASSERT(unit->regs[dest].type == RTLTYPE_V2_FLOAT32);
-            ASSERT(unit->regs[src1].type == RTLTYPE_V2_FLOAT64);
-            append_insn_ModRM_ctx(&code, false, X86OP_CVTPD2PS,
-                                  host_dest, ctx, insn_index, src1);
-        }
-    }
-
-    /* Check for an invalid-operation exception, which indicates that at
-     * least one source value was an SNaN.  Also restore the original value
-     * of MXCSR. */
-    //@ 8 = 0F AE ModRM SIB disp32
-    append_insn_ModRM_mem(
-        &code, false, X86OP_MISC_0FAE, X86OP_MISC0FAE_STMXCSR,
-        X86_SP, -1, ctx->stack_mxcsr);
-    //@ 8 = F6 04 24 disp32 01
-    append_insn_ModRM_mem(&code, false, X86OP_UNARY_Eb, X86OP_UNARY_TEST,
-                          X86_SP, -1, ctx->stack_mxcsr);
-    append_imm8(&code, 0x01);
-    //@ 8 = 44 89 ModRM SIB disp32
-    append_store(&code, RTLTYPE_INT32, temp_gpr, X86_SP, -1, ctx->stack_mxcsr);
-    //@ 8 = 0F AE ModRM SIB disp32
-    append_insn_ModRM_mem(
-        &code, false, X86OP_MISC_0FAE, X86OP_MISC0FAE_LDMXCSR,
-        X86_SP, -1, ctx->stack_mxcsr);
-    //@ 2 = 74 00
-    append_jump_raw(&code, X86OP_JZ_Jb, 0);
-    const long jump_from = code.len;
-
-    /* If an exception occurred, a source SNaN was quieted, so we need to
-     * clear the quiet bit from the output value. */
-    if (rtl_register_is_scalar(&unit->regs[dest])) {
-        /* Scalar conversions are trivial: we know the sole value had its
-         * quiet bit set, so we just need to clear it. */
-        const int lc_id = (unit->regs[dest].type == RTLTYPE_FLOAT64)
-            ? LC_FLOAT64_INV_QUIETBIT : LC_FLOAT32_INV_QUIETBIT;
-        const long lc_offset = ctx->const_loc[lc_id];
-        ASSERT(lc_offset);
-        //@ 8 = 44 0F 54 ModRM disp32
-        append_insn_ModRM_riprel(&code, false, X86OP_ANDPS, host_dest,
-                                 lc_offset);
-
-    } else {
-        //@ f32x2: 4+11+9+8+4+6+10+6+4+8 = 70
-        //  f64x2: 4+10+10+8+4+6+9+6+4+8 = 69
-        /* For a vector, either or both of the elements could be SNaNs, so
-         * we need to check each value independently.  We use a parallel
-         * compare to isolate NaNs in the source vector, then invert and
-         * mask out their quiet bits.  The conversion instruction itself
-         * forces the quiet bit on in all NaNs, so this mask is exactly
-         * the set of bits we need to clear in the conversion result.
-         * We need to reuse the source vector in this case, so doublecheck
-         * that we haven't already destroyed it (the register allocator
-         * should avoid reallocating src1 as dest for this instruction). */
-        ASSERT(is_spilled(ctx, insn_index, src1)
-               || host_dest != ctx->regs[src1].host_reg);
-        ASSERT(insn->host_data_16 >= X86_XMM0);
-        const X86Register temp_xmm = insn->host_data_16;
-
-        /* We could almost avoid having to clobber dest and redo the
-         * conversion, but ANDNPS inverts the wrong operand!  Argh! */
-        //@ 4 = 45 0F 57 ModRM
-        append_insn_ModRM_reg(&code, false, X86OP_XORPS, host_dest, host_dest);
-        long lc_offset;
-        if (unit->regs[src1].type == RTLTYPE_V2_FLOAT64) {
-            //@ 11 = 66 44 0F C2 ModRM SIB disp32 03
-            append_insn_ModRM_ctx(&code, false, X86OP_CMPPD,
-                                  host_dest, ctx, insn_index, src1);
-            append_imm8(&code, X86XMMCMP_UNORD);
-            lc_offset = ctx->const_loc[LC_V2_FLOAT64_QUIETBIT];
-        } else {
-            //@ 10 = 44 0F C2 ModRM SIB disp32 03
-            append_insn_ModRM_ctx(&code, false, X86OP_CMPPS,
-                                  host_dest, ctx, insn_index, src1);
-            append_imm8(&code, X86XMMCMP_UNORD);
-            lc_offset = ctx->const_loc[LC_V2_FLOAT32_QUIETBIT];
-        }
-        ASSERT(lc_offset);
-        //@ f32x2: 10 = F2 44 0F 10 ModRM SIB disp32
-        //  f64x2:  9 = 44 0F 28 ModRM SIB disp32
-        append_move_or_load(&code, ctx, unit, insn_index, temp_xmm, src1);
-        //@ 8 = 44 0F 54 ModRM disp32
-        append_insn_ModRM_riprel(&code, false, X86OP_ANDPS, host_dest,
-                                 lc_offset);
-        //@ 4 = 45 0F 55 ModRM
-        append_insn_ModRM_reg(&code, false, X86OP_ANDNPS, temp_xmm, host_dest);
-
-        /* temp_xmm now contains a quiet bit (in the source format) set in
-         * only those elements which both are NaNs and did not have their
-         * quiet bit set in the source value -- in other words, SNaNs.
-         * Convert those values to the output format so we can XOR them
-         * into the original conversion result and get our SNaNs back. */
-        if (unit->regs[dest].type == RTLTYPE_V2_FLOAT64) {
-            //@ 6 = 66 45 0F 70 ModRM D8
-            append_insn_ModRM_reg(&code, false, X86OP_PSHUFD,
-                                  temp_xmm, temp_xmm);
-            append_imm8(&code, 0xD8);  // 3,1,2,0
-            //@ 9 = 44 0F 5A ModRM SIB disp32
-            append_insn_ModRM_ctx(&code, false, X86OP_CVTPS2PD,
-                                  host_dest, ctx, insn_index, src1);
-            //@ 6 = 66 45 0F 73 Fx 1D
-            append_insn_ModRM_reg(&code, false, X86OP_PSHIFTQ_U_I,
-                                  X86OP_PSHIFT_SLL, temp_xmm);
-            append_imm8(&code, 29);
-        } else {
-            //@ 6 = 66 45 0F 73 Dx 1D
-            append_insn_ModRM_reg(&code, false, X86OP_PSHIFTQ_U_I,
-                                  X86OP_PSHIFT_SRL, temp_xmm);
-            append_imm8(&code, 29);
-            //@ 10 = 66 44 0F 5A ModRM SIB disp32
-            append_insn_ModRM_ctx(&code, false, X86OP_CVTPD2PS,
-                                  host_dest, ctx, insn_index, src1);
-            //@ 6 = 66 45 0F 70 ModRM D8
-            append_insn_ModRM_reg(&code, false, X86OP_PSHUFD,
-                                  temp_xmm, temp_xmm);
-            append_imm8(&code, 0xD8);  // 3,1,2,0
-        }
-        /* The compare will have set exception flags, so restore them again. */
-        //@ 8 = 0F AE ModRM SIB disp32
-        append_insn_ModRM_mem(
-            &code, false, X86OP_MISC_0FAE, X86OP_MISC0FAE_LDMXCSR,
-            X86_SP, -1, ctx->stack_mxcsr);
-        //@ 4 = 45 0F 57 ModRM
-        append_insn_ModRM_reg(&code, false, X86OP_XORPS, host_dest, temp_xmm);
-    }
-
-    const long jump_to = code.len;
-    ASSERT(jump_to - jump_from < 128);
-    code.buffer[jump_from - 1] = jump_to - jump_from;
-
-    ctx->last_test_reg = 0;
-    ctx->last_cmp_reg = 0;
-    ctx->last_cmp_target = 0;
-    ctx->last_cmp_imm = 0;
-
-    ASSERT(code.len - initial_len <= max_len);
-    ctx->handle->code_len = code.len;
-    return true;
-}
-
-/*-----------------------------------------------------------------------*/
-
-/**
  * translate_fma:  Translate a fused multiply-add instruction.
  *
  * [Parameters]
@@ -4811,25 +4439,6 @@ static bool translate_block(HostX86Context *ctx, int block_index)
             break;
           }  // case RTLOP_BITCAST
 
-          case RTLOP_FCAST:
-          case RTLOP_VFCAST:
-            if (unit->regs[dest].type == unit->regs[src1].type) {
-                append_move_or_load(&code, ctx, unit, insn_index,
-                                    ctx->regs[dest].host_reg, src1);
-            } else {
-                handle->code_len = code.len;
-                if (!(rtl_register_is_vector(&unit->regs[dest])
-                      ? translate_fcast_v(ctx, insn_index)
-                      : translate_fcast(ctx, insn_index))) {
-                    return false;
-                }
-                code.buffer = handle->code_buffer;
-                code.buffer_size = handle->code_buffer_size;
-                code.len = handle->code_len;
-                initial_len = code.len;  // Suppress output length check.
-            }
-            break;
-
           case RTLOP_FCVT: {
             const X86Register host_dest = ctx->regs[dest].host_reg;
             if (unit->regs[dest].type == RTLTYPE_FLOAT64) {
@@ -5059,7 +4668,7 @@ static bool translate_block(HostX86Context *ctx, int block_index)
                 const X86Opcode set_opcode =
                     (cmpsel==RTLFCMP_GT ? (invert ? X86OP_SETBE : X86OP_SETA) :
                      cmpsel==RTLFCMP_GE ? (invert ? X86OP_SETB : X86OP_SETAE) :
-                                          (invert ? X86OP_SETNP : X86OP_SETP));
+                           /*RTLFCMP_UN*/ (invert ? X86OP_SETNP : X86OP_SETP));
                 maybe_append_empty_rex(&code, host_dest, -1, -1);
                 append_insn_ModRM_reg(&code, false, set_opcode, 0, host_dest);
                 if (!dest_initted) {
@@ -5391,6 +5000,31 @@ static bool translate_block(HostX86Context *ctx, int block_index)
             }
             break;
           }  // case RTLOP_VFCVT
+
+          case RTLOP_VFCMP: {
+            // FIXME: This is mostly a hack to speed up vector NaN checking.
+            // Need to implement other comparison types and/or find a better
+            // way to do this.
+            ASSERT(insn->fcmp == RTLFCMP_UN);
+            const X86Register host_dest = ctx->regs[dest].host_reg;
+            ASSERT(ctx->regs[dest].temp_allocated);
+            const X86Register host_temp = ctx->regs[dest].host_temp;
+            const bool is64 = (unit->regs[src1].type == RTLTYPE_V2_FLOAT64);
+            const X86Opcode cmp_opcode = is64 ? X86OP_CMPPD : X86OP_CMPPS;
+
+            append_move_or_load(&code, ctx, unit, insn_index, host_temp, src1);
+            append_insn_ModRM_ctx(&code, false, cmp_opcode, host_temp,
+                                  ctx, insn_index, src2);
+            append_imm8(&code, X86XMMCMP_UNORD);
+            if (is64) {
+                append_insn_ModRM_reg(&code, false, X86OP_PSHIFTQ_U_I,
+                                      X86OP_PSHIFT_SRLDQ, host_temp);
+                append_imm8(&code, 4);
+            }
+            append_insn_ModRM_reg(&code, true, X86OP_MOVD_E_V,
+                                  host_temp, host_dest);
+            break;
+          }  // case RTLOP_VFCMP
 
           case RTLOP_LOAD_IMM: {
             const uint64_t imm = insn->src_imm;
