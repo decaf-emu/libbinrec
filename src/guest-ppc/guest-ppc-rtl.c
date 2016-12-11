@@ -1962,10 +1962,11 @@ static int round_fma_result_to_single(
     int frA, int frB, int frC)
 {
     RTLUnit * const unit = ctx->unit;
-    ASSERT(unit->regs[result].type == RTLTYPE_FLOAT64);
-    ASSERT(unit->regs[frA].type == RTLTYPE_FLOAT64);
-    ASSERT(unit->regs[frB].type == RTLTYPE_FLOAT64);
-    ASSERT(unit->regs[frC].type == RTLTYPE_FLOAT64);
+    /* Don't ASSERT() over an error that already occurred. */
+    ASSERT(!result || unit->regs[result].type == RTLTYPE_FLOAT64);
+    ASSERT(!frA || unit->regs[frA].type == RTLTYPE_FLOAT64);
+    ASSERT(!frB || unit->regs[frB].type == RTLTYPE_FLOAT64);
+    ASSERT(!frC || unit->regs[frC].type == RTLTYPE_FLOAT64);
 
     const int result_alias = rtl_alloc_alias_register(unit, RTLTYPE_FLOAT32);
     const int label_out = rtl_alloc_label(unit);
