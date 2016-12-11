@@ -501,14 +501,35 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
         if (insn->host_data_32 == 0) {
             insn->host_data_32 = insn->offset;
         }
+        insn->src3 = 0;
         bool used_r15 = false;
         const int src3 = insn->host_data_16;
         if (src1_info->spilled || (src3 && ctx->regs[src3].spilled)) {
             ctx->block_regs_touched |= 1 << X86_R15;
             used_r15 = true;
         }
-        if (src2_info->spilled || (insn->opcode == RTLOP_STORE_BR
-                                   && rtl_register_is_float(src2_reg))) {
+        bool need_src2_temp = false;
+        if (src2_info->spilled) {
+            need_src2_temp = true;
+        } else if (insn->opcode == RTLOP_STORE_BR
+                || insn->opcode == RTLOP_STORE_I16_BR) {
+            /* For byte-reversed stores, we need to have the value in a GPR
+             * whether we're using MOVBE or BSWAP, so we need a temporary
+             * to hold the value of a non-spilled float.  If not using
+             * MOVBE, we also need a temporary if src2 is the same register
+             * as src1 or the index (if any), so we don't clobber the
+             * register's value before using it as an address component. */
+            if (rtl_register_is_float(src2_reg)) {
+                need_src2_temp = true;
+            } else if (!(ctx->handle->setup.host_features & BINREC_FEATURE_X86_MOVBE)) {
+                if (src2 == src1) {
+                    need_src2_temp = true;
+                } else if (src3 && src2 == src3) {
+                    need_src2_temp = true;
+                }
+            }
+        }
+        if (need_src2_temp) {
             int value_temp;
             if (rtl_register_is_int(src2_reg)
              || insn->opcode == RTLOP_STORE_BR) {

@@ -1504,8 +1504,22 @@ static bool reload_store_source_gpr(
 
     const bool spilled = is_spilled(ctx, insn_index, src2);
     if (!is_float && !spilled) {
-        *host_value_ret = src2_info->host_reg;
-        return false;
+        /* If the value to be stored is the same as the base or index
+         * register and MOVBE is not in use, we have to use a temporary for
+         * the byte-swapped value (see notes in allocate_regs_for_insn()). */
+        bool bswap_src2_collision = false;
+        if (!(ctx->handle->setup.host_features & BINREC_FEATURE_X86_MOVBE)) {
+            if (insn->opcode == RTLOP_STORE_BR
+             || insn->opcode == RTLOP_STORE_I16_BR) {
+                bswap_src2_collision =
+                    (ctx->regs[src2].host_reg == *host_base_ptr
+                     || ctx->regs[src2].host_reg == *host_index_ptr);
+            }
+        }
+        if (!bswap_src2_collision) {
+            *host_value_ret = src2_info->host_reg;
+            return false;
+        }
     }
 
     /* insn->src3 is not an RTL register here!  Instead it holds a
@@ -1517,10 +1531,11 @@ static bool reload_store_source_gpr(
         if (spilled) {
             append_load_gpr(code, type, host_value,
                             X86_SP, src2_info->spill_offset);
-        } else {
-            ASSERT(is_float);
+        } else if (is_float) {
             append_insn_ModRM_reg(code, is64, X86OP_MOVD_E_V,
                                   src2_info->host_reg, host_value);
+        } else {
+            append_move_gpr(code, type, host_value, src2_info->host_reg);
         }
         *host_value_ret = host_value;
         return false;
@@ -1543,10 +1558,11 @@ static bool reload_store_source_gpr(
     append_insn_ModRM_reg(code, true, X86OP_MOVD_V_E, X86_XMM15, X86_AX);
     if (spilled) {
         append_load_gpr(code, type, X86_AX, X86_SP, src2_info->spill_offset);
-    } else {
-        ASSERT(is_float);
+    } else if (is_float) {
         append_insn_ModRM_reg(code, is64, X86OP_MOVD_E_V,
                               src2_info->host_reg, X86_AX);
+    } else {
+        append_move_gpr(code, type, X86_AX, src2_info->host_reg);
     }
     *host_value_ret = X86_AX;
     return true;
@@ -5384,6 +5400,7 @@ static bool translate_block(HostX86Context *ctx, int block_index)
                                           host_value, host_base, host_index,
                                           offset);
                     if (!is_spilled(ctx, insn_index, src2)
+                     && host_value == ctx->regs[src2].host_reg
                      && unit->regs[src2].death > insn_index) {
                         append_insn_R(&code, is64, X86OP_BSWAP_rAX,
                                       host_value);
@@ -5431,6 +5448,7 @@ static bool translate_block(HostX86Context *ctx, int block_index)
                                       host_value, host_base, host_index,
                                       offset);
             } else if (is_spilled(ctx, insn_index, src2)
+                       || host_value != ctx->regs[src2].host_reg
                        || unit->regs[src2].death <= insn_index) {
                 append_insn_R(&code, false, X86OP_BSWAP_rAX, host_value);
                 append_insn_ModRM_reg(&code, false, X86OP_SHIFT_Ev_Ib,
@@ -5441,9 +5459,7 @@ static bool translate_block(HostX86Context *ctx, int block_index)
                                       host_value, host_base, host_index,
                                       offset);
                 /* We can't treat this as a test of the register because
-                 * there might be data in the high 16 bits.  (And on this
-                 * code path, the register is dead anyway so we'd never
-                 * test against it.) */
+                 * there might be data in the high 16 bits. */
                 ctx->last_test_reg = 0;
                 ctx->last_cmp_reg = 0;
             } else {
