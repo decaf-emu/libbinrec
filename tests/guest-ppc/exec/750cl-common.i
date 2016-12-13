@@ -334,7 +334,9 @@ typedef struct FailureRecord {
 #define EXPECTED_ERRORS_FAST_STFS  \
     {0xD0640020, {0x3FF55555,0x55555555, 0x3FAAAAAB,0x00000000}},       \
     {0xD0840020, {0x380FFFFF,0xFFFFFFFF, 0x00800000,0x00000000}},       \
-    {0xD0A40020, {0x50123456,0x789ABCDE, 0x7F800000,0x00000000}}
+    {0xD0A40020, {0x50123456,0x789ABCDE, 0x7F800000,0x00000000}},       \
+    {0xF0848000, {0x3FF55555,0x55555555, 0x3FAAAAAB,0x00000000}},       \
+    {0xF0848008, {0x50123456,0x789ABCDE, 0x7F800000,0x00000000}}
 
 /* Expected errors for the FNMADD_ZERO_SIGN optimization. */
 #define EXPECTED_ERRORS_FNMADD_ZERO_SIGN  \
@@ -785,11 +787,6 @@ typedef struct FailureRecord {
     {0x11A02034, {0x7FF00000,0x00000000, 0x00000000,0x00000000}},       \
     /* ps_rsqrte not aborted by enabled exception, continued. */        \
     {0x10601835, {0xFFFC0000,0x00000000, 0xFFE00000,0xE1000000}}
-
-/* Expected errors for the PS_STORE_DENORMALS optimization. */
-#define EXPECTED_ERRORS_PS_STORE_DENORMALS  \
-    /* psq_st of denormal values, not zeroed due to the optimization. */ \
-    {0xF0640000, {0x00000003,0x00000004, 0x00000000,0x00000000}}
 
 /*************************************************************************/
 /************************** Callback functions ***************************/

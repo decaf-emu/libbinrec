@@ -17,7 +17,10 @@
 #include "tests/guest-ppc/exec/750cl-common.i"
 
 static const FailureRecord expected_error_list[] = {
-    EXPECTED_ERRORS_PS_STORE_DENORMALS,
+    /* Currently there are no tests which fail due to this optimization;
+     * the denormal store tests passes because the values to be stored are
+     * sent through the stfs truncation routine rather than an arithmetic
+     * conversion. */
     EXPECTED_ERRORS_COMMON,
 };
 

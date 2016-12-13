@@ -3,6 +3,8 @@
 # No copyright is claimed on this file.
 #
 # Update history:
+#    - 2016-12-13: Added tests to verify the behavior of psq_st with
+#         respect to double-precision values (as with stfs).
 #    - 2016-12-05: Added tests to verify behavior of fctiw with inputs near
 #         the minimum and maximum integer values.
 #    - 2016-12-05: Fixed fctiw exception-enabled tests to properly record
@@ -13620,6 +13622,43 @@ get_load_address:
    stw %r3,8(%r6)
    lwz %r3,12(%r4)
    stw %r3,12(%r6)
+   addi %r6,%r6,32
+
+   # Stores should truncate rather than round double-precision values and
+   # truncate exponents which overflow single precision, as for NaNs.
+0: lfd_ps %f4,288(%r31),%f0
+   psq_st %f4,0(%r4),1,0
+   bl record
+   lwz %r3,0(%r4)
+   lis %r7,0x3FAA
+   ori %r7,%r7,0xAAAA
+   cmpw %r3,%r7
+   beq 0f
+   lwz %r7,288(%r31)
+   stw %r7,8(%r6)
+   lwz %r7,292(%r31)
+   stw %r7,12(%r6)
+   stw %r3,16(%r6)
+   addi %r6,%r6,32
+0: lis %r3,0x5012
+   ori %r3,%r3,0x3456
+   stw %r3,0(%r4)
+   lis %r3,0x789A
+   ori %r3,%r3,0xBCDE
+   stw %r3,4(%r4)
+   lfd_ps %f4,0(%r4),%f0
+   psq_st %f4,8(%r4),1,0
+   bl record
+   lwz %r3,8(%r4)
+   lis %r7,0x4091
+   ori %r7,%r7,0xA2B3
+   cmpw %r3,%r7
+   beq 0f
+   lwz %r7,0(%r4)
+   stw %r7,8(%r6)
+   lwz %r7,4(%r4)
+   stw %r7,12(%r6)
+   stw %r3,16(%r6)
    addi %r6,%r6,32
 
    ########################################################################

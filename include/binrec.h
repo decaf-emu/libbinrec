@@ -1039,6 +1039,12 @@ typedef struct binrec_setup_t {
  * allows the translator to skip the expensive denormal check and write
  * the values straight to memory.
  *
+ * Even when this optimization is enabled, psq_st instructions will flush
+ * denormals to zero if the value is read in double precision (this depends
+ * on the internal translator state at the particular instruction) and the
+ * BINREC_OPT_G_PPC_FAST_STFS optimization is not enabled, since in that
+ * case, flushing to zero is faster than producing a correct denormal value.
+ *
  * This optimization is UNSAFE: code which relies on denormals being
  * flushed to zero by paired-single store instructions will behave
  * incorrectly if this optimization is enabled.
