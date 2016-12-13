@@ -5696,8 +5696,9 @@ static bool translate_block(HostX86Context *ctx, int block_index)
                  * - Otherwise, if the label is the target of a backward
                  *   branch, align it if there are less than 10 bytes left
                  *   in the current 16-byte line, since backward branches
-                 *   generally indicate loops and thus will be reached by
-                 *   branching more often than by falling through.
+                 *   generally indicate loops and we can thus expect them
+                 *   to be reached more often by branching than by falling
+                 *   through.
                  *
                  * - Otherwise, only align the label if there are less
                  *   than 5 bytes left in the current 16-byte line.

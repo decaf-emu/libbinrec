@@ -36,8 +36,7 @@ int main(void)
 
     EXPECT_FALSE(rtl_add_insn(unit, RTLOP_FCVT, reg2, reg1, 0, 0));
     EXPECT_ICE("Operand constraint violated:"
-               " insn->opcode != RTLOP_FCVT"
-               " || unit->regs[src1].type != unit->regs[dest].type");
+               " unit->regs[src1].type != unit->regs[dest].type");
     EXPECT_EQ(unit->num_insns, 1);
     EXPECT(unit->error);
     unit->error = false;

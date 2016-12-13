@@ -765,8 +765,7 @@ static bool make_fcvt(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
     OPERAND_ASSERT(unit->regs[src1].source != RTLREG_UNDEFINED);
     OPERAND_ASSERT(rtl_register_is_float(&unit->regs[dest]));
     OPERAND_ASSERT(rtl_register_is_float(&unit->regs[src1]));
-    OPERAND_ASSERT(insn->opcode != RTLOP_FCVT
-                   || unit->regs[src1].type != unit->regs[dest].type);
+    OPERAND_ASSERT(unit->regs[src1].type != unit->regs[dest].type);
 #endif
 
     insn->dest = dest;
@@ -1493,8 +1492,7 @@ static bool make_vfcvt(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
     ASSERT(rtl_type_is_float(rtl_vector_element_type(unit->regs[dest].type)));
     OPERAND_ASSERT(rtl_register_is_vector(&unit->regs[src1]));
     ASSERT(rtl_type_is_float(rtl_vector_element_type(unit->regs[src1].type)));
-    OPERAND_ASSERT(insn->opcode != RTLOP_VFCVT
-                   || unit->regs[src1].type != unit->regs[dest].type);
+    OPERAND_ASSERT(unit->regs[src1].type != unit->regs[dest].type);
 #endif
 
     insn->dest = dest;
@@ -1537,7 +1535,9 @@ static bool make_vfcmp(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
     OPERAND_ASSERT(unit->regs[src2].source != RTLREG_UNDEFINED);
     OPERAND_ASSERT(unit->regs[dest].type == RTLTYPE_INT64);
     OPERAND_ASSERT(rtl_register_is_vector(&unit->regs[src1]));
-    OPERAND_ASSERT(rtl_type_is_float(rtl_vector_element_type(unit->regs[src1].type)));
+    /* Currently we don't have any integer vector types, so this test will
+     * always be true. */
+    ASSERT(rtl_type_is_float(rtl_vector_element_type(unit->regs[src1].type)));
     OPERAND_ASSERT(unit->regs[src2].type == unit->regs[src1].type);
     OPERAND_ASSERT(other <= 31);
     OPERAND_ASSERT((other & 7) <= RTLFCMP_UN);
@@ -2142,12 +2142,15 @@ static bool make_chain(RTLUnit *unit, RTLInsn *insn, int dest, int src1,
     ASSERT(src2 >= 0 && src2 < unit->next_reg);
 
 #ifdef ENABLE_OPERAND_SANITY_CHECKS
-    OPERAND_ASSERT(src1 != 0);
-    OPERAND_ASSERT(src2 != 0);
-    OPERAND_ASSERT(unit->regs[src1].source != RTLREG_UNDEFINED);
-    OPERAND_ASSERT(unit->regs[src2].source != RTLREG_UNDEFINED);
-    OPERAND_ASSERT(rtl_register_is_int(&unit->regs[src1]));
-    OPERAND_ASSERT(rtl_register_is_int(&unit->regs[src2]));
+    OPERAND_ASSERT(!(src1 == 0 && src2 != 0));
+    if (src1 != 0) {
+        OPERAND_ASSERT(unit->regs[src1].source != RTLREG_UNDEFINED);
+        OPERAND_ASSERT(rtl_register_is_int(&unit->regs[src1]));
+        if (src2 != 0) {
+            OPERAND_ASSERT(unit->regs[src2].source != RTLREG_UNDEFINED);
+            OPERAND_ASSERT(rtl_register_is_int(&unit->regs[src2]));
+        }
+    }
 #endif
 
     insn->src1 = src1;

@@ -615,19 +615,11 @@ static inline uint64_t fold_constant(RTLUnit * const unit,
 
       case RTLOP_FCVT:
         if (src1->type == RTLTYPE_FLOAT32) {
-            const uint32_t bits = float_to_bits(src1->value.f32);
-            if (reg->type == RTLTYPE_FLOAT32) {
-                return bits;
-            } else {
-                return double_to_bits((double)src1->value.f32);
-            }
+            ASSERT(reg->type == RTLTYPE_FLOAT64);
+            return double_to_bits((double)src1->value.f32);
         } else {
-            const uint64_t bits = src1->value.i64;
-            if (reg->type == RTLTYPE_FLOAT64) {
-                return bits;
-            } else {
-                return float_to_bits((float)src1->value.f64);
-            }
+            ASSERT(reg->type == RTLTYPE_FLOAT32);
+            return float_to_bits((float)src1->value.f64);
         }
 
       case RTLOP_FSCAST:

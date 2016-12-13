@@ -72,6 +72,11 @@ int main(void)
     EXPECT(rtl_add_insn(unit, RTLOP_GOTO_IF_NZ, 0, reg17, 0, label));
     EXPECT(rtl_add_insn(unit, RTLOP_RETURN, 0, reg17, 0, 0));
 
+    int chain;
+    EXPECT((chain = rtl_add_chain_insn(unit, reg1, reg2)) >= 0);
+    EXPECT(rtl_add_insn(unit, RTLOP_CHAIN_RESOLVE, 0, reg14, 0, chain));
+    EXPECT(rtl_add_insn(unit, RTLOP_RETURN, 0, 0, 0, 0));
+
     EXPECT(rtl_finalize_unit(unit));
 
     const char *disassembly;
@@ -100,9 +105,13 @@ int main(void)
                  "   20: CALL       r17, @r14, r6, r10\n"
                  "   21: GOTO_IF_NZ r17, L1\n"
                  "   22: RETURN     r17\n"
+                 "   23: CHAIN      r1, r2\n"
+                 "   24: CHAIN_RESOLVE @23, r14\n"
+                 "   25: RETURN\n"
                  "\n"
                  "Block 0: 0 --> [0,21] --> 1,0\n"
-                 "Block 1: 0 --> [22,22] --> <none>\n");
+                 "Block 1: 0 --> [22,22] --> <none>\n"
+                 "Block 2: <none> --> [23,25] --> <none>\n");
 
     rtl_destroy_unit(unit);
     binrec_destroy_handle(handle);

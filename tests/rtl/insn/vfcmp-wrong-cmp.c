@@ -26,19 +26,29 @@ int main(void)
     RTLUnit *unit;
     EXPECT(unit = rtl_create_unit(handle));
 
-    int reg1, reg2, alias;
+    int reg1, reg2, reg3, alias1, alias2;
     EXPECT(reg1 = rtl_alloc_register(unit, RTLTYPE_V2_FLOAT32));
     EXPECT(reg2 = rtl_alloc_register(unit, RTLTYPE_V2_FLOAT32));
-    EXPECT(alias = rtl_alloc_alias_register(unit, RTLTYPE_V2_FLOAT32));
+    EXPECT(reg3 = rtl_alloc_register(unit, RTLTYPE_INT64));
+    EXPECT(alias1 = rtl_alloc_alias_register(unit, RTLTYPE_V2_FLOAT32));
+    EXPECT(alias2 = rtl_alloc_alias_register(unit, RTLTYPE_V2_FLOAT32));
 
-    EXPECT(rtl_add_insn(unit, RTLOP_GET_ALIAS, reg1, 0, 0, alias));
-    EXPECT_EQ(unit->num_insns, 1);
+    EXPECT(rtl_add_insn(unit, RTLOP_GET_ALIAS, reg1, 0, 0, alias1));
+    EXPECT(rtl_add_insn(unit, RTLOP_GET_ALIAS, reg2, 0, 0, alias2));
+    EXPECT_EQ(unit->num_insns, 2);
     EXPECT_FALSE(unit->error);
 
-    EXPECT_FALSE(rtl_add_insn(unit, RTLOP_VFCVT, reg2, reg1, 0, 0));
-    EXPECT_ICE("Operand constraint violated:"
-               " unit->regs[src1].type != unit->regs[dest].type");
-    EXPECT_EQ(unit->num_insns, 1);
+    EXPECT_FALSE(rtl_add_insn(unit, RTLOP_VFCMP,
+                              reg3, reg1, reg2, RTLFCMP_UN + 1));
+    EXPECT_ICE("Operand constraint violated: (other & 7) <= RTLFCMP_UN");
+    EXPECT_EQ(unit->num_insns, 2);
+    EXPECT(unit->error);
+    unit->error = false;
+
+    EXPECT_FALSE(rtl_add_insn(unit, RTLOP_VFCMP,
+                              reg3, reg1, reg2, RTLFCMP_LT | 32));
+    EXPECT_ICE("Operand constraint violated: other <= 31");
+    EXPECT_EQ(unit->num_insns, 2);
     EXPECT(unit->error);
     unit->error = false;
 

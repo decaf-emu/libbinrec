@@ -956,9 +956,21 @@ static void rtl_decode_insn(const RTLUnit *unit, uint32_t index,
         return;
 
       case RTLOP_CHAIN:
-        s += snprintf_assert(s, top - s, "%-10s r%d, r%d\n", name, src1, src2);
-        APPEND_REG_DESC(src1);
-        APPEND_REG_DESC(src2);
+        if (src1) {
+            s += snprintf_assert(s, top - s, "%-10s r%d", name, src1);
+            if (src2) {
+                s += snprintf_assert(s, top - s, ", r%d", src2);
+            }
+        } else {
+            s += snprintf_assert(s, top - s, "%s", name);
+        }
+        s += snprintf_assert(s, top - s, "\n");
+        if (src1) {
+            APPEND_REG_DESC(src1);
+            if (src2) {
+                APPEND_REG_DESC(src2);
+            }
+        }
         return;
 
       case RTLOP_CHAIN_RESOLVE:

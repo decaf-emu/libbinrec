@@ -26,18 +26,22 @@ int main(void)
     RTLUnit *unit;
     EXPECT(unit = rtl_create_unit(handle));
 
-    int reg1, reg2, alias;
-    EXPECT(reg1 = rtl_alloc_register(unit, RTLTYPE_V2_FLOAT32));
-    EXPECT(reg2 = rtl_alloc_register(unit, RTLTYPE_V2_FLOAT32));
-    EXPECT(alias = rtl_alloc_alias_register(unit, RTLTYPE_V2_FLOAT32));
+    int reg1, reg2;
+    EXPECT(reg1 = rtl_alloc_register(unit, RTLTYPE_FLOAT32));
+    EXPECT(reg2 = rtl_alloc_register(unit, RTLTYPE_FLOAT64));
 
-    EXPECT(rtl_add_insn(unit, RTLOP_GET_ALIAS, reg1, 0, 0, alias));
+    EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg1, 0, 0, 0x3F800000));
     EXPECT_EQ(unit->num_insns, 1);
     EXPECT_FALSE(unit->error);
 
-    EXPECT_FALSE(rtl_add_insn(unit, RTLOP_VFCVT, reg2, reg1, 0, 0));
-    EXPECT_ICE("Operand constraint violated:"
-               " unit->regs[src1].type != unit->regs[dest].type");
+    EXPECT_FALSE(rtl_add_insn(unit, RTLOP_FCVT, 0, reg1, 0, 0));
+    EXPECT_ICE("Operand constraint violated: dest != 0");
+    EXPECT_EQ(unit->num_insns, 1);
+    EXPECT(unit->error);
+    unit->error = false;
+
+    EXPECT_FALSE(rtl_add_insn(unit, RTLOP_FCVT, reg2, 0, 0, 0));
+    EXPECT_ICE("Operand constraint violated: src1 != 0");
     EXPECT_EQ(unit->num_insns, 1);
     EXPECT(unit->error);
     unit->error = false;

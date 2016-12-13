@@ -44,6 +44,36 @@ int main(void)
     EXPECT(unit->have_block);
     EXPECT_FALSE(unit->error);
 
+    /* This is technically invalid usage, but we're only testing that the
+     * instruction is correctly added, so we don't worry about it. */
+    EXPECT_EQ(rtl_add_chain_insn(unit, reg1, 0), 3);
+    EXPECT_EQ(unit->num_insns, 4);
+    EXPECT_EQ(unit->insns[3].opcode, RTLOP_CHAIN);
+    EXPECT_EQ(unit->insns[3].dest, 0);
+    EXPECT_EQ(unit->insns[3].src1, reg1);
+    EXPECT_EQ(unit->insns[3].src2, 0);
+    EXPECT_EQ(unit->insns[3].src_imm, 0);
+    EXPECT_EQ(unit->regs[reg1].birth, 0);
+    EXPECT_EQ(unit->regs[reg1].death, 3);
+    EXPECT_EQ(unit->regs[reg2].birth, 1);
+    EXPECT_EQ(unit->regs[reg2].death, 2);
+    EXPECT(unit->have_block);
+    EXPECT_FALSE(unit->error);
+
+    EXPECT_EQ(rtl_add_chain_insn(unit, 0, 0), 4);
+    EXPECT_EQ(unit->num_insns, 5);
+    EXPECT_EQ(unit->insns[4].opcode, RTLOP_CHAIN);
+    EXPECT_EQ(unit->insns[4].dest, 0);
+    EXPECT_EQ(unit->insns[4].src1, 0);
+    EXPECT_EQ(unit->insns[4].src2, 0);
+    EXPECT_EQ(unit->insns[4].src_imm, 0);
+    EXPECT_EQ(unit->regs[reg1].birth, 0);
+    EXPECT_EQ(unit->regs[reg1].death, 3);
+    EXPECT_EQ(unit->regs[reg2].birth, 1);
+    EXPECT_EQ(unit->regs[reg2].death, 2);
+    EXPECT(unit->have_block);
+    EXPECT_FALSE(unit->error);
+
     EXPECT(rtl_finalize_unit(unit));
 
     const char *disassembly =
@@ -52,8 +82,11 @@ int main(void)
         "    2: CHAIN      r1, r2\n"
         "           r1: 10\n"
         "           r2: 20\n"
+        "    3: CHAIN      r1\n"
+        "           r1: 10\n"
+        "    4: CHAIN\n"
         "\n"
-        "Block 0: <none> --> [0,2] --> <none>\n"
+        "Block 0: <none> --> [0,4] --> <none>\n"
         ;
     EXPECT_STREQ(rtl_disassemble_unit(unit, true), disassembly);
 

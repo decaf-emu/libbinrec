@@ -34,13 +34,7 @@ int main(void)
     EXPECT_FALSE(unit->error);
 
     EXPECT_EQ(rtl_add_chain_insn(unit, 0, reg1), -1);
-    EXPECT_ICE("Operand constraint violated: src1 != 0");
-    EXPECT_EQ(unit->num_insns, 1);
-    EXPECT(unit->error);
-    unit->error = false;
-
-    EXPECT_EQ(rtl_add_chain_insn(unit, reg1, 0), -1);
-    EXPECT_ICE("Operand constraint violated: src2 != 0");
+    EXPECT_ICE("Operand constraint violated: !(src1 == 0 && src2 != 0)");
     EXPECT_EQ(unit->num_insns, 1);
     EXPECT(unit->error);
     unit->error = false;

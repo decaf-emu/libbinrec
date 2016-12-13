@@ -1454,6 +1454,9 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
             /* Temporary needed to hold the compare result. */
             need_temp = true;
             temp_is_fpr = true;
+            if (!src2_info->spilled) {
+                temp_avoid |= 1 << src2_info->host_reg;
+            }
             break;
 
           case RTLOP_LOAD_IMM:
