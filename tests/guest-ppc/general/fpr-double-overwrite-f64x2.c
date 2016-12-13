@@ -16,7 +16,9 @@ static const uint8_t input[] = {
 
 #define INITIAL_STATE  &(PPCInsnTestState){.gqr = {0}}
 
-static const unsigned int guest_opt = BINREC_OPT_G_PPC_CONSTANT_GQRS
+static const unsigned int guest_opt = BINREC_OPT_G_PPC_ASSUME_NO_SNAN
+                                    | BINREC_OPT_G_PPC_CONSTANT_GQRS
+                                    | BINREC_OPT_G_PPC_FAST_STFS
                                     | BINREC_OPT_G_PPC_NO_FPSCR_STATE
                                     | BINREC_OPT_G_PPC_PS_STORE_DENORMALS;
 static const unsigned int common_opt = 0;
@@ -35,7 +37,7 @@ static const char expected[] =
     "    7: GET_ALIAS  r8, a2\n"
     "    8: ZCAST      r9, r8\n"
     "    9: ADD        r10, r2, r9\n"
-    "   10: VFCAST     r11, r7\n"
+    "   10: VFCVT      r11, r7\n"
     "   11: VEXTRACT   r12, r11, 0\n"
     "   12: STORE_BR   0(r10), r12\n"
     "   13: VEXTRACT   r13, r11, 1\n"

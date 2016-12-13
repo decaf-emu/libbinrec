@@ -13,7 +13,8 @@ static const uint8_t input[] = {
     0xF4,0x23,0xAF,0xF0,  // psq_stu f1,-16(r3),1,2
 };
 
-static const unsigned int guest_opt = 0;
+static const unsigned int guest_opt = BINREC_OPT_G_PPC_ASSUME_NO_SNAN
+                                    | BINREC_OPT_G_PPC_FAST_STFS;
 static const unsigned int common_opt = 0;
 
 static const bool expected_success = true;
@@ -33,7 +34,7 @@ static const char expected[] =
     "   10: GOTO_IF_NZ r10, L2\n"
     "   11: FGETSTATE  r11\n"
     "   12: VEXTRACT   r12, r3, 0\n"
-    "   13: FCAST      r13, r12\n"
+    "   13: FCVT       r13, r12\n"
     "   14: FSETSTATE  r11\n"
     "   15: BITCAST    r14, r13\n"
     "   16: BFEXT      r15, r14, 23, 8\n"

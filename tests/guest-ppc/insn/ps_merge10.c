@@ -13,7 +13,8 @@ static const uint8_t input[] = {
     0x10,0x22,0x1C,0xA0,  // ps_merge10 f1,f2,f3
 };
 
-static const unsigned int guest_opt = 0;
+static const unsigned int guest_opt = BINREC_OPT_G_PPC_ASSUME_NO_SNAN
+                                    | BINREC_OPT_G_PPC_NO_FPSCR_STATE;
 static const unsigned int common_opt = 0;
 
 static const bool expected_success = true;
@@ -24,15 +25,15 @@ static const char expected[] =
     "    1: LOAD_ARG   r2, 1\n"
     "    2: GET_ALIAS  r3, a3\n"
     "    3: VEXTRACT   r4, r3, 1\n"
-    "    4: FCAST      r5, r4\n"
+    "    4: FCVT       r5, r4\n"
     "    5: GET_ALIAS  r6, a4\n"
     "    6: FGETSTATE  r7\n"
     "    7: FSETROUND  r8, r7, TRUNC\n"
     "    8: FSETSTATE  r8\n"
-    "    9: FCAST      r9, r6\n"
+    "    9: FCVT       r9, r6\n"
     "   10: FSETSTATE  r7\n"
     "   11: VBUILD2    r10, r5, r9\n"
-    "   12: VFCAST     r11, r10\n"
+    "   12: VFCVT      r11, r10\n"
     "   13: SET_ALIAS  a2, r11\n"
     "   14: LOAD_IMM   r12, 4\n"
     "   15: SET_ALIAS  a1, r12\n"

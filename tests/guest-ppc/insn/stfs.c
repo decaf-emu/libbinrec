@@ -13,7 +13,8 @@ static const uint8_t input[] = {
     0xD0,0x23,0xFF,0xF0,  // stfs f1,-16(r3)
 };
 
-static const unsigned int guest_opt = BINREC_OPT_G_PPC_FAST_STFS;
+static const unsigned int guest_opt = BINREC_OPT_G_PPC_ASSUME_NO_SNAN
+                                    | BINREC_OPT_G_PPC_FAST_STFS;
 static const unsigned int common_opt = 0;
 
 static const bool expected_success = true;
@@ -27,7 +28,7 @@ static const char expected[] =
     "    4: ADD        r5, r2, r4\n"
     "    5: GET_ALIAS  r6, a3\n"
     "    6: FGETSTATE  r7\n"
-    "    7: FCAST      r8, r6\n"
+    "    7: FCVT       r8, r6\n"
     "    8: FSETSTATE  r7\n"
     "    9: STORE_BR   -16(r5), r8\n"
     "   10: LOAD_IMM   r9, 4\n"

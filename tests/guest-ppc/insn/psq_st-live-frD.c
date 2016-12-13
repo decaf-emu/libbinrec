@@ -14,7 +14,8 @@ static const uint8_t input[] = {
     0xF0,0x23,0xAF,0xF0,  // psq_st f1,-16(r3),1,2
 };
 
-static const unsigned int guest_opt = 0;
+static const unsigned int guest_opt = BINREC_OPT_G_PPC_ASSUME_NO_SNAN
+                                    | BINREC_OPT_G_PPC_FAST_STFS;
 static const unsigned int common_opt = 0;
 
 static const bool expected_success = true;
@@ -25,7 +26,7 @@ static const char expected[] =
     "    1: LOAD_ARG   r2, 1\n"
     "    2: GET_ALIAS  r3, a4\n"
     "    3: FGETSTATE  r4\n"
-    "    4: VFCAST     r5, r3\n"
+    "    4: VFCVT      r5, r3\n"
     "    5: FSETSTATE  r4\n"
     "    6: GET_ALIAS  r6, a2\n"
     "    7: ZCAST      r7, r6\n"
@@ -81,7 +82,7 @@ static const char expected[] =
     "   57: LABEL      L3\n"
     "   58: STORE_I16_BR -16(r8), r47\n"
     "   59: LABEL      L1\n"
-    "   60: VFCAST     r49, r5\n"
+    "   60: VFCVT      r49, r5\n"
     "   61: SET_ALIAS  a3, r49\n"
     "   62: LOAD_IMM   r50, 8\n"
     "   63: SET_ALIAS  a1, r50\n"

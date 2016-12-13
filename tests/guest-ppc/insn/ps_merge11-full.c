@@ -1,0 +1,117 @@
+/*
+ * libbinrec: a recompiling translator for machine code
+ * Copyright (c) 2016 Andrew Church <achurch@achurch.org>
+ *
+ * This software may be copied and redistributed under certain conditions;
+ * see the file "COPYING" in the source code distribution for details.
+ * NO WARRANTY is provided with this software.
+ */
+
+#include "tests/guest-ppc/insn/common.h"
+
+static const uint8_t input[] = {
+    0x10,0x22,0x1C,0xE0,  // ps_merge11 f1,f2,f3
+};
+
+static const unsigned int guest_opt = 0;
+static const unsigned int common_opt = 0;
+
+static const bool expected_success = true;
+
+static const char expected[] =
+    "[info] Scanning terminated at requested limit 0x3\n"
+    "    0: LOAD_ARG   r1, 0\n"
+    "    1: LOAD_ARG   r2, 1\n"
+    "    2: GET_ALIAS  r3, a3\n"
+    "    3: VEXTRACT   r4, r3, 1\n"
+    "    4: FGETSTATE  r5\n"
+    "    5: FCMP       r6, r4, r4, UN\n"
+    "    6: FCVT       r7, r4\n"
+    "    7: SET_ALIAS  a5, r7\n"
+    "    8: GOTO_IF_Z  r6, L1\n"
+    "    9: BITCAST    r8, r4\n"
+    "   10: BFEXT      r9, r8, 51, 1\n"
+    "   11: GOTO_IF_NZ r9, L1\n"
+    "   12: BITCAST    r10, r7\n"
+    "   13: XORI       r11, r10, 4194304\n"
+    "   14: BITCAST    r12, r11\n"
+    "   15: SET_ALIAS  a5, r12\n"
+    "   16: LABEL      L1\n"
+    "   17: GET_ALIAS  r13, a5\n"
+    "   18: FSETSTATE  r5\n"
+    "   19: GET_ALIAS  r14, a4\n"
+    "   20: VEXTRACT   r15, r14, 1\n"
+    "   21: FGETSTATE  r16\n"
+    "   22: FCMP       r17, r15, r15, UN\n"
+    "   23: FCVT       r18, r15\n"
+    "   24: SET_ALIAS  a6, r18\n"
+    "   25: GOTO_IF_Z  r17, L2\n"
+    "   26: BITCAST    r19, r15\n"
+    "   27: BFEXT      r20, r19, 51, 1\n"
+    "   28: GOTO_IF_NZ r20, L2\n"
+    "   29: BITCAST    r21, r18\n"
+    "   30: XORI       r22, r21, 4194304\n"
+    "   31: BITCAST    r23, r22\n"
+    "   32: SET_ALIAS  a6, r23\n"
+    "   33: LABEL      L2\n"
+    "   34: GET_ALIAS  r24, a6\n"
+    "   35: FSETSTATE  r16\n"
+    "   36: VBUILD2    r25, r13, r24\n"
+    "   37: FGETSTATE  r26\n"
+    "   38: VFCMP      r27, r25, r25, UN\n"
+    "   39: VFCVT      r28, r25\n"
+    "   40: SET_ALIAS  a7, r28\n"
+    "   41: GOTO_IF_Z  r27, L3\n"
+    "   42: VEXTRACT   r29, r25, 0\n"
+    "   43: VEXTRACT   r30, r25, 1\n"
+    "   44: SLLI       r31, r27, 32\n"
+    "   45: BITCAST    r32, r29\n"
+    "   46: BITCAST    r33, r30\n"
+    "   47: NOT        r34, r32\n"
+    "   48: NOT        r35, r33\n"
+    "   49: ANDI       r36, r34, 4194304\n"
+    "   50: ANDI       r37, r35, 4194304\n"
+    "   51: VEXTRACT   r38, r28, 0\n"
+    "   52: VEXTRACT   r39, r28, 1\n"
+    "   53: ZCAST      r40, r36\n"
+    "   54: ZCAST      r41, r37\n"
+    "   55: SLLI       r42, r40, 29\n"
+    "   56: SLLI       r43, r41, 29\n"
+    "   57: BITCAST    r44, r38\n"
+    "   58: BITCAST    r45, r39\n"
+    "   59: AND        r46, r42, r31\n"
+    "   60: AND        r47, r43, r27\n"
+    "   61: XOR        r48, r44, r46\n"
+    "   62: XOR        r49, r45, r47\n"
+    "   63: BITCAST    r50, r48\n"
+    "   64: BITCAST    r51, r49\n"
+    "   65: VBUILD2    r52, r50, r51\n"
+    "   66: SET_ALIAS  a7, r52\n"
+    "   67: LABEL      L3\n"
+    "   68: GET_ALIAS  r53, a7\n"
+    "   69: FSETSTATE  r26\n"
+    "   70: SET_ALIAS  a2, r53\n"
+    "   71: LOAD_IMM   r54, 4\n"
+    "   72: SET_ALIAS  a1, r54\n"
+    "   73: RETURN\n"
+    "\n"
+    "Alias 1: int32 @ 956(r1)\n"
+    "Alias 2: float64[2] @ 400(r1)\n"
+    "Alias 3: float64[2] @ 416(r1)\n"
+    "Alias 4: float64[2] @ 432(r1)\n"
+    "Alias 5: float32, no bound storage\n"
+    "Alias 6: float32, no bound storage\n"
+    "Alias 7: float64[2], no bound storage\n"
+    "\n"
+    "Block 0: <none> --> [0,8] --> 1,3\n"
+    "Block 1: 0 --> [9,11] --> 2,3\n"
+    "Block 2: 1 --> [12,15] --> 3\n"
+    "Block 3: 2,0,1 --> [16,25] --> 4,6\n"
+    "Block 4: 3 --> [26,28] --> 5,6\n"
+    "Block 5: 4 --> [29,32] --> 6\n"
+    "Block 6: 5,3,4 --> [33,41] --> 7,8\n"
+    "Block 7: 6 --> [42,66] --> 8\n"
+    "Block 8: 7,6 --> [67,73] --> <none>\n"
+    ;
+
+#include "tests/rtl-disasm-test.i"

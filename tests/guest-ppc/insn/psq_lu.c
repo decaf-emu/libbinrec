@@ -13,7 +13,7 @@ static const uint8_t input[] = {
     0xE4,0x23,0xAF,0xF0,  // psq_lu f1,-16(r3),1,2
 };
 
-static const unsigned int guest_opt = 0;
+static const unsigned int guest_opt = BINREC_OPT_G_PPC_ASSUME_NO_SNAN;
 static const unsigned int common_opt = 0;
 
 static const bool expected_success = true;
@@ -33,7 +33,7 @@ static const char expected[] =
     "   10: LOAD_BR    r10, 0(r6)\n"
     "   11: LOAD_IMM   r11, 1.0f\n"
     "   12: VBUILD2    r12, r10, r11\n"
-    "   13: VFCAST     r13, r12\n"
+    "   13: VFCVT      r13, r12\n"
     "   14: SET_ALIAS  a3, r13\n"
     "   15: GOTO       L1\n"
     "   16: LABEL      L2\n"

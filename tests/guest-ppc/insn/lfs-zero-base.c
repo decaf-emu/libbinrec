@@ -13,7 +13,8 @@ static const uint8_t input[] = {
     0xC0,0x20,0x00,0x10,  // lfs f1,16(0)
 };
 
-static const unsigned int guest_opt = 0;
+static const unsigned int guest_opt = BINREC_OPT_G_PPC_ASSUME_NO_SNAN
+                                    | BINREC_OPT_G_PPC_NO_FPSCR_STATE;
 static const unsigned int common_opt = 0;
 
 static const bool expected_success = true;
@@ -23,7 +24,7 @@ static const char expected[] =
     "    0: LOAD_ARG   r1, 0\n"
     "    1: LOAD_ARG   r2, 1\n"
     "    2: LOAD_BR    r3, 16(r2)\n"
-    "    3: FCAST      r4, r3\n"
+    "    3: FCVT       r4, r3\n"
     "    4: STORE      408(r1), r4\n"
     "    5: SET_ALIAS  a2, r4\n"
     "    6: LOAD_IMM   r5, 4\n"

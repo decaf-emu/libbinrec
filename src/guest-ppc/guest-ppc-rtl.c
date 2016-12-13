@@ -883,7 +883,9 @@ static inline void set_fpr(GuestPPCContext * const ctx, int index, int reg)
                 fpstate = rtl_alloc_register(unit, RTLTYPE_FPSTATE);
                 rtl_add_insn(unit, RTLOP_FGETSTATE, fpstate, 0, 0, 0);
             }
-            const bool snan_safe = (ctx->ps1_is_safe & (1 << index)) != 0;
+            const bool snan_safe =
+                (ctx->ps1_is_safe & (1 << index))
+                || (ctx->handle->guest_opt & BINREC_OPT_G_PPC_ASSUME_NO_SNAN);
             const int ps1_64 = fcast_32to64(unit, ps1, !snan_safe);
             if (ctx->fpr_is_ps & (1 << index)) {
                 const int new = rtl_alloc_register(unit, RTLTYPE_V2_FLOAT64);
@@ -6523,7 +6525,8 @@ static void translate_ps_merge(GuestPPCContext *ctx, uint32_t insn,
                          fpstate_trunc, fpstate, 0, RTLFROUND_TRUNC);
             rtl_add_insn(unit, RTLOP_FSETSTATE, 0, fpstate_trunc, 0, 0);
             const bool snan_safe =
-                (ctx->fpr_is_safe & (1 << insn_frB(insn))) != 0;
+                (ctx->fpr_is_safe & (1 << insn_frB(insn)))
+                || (ctx->handle->guest_opt & BINREC_OPT_G_PPC_ASSUME_NO_SNAN);
             frB = fcast_64to32(unit, frB_64, !snan_safe);
             rtl_add_insn(unit, RTLOP_FSETSTATE, 0, fpstate, 0, 0);
         }

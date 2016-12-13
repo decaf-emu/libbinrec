@@ -14,7 +14,8 @@ static const uint8_t input[] = {
     0x13,0x81,0x10,0x80,  // ps_cmpu1 cr7,f1,f2
 };
 
-static const unsigned int guest_opt = BINREC_OPT_G_PPC_NO_FPSCR_STATE;
+static const unsigned int guest_opt = BINREC_OPT_G_PPC_ASSUME_NO_SNAN
+                                    | BINREC_OPT_G_PPC_NO_FPSCR_STATE;
 static const unsigned int common_opt = 0;
 
 static const bool expected_success = true;
@@ -28,7 +29,7 @@ static const char expected[] =
     "    4: FCVT       r5, r4\n"
     "    5: GET_ALIAS  r6, a3\n"
     "    6: VEXTRACT   r7, r6, 1\n"
-    "    7: FCAST      r8, r7\n"
+    "    7: FCVT       r8, r7\n"
     "    8: FCMP       r9, r5, r8, LT\n"
     "    9: FCMP       r10, r5, r8, GT\n"
     "   10: FCMP       r11, r5, r8, EQ\n"

@@ -1,0 +1,117 @@
+/*
+ * libbinrec: a recompiling translator for machine code
+ * Copyright (c) 2016 Andrew Church <achurch@achurch.org>
+ *
+ * This software may be copied and redistributed under certain conditions;
+ * see the file "COPYING" in the source code distribution for details.
+ * NO WARRANTY is provided with this software.
+ */
+
+#include "tests/guest-ppc/insn/common.h"
+
+static const uint8_t input[] = {
+    0x10,0x22,0x1C,0x20,  // ps_merge00 f1,f2,f3
+};
+
+static const unsigned int guest_opt = 0;
+static const unsigned int common_opt = 0;
+
+static const bool expected_success = true;
+
+static const char expected[] =
+    "[info] Scanning terminated at requested limit 0x3\n"
+    "    0: LOAD_ARG   r1, 0\n"
+    "    1: LOAD_ARG   r2, 1\n"
+    "    2: GET_ALIAS  r3, a3\n"
+    "    3: FGETSTATE  r4\n"
+    "    4: FCMP       r5, r3, r3, UN\n"
+    "    5: FCVT       r6, r3\n"
+    "    6: SET_ALIAS  a5, r6\n"
+    "    7: GOTO_IF_Z  r5, L1\n"
+    "    8: BITCAST    r7, r3\n"
+    "    9: BFEXT      r8, r7, 51, 1\n"
+    "   10: GOTO_IF_NZ r8, L1\n"
+    "   11: BITCAST    r9, r6\n"
+    "   12: XORI       r10, r9, 4194304\n"
+    "   13: BITCAST    r11, r10\n"
+    "   14: SET_ALIAS  a5, r11\n"
+    "   15: LABEL      L1\n"
+    "   16: GET_ALIAS  r12, a5\n"
+    "   17: FSETSTATE  r4\n"
+    "   18: GET_ALIAS  r13, a4\n"
+    "   19: FGETSTATE  r14\n"
+    "   20: FSETROUND  r15, r14, TRUNC\n"
+    "   21: FSETSTATE  r15\n"
+    "   22: FCMP       r16, r13, r13, UN\n"
+    "   23: FCVT       r17, r13\n"
+    "   24: SET_ALIAS  a6, r17\n"
+    "   25: GOTO_IF_Z  r16, L2\n"
+    "   26: BITCAST    r18, r13\n"
+    "   27: BFEXT      r19, r18, 51, 1\n"
+    "   28: GOTO_IF_NZ r19, L2\n"
+    "   29: BITCAST    r20, r17\n"
+    "   30: XORI       r21, r20, 4194304\n"
+    "   31: BITCAST    r22, r21\n"
+    "   32: SET_ALIAS  a6, r22\n"
+    "   33: LABEL      L2\n"
+    "   34: GET_ALIAS  r23, a6\n"
+    "   35: FSETSTATE  r14\n"
+    "   36: VBUILD2    r24, r12, r23\n"
+    "   37: FGETSTATE  r25\n"
+    "   38: VFCMP      r26, r24, r24, UN\n"
+    "   39: VFCVT      r27, r24\n"
+    "   40: SET_ALIAS  a7, r27\n"
+    "   41: GOTO_IF_Z  r26, L3\n"
+    "   42: VEXTRACT   r28, r24, 0\n"
+    "   43: VEXTRACT   r29, r24, 1\n"
+    "   44: SLLI       r30, r26, 32\n"
+    "   45: BITCAST    r31, r28\n"
+    "   46: BITCAST    r32, r29\n"
+    "   47: NOT        r33, r31\n"
+    "   48: NOT        r34, r32\n"
+    "   49: ANDI       r35, r33, 4194304\n"
+    "   50: ANDI       r36, r34, 4194304\n"
+    "   51: VEXTRACT   r37, r27, 0\n"
+    "   52: VEXTRACT   r38, r27, 1\n"
+    "   53: ZCAST      r39, r35\n"
+    "   54: ZCAST      r40, r36\n"
+    "   55: SLLI       r41, r39, 29\n"
+    "   56: SLLI       r42, r40, 29\n"
+    "   57: BITCAST    r43, r37\n"
+    "   58: BITCAST    r44, r38\n"
+    "   59: AND        r45, r41, r30\n"
+    "   60: AND        r46, r42, r26\n"
+    "   61: XOR        r47, r43, r45\n"
+    "   62: XOR        r48, r44, r46\n"
+    "   63: BITCAST    r49, r47\n"
+    "   64: BITCAST    r50, r48\n"
+    "   65: VBUILD2    r51, r49, r50\n"
+    "   66: SET_ALIAS  a7, r51\n"
+    "   67: LABEL      L3\n"
+    "   68: GET_ALIAS  r52, a7\n"
+    "   69: FSETSTATE  r25\n"
+    "   70: SET_ALIAS  a2, r52\n"
+    "   71: LOAD_IMM   r53, 4\n"
+    "   72: SET_ALIAS  a1, r53\n"
+    "   73: RETURN\n"
+    "\n"
+    "Alias 1: int32 @ 956(r1)\n"
+    "Alias 2: float64[2] @ 400(r1)\n"
+    "Alias 3: float64 @ 416(r1)\n"
+    "Alias 4: float64 @ 432(r1)\n"
+    "Alias 5: float32, no bound storage\n"
+    "Alias 6: float32, no bound storage\n"
+    "Alias 7: float64[2], no bound storage\n"
+    "\n"
+    "Block 0: <none> --> [0,7] --> 1,3\n"
+    "Block 1: 0 --> [8,10] --> 2,3\n"
+    "Block 2: 1 --> [11,14] --> 3\n"
+    "Block 3: 2,0,1 --> [15,25] --> 4,6\n"
+    "Block 4: 3 --> [26,28] --> 5,6\n"
+    "Block 5: 4 --> [29,32] --> 6\n"
+    "Block 6: 5,3,4 --> [33,41] --> 7,8\n"
+    "Block 7: 6 --> [42,66] --> 8\n"
+    "Block 8: 7,6 --> [67,73] --> <none>\n"
+    ;
+
+#include "tests/rtl-disasm-test.i"
