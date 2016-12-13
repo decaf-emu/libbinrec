@@ -2859,8 +2859,8 @@ static void set_ps_result(GuestPPCContext *ctx, int index, int result,
         rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, label_do_set_result);
     }
 
-    /* If no invalid-operation exception occurred, we can just store the
-     * result directly. */
+    /* If no invalid-operation exception occurred (or if we're ignoring
+     * exceptions), we can just store the result directly. */
     set_fp_result(ctx, index, result, 0, src1, src2, 0,
                   0, 0, false, real_rtlop == RTLOP_FDIV, true, true);
     if (label_skip_set_result) {
@@ -3982,7 +3982,7 @@ static void check_fp_underflow(
      * if appropriate.  The floating-point side effect check will prevent
      * these technically dead stores from being eliminated (unless
      * BINREC_OPT_DSE_FP is enabled, in which case this entire check is
-     * meaningless). */
+     * meaningless anyway). */
     if (label_check_tiny) {
         rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, label_check_tiny);
     }
@@ -5241,13 +5241,19 @@ static void translate_load_store_ps(
         }
         /* Quantize the values.  For this case, we don't need to check
          * for SNaNs since both SNaNs and QNaNs convert to the same
-         * output value.  (Note that we could in theory pass FLOAT64s
+         * output value.  Note that we could in theory pass FLOAT64s
          * straight to FROUNDI in ps_quantize(), but typically psq_st
          * instructions should be located at the end of a sequence of
          * calculations which will leave the register in V2_FLOAT32 mode,
-         * so it's probably not worth worrying about the FLOAT64 case.) */
-        const int fpstate = rtl_alloc_register(unit, RTLTYPE_FPSTATE);
-        rtl_add_insn(unit, RTLOP_FGETSTATE, fpstate, 0, 0, 0);
+         * so it's probably not worth worrying about the FLOAT64 case.
+         * We preserve FP state since quantization should not raise any
+         * exceptions (unless NO_FPSCR_STATE is enabled, in which case we
+         * don't care about exceptions at all). */
+        int fpstate = 0;
+        if (!(ctx->handle->guest_opt & BINREC_OPT_G_PPC_NO_FPSCR_STATE)) {
+            fpstate = rtl_alloc_register(unit, RTLTYPE_FPSTATE);
+            rtl_add_insn(unit, RTLOP_FGETSTATE, fpstate, 0, 0, 0);
+        }
         int ps = 0, ps0 = 0;
         if (ctx->live.fpr[frD_index]
          && unit->regs[ctx->live.fpr[frD_index]].type == RTLTYPE_V2_FLOAT32) {
@@ -5277,7 +5283,9 @@ static void translate_load_store_ps(
             ps1_int = ps_quantize(ctx, ps1, gqr_scale, min_val, max_val);
         }
         /* Clear any exceptions raised by the quantization. */
-        rtl_add_insn(unit, RTLOP_FSETSTATE, 0, fpstate, 0, 0);
+        if (fpstate) {
+            rtl_add_insn(unit, RTLOP_FSETSTATE, 0, fpstate, 0, 0);
+        }
     }
 
     /* Check the access type. */
@@ -6634,8 +6642,11 @@ static void translate_ps_sel(GuestPPCContext *ctx, uint32_t insn)
 {
     RTLUnit * const unit = ctx->unit;
 
-    const int fpstate = rtl_alloc_register(unit, RTLTYPE_FPSTATE);
-    rtl_add_insn(unit, RTLOP_FGETSTATE, fpstate, 0, 0, 0);
+    int fpstate = 0;
+    if (!(ctx->handle->guest_opt & BINREC_OPT_G_PPC_NO_FPSCR_STATE)) {
+        fpstate = rtl_alloc_register(unit, RTLTYPE_FPSTATE);
+        rtl_add_insn(unit, RTLOP_FGETSTATE, fpstate, 0, 0, 0);
+    }
 
     const RTLDataType frA_scalar_type =
         get_fpr_scalar_type(ctx, insn_frA(insn));
@@ -6672,7 +6683,9 @@ static void translate_ps_sel(GuestPPCContext *ctx, uint32_t insn)
     rtl_add_insn(unit, RTLOP_VBUILD2, frD, frD_ps[0], frD_ps[1], 0);
     set_fpr(ctx, insn_frD(insn), frD);
 
-    rtl_add_insn(unit, RTLOP_FSETSTATE, 0, fpstate, 0, 0);
+    if (fpstate) {
+        rtl_add_insn(unit, RTLOP_FSETSTATE, 0, fpstate, 0, 0);
+    }
     if (insn_Rc(insn)) {
         update_cr1(ctx);
     }
@@ -7814,9 +7827,13 @@ static inline void translate_x3F(
 
           case XO_FSEL: {
             /* fsel does not raise any exceptions, so make sure we don't
-             * affect host exception state with FCMP. */
-            const int fpstate = rtl_alloc_register(unit, RTLTYPE_FPSTATE);
-            rtl_add_insn(unit, RTLOP_FGETSTATE, fpstate, 0, 0, 0);
+             * affect host exception state with FCMP.  (But we don't need
+             * to bother with this if we're ignoring exceptions completely.) */
+            int fpstate = 0;
+            if (!(ctx->handle->guest_opt & BINREC_OPT_G_PPC_NO_FPSCR_STATE)) {
+                fpstate = rtl_alloc_register(unit, RTLTYPE_FPSTATE);
+                rtl_add_insn(unit, RTLOP_FGETSTATE, fpstate, 0, 0, 0);
+            }
             /* There's no need to convert frA to float64 if it's currently
              * float32, since all we do is test its value. */
             const RTLDataType frA_type =
@@ -7833,7 +7850,9 @@ static inline void translate_x3F(
             const int result = rtl_alloc_register(unit, RTLTYPE_FLOAT64);
             rtl_add_insn(unit, RTLOP_SELECT, result, frC, frB, test);
             set_fpr(ctx, insn_frD(insn), result);
-            rtl_add_insn(unit, RTLOP_FSETSTATE, 0, fpstate, 0, 0);
+            if (fpstate) {
+                rtl_add_insn(unit, RTLOP_FSETSTATE, 0, fpstate, 0, 0);
+            }
             if (insn_Rc(insn)) {
                 update_cr1(ctx);
             }
