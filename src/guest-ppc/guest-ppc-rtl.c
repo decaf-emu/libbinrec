@@ -2922,7 +2922,10 @@ static void store_float64_as_32(RTLUnit *unit, RTLOpcode rtlop,
 
     rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, label_denormal);
     if (flush_denormal) {
-        rtl_add_insn(unit, rtlop, 0, host_address, rtl_imm32(unit,0), disp);
+        /* Zero is zero whether byte-reversed or not, so this can be an
+         * ordinary store regardless of endianness. */
+        rtl_add_insn(unit, RTLOP_STORE,
+                     0, host_address, rtl_imm32(unit,0), disp);
     } else {
         const int exponent = rtl_alloc_register(unit, RTLTYPE_INT64);
         rtl_add_insn(unit, RTLOP_SRLI, exponent, range_test, 0, 53);
