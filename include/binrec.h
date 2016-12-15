@@ -712,22 +712,10 @@ typedef struct binrec_setup_t {
  * the conversion itself.  If this optimization is enabled, the translator
  * will use the fastest possible method to convert between single and
  * double precision, ignoring the possibility of signaling NaNs.  If a
- * signaling NaN is in fact loaded, it may cause a later floating-point
- * instruction to incorrectly detect an invalid-operation exception and
- * return an incorrect value.
- *
- * As a side effect, this optimization also modifies emulation of the
- * undocumented hardware quirk that single-precision floating-point
- * instructions accept double-precision arguments.  When this optimization
- * is enabled, if an operand to a single-precision instruction (except stfs
- * and related instructions, and including 750CL-specific paired-single
- * instructions) is not representable in single precision, the instruction
- * may raise a floating-point overflow, underflow, or inexact exception
- * which is improperly detected by a later floating-point instruction.
- * Note that the use of double-precision operands (i.e., operands which
- * cannot be represented in single precision) with single-precision
- * instructions is documented in the PowerPC specification to store
- * undefined data in the output register and FPSCR.
+ * signaling NaN is in fact loaded, its quiet bit will be set; this may
+ * cause a later floating-point instruction to fail to raise an expected
+ * invalid-operation exception, or have other unpredictable effects if the
+ * bitwise contents of the value are used in non-floating-point operations.
  *
  * This optimization is UNSAFE: code which relies on being able to load a
  * signaling NaN will not behave correctly.
