@@ -24,6 +24,7 @@ add_library(binrec STATIC ${SOURCES})
 
 target_include_directories(binrec PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
 target_compile_definitions(binrec PRIVATE VERSION="0.1")
+target_compile_options(binrec PRIVATE -std=c99)
 if(BINREC_ENABLE_ASSERT)
     target_compile_definitions(binrec PRIVATE ENABLE_ASSERT)
 endif()
