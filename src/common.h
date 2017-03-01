@@ -262,6 +262,8 @@ struct RTLUnit;
  * min, max:  Return the minimum or maximum of two values.  The returned
  * value will be evaluated twice.
  */
+#undef min  // in case of namespace pollution by compiler/libraries
+#undef max
 #define min(a,b)  ((a) < (b) ? (a) : (b))
 #define max(a,b)  ((a) > (b) ? (a) : (b))
 
