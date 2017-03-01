@@ -12,12 +12,14 @@
 
 
 static const binrec_setup_t setup = {
-    .host = BINREC_ARCH_X86_64_WINDOWS_SEH,
+    .host = BINREC_ARCH_X86_64_WINDOWS,
 };
 static const unsigned int host_opt = 0;
 
 static int add_rtl(RTLUnit *unit)
 {
+    alloc_dummy_registers(unit, 1, RTLTYPE_INT32);
+
     int reg1;
     EXPECT(reg1 = rtl_alloc_register(unit, RTLTYPE_ADDRESS));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg1, 0, 0, 1));
@@ -29,16 +31,13 @@ static int add_rtl(RTLUnit *unit)
 }
 
 static const uint8_t expected_code[] = {
-    0x10,0x00,0x00,0x00,0x00,0x00,0x00,0x00, // (data)
-    0x01,0x04,0x01,0x00,0x00,0x42,0x00,0x00, // (data)
-
-    /* Windows+SEH disallows tail calls, so this is a normal call instead. */
-    0x48,0x83,0xEC,0x28,                // sub $40,%rsp
-    0xB8,0x01,0x00,0x00,0x00,           // mov $1,%eax
-    0x0F,0xAE,0x5C,0x24,0x20,           // stmxcsr 32(%rsp)
-    0xFF,0xD0,                          // call *%rax
-    0x0F,0xAE,0x54,0x24,0x20,           // ldmxcsr 32(%rsp)
-    0x48,0x83,0xC4,0x28,                // add $40,%rsp
+    /* This should not allocate shadow space on the stack since it's a
+     * tail call. */
+    0x48,0x83,0xEC,0x08,                // sub $8,%rsp
+    0xB9,0x01,0x00,0x00,0x00,           // mov $1,%ecx
+    0x48,0x83,0xC4,0x08,                // add $8,%rsp
+    0xFF,0xE1,                          // jmp *%rcx
+    0x48,0x83,0xC4,0x08,                // add $8,%rsp
     0xC3,                               // ret
 };
 

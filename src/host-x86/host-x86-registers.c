@@ -652,6 +652,16 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
         if (ctx->stack_mxcsr < 0) {
             ctx->stack_mxcsr = allocate_frame_slot(ctx, RTLTYPE_INT32);
         }
+
+        /* Windows requires shadow space at the bottom of the frame (to be
+         * used by the callee) for the first four arguments to a called
+         * function. */
+        if (ctx->handle->setup.host == BINREC_ARCH_X86_64_WINDOWS
+         || ctx->handle->setup.host == BINREC_ARCH_X86_64_WINDOWS_SEH) {
+            if (ctx->frame_callee_reserve < 32) {
+                ctx->frame_callee_reserve = 32;
+            }
+        }
     }
 
     if (dest) {

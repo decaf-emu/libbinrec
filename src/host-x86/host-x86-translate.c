@@ -1947,7 +1947,7 @@ static bool append_prologue(HostX86Context *ctx)
         total_stack_use += 16 * popcnt32(xmm_to_save);
         ctx->frame_size = align_up(ctx->frame_size, 16);
     }
-    total_stack_use += ctx->frame_size;
+    total_stack_use += ctx->frame_size + ctx->frame_callee_reserve;
     /* Final stack pointer alignment: the total stack usage should be a
      * multiple of 16 plus 8, again because of the return address. */
     if (total_stack_use % 16 != 8) {
@@ -5974,12 +5974,32 @@ static bool translate_unit(HostX86Context *ctx)
     ASSERT(ctx);
     ASSERT(ctx->unit);
 
+    const RTLUnit * const unit = ctx->unit;
+
+    /* Push all stack frame offsets forward by the callee reserve amount
+     * (if any) so the low-level translation logic doesn't have to worry
+     * about it. */
+    if (ctx->frame_callee_reserve > 0) {
+        for (int reg_index = 1; reg_index < unit->next_reg; reg_index++) {
+            if (ctx->regs[reg_index].spilled) {
+                ctx->regs[reg_index].spill_offset += ctx->frame_callee_reserve;
+            }
+        }
+        for (int reg = 0; reg < 32; reg++) {
+            if (ctx->stack_callsave[reg] >= 0) {
+                ctx->stack_callsave[reg] += ctx->frame_callee_reserve;
+            }
+        }
+        if (ctx->stack_mxcsr >= 0) {
+            ctx->stack_mxcsr += ctx->frame_callee_reserve;
+        }
+    }
+
     if (!append_prologue(ctx)) {
         return false;
     }
 
     memset(ctx->reg_map, 0, sizeof(ctx->reg_map));
-    const RTLUnit * const unit = ctx->unit;
     for (int i = 0; i >= 0; i = unit->blocks[i].next_block) {
         if (!translate_block(ctx, i)) {
             return false;

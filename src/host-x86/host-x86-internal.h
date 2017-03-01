@@ -298,6 +298,9 @@ typedef struct HostX86Context {
 
     /* Stack frame size. */
     int frame_size;
+    /* Amount of space to reserve at the bottom of the frame for callee
+     * arguments. */
+    int frame_callee_reserve;
     /* Total stack allocation, excluding PUSH instructions. */
     int stack_alloc;
     /* Stack offset of temporary storage for call-clobbered registers,
