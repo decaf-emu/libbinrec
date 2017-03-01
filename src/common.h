@@ -89,6 +89,11 @@ struct RTLUnit;
     #define CLANG_HAS_BUILTIN(name)  0
 #endif
 
+/* Work around missing "restrict" keyword in MSVC. */
+#if IS_MSVC(1,0)
+    #define restrict  __restrict
+#endif
+
 /**
  * ALIGNED_CAST:  Cast "ptr" to pointer type "type", suppressing warnings
  * due to increased alignment.  If possible, an assertion check is made
