@@ -1142,7 +1142,11 @@ static void scan_branches(GuestPPCContext *ctx)
 
     for (int i = 0; i < ctx->num_blocks; i++) {
         GuestPPCBlockInfo *block = &ctx->blocks[i];
-        ASSERT(block->len > 0);
+        if (block->len == 0) {
+            /* This only occurs if the target of a branch is an invalid
+             * instruction which was skipped during scanning. */
+            continue;
+        }
         const uint32_t address = block->start + block->len - 4;
         const uint32_t insn = bswap_be32(memory_base[address/4]);
         if (insn_OPCD(insn) == OPCD_BC) {
