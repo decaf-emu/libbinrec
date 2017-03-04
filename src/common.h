@@ -168,11 +168,10 @@ struct RTLUnit;
     #include <assert.h>
     #define ASSERT  assert
 #else
-    #if IS_MSVC(1,0)
-        #define ASSERT(expr)  __assume((expr))
-    #else
-        #define ASSERT(expr)  do {if (UNLIKELY(!(expr))) {UNREACHABLE;}} while (0)
-    #endif
+    /* For MSVC, we can't just do __assume((expr)) because (at least on
+     * some versions of the compiler) expr is not actually evaluated for
+     * side effects such as function calls. */
+    #define ASSERT(expr)  do {if (UNLIKELY(!(expr))) {UNREACHABLE;}} while (0)
 #endif
 
 /**
