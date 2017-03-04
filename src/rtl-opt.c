@@ -2132,7 +2132,7 @@ void rtl_opt_drop_dead_stores(RTLUnit *unit, bool ignore_fexc)
 {
     for (int reg_index = 1; reg_index < unit->next_reg; reg_index++) {
         RTLRegister *reg = &unit->regs[reg_index];
-        if (reg->death == reg->birth) {
+        if (reg->live && reg->death == reg->birth) {
             maybe_kill_store(unit, reg, ignore_fexc);
         }
     }
