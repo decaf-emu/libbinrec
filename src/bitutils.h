@@ -140,7 +140,7 @@ static ALWAYS_INLINE CONST_FUNCTION int ctz32(uint32_t x)
             }
         #elif defined(_MSC_VER)
             unsigned long n;
-            if (_BitScanReverse(&n, x)) {
+            if (_BitScanForward(&n, x)) {
                 return n;
             } else {
                 return 32;
