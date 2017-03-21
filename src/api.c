@@ -141,7 +141,7 @@ static int add_partial_readonly_page(binrec_t *handle,
     ASSERT(handle);
     ASSERT(end >= start);
 
-    const uint32_t page = start & ~READONLY_PAGE_MASK;
+    const uint32_t page = start >> READONLY_PAGE_BITS;
 
     const int index = lookup_partial_readonly_page(handle, page);
     if (index == MAX_PARTIAL_READONLY) {
@@ -166,12 +166,11 @@ static int add_partial_readonly_page(binrec_t *handle,
         handle->partial_readonly_pages[index] = page;
         memset(handle->partial_readonly_map[index], 0,
                sizeof(*handle->partial_readonly_map));
-        const uint32_t page_index = page >> READONLY_PAGE_BITS;
-        handle->readonly_map[page_index>>2] |= 1 << ((page_index & 3) * 2);
+        handle->readonly_map[page>>2] |= 1 << ((page & 3) * 2);
     }
 
-    start -= page;
-    end -= page;
+    start -= page << READONLY_PAGE_BITS;
+    end -= page << READONLY_PAGE_BITS;
     ASSERT(end <= READONLY_PAGE_SIZE);
     for (uint32_t address = start; address < end; address++) {
         handle->partial_readonly_map[index][address>>3] |= 1 << (address & 7);

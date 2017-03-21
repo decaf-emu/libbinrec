@@ -85,7 +85,7 @@ int main(void)
         }
     }
     EXPECT_EQ(handle->num_partial_readonly, 1);
-    EXPECT_EQ(handle->partial_readonly_pages[0], 6 * READONLY_PAGE_SIZE);
+    EXPECT_EQ(handle->partial_readonly_pages[0], 6);
     EXPECT_EQ(handle->partial_readonly_map[0][0], 0xFE);
     for (int i = 1; i < partial_len-1; i++) {
         if (handle->partial_readonly_map[0][i] != 0xFF) {
@@ -126,7 +126,7 @@ int main(void)
         }
     }
     EXPECT_EQ(handle->num_partial_readonly, 2);
-    EXPECT_EQ(handle->partial_readonly_pages[0], 1 * READONLY_PAGE_SIZE);
+    EXPECT_EQ(handle->partial_readonly_pages[0], 1);
     for (int i = 0; i < partial_len-1; i++) {
         if (handle->partial_readonly_map[0][i] != 0) {
             FAIL("handle->partial_readonly_map[0][%d] was %d but should"
@@ -134,7 +134,7 @@ int main(void)
         }
     }
     EXPECT_EQ(handle->partial_readonly_map[0][partial_len-1], 0x80);
-    EXPECT_EQ(handle->partial_readonly_pages[1], 3 * READONLY_PAGE_SIZE);
+    EXPECT_EQ(handle->partial_readonly_pages[1], 3);
     EXPECT_EQ(handle->partial_readonly_map[1][0], 0x01);
     for (int i = 1; i < lenof(handle->partial_readonly_map[1]); i++) {
         if (handle->partial_readonly_map[1][i] != 0) {
@@ -152,7 +152,7 @@ int main(void)
     /* Check adding to an existing partial page. */
     EXPECT(binrec_add_readonly_region(handle, READONLY_PAGE_SIZE * 3 + 2, 1));
     EXPECT_EQ(handle->num_partial_readonly, 2);
-    EXPECT_EQ(handle->partial_readonly_pages[1], 3 * READONLY_PAGE_SIZE);
+    EXPECT_EQ(handle->partial_readonly_pages[1], 3);
     EXPECT_EQ(handle->partial_readonly_map[1][0], 0x05);
     for (int i = 1; i < lenof(handle->partial_readonly_map[1]); i++) {
         if (handle->partial_readonly_map[1][i] != 0) {
@@ -170,7 +170,7 @@ int main(void)
     /* Check failure on full partial page table (all page addresses less
      * than target page). */
     for (int i = 0; i < num_partial; i++) {
-        handle->partial_readonly_pages[i] = i * READONLY_PAGE_SIZE;
+        handle->partial_readonly_pages[i] = i;
     }
     handle->num_partial_readonly = num_partial;
     EXPECT_FALSE(binrec_add_readonly_region(
@@ -185,8 +185,7 @@ int main(void)
 
     /* Check failure on full partial page table (some page addresses
      * greater than target page). */
-    handle->partial_readonly_pages[num_partial - 1] =
-        num_partial * READONLY_PAGE_SIZE;
+    handle->partial_readonly_pages[num_partial - 1] = num_partial;
     EXPECT_FALSE(binrec_add_readonly_region(
                      handle, num_partial * READONLY_PAGE_SIZE - 1, 1));
     snprintf(expected_buf, sizeof(expected_buf),

@@ -384,11 +384,12 @@ struct binrec_t {
      * lowest-order pair of bits corresponds to the lowest memory address. */
     uint8_t readonly_map[1 << (32 - READONLY_PAGE_BITS - 2)];
     /* Map of partially read-only pages within the guest address space.
-     * partial_readonly_pages[] gives the base address of a page, and the
-     * corresponding entry in partial_readonly_map[] indicates the
-     * read-only status of each byte within the page, with one bit per
-     * byte.  The arrays are kept sorted by page address; an address of ~0
-     * indicates that all remaining entries are unused. */
+     * partial_readonly_pages[] gives the index of a page (the page's base
+     * address divided by the page size), and the corresponding entry in
+     * partial_readonly_map[] indicates the read-only status of each byte
+     * within the page, with one bit per byte.  The arrays are kept sorted
+     * by page address; an address of ~0 indicates that all remaining
+     * entries are unused. */
     uint32_t partial_readonly_pages[MAX_PARTIAL_READONLY];
     uint8_t partial_readonly_map[MAX_PARTIAL_READONLY][1 << (READONLY_PAGE_BITS - 3)];
     int num_partial_readonly;  // Number of partial_readonly_* entries used.

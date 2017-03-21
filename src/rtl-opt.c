@@ -1465,8 +1465,7 @@ static const void *get_readonly_ptr(RTLUnit * const unit,
     } else if (handle->readonly_map[page>>2] & (1 << ((page & 3) * 2))) {
         const int index = lookup_partial_readonly_page(handle, page);
         ASSERT(index < lenof(handle->partial_readonly_pages));
-        ASSERT(handle->partial_readonly_pages[index]
-               == page << READONLY_PAGE_BITS);
+        ASSERT(handle->partial_readonly_pages[index] == page);
         const uint32_t page_offset = addr & READONLY_PAGE_MASK;
         is_readonly = ((handle->partial_readonly_map[index][page_offset>>3]
                         & (1 << (page_offset & 7))) != 0);
