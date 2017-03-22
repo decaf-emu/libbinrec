@@ -718,7 +718,11 @@ typedef struct binrec_setup_t {
  * bitwise contents of the value are used in non-floating-point operations.
  *
  * This optimization is UNSAFE: code which relies on being able to load a
- * signaling NaN will not behave correctly.
+ * signaling NaN will not behave correctly.  But see the
+ * BINREC_OPT_G_PPC_FORWARD_LOADS optimization for a way to avoid the
+ * impact of this optimization on code which loads a signaling NaN (or
+ * non-floating-point data which looks like one) and immediately stores it
+ * back to memory.
  */
 #define BINREC_OPT_G_PPC_ASSUME_NO_SNAN  (1<<0)
 
@@ -892,6 +896,32 @@ typedef struct binrec_setup_t {
 #define BINREC_OPT_G_PPC_FNMADD_ZERO_SIGN  (1<<6)
 
 /**
+ * BINREC_OPT_G_PPC_FORWARD_LOADS:  Save the raw value read from memory for
+ * each load instruction, and if the same value is stored back to memory,
+ * store the raw value instead of reading back the register.
+ *
+ * On little-endian hosts, this avoids the need to byte-swap values an
+ * extra time when storing them, as well as a copy between integer and
+ * floating-point registers for floating-point values.  This optimization
+ * can also reduce the impact of the ASSUME_NO_SNAN optimization for guest
+ * code which uses lfs/stfs to copy non-floating-point data (cases have
+ * been observed which, for example, copy byte-reversed floating-point data
+ * using lfs/stfs before fixing the byte order).  On the flip side, this
+ * optimization may increase register pressure for loads which are in fact
+ * forwarded, and this can in turn negate the benefits of the optimization
+ * due to register spills.
+ *
+ * If the optimizations BINREC_OPT_G_PPC_PS_STORE_DENORMALS and
+ * BINREC_OPT_G_PPC_CONSTANT_GQRS are active, this optimization also
+ * allows forwarding of floating-point paired-single loads.
+ *
+ * Note that BINREC_OPT_DSE should always be used with this optimization
+ * so that speculative loads for forwarding are eliminated if they are not
+ * forwarded.
+ */
+#define BINREC_OPT_G_PPC_FORWARD_LOADS  (1<<7)
+
+/**
  * BINREC_OPT_G_PPC_IGNORE_FPSCR_VXFOO:  Do not set FPSCR exception bits
  * for specific invalid exception types (the "VXFOO" bits).
  *
@@ -915,7 +945,7 @@ typedef struct binrec_setup_t {
  * This optimization has no effect if BINREC_OPT_G_PPC_NO_FPSCR_STATE is
  * enabled.
  */
-#define BINREC_OPT_G_PPC_IGNORE_FPSCR_VXFOO  (1<<7)
+#define BINREC_OPT_G_PPC_IGNORE_FPSCR_VXFOO  (1<<8)
 
 /**
  * BINREC_OPT_G_PPC_NATIVE_RECIPROCAL:  Translate guest PowerPC
@@ -970,7 +1000,7 @@ typedef struct binrec_setup_t {
  * the PowerPC architecture specification, it will behave correctly under
  * this optimization.
  */
-#define BINREC_OPT_G_PPC_NATIVE_RECIPROCAL  (1<<8)
+#define BINREC_OPT_G_PPC_NATIVE_RECIPROCAL  (1<<9)
 
 /**
  * BINREC_OPT_G_PPC_NO_FPSCR_STATE:  Do not write any state bits (exception
@@ -1004,7 +1034,7 @@ typedef struct binrec_setup_t {
  * This optimization is UNSAFE: code which relies on any of the FPSCR
  * state bits will behave incorrectly if this optimization is enabled.
  */
-#define BINREC_OPT_G_PPC_NO_FPSCR_STATE  (1<<9)
+#define BINREC_OPT_G_PPC_NO_FPSCR_STATE  (1<<10)
 
 /**
  * BINREC_OPT_G_PPC_PAIRED_LWARX_STWCX:  Optimize the sequence of lwarx
@@ -1015,7 +1045,7 @@ typedef struct binrec_setup_t {
  * lwarx to its associated stwcx., avoiding unnecessary accesses to the
  * processor state block.
  */
-#define BINREC_OPT_G_PPC_PAIRED_LWARX_STWCX  (1<<10)
+#define BINREC_OPT_G_PPC_PAIRED_LWARX_STWCX  (1<<11)
 
 /**
  * BINREC_OPT_G_PPC_PS_STORE_DENORMALS:  Do not flush denormals to zero
@@ -1037,7 +1067,7 @@ typedef struct binrec_setup_t {
  * flushed to zero by paired-single store instructions will behave
  * incorrectly if this optimization is enabled.
  */
-#define BINREC_OPT_G_PPC_PS_STORE_DENORMALS  (1<<11)
+#define BINREC_OPT_G_PPC_PS_STORE_DENORMALS  (1<<12)
 
 /**
  * BINREC_OPT_G_PPC_TRIM_CR_STORES:  Analyze the data flow through each
@@ -1056,7 +1086,7 @@ typedef struct binrec_setup_t {
  * This optimization has no effect unless BINREC_OPT_G_PPC_USE_SPLIT_FIELDS
  * is also enabled.
  */
-#define BINREC_OPT_G_PPC_TRIM_CR_STORES  (1<<12)
+#define BINREC_OPT_G_PPC_TRIM_CR_STORES  (1<<13)
 
 /**
  * BINREC_OPT_G_PPC_USE_SPLIT_FIELDS:  Treat subfields of certain registers
@@ -1075,7 +1105,7 @@ typedef struct binrec_setup_t {
  * in the processor state block.  System call and trap handlers are not
  * affected.
  */
-#define BINREC_OPT_G_PPC_USE_SPLIT_FIELDS  (1<<13)
+#define BINREC_OPT_G_PPC_USE_SPLIT_FIELDS  (1<<14)
 
 /*------------ Host-architecture-specific optimization flags ------------*/
 

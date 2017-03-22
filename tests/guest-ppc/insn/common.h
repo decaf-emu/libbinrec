@@ -43,7 +43,11 @@ typedef struct PPCInsnTestState {
 
 static const binrec_setup_t setup = {
     .guest = BINREC_ARCH_PPC_7XX,
+#ifdef TEST_PPC_HOST_BIG_ENDIAN
+    .host = BINREC_ARCH_PPC_7XX,  // To force host_little_endian to false.
+#else
     .host = BINREC_ARCH_X86_64_SYSV,
+#endif
     .state_offset_gpr = offsetof(PPCInsnTestState,gpr),
     .state_offset_fpr = offsetof(PPCInsnTestState,fpr),
     .state_offset_gqr = offsetof(PPCInsnTestState,gqr),

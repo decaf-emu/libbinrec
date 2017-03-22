@@ -7,9 +7,8 @@
  * NO WARRANTY is provided with this software.
  */
 
-#include "include/binrec.h"
-#include "tests/guest-ppc/general/host-big-endian-setup.h"
-#include <stdbool.h>
+#define TEST_PPC_HOST_BIG_ENDIAN
+#include "tests/guest-ppc/insn/common.h"
 
 static const uint8_t input[] = {
     0xBB,0x64,0xFF,0xF8,  // lmw r27,-8(r4)

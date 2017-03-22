@@ -67,6 +67,7 @@ namespace Optimize {
         const unsigned int FAST_FMULS = BINREC_OPT_G_PPC_FAST_FMULS;
         const unsigned int FAST_STFS = BINREC_OPT_G_PPC_FAST_STFS;
         const unsigned int FNMADD_ZERO_SIGN = BINREC_OPT_G_PPC_FNMADD_ZERO_SIGN;
+        const unsigned int FORWARD_LOADS = BINREC_OPT_G_PPC_FORWARD_LOADS;
         const unsigned int IGNORE_FPSCR_VXFOO = BINREC_OPT_G_PPC_IGNORE_FPSCR_VXFOO;
         const unsigned int NATIVE_RECIPROCAL = BINREC_OPT_G_PPC_NATIVE_RECIPROCAL;
         const unsigned int NO_FPSCR_STATE = BINREC_OPT_G_PPC_NO_FPSCR_STATE;

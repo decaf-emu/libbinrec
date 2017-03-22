@@ -378,6 +378,8 @@ typedef struct GuestPPCContext {
     RTLUnit *unit;
     uint32_t start;
 
+    /* True if the FORWARD_LOADS optimization is active. */
+    bool forward_loads;
     /* True if the TRIM_CR_STORES optimization is active.  (Even if the
      * flag is enabled, the optimization may fail due to lack of memory,
      * or it may be suppressed by USE_SPLIT_FIELDS not being enabled.) */
@@ -454,6 +456,13 @@ typedef struct GuestPPCContext {
         int fpscr;
         int fr_fi_fprf;
     } last_set;
+
+    /* RTL registers containing raw values loaded from memory for each
+     * register, or 0 if none is available.  These are always zero if the
+     * FORWARD_LOADS optimization is not enabled. */
+    uint16_t gpr_raw[32];
+    uint16_t fpr_raw[32];  // Value from lfs or lfd
+    uint16_t ps_raw[32];  // Value from psq_l (if CONSTANT_GQRS)
 
     /* RTL register containing the compare value for a paired stwcx. in
      * big-endian byte order. */

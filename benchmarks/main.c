@@ -190,6 +190,7 @@ static bool process_command_line(int argc, char **argv)
                     "        -Gppc-fast-fctiw     Leave high word of fctiw result undefined\n"
                     "        -Gppc-fast-fmadds    Ignore possible fmadds rounding error\n"
                     "        -Gppc-fast-fmuls     Suppress rounding of second fmuls operand\n"
+                    "        -Gppc-forward-loads  Forward raw data from loads to stores\n"
                     "        -Gppc-fp-zero-sign   Allow optimizations that change the sign of zero\n"
                     "        -Gppc-no-fp-state    Suppress all floating-point exception checking\n"
                     "        -Gppc-no-snan        Assume signaling NaNs are never used\n"
@@ -266,6 +267,8 @@ static bool process_command_line(int argc, char **argv)
                     opt_guest |= BINREC_OPT_G_PPC_FAST_FMADDS;
                 } else if (strcmp(name, "ppc-fast-fmuls") == 0) {
                     opt_guest |= BINREC_OPT_G_PPC_FAST_FMULS;
+                } else if (strcmp(name, "ppc-forward-loads") == 0) {
+                    opt_guest |= BINREC_OPT_G_PPC_FORWARD_LOADS;
                 } else if (strcmp(name, "ppc-fp-zero-sign") == 0) {
                     opt_guest |= BINREC_OPT_G_PPC_FNMADD_ZERO_SIGN;
                 } else if (strcmp(name, "ppc-no-vxfoo") == 0) {
@@ -414,6 +417,7 @@ static bool process_command_line(int argc, char **argv)
                         | BINREC_OPT_FOLD_CONSTANTS
                         | BINREC_OPT_FOLD_VECTORS;
             if (arch == GUEST_ARCH_PPC_7XX) {
+                opt_guest |= BINREC_OPT_G_PPC_FORWARD_LOADS;
                 opt_guest |= BINREC_OPT_G_PPC_TRIM_CR_STORES;
                 opt_guest |= BINREC_OPT_G_PPC_USE_SPLIT_FIELDS;
             }

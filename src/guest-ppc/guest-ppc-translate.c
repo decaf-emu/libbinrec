@@ -260,6 +260,8 @@ bool guest_ppc_translate(binrec_t *handle, uint32_t address,
     ctx.unit = unit;
     ctx.start = address;
     ctx.blocks = NULL;
+    ctx.forward_loads =
+        (handle->guest_opt & BINREC_OPT_G_PPC_FORWARD_LOADS) != 0;
     ctx.use_split_fields =
         (handle->guest_opt & BINREC_OPT_G_PPC_USE_SPLIT_FIELDS) != 0;
 
