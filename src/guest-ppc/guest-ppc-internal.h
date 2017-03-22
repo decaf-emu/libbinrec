@@ -75,18 +75,23 @@ struct RTLInsn;
  * -----------------
  * The condition register (CR) is normally accessed only in units of 4
  * bits (a CR field written by a compare or Rc=1 instruction) or 1 bit (a
- * specific bit tested by a conditional branch).  In order to allow the
- * RTL core to detect dead stores, such as multiple compare instructions
- * writing to the same CR field, we treat each bit of CR as a separate
- * "register" with an associated alias; the bit value is extracted from CR
- * into the alias at the beginning of the unit if its value is needed, and
- * all modified bits are merged back into the CR word when returning to
- * the translated code's caller.  This allows the RTL core to detect and
- * eliminate dead stores to individual bits: for example, if a unit
- * contains several pairs of compare and branch-if-equal instructions, the
- * LT, GT, and SO stores (and the associated compare/extract operations)
- * can be omitted as long as there is another compare later in the unit
- * which overwrites them.
+ * specific bit tested by a conditional branch).  A simplistic translation
+ * will simply access the PSB's CR field directly, but in this case, every
+ * CR store will have a dependency on the previous store even if the actual
+ * bits modified are different.  This in turn prevents the RTL core from
+ * detecting dead stores, such as multiple compare instructions writing to
+ * the same CR field.
+ *
+ * If the BINREC_OPT_G_PPC_USE_SPLIT_FIELDS optimization is enabled, we
+ * instead treat each bit of CR as a separate "register" with an associated
+ * alias; the bit value is extracted from CR into the alias at the
+ * beginning of the unit if its value is needed, and all modified bits are
+ * merged back into the CR word when returning to the translated code's
+ * caller.  This allows the RTL core to detect and eliminate dead stores to
+ * individual bits: for example, if a unit contains several pairs of
+ * compare and branch-if-equal instructions, the LT, GT, and SO stores (and
+ * the associated compare/extract operations) can be omitted as long as
+ * there is another compare later in the unit which overwrites them.
  *
  * In some cases, this will not be enough to fully eliminate unnecessary
  * stores.  Consider this (admittedly somewhat contrived) instruction
@@ -128,11 +133,12 @@ struct RTLInsn;
  * only write the FPCC bits, and the mtfs group of instructions) and since
  * there are no instructions which read individual bits from those fields,
  * we allocate a single alias for all 7 bits instead of separate aliases
- * for each bit.  The remainder of the register is not treated specially;
- * exception bits accumulate rather than being overwritten by each
- * instruction, and there are no instructions other than the mtfs group
- * which write RN, so there is no benefit to using separate aliases for
- * each bit.
+ * for each bit.  (As with CR, this optimization is only performed if
+ * BINREC_OPT_G_PPC_USE_SPLIT_FIELDS is enabled.)  The remainder of the
+ * register is not treated specially; exception bits accumulate rather than
+ * being overwritten by each instruction, and there are no instructions
+ * other than the mtfs group which write RN, so there is no benefit to
+ * using separate aliases for each bit.
  */
 
 /*************************************************************************/
