@@ -5990,9 +5990,10 @@ static bool translate_unit(HostX86Context *ctx)
                 ctx->stack_callsave[reg] += ctx->frame_callee_reserve;
             }
         }
-        if (ctx->stack_mxcsr >= 0) {
-            ctx->stack_mxcsr += ctx->frame_callee_reserve;
-        }
+        /* Currently, we always allocate a frame slot for MXCSR when
+         * translating a call-type instruction. */
+        ASSERT(ctx->stack_mxcsr >= 0);
+        ctx->stack_mxcsr += ctx->frame_callee_reserve;
     }
 
     if (!append_prologue(ctx)) {
