@@ -3983,11 +3983,11 @@ static bool translate_block(HostX86Context *ctx, int block_index)
              * by SETcc has less latency than SETcc followed by MOVZX,
              * because the processor recognizes XOR as a zero idiom and
              * doesn't impose a partial register stall on subsequent use of
-             * EAX/RAX.  However, XOR modifies the EFLAGS register, so we
-             * can only make use of it if we're not omitting the compare,
-             * and in that case we have to do the XOR first.  Naturally,
-             * this implies we also can't use XOR if the destination
-             * register overlaps either of the source registers. */
+             * the target GPR.  However, XOR modifies the EFLAGS register,
+             * so we can only make use of it if we're not omitting the
+             * compare, and in that case we have to do the XOR first.
+             * Naturally, this implies we also can't use XOR if the
+             * destination register overlaps either of the source registers. */
             const bool should_clear_dest =
                 (!is_spilled(ctx, insn_index, src1)
                  && host_dest != ctx->regs[src1].host_reg
