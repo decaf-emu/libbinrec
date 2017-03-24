@@ -19,14 +19,14 @@ static const unsigned int host_opt = BINREC_OPT_H_X86_CONDITION_CODES;
 static int add_rtl(RTLUnit *unit)
 {
     int reg1, reg2, reg3, reg4;
-    EXPECT(reg1 = rtl_alloc_register(unit, RTLTYPE_ADDRESS));
+    EXPECT(reg1 = rtl_alloc_register(unit, RTLTYPE_INT32));
     EXPECT(rtl_add_insn(unit, RTLOP_LOAD_IMM, reg1, 0, 0, 1));
     EXPECT(reg2 = rtl_alloc_register(unit, RTLTYPE_INT32));
-    EXPECT(rtl_add_insn(unit, RTLOP_SLTSI, reg2, reg1, 0, 0));
-    EXPECT(reg3 = rtl_alloc_register(unit, RTLTYPE_INT32));
-    EXPECT(rtl_add_insn(unit, RTLOP_LOAD_BR, reg3, reg1, 0, 0));
+    EXPECT(rtl_add_insn(unit, RTLOP_ADDI, reg2, reg1, 0, 2));
+    EXPECT(reg3 = rtl_alloc_register(unit, RTLTYPE_FLOAT32));
+    EXPECT(rtl_add_insn(unit, RTLOP_FZCAST, reg3, reg1, 0, 0));
     EXPECT(reg4 = rtl_alloc_register(unit, RTLTYPE_INT32));
-    EXPECT(rtl_add_insn(unit, RTLOP_SLTSI, reg4, reg1, 0, 0));
+    EXPECT(rtl_add_insn(unit, RTLOP_SEQI, reg4, reg2, 0, 0));
 
     return EXIT_SUCCESS;
 }
@@ -34,13 +34,11 @@ static int add_rtl(RTLUnit *unit)
 static const uint8_t expected_code[] = {
     0x48,0x83,0xEC,0x08,                // sub $8,%rsp
     0xB8,0x01,0x00,0x00,0x00,           // mov $1,%eax
-    0x33,0xC9,                          // xor %ecx,%ecx
-    0x48,0x85,0xC0,                     // test %rax,%rax
-    0x0F,0x9C,0xC1,                     // setl %cl
-    0x8B,0x08,                          // mov (%rax),%ecx
-    0x0F,0xC9,                          // bswap %ecx
-    0x0F,0x9C,0xC1,                     // setl %cl
-    0x0F,0xB6,0xC9,                     // movzbl %cl,%ecx
+    0x8B,0xC8,                          // mov %eax,%ecx
+    0x83,0xC1,0x02,                     // add $2,%ecx
+    0xF3,0x48,0x0F,0x2A,0xC0,           // cvtsi2ss %rax,%xmm0
+    0x0F,0x94,0xC0,                     // setz %al
+    0x0F,0xB6,0xC0,                     // movzbl %al,%eax
     0x48,0x83,0xC4,0x08,                // add $8,%rsp
     0xC3,                               // ret
 };

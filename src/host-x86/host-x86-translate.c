@@ -3464,9 +3464,18 @@ static bool translate_block(HostX86Context *ctx, int block_index)
           case RTLOP_NEG:
             if (handle->host_opt & BINREC_OPT_H_X86_CONDITION_CODES) {
                 ctx->last_test_reg = dest;
-                ctx->last_cmp_reg = dest;
-                ctx->last_cmp_target = 0;
-                ctx->last_cmp_imm = 0;
+                /* We could almost forward the EFLAGS result as an ordered
+                 * compare against zero, but two cases would result in
+                 * incorrect behavior:
+                 *  - Negating a zero operand sets CF=1, which breaks the
+                 *    AE (CF=0) and B (CF=1) tests.
+                 *  - Negating the smallest negative integer (0x8000_0000
+                 *    for INT32) sets OF=1, which breaks the signed tests
+                 *    (the result would be treated as positive instead of
+                 *    negative).
+                 * So we have to perform an explicit compare for a
+                 * subsequent SLT/SGT operation. */
+                ctx->last_cmp_reg = 0;
             }
             /* Fall through to common NEG/NOT handling. */
           case RTLOP_NOT: {
@@ -3512,13 +3521,7 @@ static bool translate_block(HostX86Context *ctx, int block_index)
             }
             if (handle->host_opt & BINREC_OPT_H_X86_CONDITION_CODES) {
                 ctx->last_test_reg = dest;
-                if (insn->opcode == RTLOP_ADD || insn->opcode == RTLOP_SUB) {
-                    ctx->last_cmp_reg = dest;
-                    ctx->last_cmp_target = 0;
-                    ctx->last_cmp_imm = 0;
-                } else {
-                    ctx->last_cmp_reg = 0;
-                }
+                ctx->last_cmp_reg = 0;
             }
             break;
           }  // case RTLOP_{ADD,SUB,AND,OR,XOR}
@@ -4326,13 +4329,7 @@ static bool translate_block(HostX86Context *ctx, int block_index)
             }
             if (handle->host_opt & BINREC_OPT_H_X86_CONDITION_CODES) {
                 ctx->last_test_reg = dest;
-                if (insn->opcode == RTLOP_ADDI) {
-                    ctx->last_cmp_reg = dest;
-                    ctx->last_cmp_target = 0;
-                    ctx->last_cmp_imm = 0;
-                } else {
-                    ctx->last_cmp_reg = 0;
-                }
+                ctx->last_cmp_reg = 0;
             }
             break;
           }  // case RTLOP_{ADDI,ANDI,ORI,XORI}
@@ -4416,7 +4413,7 @@ static bool translate_block(HostX86Context *ctx, int block_index)
                                       host_dest, host_dest);
             }
             break;
-          }  // case RTLOP_{SEQI,SLTUI,SLTSI,SLEUI,SLESI}
+          }  // case RTLOP_{SEQI,SLTUI,SLTSI,SGTUI,SGTSI}
 
           case RTLOP_BITCAST: {
             const X86Register host_dest = ctx->regs[dest].host_reg;
@@ -5505,9 +5502,7 @@ static bool translate_block(HostX86Context *ctx, int block_index)
                 host_base, host_index, insn->host_data_32);
             if (handle->host_opt & BINREC_OPT_H_X86_CONDITION_CODES) {
                 ctx->last_test_reg = dest;
-                ctx->last_cmp_reg = dest;
-                ctx->last_cmp_target = 0;
-                ctx->last_cmp_imm = 0;
+                ctx->last_cmp_reg = 0;
             }
             break;
           }  // case RTLOP_ATOMIC_INC
