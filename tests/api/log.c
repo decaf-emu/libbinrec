@@ -26,7 +26,7 @@ static void log_callback(void *userdata, binrec_loglevel_t level,
 
     log_userdata = userdata;
     log_level = level;
-    assert(strlen(message) < sizeof(log_buf));
+    ASSERT(strlen(message) < sizeof(log_buf));
     strcpy(log_buf, message);
 }
 
