@@ -30,7 +30,8 @@
  *
  * - static const uint8_t expected_code[]
  *      Define this to a buffer containing the expected translation output.
- *      If empty, the test will expect translation to fail.
+ *      If translation is expected to fail, #define EXPECT_TRANSLATE_FAILURE
+ *      instead of defining this array.
  *
  * - static const char expected_log[]
  *      Define this to a buffer containing the expected log messages, if any.
@@ -71,12 +72,16 @@ int main(void)
         FAIL("rtl_finalize_unit(unit) was not true as expected");
     }
 
-    handle->code_buffer_size = max(sizeof(expected_code), 1);
+    #ifdef EXPECT_TRANSLATE_FAILURE
+        handle->code_buffer_size = 1;
+    #else
+        handle->code_buffer_size = sizeof(expected_code);
+    #endif
     handle->code_alignment = 16;
     EXPECT(handle->code_buffer = binrec_code_malloc(
                handle, handle->code_buffer_size, handle->code_alignment));
 
-    if (sizeof(expected_code) > 0) {
+    #ifndef EXPECT_TRANSLATE_FAILURE
         EXPECT(host_x86_translate(handle, unit));
         if (!(handle->code_len == sizeof(expected_code)
               && memcmp(handle->code_buffer, expected_code,
@@ -89,9 +94,9 @@ int main(void)
                          sizeof(expected_code));
             EXPECT_EQ(handle->code_len, sizeof(expected_code));
         }
-    } else {
+    #else
         EXPECT_FALSE(host_x86_translate(handle, unit));
-    }
+    #endif
 
     const char *log_messages = get_log_messages();
     EXPECT_STREQ(log_messages, *expected_log ? expected_log : NULL);

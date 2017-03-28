@@ -25,7 +25,7 @@ static int add_rtl(RTLUnit *unit)
     return EXIT_SUCCESS;
 }
 
-static const uint8_t expected_code[] = {};
+#define EXPECT_TRANSLATE_FAILURE
 
 static const char expected_log[] =
     "[error] LOAD_ARG 4 not supported (argument is not in a register)\n";

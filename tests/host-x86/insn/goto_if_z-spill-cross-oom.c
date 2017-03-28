@@ -53,7 +53,7 @@ static int add_rtl(RTLUnit *unit)
     return EXIT_SUCCESS;
 }
 
-static const uint8_t expected_code[] = {};
+#define EXPECT_TRANSLATE_FAILURE
 
 static const char expected_log[] =
     "[error] No memory for register reload for block 0->2\n"
@@ -93,7 +93,7 @@ int main(void)
 
     mem_wrap_code_fail_after(0);
 
-    if (sizeof(expected_code) > 0) {
+    #ifndef EXPECT_TRANSLATE_FAILURE
         EXPECT(host_x86_translate(handle, unit));
         if (!(handle->code_len == sizeof(expected_code)
               && memcmp(handle->code_buffer, expected_code,
@@ -106,9 +106,9 @@ int main(void)
                          sizeof(expected_code));
             EXPECT_EQ(handle->code_len, sizeof(expected_code));
         }
-    } else {
+    #else
         EXPECT_FALSE(host_x86_translate(handle, unit));
-    }
+    #endif
 
     const char *log_messages = get_log_messages();
     EXPECT_STREQ(log_messages, *expected_log ? expected_log : NULL);

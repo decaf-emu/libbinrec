@@ -136,12 +136,16 @@ int main(void)
 
     EXPECT(rtl_optimize_unit(unit, BINREC_OPT_BASIC));
 
-    handle->code_buffer_size = max(sizeof(expected_code), 1);
+    #ifdef EXPECT_TRANSLATE_FAILURE
+        handle->code_buffer_size = 1;
+    #else
+        handle->code_buffer_size = sizeof(expected_code);
+    #endif
     handle->code_alignment = 16;
     EXPECT(handle->code_buffer = binrec_code_malloc(
                handle, handle->code_buffer_size, handle->code_alignment));
 
-    if (sizeof(expected_code) > 0) {
+    #ifndef EXPECT_TRANSLATE_FAILURE
         EXPECT(host_x86_translate(handle, unit));
         if (!(handle->code_len == sizeof(expected_code)
               && memcmp(handle->code_buffer, expected_code,
@@ -154,9 +158,9 @@ int main(void)
                          sizeof(expected_code));
             EXPECT_EQ(handle->code_len, sizeof(expected_code));
         }
-    } else {
+    #else
         EXPECT_FALSE(host_x86_translate(handle, unit));
-    }
+    #endif
 
     const char *log_messages = get_log_messages();
     EXPECT_STREQ(log_messages, *expected_log ? expected_log : NULL);
