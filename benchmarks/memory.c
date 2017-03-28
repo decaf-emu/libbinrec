@@ -35,7 +35,7 @@ void *alloc_guest_memory(uint64_t size)
     #elif defined(_WIN32)
         ptr = VirtualAlloc(NULL, code_size, MEM_COMMIT | MEM_RESERVE,
                            PAGE_READWRITE);
-        ASSERT(VirtualProtect(ptr, 1, PAGE_NOACCESS, (DWORD[1]){}));
+        ASSERT(VirtualProtect(ptr, 1, PAGE_NOACCESS, (DWORD[1]){0}));
     #else
         ptr = calloc(size, 1);
     #endif

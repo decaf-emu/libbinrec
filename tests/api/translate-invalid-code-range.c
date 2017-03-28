@@ -28,7 +28,7 @@ int main(void)
     clear_log_messages();
 
     EXPECT_FALSE(binrec_translate(handle, NULL, 0, -1,
-                                  (void *[1]){}, (long[1]){}));
+                                  (void *[1]){0}, (long[1]){0}));
     EXPECT_STREQ(get_log_messages(), "[error] Code range invalid\n");
 
     binrec_destroy_handle(handle);

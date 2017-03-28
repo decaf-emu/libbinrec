@@ -16,7 +16,7 @@ static const uint8_t input[] = {
 };
 
 #define INITIAL_STATE \
-    &(PPCInsnTestState){.gqr = {}}
+    &(PPCInsnTestState){.gqr = {0}}
 
 static const unsigned int guest_opt = BINREC_OPT_G_PPC_CONSTANT_GQRS;
 static const unsigned int common_opt = 0;

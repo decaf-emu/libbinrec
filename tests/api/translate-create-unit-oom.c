@@ -29,7 +29,7 @@ int main(void)
 
     mem_wrap_fail_after(0);
     EXPECT_FALSE(binrec_translate(handle, NULL, 0x1000, 0x1FFF,
-                                  (void *[1]){}, (long[1]){}));
+                                  (void *[1]){0}, (long[1]){0}));
     EXPECT_STREQ(get_log_messages(), ("[error] No memory for RTLUnit\n"
                                       "[error] Failed to create RTLUnit\n"));
 

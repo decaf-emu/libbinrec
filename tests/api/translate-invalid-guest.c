@@ -24,7 +24,7 @@ int main(void)
     setup.guest = BINREC_ARCH_INVALID;
     EXPECT(handle = binrec_create_handle(&setup));
     EXPECT_FALSE(binrec_translate(handle, NULL, 0, -1,
-                                  (void *[1]){}, (long[1]){}));
+                                  (void *[1]){0}, (long[1]){0}));
     EXPECT_STREQ(get_log_messages(),
                  "[error] Unsupported guest architecture: (invalid"
                  " architecture)\n");
@@ -34,7 +34,7 @@ int main(void)
     setup.guest = (binrec_arch_t)-1;
     EXPECT(handle = binrec_create_handle(&setup));
     EXPECT_FALSE(binrec_translate(handle, NULL, 0, -1,
-                                  (void *[1]){}, (long[1]){}));
+                                  (void *[1]){0}, (long[1]){0}));
     EXPECT_STREQ(get_log_messages(),
                  "[error] Unsupported guest architecture: (invalid"
                  " architecture)\n");
@@ -44,7 +44,7 @@ int main(void)
     setup.guest = BINREC_ARCH_X86_64_SYSV;
     EXPECT(handle = binrec_create_handle(&setup));
     EXPECT_FALSE(binrec_translate(handle, NULL, 0, -1,
-                                  (void *[1]){}, (long[1]){}));
+                                  (void *[1]){0}, (long[1]){0}));
     EXPECT_STREQ(get_log_messages(),
                  "[error] Unsupported guest architecture: x86-64"
                  " (SysV ABI)\n");
@@ -54,7 +54,7 @@ int main(void)
     setup.guest = BINREC_ARCH_X86_64_WINDOWS;
     EXPECT(handle = binrec_create_handle(&setup));
     EXPECT_FALSE(binrec_translate(handle, NULL, 0, -1,
-                                  (void *[1]){}, (long[1]){}));
+                                  (void *[1]){0}, (long[1]){0}));
     EXPECT_STREQ(get_log_messages(),
                  "[error] Unsupported guest architecture: x86-64"
                  " (Windows ABI)\n");
@@ -64,7 +64,7 @@ int main(void)
     setup.guest = BINREC_ARCH_X86_64_WINDOWS_SEH;
     EXPECT(handle = binrec_create_handle(&setup));
     EXPECT_FALSE(binrec_translate(handle, NULL, 0, -1,
-                                  (void *[1]){}, (long[1]){}));
+                                  (void *[1]){0}, (long[1]){0}));
     EXPECT_STREQ(get_log_messages(),
                  "[error] Unsupported guest architecture: x86-64"
                  " (Windows ABI with unwind data)\n");

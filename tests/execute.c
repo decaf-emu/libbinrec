@@ -68,7 +68,7 @@ static void *make_callable(void *code, long code_size, bool writable)
     memcpy(func, code, code_size);
     if (!writable) {
         ASSERT(VirtualProtect(func, code_size,
-                              PAGE_EXECUTE_READ, (DWORD[1]){}));
+                              PAGE_EXECUTE_READ, (DWORD[1]){0}));
     }
 #else
     func = code;  // Assume it can be called directly.

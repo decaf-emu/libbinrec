@@ -57,7 +57,7 @@ int main(void)
 
     mem_wrap_fail_after(10);
     EXPECT_FALSE(binrec_translate(handle, NULL, 0, sizeof(input) - 1,
-                                  (void *[1]){}, (long[1]){}));
+                                  (void *[1]){0}, (long[1]){0}));
     mem_wrap_cancel_fail();
 
     const char *log_messages = get_log_messages();
