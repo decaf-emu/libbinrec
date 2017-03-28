@@ -176,16 +176,16 @@ static inline void append_opcode(CodeBuffer *code, X86Opcode opcode)
 {
     uint8_t *ptr = code->buffer + code->len;
 
-    if (opcode <= 0xFF) {
+    if ((uint32_t)opcode <= 0xFF) {
         ASSERT(code->len + 1 <= code->buffer_size);
         code->len += 1;
         *ptr++ = opcode;
-    } else if (opcode <= 0xFFFF) {
+    } else if ((uint32_t)opcode <= 0xFFFF) {
         ASSERT(code->len + 2 <= code->buffer_size);
         code->len += 2;
         *ptr++ = opcode >> 8;
         *ptr++ = opcode;
-    } else if (opcode <= 0xFFFFFF) {
+    } else if ((uint32_t)opcode <= 0xFFFFFF) {
         ASSERT(code->len + 3 <= code->buffer_size);
         code->len += 3;
         *ptr++ = opcode >> 16;
@@ -219,18 +219,18 @@ static inline void append_rex_opcode(CodeBuffer *code, uint8_t rex,
     uint8_t *ptr = code->buffer + code->len;
     rex |= X86OP_REX;
 
-    if (opcode <= 0xFF) {
+    if ((uint32_t)opcode <= 0xFF) {
         ASSERT(code->len + 2 <= code->buffer_size);
         code->len += 2;
         *ptr++ = rex;
         *ptr++ = opcode;
-    } else if (opcode <= 0xFFFF) {
+    } else if ((uint32_t)opcode <= 0xFFFF) {
         ASSERT(code->len + 3 <= code->buffer_size);
         code->len += 3;
         *ptr++ = rex;
         *ptr++ = opcode >> 8;
         *ptr++ = opcode;
-    } else if (opcode <= 0xFFFFFF) {
+    } else if ((uint32_t)opcode <= 0xFFFFFF) {
         ASSERT(code->len + 4 <= code->buffer_size);
         code->len += 4;
         if (opcode>>16 == 0x66 || opcode>>16 == 0xF2 || opcode>>16 == 0xF3) {
@@ -245,7 +245,9 @@ static inline void append_rex_opcode(CodeBuffer *code, uint8_t rex,
     } else {
         ASSERT(code->len + 5 <= code->buffer_size);
         code->len += 5;
-        ASSERT(opcode>>24 == 0x66 || opcode>>24 == 0xF2 || opcode>>24 == 0xF3);
+        ASSERT((uint32_t)opcode>>24 == 0x66
+            || (uint32_t)opcode>>24 == 0xF2
+            || (uint32_t)opcode>>24 == 0xF3);
         *ptr++ = opcode >> 24;
         *ptr++ = rex;
         *ptr++ = opcode >> 16;
@@ -296,7 +298,7 @@ static inline void append_vex_opcode(
     CodeBuffer *code, X86Opcode opcode, bool vex_W, bool vex_L, bool vex_R,
     bool vex_X, bool vex_B, int vex_vvvv)
 {
-    ASSERT(opcode > 0xFF);
+    ASSERT((uint32_t)opcode > 0xFF);
 
     uint8_t *ptr = code->buffer + code->len;
 

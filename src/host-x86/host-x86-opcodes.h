@@ -743,7 +743,11 @@ typedef enum X86Opcode {
     X86OP_PADDD_P       = 0x0FFE,
     X86OP_PADDD_V       = 0x660FFE,
 
-    /* 3-byte opcodes (0F xx yy) */
+    /* 3-byte opcodes (0F xx yy)
+     * Note that for 3-byte opcodes with 0xF3/0xF2 prefixes, we have to
+     * explicitly cast to signed integer for C99 compliance, since C99
+     * requires all enumerator values to be representable in the int type.
+     * (We assume int is at least 32 bits wide.) */
 
     X86OP_PSHUFB_P      = 0x0F3800,
     X86OP_PSHUFB_V      = 0x660F3800,
@@ -886,22 +890,22 @@ typedef enum X86Opcode {
 
     X86OP_MOVBE_Gy_My   = 0x0F38F0,
     X86OP_MOVBE_Gw_Mw   = 0x660F38F0,
-    X86OP_CRC32_Gd_Eb   = 0xF20F38F0,
+    X86OP_CRC32_Gd_Eb   = (int32_t)0xF20F38F0,
     X86OP_MOVBE_My_Gy   = 0x0F38F1,
     X86OP_MOVBE_Mw_Gw   = 0x660F38F1,
-    X86OP_CRC32_Gd_Ey   = 0xF20F38F0,  // 16-bit with additional 0x66 prefix.
+    X86OP_CRC32_Gd_Ey   = (int32_t)0xF20F38F0,  // 16-bit with additional 0x66 prefix.
     X86OP_ANDN          = 0x0F38F2,  // VEX only.
     X86OP_BLS           = 0x0F38F3,  // VEX only.  See X86BLSOpcode for ModR/M.
     X86OP_BZHI          = 0x0F38F5,  // VEX only.
-    X86OP_PEXT          = 0xF30F38F5,  // VEX only.
-    X86OP_PDEP          = 0xF20F38F5,  // VEX only.
+    X86OP_PEXT          = (int32_t)0xF30F38F5,  // VEX only.
+    X86OP_PDEP          = (int32_t)0xF20F38F5,  // VEX only.
     X86OP_ADCX          = 0x660F38F6,  // VEX only.
-    X86OP_ADOX          = 0xF30F38F6,  // VEX only.
-    X86OP_MULX          = 0xF20F38F6,  // VEX only.
+    X86OP_ADOX          = (int32_t)0xF30F38F6,  // VEX only.
+    X86OP_MULX          = (int32_t)0xF20F38F6,  // VEX only.
     X86OP_BEXTR         = 0x0F38F7,  // VEX only.
     X86OP_SHLX          = 0x660F38F7,  // VEX only.
-    X86OP_SARX          = 0xF30F38F7,  // VEX only.
-    X86OP_SHRX          = 0xF20F38F7,  // VEX only.
+    X86OP_SARX          = (int32_t)0xF30F38F7,  // VEX only.
+    X86OP_SHRX          = (int32_t)0xF20F38F7,  // VEX only.
 
     X86OP_VPERMQ        = 0x660F3A00,  // VEX only.  Requires W=1.
     X86OP_VPERMPD       = 0x660F3A01,  // VEX only.  Requires W=1.
@@ -950,7 +954,7 @@ typedef enum X86Opcode {
 
     X86OP_AESKEYGEN     = 0x660F3ADF,
 
-    X86OP_RORX          = 0xF20F3AF0,  // VEX only.
+    X86OP_RORX          = (int32_t)0xF20F3AF0,  // VEX only.
 
 } X86Opcode;
 
