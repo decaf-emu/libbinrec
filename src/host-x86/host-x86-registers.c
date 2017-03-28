@@ -2181,15 +2181,15 @@ static void alloc_fixed_regs_return(HostX86Context *ctx, RTLUnit *unit,
     RTLInsn * const insn = &unit->insns[insn_index];
 
     if (insn->src1) {
-                const RTLRegister *src1_reg = &unit->regs[insn->src1];
-                HostX86RegInfo *src1_info = &ctx->regs[insn->src1];
-                if (!src1_info->host_allocated
-                 && !(src1_info->avoid_regs & (1 << X86_AX))
-                 && src1_reg->birth >= ctx->last_ax_death) {
-                    src1_info->host_allocated = true;
-                    src1_info->host_reg = X86_AX;
-                    ctx->last_ax_death = src1_reg->death;
-                }
+        const RTLRegister *src1_reg = &unit->regs[insn->src1];
+        HostX86RegInfo *src1_info = &ctx->regs[insn->src1];
+        if (!src1_info->host_allocated
+         && !(src1_info->avoid_regs & (1 << X86_AX))
+         && src1_reg->birth >= ctx->last_ax_death) {
+            src1_info->host_allocated = true;
+            src1_info->host_reg = X86_AX;
+            ctx->last_ax_death = src1_reg->death;
+        }
     }
 }
 
