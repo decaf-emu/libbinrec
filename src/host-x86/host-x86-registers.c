@@ -888,13 +888,15 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
         /*
          * If loading a function argument, try to reuse the same register
          * the argument is passed in, unless the result register is live
-         * across a CALL instruction.
+         * across a CALL instruction.  If we can't reuse the initial
+         * register, make sure that whichever register we do choose doesn't
+         * clobber another argument which has not yet been retrieved.
          */
         if (insn->opcode == RTLOP_LOAD_ARG && fixed_reg < 0
             && (ctx->nontail_call_list < 0
                 || dest_reg->death <= ctx->nontail_call_list)) {
-            const int target_reg =
-                host_x86_int_arg_register(ctx, insn->arg_index);
+            const int target_reg = host_x86_int_arg_register(
+                ctx, insn->arg_index);
             if (target_reg < 0) {
                 log_error(ctx->handle, "LOAD_ARG %d not supported (argument"
                           " is not in a register)", insn->arg_index);
@@ -904,6 +906,21 @@ static bool allocate_regs_for_insn(HostX86Context *ctx, int insn_index,
                 dest_info->host_allocated = true;
                 dest_info->host_reg = target_reg;
                 assign_register(ctx, dest, target_reg);
+            } else {
+                /* We assume here that (as specified by the LOAD_ARG
+                 * instruction description) all LOAD_ARG instructions
+                 * appear before any other instructions in the unit. */
+                for (int i = insn_index + 1;
+                     i < (int)unit->num_insns
+                         && unit->insns[i].opcode == RTLOP_LOAD_ARG;
+                     i++)
+                {
+                    const int next_target = host_x86_int_arg_register(
+                        ctx, unit->insns[i].arg_index);
+                    if (next_target >= 0) {
+                        avoid_regs |= 1 << next_target;
+                    }
+                }
             }
         }
 
