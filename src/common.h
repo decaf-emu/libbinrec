@@ -165,6 +165,7 @@ struct RTLUnit;
  * hint is provided that the expression is always true.
  */
 #ifdef ENABLE_ASSERT
+    #undef NDEBUG  // see C99 7.2.1
     #include <assert.h>
     #define ASSERT  assert
 #else
