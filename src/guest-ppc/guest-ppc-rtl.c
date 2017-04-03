@@ -6701,7 +6701,8 @@ static void translate_ps_merge(GuestPPCContext *ctx, uint32_t insn,
 
     int frB;
     if (frB_index == 0) {
-        if (get_fpr_scalar_type(ctx, insn_frB(insn)) == RTLTYPE_FLOAT32) {
+        if (get_fpr_scalar_type(ctx, insn_frB(insn)) == RTLTYPE_FLOAT32
+         || (ctx->handle->guest_opt & BINREC_OPT_G_PPC_SINGLE_PREC_INPUTS)) {
             frB = get_fpr_as_type(ctx, insn_frB(insn), RTLTYPE_FLOAT32);
         } else {
             /* When moving a double-precision value into the ps1 slot,

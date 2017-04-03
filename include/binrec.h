@@ -1095,6 +1095,12 @@ typedef struct binrec_setup_t {
  * operand to double precision, performing the operation in double
  * precision, then converting the result back to singel precision.
  *
+ * This optimization also causes the ps_merge{00,01,10,11} instructions to
+ * perform a simple 64-to-32 bit arithmetic conversion when loading input
+ * values from the processor state block, rather than emulating the 750CL
+ * quirk of truncating an excess-precision value loaded into the PS1 slot
+ * (which requires a pair of host FPU rounding mode changes).
+ *
  * This optimization is specification-safe: as long as guest code follows
  * the PowerPC architecture specification, it will behave correctly under
  * this optimization.
