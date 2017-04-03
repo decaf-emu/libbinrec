@@ -32,6 +32,49 @@ static uint8_t memory[0x10000];
 struct Foo;
 struct Bar;
 
+/* Verify that renamed flag values are implemented correctly. */
+#define CHECK_FLAG(c_prefix, cxx_namespace, name) \
+    static_assert(cxx_namespace::name == c_prefix##_##name, \
+                  #cxx_namespace "::" #name " has the wrong value")
+CHECK_FLAG(BINREC_FEATURE_X86, binrec::Feature::X86, FMA);
+CHECK_FLAG(BINREC_FEATURE_X86, binrec::Feature::X86, MOVBE);
+CHECK_FLAG(BINREC_FEATURE_X86, binrec::Feature::X86, LZCNT);
+CHECK_FLAG(BINREC_FEATURE_X86, binrec::Feature::X86, BMI1);
+CHECK_FLAG(BINREC_FEATURE_X86, binrec::Feature::X86, BMI2);
+CHECK_FLAG(BINREC_OPT, binrec::Optimize, BASIC);
+CHECK_FLAG(BINREC_OPT, binrec::Optimize, DECONDITION);
+CHECK_FLAG(BINREC_OPT, binrec::Optimize, DEEP_DATA_FLOW);
+CHECK_FLAG(BINREC_OPT, binrec::Optimize, DSE);
+CHECK_FLAG(BINREC_OPT, binrec::Optimize, DSE_FP);
+CHECK_FLAG(BINREC_OPT, binrec::Optimize, FOLD_CONSTANTS);
+CHECK_FLAG(BINREC_OPT, binrec::Optimize, FOLD_FP_CONSTANTS);
+CHECK_FLAG(BINREC_OPT, binrec::Optimize, FOLD_VECTORS);
+CHECK_FLAG(BINREC_OPT, binrec::Optimize, NATIVE_IEEE_NAN);
+CHECK_FLAG(BINREC_OPT, binrec::Optimize, NATIVE_IEEE_UNDERFLOW);
+CHECK_FLAG(BINREC_OPT_G_PPC, binrec::Optimize::GuestPPC, ASSUME_NO_SNAN);
+CHECK_FLAG(BINREC_OPT_G_PPC, binrec::Optimize::GuestPPC, CONSTANT_GQRS);
+CHECK_FLAG(BINREC_OPT_G_PPC, binrec::Optimize::GuestPPC, FAST_FCTIW);
+CHECK_FLAG(BINREC_OPT_G_PPC, binrec::Optimize::GuestPPC, FAST_FMADDS);
+CHECK_FLAG(BINREC_OPT_G_PPC, binrec::Optimize::GuestPPC, FAST_FMULS);
+CHECK_FLAG(BINREC_OPT_G_PPC, binrec::Optimize::GuestPPC, FAST_STFS);
+CHECK_FLAG(BINREC_OPT_G_PPC, binrec::Optimize::GuestPPC, FNMADD_ZERO_SIGN);
+CHECK_FLAG(BINREC_OPT_G_PPC, binrec::Optimize::GuestPPC, FORWARD_LOADS);
+CHECK_FLAG(BINREC_OPT_G_PPC, binrec::Optimize::GuestPPC, IGNORE_FPSCR_VXFOO);
+CHECK_FLAG(BINREC_OPT_G_PPC, binrec::Optimize::GuestPPC, NATIVE_RECIPROCAL);
+CHECK_FLAG(BINREC_OPT_G_PPC, binrec::Optimize::GuestPPC, NO_FPSCR_STATE);
+CHECK_FLAG(BINREC_OPT_G_PPC, binrec::Optimize::GuestPPC, PAIRED_LWARX_STWCX);
+CHECK_FLAG(BINREC_OPT_G_PPC, binrec::Optimize::GuestPPC, PS_STORE_DENORMALS);
+CHECK_FLAG(BINREC_OPT_G_PPC, binrec::Optimize::GuestPPC, SINGLE_PREC_INPUTS);
+CHECK_FLAG(BINREC_OPT_G_PPC, binrec::Optimize::GuestPPC, TRIM_CR_STORES);
+CHECK_FLAG(BINREC_OPT_G_PPC, binrec::Optimize::GuestPPC, USE_SPLIT_FIELDS);
+CHECK_FLAG(BINREC_OPT_H_X86, binrec::Optimize::HostX86, ADDRESS_OPERANDS);
+CHECK_FLAG(BINREC_OPT_H_X86, binrec::Optimize::HostX86, BRANCH_ALIGNMENT);
+CHECK_FLAG(BINREC_OPT_H_X86, binrec::Optimize::HostX86, CONDITION_CODES);
+CHECK_FLAG(BINREC_OPT_H_X86, binrec::Optimize::HostX86, FIXED_REGS);
+CHECK_FLAG(BINREC_OPT_H_X86, binrec::Optimize::HostX86, FORWARD_CONDITIONS);
+CHECK_FLAG(BINREC_OPT_H_X86, binrec::Optimize::HostX86, MERGE_REGS);
+CHECK_FLAG(BINREC_OPT_H_X86, binrec::Optimize::HostX86, STORE_IMMEDIATE);
+
 
 extern "C" int main(void)
 {
