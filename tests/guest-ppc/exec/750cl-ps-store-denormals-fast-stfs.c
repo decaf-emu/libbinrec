@@ -17,10 +17,8 @@
 #include "tests/guest-ppc/exec/750cl-common.i"
 
 static const FailureRecord expected_error_list[] = {
-    /* Currently there are no tests which fail due to this optimization;
-     * the denormal store tests pass because the values to be stored are
-     * sent through the stfs truncation routine rather than an arithmetic
-     * conversion. */
+    EXPECTED_ERRORS_PS_STORE_DENORMALS_FAST_STFS,
+    EXPECTED_ERRORS_FAST_STFS,
     EXPECTED_ERRORS_COMMON,
 };
 
@@ -28,7 +26,8 @@ static const FailureRecord expected_error_list[] = {
 static void configure_handle(binrec_t *handle)
 {
     binrec_set_optimization_flags(handle,
-                                  0, BINREC_OPT_G_PPC_PS_STORE_DENORMALS, 0);
+                                  0, (BINREC_OPT_G_PPC_PS_STORE_DENORMALS
+                                      | BINREC_OPT_G_PPC_FAST_STFS), 0);
 }
 
 int main(void)

@@ -788,6 +788,11 @@ typedef struct FailureRecord {
     /* ps_rsqrte not aborted by enabled exception, continued. */        \
     {0x10601835, {0xFFFC0000,0x00000000, 0xFFE00000,0xE1000000}}
 
+/* Expected errors for the PS_STORE_DENORMALS optimization with FAST_STFS. */
+#define EXPECTED_ERRORS_PS_STORE_DENORMALS_FAST_STFS  \
+    /* psq_st on denormal values. */                                    \
+    {0xF0640000, {0x00000003,0x00000004, 0x00000000,0x00000000}}
+
 /* Expected errors for the SINGLE_PREC_INPUTS optimization. */
 #define EXPECTED_ERRORS_SINGLE_PREC_INPUTS  \
     /* Rounded input with fdivs raising inexact exception. */           \
