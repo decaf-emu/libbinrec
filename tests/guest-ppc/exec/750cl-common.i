@@ -788,6 +788,35 @@ typedef struct FailureRecord {
     /* ps_rsqrte not aborted by enabled exception, continued. */        \
     {0x10601835, {0xFFFC0000,0x00000000, 0xFFE00000,0xE1000000}}
 
+/* Expected errors for the SINGLE_PREC_INPUTS optimization. */
+#define EXPECTED_ERRORS_SINGLE_PREC_INPUTS  \
+    /* Rounded input with fdivs raising inexact exception. */           \
+    {0xEC6D2024, {0x3FF55555,0x60000000, 0x82024000,0x00000000}},       \
+    {0xEC646824, {0x3FF40000,0x00000000, 0x82024000,0x00000000}},       \
+    /* Rounded input in fadds/fsubs underflow edge case tests. */       \
+    {0xEC63682A, {0x38100000,0x00000000, 0x00004000,0x00000000}},       \
+    {0xEC636828, {0x38100000,0x00000000, 0x00004000,0x00000000}},       \
+    /* Rounded inputs to fmadds and friends. */                         \
+    {0xEC637BBA, {0x36B00000,0x00000000, 0x8A034000,0x00000000}},       \
+    {0xEC641938, {0xB8100000,0x00000000, 0x00008000,0x00000000}},       \
+    {0xEC64193C, {0x38100000,0x00000000, 0x00004000,0x00000000}},       \
+    /* Rounded excess precision with ps_add. */                         \
+    {0x1064282A, {0x00000000,0x00000000, 0xBF800000,0x00002000}},       \
+    {0x1065202A, {0x00000000,0x00000000, 0xBF800000,0x00002000}},       \
+    {0x1064682A, {0x7FF00000,0x00000000, 0xFF7FFFFF,0x00005000}},       \
+    {0x106D202A, {0x7FF00000,0x00000000, 0xFF7FFFFF,0x00005000}},       \
+    /* Rounded excess precision with ps_div. */                         \
+    {0x10632024, {0x3FF55555,0x60000000, 0x00000000,0x82024000}},       \
+    {0x10641824, {0x3FF40000,0x00000000, 0x00000000,0x82024000}},       \
+    /* Rounded excess precision with ps_madd and friends. */            \
+    {0x1061237A, {0x7FF00000,0x00000000, 0xFF7FFFFF,0x00005000}},       \
+    {0x1064193A, {0xB8100000,0x00000000, 0x80800000,0x00008000}},       \
+    {0x10637BBA, {0x36B00000,0x00000000, 0x00000002,0x8A034000}},       \
+    {0x10641938, {0xB8100000,0x00000000, 0x80800000,0x00008000}},       \
+    {0x1061237E, {0xFFF00000,0x00000000, 0x7F7FFFFF,0x00009000}},       \
+    {0x1064193E, {0x38100000,0x00000000, 0x00800000,0x00004000}},       \
+    {0x1064193C, {0x38100000,0x00000000, 0x00800000,0x00004000}}
+
 /*************************************************************************/
 /************************** Callback functions ***************************/
 /*************************************************************************/

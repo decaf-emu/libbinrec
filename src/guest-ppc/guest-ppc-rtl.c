@@ -4209,9 +4209,14 @@ static void translate_fp_arith(
 
     bool use_float32 = false;
     if (is_single) {
-        if (get_fpr_scalar_type(ctx, src1_fpr) == RTLTYPE_FLOAT32
-         && get_fpr_scalar_type(ctx, src2_fpr) == RTLTYPE_FLOAT32) {
-            use_float32 = true;
+        const bool src1_32 =
+            (get_fpr_scalar_type(ctx, src1_fpr) == RTLTYPE_FLOAT32);
+        const bool src2_32 =
+            (get_fpr_scalar_type(ctx, src2_fpr) == RTLTYPE_FLOAT32);
+        if (ctx->handle->guest_opt & BINREC_OPT_G_PPC_SINGLE_PREC_INPUTS) {
+            use_float32 = src1_32 || src2_32;
+        } else {
+            use_float32 = src1_32 && src2_32;
         }
     }
 
@@ -4261,10 +4266,19 @@ static void translate_fp_fma(
 
     bool use_float32 = false;
     if (is_single) {
-        if (get_fpr_scalar_type(ctx, insn_frA(insn)) == RTLTYPE_FLOAT32
-         && get_fpr_scalar_type(ctx, insn_frB(insn)) == RTLTYPE_FLOAT32
-         && get_fpr_scalar_type(ctx, insn_frC(insn)) == RTLTYPE_FLOAT32) {
-            use_float32 = true;
+        const bool frA_32 =
+            (get_fpr_scalar_type(ctx, insn_frA(insn)) == RTLTYPE_FLOAT32);
+        const bool frB_32 =
+            (get_fpr_scalar_type(ctx, insn_frB(insn)) == RTLTYPE_FLOAT32);
+        const bool frC_32 =
+            (get_fpr_scalar_type(ctx, insn_frC(insn)) == RTLTYPE_FLOAT32);
+        if (ctx->handle->guest_opt & BINREC_OPT_G_PPC_SINGLE_PREC_INPUTS) {
+            /* It's still beneficial (or at least not harmful) to use
+             * single precision if only one input is in single precision,
+             * because we end up with two conversions either way. */
+            use_float32 = frA_32 || frB_32 || frC_32;
+        } else {
+            use_float32 = frA_32 && frB_32 && frC_32;
         }
     }
 
@@ -6375,9 +6389,17 @@ static void translate_ps_arith(
 
     const int src1_fpr = insn_frA(insn);
     const int src2_fpr = (rtlop==RTLOP_FMUL ? insn_frC(insn) : insn_frB(insn));
-    const bool use_float32 =
-        (get_fpr_scalar_type(ctx, src1_fpr) == RTLTYPE_FLOAT32
-         && get_fpr_scalar_type(ctx, src2_fpr) == RTLTYPE_FLOAT32);
+
+    bool use_float32 = false;
+    const bool src1_32 =
+        (get_fpr_scalar_type(ctx, src1_fpr) == RTLTYPE_FLOAT32);
+    const bool src2_32 =
+        (get_fpr_scalar_type(ctx, src2_fpr) == RTLTYPE_FLOAT32);
+    if (ctx->handle->guest_opt & BINREC_OPT_G_PPC_SINGLE_PREC_INPUTS) {
+        use_float32 = src1_32 || src2_32;
+    } else {
+        use_float32 = src1_32 && src2_32;
+    }
     const RTLDataType type =
         use_float32 ? RTLTYPE_V2_FLOAT32 : RTLTYPE_V2_FLOAT64;
 
@@ -6441,10 +6463,18 @@ static void translate_ps_fma(
 {
     RTLUnit * const unit = ctx->unit;
 
-    const bool use_float32 =
-        (get_fpr_scalar_type(ctx, insn_frA(insn)) == RTLTYPE_FLOAT32
-         && get_fpr_scalar_type(ctx, insn_frB(insn)) == RTLTYPE_FLOAT32
-         && get_fpr_scalar_type(ctx, insn_frC(insn)) == RTLTYPE_FLOAT32);
+    bool use_float32 = false;
+    const bool frA_32 =
+        (get_fpr_scalar_type(ctx, insn_frA(insn)) == RTLTYPE_FLOAT32);
+    const bool frB_32 =
+        (get_fpr_scalar_type(ctx, insn_frB(insn)) == RTLTYPE_FLOAT32);
+    const bool frC_32 =
+        (get_fpr_scalar_type(ctx, insn_frC(insn)) == RTLTYPE_FLOAT32);
+    if (ctx->handle->guest_opt & BINREC_OPT_G_PPC_SINGLE_PREC_INPUTS) {
+        use_float32 = frA_32 || frB_32 || frC_32;
+    } else {
+        use_float32 = frA_32 && frB_32 && frC_32;
+    }
     const RTLDataType type =
         use_float32 ? RTLTYPE_V2_FLOAT32 : RTLTYPE_V2_FLOAT64;
     const RTLDataType scalar_type = rtl_vector_element_type(type);

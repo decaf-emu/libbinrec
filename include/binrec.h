@@ -1070,6 +1070,38 @@ typedef struct binrec_setup_t {
 #define BINREC_OPT_G_PPC_PS_STORE_DENORMALS  (1<<12)
 
 /**
+ * BINREC_OPT_G_PPC_SINGLE_PREC_INPUTS:  Assume that the inputs to a
+ * single-precision floating-point instruction are in single precision.
+ *
+ * The PowerPC specification requires inputs to a single-precision
+ * floating-point instruction to be in single precision (either the result
+ * of lfs or another single-precision load instruction, or the output of
+ * a previous frsp or single-precision floating-point operation).  However,
+ * actual 32-bit PowerPC CPUs ignore the precision of floating-point
+ * mathematical instructions and always perform the operation using the
+ * full precision of the inputs, and by default libbinrec emulates this
+ * behavior to accommodate code which takes advantage of this quirk (in
+ * violation of the PowerPC spec).
+ *
+ * If this optimization is enabled, libbinrec will assume that inputs to a
+ * single-precision instruction are proper single-precision values, and
+ * will perform the operation in single instead of double precision when
+ * beneficial.  This improves performance when one input to such an
+ * instruction is the output of a previous single-precision instruction in
+ * the same basic block and the other input is an FPR which has not yet
+ * been accessed in the block; in that case, this optimization allows the
+ * translator to convert the second input to single precision and perform
+ * the operation in single precision, instead of converting the first
+ * operand to double precision, performing the operation in double
+ * precision, then converting the result back to singel precision.
+ *
+ * This optimization is specification-safe: as long as guest code follows
+ * the PowerPC architecture specification, it will behave correctly under
+ * this optimization.
+ */
+#define BINREC_OPT_G_PPC_SINGLE_PREC_INPUTS  (1<<13)
+
+/**
  * BINREC_OPT_G_PPC_TRIM_CR_STORES:  Analyze the data flow through each
  * CR bit and eliminate stores which are not visible outside the
  * translated code.
@@ -1086,7 +1118,7 @@ typedef struct binrec_setup_t {
  * This optimization has no effect unless BINREC_OPT_G_PPC_USE_SPLIT_FIELDS
  * is also enabled.
  */
-#define BINREC_OPT_G_PPC_TRIM_CR_STORES  (1<<13)
+#define BINREC_OPT_G_PPC_TRIM_CR_STORES  (1<<14)
 
 /**
  * BINREC_OPT_G_PPC_USE_SPLIT_FIELDS:  Treat subfields of certain registers
@@ -1105,7 +1137,7 @@ typedef struct binrec_setup_t {
  * in the processor state block.  System call and trap handlers are not
  * affected.
  */
-#define BINREC_OPT_G_PPC_USE_SPLIT_FIELDS  (1<<14)
+#define BINREC_OPT_G_PPC_USE_SPLIT_FIELDS  (1<<15)
 
 /*------------ Host-architecture-specific optimization flags ------------*/
 
