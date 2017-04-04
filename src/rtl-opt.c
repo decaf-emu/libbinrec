@@ -1456,25 +1456,9 @@ static const void *get_readonly_ptr(RTLUnit * const unit,
     }
 
     const uint32_t addr = base_addr + reg->memory.offset;
-    const uint32_t page = addr >> READONLY_PAGE_BITS;
-
-    bool is_readonly;
-    const binrec_t * const handle = unit->handle;
-    if (handle->readonly_map[page>>2] & (2 << ((page & 3) * 2))) {
-        is_readonly = true;
-    } else if (handle->readonly_map[page>>2] & (1 << ((page & 3) * 2))) {
-        const int index = lookup_partial_readonly_page(handle, page);
-        ASSERT(index < lenof(handle->partial_readonly_pages));
-        ASSERT(handle->partial_readonly_pages[index] == page);
-        const uint32_t page_offset = addr & READONLY_PAGE_MASK;
-        is_readonly = ((handle->partial_readonly_map[index][page_offset>>3]
-                        & (1 << (page_offset & 7))) != 0);
-    } else {
-        is_readonly = false;
-    }
-
-    if (is_readonly) {
-        return (void *)((uintptr_t)handle->setup.guest_memory_base + addr);
+    if (is_address_readonly(unit->handle, addr)) {
+        return (void *)((uintptr_t)unit->handle->setup.guest_memory_base
+                        + addr);
     } else {
         return NULL;
     }

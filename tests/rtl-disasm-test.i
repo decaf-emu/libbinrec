@@ -38,6 +38,10 @@
  *      any) followed by the expected RTL disassembly (if disassembly was
  *      successful).
  *
+ * If the preprocessor symbol ADD_READONLY_REGION is defined, the memory
+ * range corresponding to the input buffer will be passed to
+ * binrec_add_readonly_region() before translation.
+ *
  * If the preprocessor symbol CHAINING is defined, chaining will be enabled.
  *
  * If the preprocessor symbol BRANCH_EXIT_TEST is defined, the branch exit
@@ -73,6 +77,9 @@ int main(void)
 
     binrec_set_optimization_flags(handle, common_opt, guest_opt, 0);
     binrec_set_code_range(handle, 0, sizeof(input) - 1);
+    #ifdef ADD_READONLY_REGION
+        binrec_add_readonly_region(handle, 0, sizeof(input));
+    #endif
     #ifdef CHAINING
         binrec_enable_chaining(handle, true);
     #endif

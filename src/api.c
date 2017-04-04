@@ -132,6 +132,37 @@ static int arch_host_code_alignment(binrec_arch_t arch)
 /*-----------------------------------------------------------------------*/
 
 /**
+ * lookup_partial_readonly_page:  Look up the given page in the partial
+ * readonly page tables.  If the page is present, return its table index;
+ * otherwise, return the index at which it should be inserted (which may be
+ * past the end of the table if the table is full).
+ *
+ * [Parameters]
+ *     handle: Handle to use for lookup.
+ *     page: Page number (address >> READONLY_PAGE_BITS).
+ * [Return value]
+ *     Index in handle->partial_readonly_* arrays of the page if it exists
+ *     in the tables, otherwise the index at which it should be inserted.
+ */
+static int lookup_partial_readonly_page(const binrec_t *handle, uint32_t page)
+{
+    int low = 0, high = handle->num_partial_readonly - 1;
+    while (low <= high) {
+        const int mid = (low + high) / 2;
+        if (page == handle->partial_readonly_pages[mid]) {
+            return mid;
+        } else if (page < handle->partial_readonly_pages[mid]) {
+            high = mid - 1;
+        } else {
+            low = mid + 1;
+        }
+    }
+    return low;
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
  * add_partial_readonly_page:  Mark the given partial page as read-only.
  * Helper for binrec_add_readonly_region().
  */
@@ -182,20 +213,21 @@ static int add_partial_readonly_page(binrec_t *handle,
 /********************** Internal utility functions ***********************/
 /*************************************************************************/
 
-int lookup_partial_readonly_page(const binrec_t *handle, uint32_t page)
+bool is_address_readonly(const binrec_t *handle, uint32_t address)
 {
-    int low = 0, high = handle->num_partial_readonly - 1;
-    while (low <= high) {
-        const int mid = (low + high) / 2;
-        if (page == handle->partial_readonly_pages[mid]) {
-            return mid;
-        } else if (page < handle->partial_readonly_pages[mid]) {
-            high = mid - 1;
-        } else {
-            low = mid + 1;
-        }
+    const uint32_t page = address >> READONLY_PAGE_BITS;
+    if (handle->readonly_map[page>>2] & (2 << ((page & 3) * 2))) {
+        return true;
+    } else if (handle->readonly_map[page>>2] & (1 << ((page & 3) * 2))) {
+        const int index = lookup_partial_readonly_page(handle, page);
+        ASSERT(index < lenof(handle->partial_readonly_pages));
+        ASSERT(handle->partial_readonly_pages[index] == page);
+        const uint32_t page_offset = address & READONLY_PAGE_MASK;
+        return ((handle->partial_readonly_map[index][page_offset>>3]
+                 & (1 << (page_offset & 7))) != 0);
+    } else {
+        return false;
     }
-    return low;
 }
 
 /*************************************************************************/

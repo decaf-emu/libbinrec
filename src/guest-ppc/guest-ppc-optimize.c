@@ -12,6 +12,8 @@
 #include "src/guest-ppc/guest-ppc-internal.h"
 #include "src/rtl-internal.h"
 
+#include <inttypes.h>
+
 /*************************************************************************/
 /**************************** Local routines *****************************/
 /*************************************************************************/
@@ -136,6 +138,232 @@ static inline void kill_cr_stores(
 /*************************************************************************/
 /********************** Internal interface routines **********************/
 /*************************************************************************/
+
+bool guest_ppc_detect_fcfi_emul(
+    GuestPPCContext *ctx, uint32_t address, int frA, int frB,
+    int *src_ret, bool *is_signed_ret)
+{
+    RTLUnit * const unit = ctx->unit;
+
+    /* Check that the operands have already been seen in this block and are
+     * of the proper type. */
+    if (!ctx->live.fpr[frA] || !ctx->live.fpr[frB]) {
+        return false;
+    }
+    const RTLRegister *frA_reg = &unit->regs[ctx->live.fpr[frA]];
+    const RTLRegister *frB_reg = &unit->regs[ctx->live.fpr[frB]];
+    if (frA_reg->type != RTLTYPE_FLOAT64 || frB_reg->type != RTLTYPE_FLOAT64) {
+        return false;
+    }
+
+    /* Check that the second operand is a constant of the proper value for
+     * a signed or unsigned conversion, and record which one it is. */
+    bool is_signed;
+    if (frB_reg->source != RTLREG_MEMORY) {
+        return false;
+    }
+    /* There are no byte-reversed floating-point load instructions (and
+     * floating-point values are never loaded directly from the PSB), so
+     * the byte order of the load should always be big-endian. */
+    ASSERT(frB_reg->memory.byterev == ctx->handle->host_little_endian);
+    uint32_t frB_address;
+    const RTLRegister *frB_base_reg = &unit->regs[frB_reg->memory.base];
+    if (frB_base_reg->source == RTLREG_FUNC_ARG) {
+        /* Floating-point values are never loaded directly from the PSB,
+         * so this must be a guest-absolute memory reference. */
+        ASSERT(frB_base_reg->arg_index == 1);
+        frB_address = frB_reg->memory.offset;
+    } else {
+        /* If the base register is not the guest memory base (FUNC_ARG 1),
+         * it must be RTLREG_RESULT for a non-absolute guest load operation,
+         * in which case all of the following are always true.  (We omit
+         * them from the if condition since they're not testable, but we
+         * assert just in case future changes to the translator logic break
+         * those assumptions.) */
+        ASSERT(frB_base_reg->source == RTLREG_RESULT);
+        ASSERT(frB_base_reg->result.opcode == RTLOP_ADD);
+        const RTLRegister *frB_base_src1_reg =
+            &unit->regs[frB_base_reg->result.src1];
+        const RTLRegister *frB_base_src2_reg =
+            &unit->regs[frB_base_reg->result.src2];
+        ASSERT(frB_base_src1_reg->source == RTLREG_FUNC_ARG);
+        ASSERT(frB_base_src1_reg->arg_index == 1);
+        ASSERT(frB_base_src2_reg->source == RTLREG_RESULT);
+        ASSERT(frB_base_src2_reg->result.opcode == RTLOP_ZCAST);
+        if (unit->regs[frB_base_src2_reg->result.src1].source == RTLREG_CONSTANT) {
+            frB_address =
+                (uint32_t)unit->regs[frB_base_src2_reg->result.src1].value.i64
+                + frB_reg->memory.offset;
+        } else {
+            return false;
+        }
+    }
+    if (!is_address_readonly(ctx->handle, frB_address)) {
+        return false;
+    }
+    const uint8_t *frB_ptr =
+        (const uint8_t *)ctx->handle->setup.guest_memory_base + frB_address;
+    uint64_t frB_value_buf;
+    memcpy(&frB_value_buf, frB_ptr, 8);
+    const uint64_t frB_value = bswap_be64(frB_value_buf);
+    if (frB_value == UINT64_C(0x4330000000000000)) {
+        is_signed = false;
+    } else if (frB_value == UINT64_C(0x4330000080000000)) {
+        is_signed = true;
+    } else {
+        return false;
+    }
+
+    /* Check that the first operand is a value loaded from the local stack
+     * frame.  We don't necessarily know the size of the stack frame, so we
+     * just assume that any positive offset from the stack pointer (beyond
+     * the ABI-required backchain and LR save area) is a reference to the
+     * current frame. */
+    int frA_offset = 0;
+    if (frA_reg->source != RTLREG_MEMORY) {
+        #ifdef RTL_DEBUG_OPTIMIZE
+            /* If frB is a proper constant, the code is probably intended
+             * as fcfi emulation, so at this point it makes sense to warn
+             * about detection failures. */
+            log_info(ctx->handle, "Failed to optimize possible fcfi at 0x%X:"
+                     " frA is not the result of an lfd", address);
+        #endif
+        return false;
+    }
+    ASSERT(frA_reg->memory.byterev == ctx->handle->host_little_endian);
+    const RTLRegister *frA_base_reg = &unit->regs[frA_reg->memory.base];
+    if (frA_base_reg->source == RTLREG_RESULT) {
+        /* These are always true for non-absolute loads. */
+        ASSERT(frA_base_reg->result.opcode == RTLOP_ADD);
+        ASSERT(unit->regs[frA_base_reg->result.src1].source == RTLREG_FUNC_ARG);
+        ASSERT(unit->regs[frA_base_reg->result.src1].arg_index == 1);
+        ASSERT(unit->regs[frA_base_reg->result.src2].source == RTLREG_RESULT);
+        ASSERT(unit->regs[frA_base_reg->result.src2].result.opcode == RTLOP_ZCAST);
+        if (unit->regs[frA_base_reg->result.src2].result.src1 == ctx->live.gpr[1]
+         && frA_reg->memory.offset >= 8) {
+            frA_offset = frA_reg->memory.offset;
+        }
+    }
+    if (frA_offset == 0) {
+        #ifdef RTL_DEBUG_OPTIMIZE
+            log_info(ctx->handle, "Failed to optimize possible fcfi at 0x%X:"
+                     " frA is not loaded from the local stack frame", address);
+        #endif
+        return false;
+    }
+
+    /* Look for two word stores to the stack frame at the proper offsets
+     * to generate the 64-bit float value loaded into frA, and save the
+     * RTL register which serves as the conversion input.  We only search
+     * as far back as the beginning of the current basic block, which
+     * should be sufficient for typical compiler-generated code. */
+    const RTLOpcode store_op =
+        ctx->handle->host_little_endian ? RTLOP_STORE_BR : RTLOP_STORE;
+    bool found_hi = false, found_lo = false;
+    int src = 0;
+    for (int i = frA_reg->birth - 1; i >= ctx->cur_block_rtl_start; i--) {
+        const RTLInsn *insn = &unit->insns[i];
+        if (insn->opcode == RTLOP_STORE
+         || insn->opcode == RTLOP_STORE_I8
+         || insn->opcode == RTLOP_STORE_I16
+         || insn->opcode == RTLOP_STORE_BR
+         || insn->opcode == RTLOP_STORE_I16_BR) {
+            const RTLRegister *base_reg = &unit->regs[insn->src1];
+            if (base_reg->source != RTLREG_RESULT) {
+                continue;  // Ignore absolute or PSB stores.
+            }
+            /* These are always true for non-absolute stores. */
+            ASSERT(base_reg->result.opcode == RTLOP_ADD);
+            ASSERT(unit->regs[base_reg->result.src1].source == RTLREG_FUNC_ARG);
+            ASSERT(unit->regs[base_reg->result.src1].arg_index == 1);
+            ASSERT(unit->regs[base_reg->result.src2].source == RTLREG_RESULT);
+            ASSERT(unit->regs[base_reg->result.src2].result.opcode == RTLOP_ZCAST);
+            if (unit->regs[base_reg->result.src2].result.src1 == ctx->live.gpr[1]
+             && insn->offset >= frA_offset
+             && insn->offset < frA_offset + 8) {
+                if (insn->opcode != store_op) {
+                    #ifdef RTL_DEBUG_OPTIMIZE
+                        log_info(ctx->handle, "Failed to optimize possible"
+                                 " fcfi at 0x%X: buffer clobbered by non-stw"
+                                 " store", address);
+                    #endif
+                    return false;
+                }
+                const RTLRegister *value_reg = &unit->regs[insn->src2];
+                if (insn->offset == frA_offset) {
+                    /* High word must have the value 0x43300000. */
+                    if (value_reg->source != RTLREG_CONSTANT) {
+                        #ifdef RTL_DEBUG_OPTIMIZE
+                            log_info(ctx->handle, "Failed to optimize possible"
+                                     " fcfi at 0x%X: high word store is not"
+                                     " constant", address);
+                        #endif
+                        return false;
+                    }
+                    if (value_reg->value.i64 != 0x43300000) {
+                        #ifdef RTL_DEBUG_OPTIMIZE
+                            log_info(ctx->handle, "Failed to optimize possible"
+                                     " fcfi at 0x%X: high word store has the"
+                                     " wrong value (0x%"PRIX64")", address,
+                                     value_reg->value.i64);
+                        #endif
+                        return false;
+                    }
+                    found_hi = true;
+                } else if (insn->offset == frA_offset + 4) {
+                    /* For an unsigned conversion, the value stored in the
+                     * low word is the value to convert.  For a signed
+                     * conversion, the stored value is the value to convert
+                     * with the high (sign) bit inverted, and we should see
+                     * an xoris ...,0x8000 operation immediately preceding
+                     * the store. */
+                    if (is_signed) {
+                        if (value_reg->source != RTLREG_RESULT
+                         || value_reg->result.opcode != RTLOP_XORI
+                         || value_reg->result.src_imm != (int32_t)0x80000000) {
+                            #ifdef RTL_DEBUG_OPTIMIZE
+                                log_info(ctx->handle,
+                                         "Failed to optimize possible signed"
+                                         " fcfi at 0x%X: low word store is not"
+                                         " the result of xoris ...,0x8000",
+                                         address);
+                            #endif
+                            return false;
+                        }
+                        src = value_reg->result.src1;
+                    } else {
+                        src = insn->src2;
+                    }
+                    found_lo = true;
+                } else {
+                    #ifdef RTL_DEBUG_OPTIMIZE
+                        log_info(ctx->handle, "Failed to optimize possible"
+                                 " fcfi at 0x%X: buffer clobbered by"
+                                 " unaligned stw", address);
+                    #endif
+                    return false;
+                }
+                if (found_hi && found_lo) {
+                    break;
+                }
+            }
+        }
+    }
+    if (!found_hi || !found_lo) {
+        #ifdef RTL_DEBUG_OPTIMIZE
+            log_info(ctx->handle, "Failed to optimize possible fcfi at 0x%X:"
+                     " stores to lfd buffer not found", address);
+        #endif
+        return false;
+    }
+
+    ASSERT(src != 0);
+    *src_ret = src;
+    *is_signed_ret = is_signed;
+    return true;
+}
+
+/*-----------------------------------------------------------------------*/
 
 void guest_ppc_trim_cr_stores(
     GuestPPCContext *ctx, int BO, int BI, uint32_t *crb_store_branch_ret,

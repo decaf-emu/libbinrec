@@ -620,20 +620,17 @@ static inline bool binrec_ensure_code_space(binrec_t *handle, long bytes)
 /*-------------- Miscellaneous routines (defined in api.c) --------------*/
 
 /**
- * lookup_partial_readonly_page:  Look up the given page in the partial
- * readonly page tables.  If the page is present, return its table index;
- * otherwise, return the index at which it should be inserted (which may be
- * past the end of the table if the table is full).
+ * is_address_readonly:  Return whether the given address is in a region
+ * marked as read-only.
  *
  * [Parameters]
  *     handle: Handle to use for lookup.
- *     page: Page number (address >> READONLY_PAGE_BITS).
+ *     address: Address to check.
  * [Return value]
- *     Index in handle->partial_readonly_* arrays of the page if it exists
- *     in the tables, otherwise the index at which it should be inserted.
+ *     True if the address is in a read-only region, false if not.
  */
-#define lookup_partial_readonly_page INTERNAL(lookup_partial_readonly_page)
-extern int lookup_partial_readonly_page(const binrec_t *handle, uint32_t page);
+#define is_address_readonly INTERNAL(is_address_readonly)
+extern bool is_address_readonly(const binrec_t *handle, uint32_t address);
 
 /*************************************************************************/
 /*************************************************************************/

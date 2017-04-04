@@ -401,6 +401,8 @@ typedef struct GuestPPCContext {
 
     /* Index of current block being translated. */
     int current_block;
+    /* Index of the first RTL instruction of the current block. */
+    int cur_block_rtl_start;
 
     /* RTL label for the unit epilogue, or 0 if none has been allocated. */
     uint16_t epilogue_label;
@@ -489,6 +491,31 @@ typedef struct GuestPPCContext {
 /*************************************************************************/
 
 /*-------- Optimization routines (guest-ppc-optimize.c) --------*/
+
+/**
+ * guest_ppc_detect_fcfi_emul:  Check whether the operands to an fsub
+ * instruction are suitable for an integer-to-floating-point conversion
+ * operation.  See the documentation of BINREC_OPT_G_PPC_DETECT_FCFI_EMUL
+ * for details.
+ *
+ * Return variables are unmodified on a false return.
+ *
+ * [Parameters]
+ *     ctx: Translation context.
+ *     address: Address of the fsub instruction.
+ *     frA, frB: fsub operands (FPR indices).
+ *     src_ret: Pointer to variable to receive the RTL register of the
+ *         source value for the conversion.
+ *     is_signed_ret: Pointer to variable to receive whether the operation
+ *         is a signed (true) or unsigned (false) conversion.
+ * [Return value]
+ *     True if the fsub instruction completes an integer-to-floating-point
+ *     conversion, false if not.
+ */
+#define guest_ppc_detect_fcfi_emul INTERNAL(guest_ppc_detect_fcfi_emul)
+extern bool guest_ppc_detect_fcfi_emul(
+    GuestPPCContext *ctx, uint32_t address, int frA, int frB,
+    int *src_ret, bool *is_signed_ret);
 
 /**
  * guest_ppc_trim_cr_stores:  Look for stores to CR bits which are dead on

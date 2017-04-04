@@ -752,6 +752,55 @@ typedef struct binrec_setup_t {
 #define BINREC_OPT_G_PPC_CONSTANT_GQRS  (1<<1)
 
 /**
+ * BINREC_OPT_G_PPC_DETECT_FCFI_EMUL:  Detect code sequences which convert
+ * an integer to a floating-point number using bit manipulation and local
+ * stack frame storage.
+ *
+ * The 32-bit PowerPC architecture does not include the fcfi (floating
+ * convert-from-integer) instructions of the 64-bit architecture, so
+ * programs must implement this conversion in software.  One idiom used
+ * with 32-bit integer input is to create a 64-bit floating-point value on
+ * the stack in which the lowest bit of the mantissa has the value 1.0
+ * (the bit pattern of this value is 0x43300000_00000000), write the
+ * integer to be converted into the low 32 bits of the value, then load
+ * the value as double-precision floating point and subtract the base
+ * value.  (For signed integer input, the high bit of the integer and the
+ * corresponding bit in the base floating-point value are inverted.)
+ *
+ * If this optimization is enabled, the translator will check for a
+ * sequence of instructions matching the above pattern and translate it to
+ * a direct int-to-float conversion instruction.  Currently, the input
+ * instruction sequence must match the following:
+ *     lis rX,0x4330
+ *     stw rX,N(r1)        // N >= 8
+ *     stw rINPUT,N+4(r1)  // signed: xoris rY,rINPUT,0x8000; stw rY,N+4(r1)
+ *     lfd fP,N(r1)
+ *     lfd fQ,const_43300000_0000000  // signed: const_43300000_80000000
+ *     fsub fOUTPUT,fP,fQ
+ *     [optional: frsp fOUTPUT,fOUTPUT]
+ * where "const_..." is a memory reference to a constant address registered
+ * with libbinrec as read-only memory containing the listed 64-bit constant.
+ * The conversion operation will be detected even if the instructions are
+ * reordered (preserving dependencies), but detection may fail if other
+ * operations (such as a register move) are interspersed in the dependency
+ * chain.
+ *
+ * Intermediate operations in the sequence are still translated, so that
+ * other instructions which use their values still behave correctly.
+ * (However, the load of fP or fQ will be omitted if fOUTPUT refers to the
+ * same register, and the writes to rX and rY may subsequently be deleted
+ * by dead store elimination.)
+ *
+ * This optimization is UNSAFE: if the floating-point value generated on
+ * the stack is overwritten by an indexed, multi-word, or non-r1-relative
+ * store, or if another agent (such as a separate thread) modifies the
+ * function's stack frame during the optimized instruction sequence, the
+ * translated code will not behave correctly.  (However, these situations
+ * are not expected to arise in real-world code.)
+ */
+#define BINREC_OPT_G_PPC_DETECT_FCFI_EMUL  (1<<2)
+
+/**
  * BINREC_OPT_G_PPC_FAST_FCTIW:  Leave the high word of the destination
  * FPR of an fctiw or fctiwz instruction unspecified.
  *
@@ -771,7 +820,7 @@ typedef struct binrec_setup_t {
  * the PowerPC architecture specification, it will behave correctly under
  * this optimization.
  */
-#define BINREC_OPT_G_PPC_FAST_FCTIW  (1<<2)
+#define BINREC_OPT_G_PPC_FAST_FCTIW  (1<<3)
 
 /**
  * BINREC_OPT_G_PPC_FAST_FMADDS:  Use simple arithmetic conversion when
@@ -801,7 +850,7 @@ typedef struct binrec_setup_t {
  * multiply-add operations with certain operands will differ in the lowest
  * bit from the correct values.
  */
-#define BINREC_OPT_G_PPC_FAST_FMADDS  (1<<3)
+#define BINREC_OPT_G_PPC_FAST_FMADDS  (1<<4)
 
 /**
  * BINREC_OPT_G_PPC_FAST_FMULS:  Do not attempt to round the second
@@ -840,7 +889,7 @@ typedef struct binrec_setup_t {
  * the PowerPC architecture specification, it will behave correctly under
  * this optimization.
  */
-#define BINREC_OPT_G_PPC_FAST_FMULS  (1<<4)
+#define BINREC_OPT_G_PPC_FAST_FMULS  (1<<5)
 
 /**
  * BINREC_OPT_G_PPC_FAST_STFS:  Use mathematical rather than bitwise
@@ -870,7 +919,7 @@ typedef struct binrec_setup_t {
  * conversion behavior of stfs-group instructions, the translated code
  * will not behave correctly.
  */
-#define BINREC_OPT_G_PPC_FAST_STFS  (1<<5)
+#define BINREC_OPT_G_PPC_FAST_STFS  (1<<6)
 
 /**
  * BINREC_OPT_G_PPC_FNMADD_ZERO_SIGN:  Do not attempt to return the correct
@@ -893,7 +942,7 @@ typedef struct binrec_setup_t {
  * that most real-life PowerPC code does not differentiate between positive
  * and negative zero.
  */
-#define BINREC_OPT_G_PPC_FNMADD_ZERO_SIGN  (1<<6)
+#define BINREC_OPT_G_PPC_FNMADD_ZERO_SIGN  (1<<7)
 
 /**
  * BINREC_OPT_G_PPC_FORWARD_LOADS:  Save the raw value read from memory for
@@ -919,7 +968,7 @@ typedef struct binrec_setup_t {
  * so that speculative loads for forwarding are eliminated if they are not
  * forwarded.
  */
-#define BINREC_OPT_G_PPC_FORWARD_LOADS  (1<<7)
+#define BINREC_OPT_G_PPC_FORWARD_LOADS  (1<<8)
 
 /**
  * BINREC_OPT_G_PPC_IGNORE_FPSCR_VXFOO:  Do not set FPSCR exception bits
@@ -945,7 +994,7 @@ typedef struct binrec_setup_t {
  * This optimization has no effect if BINREC_OPT_G_PPC_NO_FPSCR_STATE is
  * enabled.
  */
-#define BINREC_OPT_G_PPC_IGNORE_FPSCR_VXFOO  (1<<8)
+#define BINREC_OPT_G_PPC_IGNORE_FPSCR_VXFOO  (1<<9)
 
 /**
  * BINREC_OPT_G_PPC_NATIVE_RECIPROCAL:  Translate guest PowerPC
@@ -1000,7 +1049,7 @@ typedef struct binrec_setup_t {
  * the PowerPC architecture specification, it will behave correctly under
  * this optimization.
  */
-#define BINREC_OPT_G_PPC_NATIVE_RECIPROCAL  (1<<9)
+#define BINREC_OPT_G_PPC_NATIVE_RECIPROCAL  (1<<10)
 
 /**
  * BINREC_OPT_G_PPC_NO_FPSCR_STATE:  Do not write any state bits (exception
@@ -1034,7 +1083,7 @@ typedef struct binrec_setup_t {
  * This optimization is UNSAFE: code which relies on any of the FPSCR
  * state bits will behave incorrectly if this optimization is enabled.
  */
-#define BINREC_OPT_G_PPC_NO_FPSCR_STATE  (1<<10)
+#define BINREC_OPT_G_PPC_NO_FPSCR_STATE  (1<<11)
 
 /**
  * BINREC_OPT_G_PPC_PAIRED_LWARX_STWCX:  Optimize the sequence of lwarx
@@ -1045,7 +1094,7 @@ typedef struct binrec_setup_t {
  * lwarx to its associated stwcx., avoiding unnecessary accesses to the
  * processor state block.
  */
-#define BINREC_OPT_G_PPC_PAIRED_LWARX_STWCX  (1<<11)
+#define BINREC_OPT_G_PPC_PAIRED_LWARX_STWCX  (1<<12)
 
 /**
  * BINREC_OPT_G_PPC_PS_STORE_DENORMALS:  Do not flush denormals to zero
@@ -1067,7 +1116,7 @@ typedef struct binrec_setup_t {
  * flushed to zero by paired-single store instructions will behave
  * incorrectly if this optimization is enabled.
  */
-#define BINREC_OPT_G_PPC_PS_STORE_DENORMALS  (1<<12)
+#define BINREC_OPT_G_PPC_PS_STORE_DENORMALS  (1<<13)
 
 /**
  * BINREC_OPT_G_PPC_SINGLE_PREC_INPUTS:  Assume that the inputs to a
@@ -1105,7 +1154,7 @@ typedef struct binrec_setup_t {
  * the PowerPC architecture specification, it will behave correctly under
  * this optimization.
  */
-#define BINREC_OPT_G_PPC_SINGLE_PREC_INPUTS  (1<<13)
+#define BINREC_OPT_G_PPC_SINGLE_PREC_INPUTS  (1<<14)
 
 /**
  * BINREC_OPT_G_PPC_TRIM_CR_STORES:  Analyze the data flow through each
@@ -1124,7 +1173,7 @@ typedef struct binrec_setup_t {
  * This optimization has no effect unless BINREC_OPT_G_PPC_USE_SPLIT_FIELDS
  * is also enabled.
  */
-#define BINREC_OPT_G_PPC_TRIM_CR_STORES  (1<<14)
+#define BINREC_OPT_G_PPC_TRIM_CR_STORES  (1<<15)
 
 /**
  * BINREC_OPT_G_PPC_USE_SPLIT_FIELDS:  Treat subfields of certain registers
@@ -1143,7 +1192,7 @@ typedef struct binrec_setup_t {
  * in the processor state block.  System call and trap handlers are not
  * affected.
  */
-#define BINREC_OPT_G_PPC_USE_SPLIT_FIELDS  (1<<15)
+#define BINREC_OPT_G_PPC_USE_SPLIT_FIELDS  (1<<16)
 
 /*------------ Host-architecture-specific optimization flags ------------*/
 

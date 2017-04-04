@@ -773,7 +773,7 @@ static inline int get_fpr_as_type(GuestPPCContext * const ctx, int index,
     RTLUnit * const unit = ctx->unit;
 
     int reg = get_fpr(ctx, index);
-    const RTLDataType current_type= unit->regs[reg].type;
+    const RTLDataType current_type = unit->regs[reg].type;
     if (type != current_type) {
         uint32_t safe_set = ctx->fpr_is_safe;
         if (rtl_type_is_vector(type)) {
@@ -8038,10 +8038,11 @@ static inline void translate_x1F(
  *
  * [Parameters]
  *     ctx: Translation context.
+ *     address: Address of instruction being translated.
  *     insn: Instruction word.
  */
 static inline void translate_x3F(
-    GuestPPCContext * const ctx, const uint32_t insn)
+    GuestPPCContext * const ctx, const uint32_t address, const uint32_t insn)
 {
     RTLUnit * const unit = ctx->unit;
 
@@ -8053,9 +8054,30 @@ static inline void translate_x3F(
                                FPSCR_VXIDI | FPSCR_VXZDZ);
             return;
 
-          case XO_FSUB:
-            translate_fp_arith(ctx, insn, RTLOP_FSUB, false, FPSCR_VXISI);
+          case XO_FSUB: {
+            int fcfi_src;
+            bool fcfi_signed;
+            if ((ctx->handle->guest_opt & BINREC_OPT_G_PPC_DETECT_FCFI_EMUL)
+             && guest_ppc_detect_fcfi_emul(ctx, address,
+                                           insn_frA(insn), insn_frB(insn),
+                                           &fcfi_src, &fcfi_signed)) {
+                const int result = rtl_alloc_register(unit, RTLTYPE_FLOAT64);
+                rtl_add_insn(unit, fcfi_signed ? RTLOP_FSCAST : RTLOP_FZCAST,
+                             result, fcfi_src, 0, 0);
+                set_fpr(ctx, insn_frD(insn), result);
+                ctx->fpr_is_safe |= 1 << insn_frD(insn);
+                /* Handle FPSCR ourselves instead of going through
+                 * set_fp_result() because converting INT32 to FLOAT64
+                 * can never raise exceptions. */
+                if (!(ctx->handle->guest_opt & BINREC_OPT_G_PPC_NO_FPSCR_STATE)) {
+                    const int fprf = gen_fprf(unit, result, 0);
+                    set_fr_fi_fprf(ctx, fprf);
+                }
+            } else {
+                translate_fp_arith(ctx, insn, RTLOP_FSUB, false, FPSCR_VXISI);
+            }
             return;
+          }  // case XO_FSUB
 
           case XO_FADD:
             translate_fp_arith(ctx, insn, RTLOP_FADD, false, FPSCR_VXISI);
@@ -8483,10 +8505,22 @@ static inline void translate_x3F(
           case XO_FRSP: {
             const int frB =
                 get_fpr_as_type(ctx, insn_frB(insn), RTLTYPE_FLOAT64);
+            /* Check first for frsp of an emulated fcfi, which we can
+             * convert to FSCAST/FZCAST of the original value. */
+            const RTLRegister *frB_reg = &unit->regs[frB];
             const int result = rtl_alloc_register(unit, RTLTYPE_FLOAT32);
-            rtl_add_insn(unit, RTLOP_FCVT, result, frB, 0, 0);
-            set_fp_result(ctx, insn_frD(insn), result, 0, 0, frB, 0,
-                          0, 0, true, false, true, true);
+            if (frB_reg->source == RTLREG_RESULT
+             && (frB_reg->result.opcode == RTLOP_FSCAST
+              || frB_reg->result.opcode == RTLOP_FZCAST)) {
+                rtl_add_insn(unit, frB_reg->result.opcode,
+                             result, frB_reg->result.src1, 0, 0);
+                set_fp_result(ctx, insn_frD(insn), result, 0, 0, frB, 0,
+                              0, 0, false, false, true, true);
+            } else {
+                rtl_add_insn(unit, RTLOP_FCVT, result, frB, 0, 0);
+                set_fp_result(ctx, insn_frD(insn), result, 0, 0, frB, 0,
+                              0, 0, true, false, true, true);
+            }
             if (insn_Rc(insn)) {
                 update_cr1(ctx);
             }
@@ -9050,7 +9084,7 @@ static inline void translate_insn(
         return;
 
       case OPCD_x3F:
-        translate_x3F(ctx, insn);
+        translate_x3F(ctx, address, insn);
         return;
 
     }  // switch (insn_OPCD(insn))
@@ -9069,9 +9103,11 @@ bool guest_ppc_translate_block(GuestPPCContext *ctx, int index)
     ASSERT(ctx->unit);
     ASSERT(index >= 0 && index < ctx->num_blocks);
 
-    ctx->current_block = index;
-
     RTLUnit * const unit = ctx->unit;
+
+    ctx->current_block = index;
+    ctx->cur_block_rtl_start = unit->num_insns;
+
     GuestPPCBlockInfo *block = &ctx->blocks[index];
     const uint32_t start = block->start;
     const uint32_t *memory_base =
