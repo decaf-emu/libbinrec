@@ -110,11 +110,11 @@ Makefile and etc/* scripts.
     /optimization |(MDhry/sec)|(MDhry/sec)|  (MWIPS)  |  (MWIPS)  |
    ---------------+-----------+-----------+-----------+-----------+
     native        |   11.9    |   30.8    |   4940    |    7270   |
-    ppc32 -O0     |    2.08   |    2.95   |    109    |     185   |
-    ppc32 -O1     |    2.43   |    3.54   |    113    |     195   |
-    ppc32 -O2     |    2.99   |    4.05   |    126    |     196   |
-    + -fchain     |    3.10   |    4.24   |    129    |     200   |
-    + -ffast-math |   -----   |   -----   |   1720    |    3020   |
+    ppc32 -O0     |    2.04   |    2.89   |    109    |     185   |
+    ppc32 -O1     |    2.56   |    3.53   |    115    |     195   |
+    ppc32 -O2     |    3.11   |    4.05   |    123    |     196   |
+    + -fchain     |    3.17   |    4.14   |    126    |     200   |
+    + -ffast-math |   -----   |   -----   |   1780    |    3250   |
 
 The order-of-magnitude difference from enabling -ffast-math for the
 PowerPC Whetstone benchmark results from the heavy cost of updating

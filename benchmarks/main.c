@@ -187,9 +187,11 @@ static bool process_command_line(int argc, char **argv)
                     "    -G<NAME>     Enable specific guest optimizations.\n"
                     "        -Gppc-constant-gqr   Assume values stored to GQRs are always constant\n"
                     "        -Gppc-cr-stores      Eliminate dead stores to CR bits\n"
+                    "        -Gppc-detect-fcfi-emul   Optimize software int-to-float conversion\n"
                     "        -Gppc-fast-fctiw     Leave high word of fctiw result undefined\n"
                     "        -Gppc-fast-fmadds    Ignore possible fmadds rounding error\n"
                     "        -Gppc-fast-fmuls     Suppress rounding of second fmuls operand\n"
+                    "        -Gppc-float-inputs   Assume FP operands match instruction precision\n"
                     "        -Gppc-forward-loads  Forward raw data from loads to stores\n"
                     "        -Gppc-fp-zero-sign   Allow optimizations that change the sign of zero\n"
                     "        -Gppc-no-fp-state    Suppress all floating-point exception checking\n"
@@ -261,12 +263,16 @@ static bool process_command_line(int argc, char **argv)
                     opt_guest |= BINREC_OPT_G_PPC_ASSUME_NO_SNAN;
                 } else if (strcmp(name, "ppc-constant-gqr") == 0) {
                     opt_guest |= BINREC_OPT_G_PPC_CONSTANT_GQRS;
+                } else if (strcmp(name, "ppc-detect-fcfi-emul") == 0) {
+                    opt_guest |= BINREC_OPT_G_PPC_DETECT_FCFI_EMUL;
                 } else if (strcmp(name, "ppc-fast-fctiw") == 0) {
                     opt_guest |= BINREC_OPT_G_PPC_FAST_FCTIW;
                 } else if (strcmp(name, "ppc-fast-fmadds") == 0) {
                     opt_guest |= BINREC_OPT_G_PPC_FAST_FMADDS;
                 } else if (strcmp(name, "ppc-fast-fmuls") == 0) {
                     opt_guest |= BINREC_OPT_G_PPC_FAST_FMULS;
+                } else if (strcmp(name, "ppc-float-inputs") == 0) {
+                    opt_guest |= BINREC_OPT_G_PPC_SINGLE_PREC_INPUTS;
                 } else if (strcmp(name, "ppc-forward-loads") == 0) {
                     opt_guest |= BINREC_OPT_G_PPC_FORWARD_LOADS;
                 } else if (strcmp(name, "ppc-fp-zero-sign") == 0) {
@@ -432,6 +438,9 @@ static bool process_command_line(int argc, char **argv)
         }
         if (opt_level >= 2) {
             opt_common |= BINREC_OPT_DEEP_DATA_FLOW;
+            if (arch == GUEST_ARCH_PPC_7XX) {
+                opt_guest |= BINREC_OPT_G_PPC_DETECT_FCFI_EMUL;
+            }
             if (native_arch == BINREC_ARCH_X86_64_SYSV
              || native_arch == BINREC_ARCH_X86_64_WINDOWS) {
                 opt_host |= BINREC_OPT_H_X86_ADDRESS_OPERANDS
@@ -445,14 +454,17 @@ static bool process_command_line(int argc, char **argv)
                     | BINREC_OPT_FOLD_FP_CONSTANTS
                     | BINREC_OPT_NATIVE_IEEE_NAN
                     | BINREC_OPT_NATIVE_IEEE_UNDERFLOW;
-        opt_guest |= BINREC_OPT_G_PPC_ASSUME_NO_SNAN
-                   | BINREC_OPT_G_PPC_FAST_FCTIW
-                   | BINREC_OPT_G_PPC_FAST_FMADDS
-                   | BINREC_OPT_G_PPC_FAST_FMULS
-                   | BINREC_OPT_G_PPC_FAST_STFS
-                   | BINREC_OPT_G_PPC_FNMADD_ZERO_SIGN
-                   | BINREC_OPT_G_PPC_NO_FPSCR_STATE
-                   | BINREC_OPT_G_PPC_PS_STORE_DENORMALS;
+        if (arch == GUEST_ARCH_PPC_7XX) {
+            opt_guest |= BINREC_OPT_G_PPC_ASSUME_NO_SNAN
+                       | BINREC_OPT_G_PPC_FAST_FCTIW
+                       | BINREC_OPT_G_PPC_FAST_FMADDS
+                       | BINREC_OPT_G_PPC_FAST_FMULS
+                       | BINREC_OPT_G_PPC_FAST_STFS
+                       | BINREC_OPT_G_PPC_FNMADD_ZERO_SIGN
+                       | BINREC_OPT_G_PPC_NO_FPSCR_STATE
+                       | BINREC_OPT_G_PPC_PS_STORE_DENORMALS
+                       | BINREC_OPT_G_PPC_SINGLE_PREC_INPUTS;
+        }
     }
 
     return true;
