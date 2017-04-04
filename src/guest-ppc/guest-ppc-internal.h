@@ -472,8 +472,11 @@ typedef struct GuestPPCContext {
     uint16_t fpr_raw[32];  // Value from lfs or lfd
     uint16_t ps_raw[32];  // Value from psq_l (if CONSTANT_GQRS)
 
+    /* RTL register containing the compare value for stwcx. instruction
+     * which is paired with an lwarx in the same block. */
+    int paired_lwarx_data;
     /* RTL register containing the compare value for a paired stwcx. in
-     * big-endian byte order. */
+     * big-endian byte order (for use as the CMPXCHG comparand). */
     int paired_lwarx_data_be;
 
     /* True if the next instruction should be skipped.  Used when

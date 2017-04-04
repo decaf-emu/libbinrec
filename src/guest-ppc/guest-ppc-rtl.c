@@ -6080,6 +6080,7 @@ static void translate_lwarx(
         value = value_be;
     }
     if (address == ctx->blocks[ctx->current_block].paired_lwarx) {
+        ctx->paired_lwarx_data = value;
         ctx->paired_lwarx_data_be = value_be;
     } else {
         rtl_add_insn(unit, RTLOP_STORE_I8, 0, psb_reg, rtl_imm32(unit, 1),
@@ -7243,6 +7244,30 @@ static void translate_stwcx(
     const bool is_paired =
         (address == ctx->blocks[ctx->current_block].paired_stwcx);
 
+    if (is_paired && ctx->live.gpr[insn_rS(insn)] == ctx->paired_lwarx_data) {
+        /* We're just storing back the same value that was loaded.  This
+         * pattern is probably the result of compiler quirks, but for our
+         * purposes, it's semantically equivalent to a no-op, so we omit
+         * the potentially costly compare-and-exchange operation and act
+         * as if the store succeeded. */
+        const int zero = rtl_imm32(unit, 0);
+        const int so = get_xer_so(ctx);
+        rtl_add_insn(unit, RTLOP_STORE_I8, 0, psb_reg, zero,
+                     handle->setup.state_offset_reserve_flag);
+        if (ctx->use_split_fields) {
+            const int one = rtl_imm32(unit, 1);
+            set_crf(ctx, 0, zero, zero, one, so);
+        } else {
+            const int old_cr = get_cr(ctx);
+            const int temp = rtl_alloc_register(unit, RTLTYPE_INT32);
+            rtl_add_insn(unit, RTLOP_ORI, temp, so, 0, 2);
+            const int new_cr = rtl_alloc_register(unit, RTLTYPE_INT32);
+            rtl_add_insn(unit, RTLOP_BFINS, new_cr, old_cr, temp, 28 | 4<<8);
+            set_cr(ctx, new_cr);
+        }
+        return;
+    }
+
     const int skip_label = rtl_alloc_label(unit);
 
     int flag;
@@ -7317,22 +7342,6 @@ static void translate_stwcx(
     }
 
     rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, skip_label);
-
-    /* If split fields are in use and the post-instruction callback is
-     * active, flush the store success bit back to the CR word in the PSB,
-     * so the callback knows whether the store succeeded.  This deviates
-     * from the ideal of not changing behavior in the presence of pre/post
-     * instruction callbacks, but it is necessary when the callbacks are
-     * used to validate the behavior of generated code against a hardware
-     * implementation or interpreter so the validator knows whether to
-     * simulate the store (since stwcx. is not repeatable). */
-    if (ctx->use_split_fields && ctx->handle->post_insn_callback) {
-        const int cr0_eq = get_crb(ctx, 2);
-        const int old_cr = get_cr(ctx);
-        const int new_cr = rtl_alloc_register(unit, RTLTYPE_INT32);
-        rtl_add_insn(unit, RTLOP_BFINS, new_cr, old_cr, cr0_eq, 29 | 1<<8);
-        set_cr(ctx, new_cr);
-    }
 }
 
 /*-----------------------------------------------------------------------*/
@@ -7814,6 +7823,22 @@ static inline void translate_x1F(
         return;
       case XO_STWCX_:
         translate_stwcx(ctx, address, insn);
+        /* If split fields are in use and the post-instruction callback
+         * is active, flush the store success bit back to the CR word in
+         * the PSB, so the callback knows whether the store succeeded.
+         * This deviates from the ideal of not changing behavior in the
+         * presence of pre/post instruction callbacks, but it is necessary
+         * when the callbacks are used to validate the behavior of
+         * generated code against a hardware implementation or interpreter
+         * so the validator knows whether to simulate the store (since
+         * stwcx. is not repeatable). */
+        if (ctx->use_split_fields && ctx->handle->post_insn_callback) {
+            const int cr0_eq = get_crb(ctx, 2);
+            const int old_cr = get_cr(ctx);
+            const int new_cr = rtl_alloc_register(unit, RTLTYPE_INT32);
+            rtl_add_insn(unit, RTLOP_BFINS, new_cr, old_cr, cr0_eq, 29 | 1<<8);
+            set_cr(ctx, new_cr);
+        }
         return;
       case XO_ECIWX:
       case XO_ECOWX:

@@ -1093,6 +1093,16 @@ typedef struct binrec_setup_t {
  * This optimization allows the translator to forward data from a paired
  * lwarx to its associated stwcx., avoiding unnecessary accesses to the
  * processor state block.
+ *
+ * Additionally, if the data operand to stwcx. is the same as the value
+ * loaded with lwarx, the store itself is omitted and the code behaves as
+ * if the store succeeded.  (This case appears to arise from compilers
+ * which always generate lwarx when reading from an atomic variable; in
+ * such a case, a dummy stwcx. is required to clear the reservation state.)
+ * Since conditionally storing back the loaded value will never cause a
+ * change to memory, and since we translate lwarx/stwcx. using a compare-
+ * and-exchange model rather than precisely emulating the reserve-and-snoop
+ * behavior of PowerPC hardware, this transformation is safe.
  */
 #define BINREC_OPT_G_PPC_PAIRED_LWARX_STWCX  (1<<12)
 
