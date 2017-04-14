@@ -13,6 +13,7 @@
 #include "src/rtl-internal.h"
 #include "tests/common.h"
 #include "tests/guest-ppc/common.h"
+#include "tests/guest-ppc/insn/common.h"
 
 
 int main(void)
@@ -27,29 +28,11 @@ int main(void)
     const uint32_t start_address = 0x1000;
     memcpy_be32(memory + start_address, ppc_code, sizeof(ppc_code));
 
-    binrec_setup_t setup;
-    memset(&setup, 0, sizeof(setup));
-    setup.guest_memory_base = memory;
-    setup.state_offset_gpr = 0x100;
-    setup.state_offset_fpr = 0x180;
-    setup.state_offset_gqr = 0x380;
-    setup.state_offset_cr = 0x3A0;
-    setup.state_offset_lr = 0x3A4;
-    setup.state_offset_ctr = 0x3A8;
-    setup.state_offset_xer = 0x3AC;
-    setup.state_offset_fpscr = 0x3B0;
-    setup.state_offset_reserve_flag = 0x3B4;
-    setup.state_offset_reserve_state = 0x3B8;
-    setup.state_offset_nia = 0x3BC;
-    setup.state_offset_timebase_handler = 0x3C8;
-    setup.state_offset_sc_handler = 0x3D0;
-    setup.state_offset_trap_handler = 0x3D8;
-    setup.state_offset_chain_lookup = 0x3E0;
-    setup.state_offset_branch_exit_flag = 0x3E8;
-    setup.state_offset_fres_lut = 0x3F0;
-    setup.state_offset_frsqrte_lut = 0x3F8;
+    binrec_setup_t final_setup;
+    memcpy(&final_setup, &setup, sizeof(setup));
+    final_setup.guest_memory_base = memory;
     binrec_t *handle;
-    EXPECT(handle = binrec_create_handle(&setup));
+    EXPECT(handle = binrec_create_handle(&final_setup));
 
     binrec_set_post_insn_callback(handle, (void (*)(void *, uint32_t))2);
 
@@ -89,7 +72,7 @@ int main(void)
                  "   29: SET_ALIAS  a1, r23\n"
                  "   30: RETURN\n"
                  "\n"
-                 "Alias 1: int32 @ 956(r1)\n"
+                 "Alias 1: int32 @ 964(r1)\n"
                  "Alias 2: int32 @ 268(r1)\n"
                  "Alias 3: int32 @ 928(r1)\n"
                  "Alias 4: int32 @ 940(r1)\n"

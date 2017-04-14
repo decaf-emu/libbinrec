@@ -23,22 +23,7 @@ int main(void)
     setup.guest = BINREC_ARCH_PPC_7XX;
     setup.host = BINREC_ARCH_X86_64_SYSV;
     setup.guest_memory_base = memory;
-    setup.state_offset_gpr = offsetof(PPCState,gpr);
-    setup.state_offset_fpr = offsetof(PPCState,fpr);
-    setup.state_offset_gqr = offsetof(PPCState,gqr);
-    setup.state_offset_cr = offsetof(PPCState,cr);
-    setup.state_offset_lr = offsetof(PPCState,lr);
-    setup.state_offset_ctr = offsetof(PPCState,ctr);
-    setup.state_offset_xer = offsetof(PPCState,xer);
-    setup.state_offset_fpscr = offsetof(PPCState,fpscr);
-    setup.state_offset_reserve_flag = offsetof(PPCState,reserve_flag);
-    setup.state_offset_reserve_state = offsetof(PPCState,reserve_state);
-    setup.state_offset_nia = offsetof(PPCState,nia);
-    setup.state_offset_timebase_handler = offsetof(PPCState,timebase_handler);
-    setup.state_offset_sc_handler = offsetof(PPCState,sc_handler);
-    setup.state_offset_trap_handler = offsetof(PPCState,trap_handler);
-    setup.state_offset_fres_lut = offsetof(PPCState,fres_lut);
-    setup.state_offset_frsqrte_lut = offsetof(PPCState,frsqrte_lut);
+    ppc32_fill_setup(&setup);
     setup.malloc = mem_wrap_malloc;
     setup.realloc = mem_wrap_realloc;
     setup.free = mem_wrap_free;
@@ -80,7 +65,7 @@ int main(void)
         0xB8,0x0A,0x00,0x00,0x00,       // mov $10,%eax
         0x89,0x47,0x10,                 // mov %eax,16(%rdi)
         0xB8,0x08,0x10,0x00,0x00,       // mov $0x1008,%eax
-        0x89,0x87,0xBC,0x02,0x00,0x00,  // mov %eax,700(%rdi)
+        0x89,0x87,0xC4,0x02,0x00,0x00,  // mov %eax,708(%rdi)
         0x48,0x83,0xC4,0x08,            // add $8,%rsp
         0xC3,                           // ret
     };

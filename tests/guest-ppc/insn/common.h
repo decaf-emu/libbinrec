@@ -28,6 +28,8 @@ typedef struct PPCInsnTestState {
     uint32_t ctr;
     uint32_t xer;
     uint32_t fpscr;
+    uint32_t pvr;
+    uint32_t pir;
     uint8_t reserve_flag;
     uint32_t reserve_state;
     uint32_t nia;
@@ -56,6 +58,8 @@ static const binrec_setup_t setup = {
     .state_offset_ctr = offsetof(PPCInsnTestState,ctr),
     .state_offset_xer = offsetof(PPCInsnTestState,xer),
     .state_offset_fpscr = offsetof(PPCInsnTestState,fpscr),
+    .state_offset_pvr = offsetof(PPCInsnTestState,pvr),
+    .state_offset_pir = offsetof(PPCInsnTestState,pir),
     .state_offset_reserve_flag = offsetof(PPCInsnTestState,reserve_flag),
     .state_offset_reserve_state = offsetof(PPCInsnTestState,reserve_state),
     .state_offset_nia = offsetof(PPCInsnTestState,nia),

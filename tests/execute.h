@@ -28,6 +28,8 @@ typedef struct PPCState {
     uint32_t ctr;
     uint32_t xer;
     uint32_t fpscr;
+    uint32_t pvr;
+    uint32_t pir;
     uint8_t reserve_flag;
     uint32_t reserve_state;
     uint32_t nia;
@@ -40,6 +42,34 @@ typedef struct PPCState {
     const uint16_t *fres_lut;
     const uint16_t *frsqrte_lut;
 } PPCState;
+
+/**
+ * ppc32_fill_setup:  Fill the state offset fields of the given setup
+ * structure with the proper offsets for a 32-bit PowerPC state block.
+ */
+static inline void ppc32_fill_setup(binrec_setup_t *setup)
+{
+    setup->state_offset_gpr = offsetof(PPCState,gpr);
+    setup->state_offset_fpr = offsetof(PPCState,fpr);
+    setup->state_offset_gqr = offsetof(PPCState,gqr);
+    setup->state_offset_cr = offsetof(PPCState,cr);
+    setup->state_offset_lr = offsetof(PPCState,lr);
+    setup->state_offset_ctr = offsetof(PPCState,ctr);
+    setup->state_offset_xer = offsetof(PPCState,xer);
+    setup->state_offset_fpscr = offsetof(PPCState,fpscr);
+    setup->state_offset_pvr = offsetof(PPCState,pvr);
+    setup->state_offset_pir = offsetof(PPCState,pir);
+    setup->state_offset_reserve_flag = offsetof(PPCState,reserve_flag);
+    setup->state_offset_reserve_state = offsetof(PPCState,reserve_state);
+    setup->state_offset_nia = offsetof(PPCState,nia);
+    setup->state_offset_timebase_handler = offsetof(PPCState,timebase_handler);
+    setup->state_offset_sc_handler = offsetof(PPCState,sc_handler);
+    setup->state_offset_trap_handler = offsetof(PPCState,trap_handler);
+    setup->state_offset_chain_lookup = offsetof(PPCState,chain_lookup);
+    setup->state_offset_branch_exit_flag = offsetof(PPCState,branch_exit_flag);
+    setup->state_offset_fres_lut = offsetof(PPCState,fres_lut);
+    setup->state_offset_frsqrte_lut = offsetof(PPCState,frsqrte_lut);
+}
 
 /*-----------------------------------------------------------------------*/
 

@@ -6218,6 +6218,19 @@ static void translate_move_spr(
         }
         break;
 
+      case SPR_UPVR:
+        if (to_spr) {
+            log_warning(ctx->handle, "0x%X: Invalid attempt to write UPVR",
+                        address);
+            rtl_add_insn(unit, RTLOP_ILLEGAL, 0, 0, 0, 0);
+        } else {
+            const int value = rtl_alloc_register(unit, RTLTYPE_INT32);
+            rtl_add_insn(unit, RTLOP_LOAD, value, ctx->psb_reg, 0,
+                         ctx->handle->setup.state_offset_pvr);
+            set_gpr(ctx, insn_rD(insn), value);
+        }
+        break;
+
       case SPR_UGQR(0):
       case SPR_UGQR(1):
       case SPR_UGQR(2):
@@ -6240,6 +6253,41 @@ static void translate_move_spr(
                          ctx->handle->setup.state_offset_gqr + 4 * (spr & 7));
             set_gpr(ctx, insn_rD(insn), value);
         }
+        break;
+
+      case SPR_UPIR:
+        if (to_spr) {
+            log_warning(ctx->handle, "0x%X: Invalid attempt to write UPIR",
+                        address);
+            rtl_add_insn(unit, RTLOP_ILLEGAL, 0, 0, 0, 0);
+        } else {
+            const int value = rtl_alloc_register(unit, RTLTYPE_INT32);
+            rtl_add_insn(unit, RTLOP_LOAD, value, ctx->psb_reg, 0,
+                         ctx->handle->setup.state_offset_pir);
+            set_gpr(ctx, insn_rD(insn), value);
+        }
+        break;
+
+      case SPR_PVR:
+        if (to_spr) {
+            log_warning(ctx->handle, "0x%X: Invalid attempt to write PVR",
+                        address);
+            rtl_add_insn(unit, RTLOP_ILLEGAL, 0, 0, 0, 0);
+            break;
+        }
+        /* else fall through */
+      case SPR_GQR(0):
+      case SPR_GQR(1):
+      case SPR_GQR(2):
+      case SPR_GQR(3):
+      case SPR_GQR(4):
+      case SPR_GQR(5):
+      case SPR_GQR(6):
+      case SPR_GQR(7):
+      case SPR_PIR:
+        log_warning(ctx->handle, "0x%X: %s on supervisor SPR %d", address,
+                    to_spr ? "mtspr" : "mfspr/mftb", spr);
+        rtl_add_insn(unit, RTLOP_ILLEGAL, 0, 0, 0, 0);
         break;
 
       default:

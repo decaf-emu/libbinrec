@@ -11,6 +11,7 @@
 #include "src/rtl.h"
 #include "src/rtl-internal.h"
 #include "tests/common.h"
+#include "tests/guest-ppc/insn/common.h"
 #include "tests/mem-wrappers.h"
 
 
@@ -18,32 +19,14 @@ int main(void)
 {
     uint32_t illegal_insn = 0;
 
-    binrec_setup_t setup;
-    memset(&setup, 0, sizeof(setup));
-    setup.guest_memory_base = &illegal_insn;
-    setup.state_offset_gpr = 0x100;
-    setup.state_offset_fpr = 0x180;
-    setup.state_offset_gqr = 0x380;
-    setup.state_offset_cr = 0x3A0;
-    setup.state_offset_lr = 0x3A4;
-    setup.state_offset_ctr = 0x3A8;
-    setup.state_offset_xer = 0x3AC;
-    setup.state_offset_fpscr = 0x3B0;
-    setup.state_offset_reserve_flag = 0x3B4;
-    setup.state_offset_reserve_state = 0x3B8;
-    setup.state_offset_nia = 0x3BC;
-    setup.state_offset_timebase_handler = 0x3C8;
-    setup.state_offset_sc_handler = 0x3D0;
-    setup.state_offset_trap_handler = 0x3D8;
-    setup.state_offset_chain_lookup = 0x3E0;
-    setup.state_offset_branch_exit_flag = 0x3E8;
-    setup.state_offset_fres_lut = 0x3F0;
-    setup.state_offset_frsqrte_lut = 0x3F8;
-    setup.malloc = mem_wrap_malloc;
-    setup.realloc = mem_wrap_realloc;
-    setup.free = mem_wrap_free;
+    binrec_setup_t final_setup;
+    memcpy(&final_setup, &setup, sizeof(setup));
+    final_setup.guest_memory_base = &illegal_insn;
+    final_setup.malloc = mem_wrap_malloc;
+    final_setup.realloc = mem_wrap_realloc;
+    final_setup.free = mem_wrap_free;
     binrec_t *handle;
-    EXPECT(handle = binrec_create_handle(&setup));
+    EXPECT(handle = binrec_create_handle(&final_setup));
 
     RTLUnit *unit;
     for (int count = 0; ; count++) {
@@ -77,7 +60,7 @@ int main(void)
                  "    4: SET_ALIAS  a1, r3\n"
                  "    5: RETURN\n"
                  "\n"
-                 "Alias 1: int32 @ 956(r1)\n"
+                 "Alias 1: int32 @ 964(r1)\n"
                  "\n"
                  "Block 0: <none> --> [0,5] --> <none>\n"
                  );

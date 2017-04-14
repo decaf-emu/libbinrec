@@ -376,6 +376,8 @@ typedef struct binrec_setup_t {
     int state_offset_cr;
     int state_offset_xer;
     int state_offset_fpscr;
+    int state_offset_pvr;  // Processor Version Register (SPR 287)
+    int state_offset_pir;  // Processor Identification Register (SPR 1023)
     /* lwarx/stwcx. reservation flag (uint8_t) */
     int state_offset_reserve_flag;
     /* lwarx/stwcx. reservation state (uint32_t) */

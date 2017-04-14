@@ -254,6 +254,9 @@ struct RTLInsn;
  * them, so we don't use a subarchitecture identifier or feature flag to
  * explicitly enable them.
  *
+ * Similarly, UPVR and UPIR are user-mode versions of the standard PVR and
+ * PIR registers.
+ *
  * [1] Notably the "Broadway" and "Espresso" processors used in the
  *     Nintendo Wii and Wii U game systems, respectively.  The GQRs (though
  *     possibly not the UGQRs) are also present in the "Gekko" processor, a
@@ -264,8 +267,12 @@ struct RTLInsn;
 #define SPR_CTR     9
 #define SPR_TBL     268
 #define SPR_TBU     269
+#define SPR_UPVR    271
+#define SPR_PVR     287
 #define SPR_UGQR(n) (896 + (n))
 #define SPR_GQR(n)  (912 + (n))
+#define SPR_UPIR    1007
+#define SPR_PIR     1023
 
 /*************************************************************************/
 /*********************** Internal data structures ************************/
