@@ -19,6 +19,10 @@ static int add_rtl(RTLUnit *unit)
     static uint32_t value_buf[2];
     value_buf[0] = 1234;
     value_buf[1] = 5678;
+    /* Avoid spurious warnings. */
+    #ifdef __GNUC__
+        #pragma GCC diagnostic ignored "-Warray-bounds"
+    #endif
     unit->handle->setup.guest_memory_base =
         (char *)value_buf - (uintptr_t)0xC0000000;
     unit->handle->host_little_endian = is_little_endian();
