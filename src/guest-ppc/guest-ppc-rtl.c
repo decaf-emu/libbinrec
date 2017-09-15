@@ -3007,10 +3007,12 @@ static void store_float64_as_32(RTLUnit *unit, RTLOpcode rtlop,
 
     rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, label_denormal);
     if (flush_denormal) {
-        /* Zero is zero whether byte-reversed or not, so this can be an
-         * ordinary store regardless of endianness. */
-        rtl_add_insn(unit, RTLOP_STORE,
-                     0, host_address, rtl_imm32(unit,0), disp);
+        /* Zero is zero whether byte-reversed or not, but we have to
+         * preserve the sign, so we can't just blindly store integer zero
+         * here. */
+        const int signed_zero = rtl_alloc_register(unit, RTLTYPE_INT32);
+        rtl_add_insn(unit, RTLOP_ANDI, signed_zero, high_bits, 0, 0x80000000);
+        rtl_add_insn(unit, rtlop, 0, host_address, signed_zero, disp);
     } else {
         const int exponent = rtl_alloc_register(unit, RTLTYPE_INT64);
         rtl_add_insn(unit, RTLOP_SRLI, exponent, range_test, 0, 53);

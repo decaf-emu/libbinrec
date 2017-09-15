@@ -48,7 +48,7 @@ static const char expected[] =
     "   24: STORE      -16(r6), r20\n"
     "   25: GOTO       L5\n"
     "   26: LABEL      L4\n"
-    "   27: LOAD_IMM   r21, 0\n"
+    "   27: ANDI       r21, r17, -2147483648\n"
     "   28: STORE      -16(r6), r21\n"
     "   29: LABEL      L5\n"
     "   30: GOTO       L1\n"
