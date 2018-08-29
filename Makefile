@@ -304,11 +304,15 @@ ifeq ($(CC_TYPE),clang)
         -gcda="`echo \"$1\" | sed -e 's|\.[^./]*$$|_cov.gcda|'`" \
         -o "`echo "$1" | sed -e 's|[/.]|-|g'`.out" '$1'
 else ifeq ($(CC_TYPE),gcc)
+    GCC_MAJOR := $(shell echo __GNUC__ | $(CC) -E - | tail -1)
     CXX := $(if $(filter %gcc,$(CC)),$(patsubst %gcc,%g++,$(CC)),$(patsubst %cc,%c++,$(CC)))
     BASE_FLAGS = -O2 -pipe -g -I. \
         -Wall -Wextra $(call if-true,WARNINGS_AS_ERRORS,-Werror) \
         -Wcast-align -Winit-self -Wlogical-op -Wpointer-arith -Wshadow \
         -Wwrite-strings -Wundef -Wno-unused-parameter -Wvla
+    ifneq (,$(filter-out 2 3 4 5 6,$(GCC_MAJOR)))
+        BASE_FLAGS += -Wimplicit-fallthrough=2
+    endif
     BASE_CFLAGS = $(BASE_FLAGS) -std=c99 \
         -Wmissing-declarations -Wstrict-prototypes
     BASE_CXXFLAGS = $(BASE_FLAGS) -std=c++11
