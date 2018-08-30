@@ -17,6 +17,7 @@
 #include <stdio.h>
 
 #if defined(__linux__) || defined(__APPLE__)
+    #include <pthread.h>
     #include <sys/mman.h>
     #ifndef MAP_ANONYMOUS
         #define MAP_ANONYMOUS  0x20
@@ -26,13 +27,41 @@
 #endif
 
 /*************************************************************************/
+/**************************** Local routines *****************************/
 /*************************************************************************/
 
 /* Cache of already-translated code, one entry per address. */
 typedef void (*GuestCode)(void *, void *);
-static GuestCode *func_table = NULL;
-static uint32_t func_table_base = -1;  // Guest address for func_table[0].
-static uint32_t func_table_limit = 0;  // Address of last table entry plus one.
+typedef struct CodeCache {
+    GuestCode *func_table;
+    uint32_t func_table_base;   // Guest address for func_table[0].
+    uint32_t func_table_limit;  // Address of last table entry plus one.
+} CodeCache;
+
+/* Extension of guest CPU state with cache pointer (for threaded calls). */
+typedef struct PPCStateAndCache {
+    PPCState state;
+    CodeCache cache;
+} PPCStateAndCache;
+
+/* State block for thread spawning. */
+typedef struct ThreadState {
+    /* Thread handle. */
+#if defined(__linux__) || defined(__APPLE__)
+    pthread_t handle;
+#elif defined(_WIN32)
+    HANDLE handle;
+#endif
+    /* Function arguments. */
+    binrec_arch_t arch;
+    void *state;
+    void *memory;
+    uint32_t address;
+    void (*log)(void *userdata, binrec_loglevel_t level, const char *message);
+    void (*configure_handle)(binrec_t *handle);
+    void (*translated_code_callback)(uint32_t address, void *code,
+                                    long code_size);
+} ThreadState;
 
 /*-----------------------------------------------------------------------*/
 
@@ -95,6 +124,18 @@ static void free_callable(void *ptr)
 /*-----------------------------------------------------------------------*/
 
 /**
+ * Initialize the translation cache.
+ */
+static void init_cache(CodeCache *cache)
+{
+    cache->func_table = NULL;
+    cache->func_table_base = -1;
+    cache->func_table_limit = 0;
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
  * translate:  Translate guest code at the given address into host code
  * and store it in the translated code cache.
  *
@@ -108,44 +149,47 @@ static void free_callable(void *ptr)
  *     True on success, false on error.
  */
 static bool translate(
-    binrec_t *handle, void *state, uint32_t address,
+    binrec_t *handle, void *state, uint32_t address, CodeCache *cache,
     void (*translated_code_callback)(uint32_t, void *, long))
 {
-    if (address < func_table_base) {
-        if (func_table_limit > func_table_base) {
-            GuestCode *new_table =
-                malloc(sizeof(*new_table) * (func_table_limit - address));
+    if (address < cache->func_table_base) {
+        if (cache->func_table_limit > cache->func_table_base) {
+            GuestCode *new_table = malloc(
+                sizeof(*new_table) * (cache->func_table_limit - address));
             if (!new_table) {
                 fprintf(stderr, "Out of memory expanding translation cache\n");
                 return false;
             }
             memset(new_table, 0,
-                   sizeof(*new_table) * (func_table_base - address));
-            memcpy(new_table + (func_table_base - address), func_table,
-                   sizeof(*new_table) * (func_table_limit - func_table_base));
-            free(func_table);
-            func_table = new_table;
+                   sizeof(*new_table) * (cache->func_table_base - address));
+            memcpy(new_table + (cache->func_table_base - address),
+                   cache->func_table,
+                   sizeof(*new_table) * (cache->func_table_limit
+                                         - cache->func_table_base));
+            free(cache->func_table);
+            cache->func_table = new_table;
         } else {
-            func_table_limit = address;
+            cache->func_table_limit = address;
         }
-        func_table_base = address;
+        cache->func_table_base = address;
     }
-    if (address >= func_table_limit) {
+    if (address >= cache->func_table_limit) {
         ASSERT(address != UINT32_C(-1));  // Just in case.
         const uint32_t new_limit = address + 1;
         GuestCode *new_table = realloc(
-            func_table, sizeof(*new_table) * (new_limit - func_table_base));
+            cache->func_table,
+            sizeof(*new_table) * (new_limit - cache->func_table_base));
         if (!new_table) {
             fprintf(stderr, "Out of memory expanding translation cache\n");
             return false;
         }
-        memset(new_table + (func_table_limit - func_table_base), 0,
-               sizeof(*new_table) * (new_limit - func_table_limit));
-        func_table = new_table;
-        func_table_limit = new_limit;
+        memset(new_table + (cache->func_table_limit - cache->func_table_base),
+               0, sizeof(*new_table) * (new_limit - cache->func_table_limit));
+        cache->func_table = new_table;
+        cache->func_table_limit = new_limit;
     }
 
-    if (!func_table[address - func_table_base]) {
+    if (!cache->func_table[address - cache->func_table_base]) {
         void *code;
         long code_size;
         bool success = binrec_translate(handle, state, address, -1,
@@ -171,7 +215,7 @@ static bool translate(
                     " 0x%X\n", address);
             return false;
         }
-        func_table[address - func_table_base] = func;
+        cache->func_table[address - cache->func_table_base] = func;
     }
 
     return true;
@@ -182,19 +226,19 @@ static bool translate(
 /**
  * Clear the translation cache.
  */
-static void clear_cache(void)
+static void clear_cache(CodeCache *cache)
 {
-    if (func_table_limit > func_table_base) {
-        for (int i = func_table_limit - func_table_base - 1; i >= 0; i--) {
-            if (func_table[i]) {
-                free_callable(func_table[i]);
+    if (cache->func_table_limit > cache->func_table_base) {
+        for (int i = cache->func_table_limit - cache->func_table_base - 1;
+             i >= 0; i--)
+        {
+            if (cache->func_table[i]) {
+                free_callable(cache->func_table[i]);
             }
         }
     }
-    free(func_table);
-    func_table = NULL;
-    func_table_base = -1;
-    func_table_limit = 0;
+    free(cache->func_table);
+    init_cache(cache);
 }
 
 /*-----------------------------------------------------------------------*/
@@ -205,14 +249,46 @@ static void clear_cache(void)
  */
 static void *cache_lookup(PPCState *state, uint32_t address)
 {
-    if (address >= func_table_base && address < func_table_limit) {
-        return func_table[address - func_table_base];
+    const PPCStateAndCache *state_cache = (PPCStateAndCache *)state;
+    const CodeCache *cache = &state_cache->cache;
+    if (address >= cache->func_table_base
+     && address < cache->func_table_limit) {
+        return cache->func_table[address - cache->func_table_base];
     } else {
         return NULL;
     }
 }
 
 /*-----------------------------------------------------------------------*/
+
+/**
+ * Thread runner for spawn_guest_code().
+ */
+static
+#if defined(__linux__) || defined(__APPLE__)
+    void *
+#else
+    int
+#endif
+    thread_runner(void *arg)
+{
+    ThreadState *thread = arg;
+
+    const bool result = call_guest_code(
+        thread->arch, thread->state, thread->memory, thread->address,
+        thread->log, thread->configure_handle,
+        thread->translated_code_callback);
+
+#if defined(__linux__) || defined(__APPLE__)
+    return (void *)(uintptr_t)result;
+#else
+    return result;
+#endif
+}
+
+/*************************************************************************/
+/************************** Interface routines ***************************/
+/*************************************************************************/
 
 bool call_guest_code(
     binrec_arch_t arch, void *state, void *memory, uint32_t address,
@@ -221,8 +297,12 @@ bool call_guest_code(
     void (*translated_code_callback)(uint32_t address, void *code,
                                     long code_size))
 {
+    bool retval = false;
+
     ASSERT(arch == BINREC_ARCH_PPC_7XX);
-    PPCState *state_ppc = state;
+    PPCStateAndCache state_cache_ppc;
+    memcpy(&state_cache_ppc.state, state, sizeof(state_cache_ppc.state));
+    init_cache(&state_cache_ppc.cache);
 
     binrec_setup_t setup;
     memset(&setup, 0, sizeof(setup));
@@ -242,35 +322,99 @@ bool call_guest_code(
         (*configure_handle)(handle);
     }
     if (handle->use_chaining) {
-        state_ppc->chain_lookup = cache_lookup;
+        state_cache_ppc.state.chain_lookup = cache_lookup;
     }
 
     /* Pull cache info into registers to reduce the number of loads needed. */
-    GuestCode *table = func_table;
-    uint32_t base = func_table_base;
-    uint32_t limit = func_table_limit - func_table_base;
+    GuestCode *table = state_cache_ppc.cache.func_table;
+    uint32_t base = state_cache_ppc.cache.func_table_base;
+    uint32_t limit = (state_cache_ppc.cache.func_table_limit
+                      - state_cache_ppc.cache.func_table_base);
 
     const uint32_t RETURN_ADDRESS = -4;  // Used to detect return-to-caller.
-    state_ppc->lr = RETURN_ADDRESS;
-    state_ppc->nia = address;
-    while (state_ppc->nia != RETURN_ADDRESS) {
-        const uint32_t nia = state_ppc->nia;
+    state_cache_ppc.state.lr = RETURN_ADDRESS;
+    state_cache_ppc.state.nia = address;
+    while (state_cache_ppc.state.nia != RETURN_ADDRESS) {
+        const uint32_t nia = state_cache_ppc.state.nia;
         if (UNLIKELY(nia - base >= limit) || UNLIKELY(!table[nia - base])) {
-            if (!translate(handle, state, nia, translated_code_callback)) {
-                clear_cache();
-                binrec_destroy_handle(handle);
-                return false;
+            if (!translate(handle, &state_cache_ppc.state, nia,
+                           &state_cache_ppc.cache, translated_code_callback)) {
+                goto out;
             }
-            table = func_table;
-            base = func_table_base;
-            limit = func_table_limit - func_table_base;
+            table = state_cache_ppc.cache.func_table;
+            base = state_cache_ppc.cache.func_table_base;
+            limit = (state_cache_ppc.cache.func_table_limit
+                     - state_cache_ppc.cache.func_table_base);
         }
-        (*table[nia - base])(state, memory);
+        (*table[nia - base])(&state_cache_ppc.state, memory);
     }
 
-    clear_cache();
+    retval = true;
+
+  out:
+    clear_cache(&state_cache_ppc.cache);
     binrec_destroy_handle(handle);
-    return true;
+    memcpy(state, &state_cache_ppc.state, sizeof(state_cache_ppc.state));
+    return retval;
+}
+
+/*-----------------------------------------------------------------------*/
+
+void *spawn_guest_code(
+    binrec_arch_t arch, void *state, void *memory, uint32_t address,
+    void (*log)(void *userdata, binrec_loglevel_t level, const char *message),
+    void (*configure_handle)(binrec_t *handle),
+    void (*translated_code_callback)(uint32_t address, void *code,
+                                    long code_size))
+{
+    ThreadState *thread = malloc(sizeof(*thread));
+    if (!thread) {
+        fprintf(stderr, "Out of memory for pthread handle\n");
+        return NULL;
+    }
+    thread->arch = arch;
+    thread->state = state;
+    thread->memory = memory;
+    thread->address = address;
+    thread->log = log;
+    thread->configure_handle = configure_handle;
+    thread->translated_code_callback = translated_code_callback;
+
+#if defined(__linux__) || defined(__APPLE__)
+    int error = pthread_create(&thread->handle, NULL, thread_runner, thread);
+    if (error) {
+        fprintf(stderr, "pthread_create(): %s", strerror(error));
+        free(thread);
+        return NULL;
+    }
+    return thread;
+#elif defined(_WIN32)
+    return NULL; //FIXME notimp
+#else
+    fprintf(stderr, "No thread library available\n");
+    free(thread);
+    return NULL;
+#endif
+}
+
+/*-----------------------------------------------------------------------*/
+
+bool wait_guest_code(void *thread_)
+{
+    ThreadState *thread = thread_;
+    ASSERT(thread);
+
+    bool result = false;
+#if defined(__linux__) || defined(__APPLE__)
+    void *result_;
+    pthread_join(thread->handle, &result_);
+    result = ((uintptr_t)result_ != 0);
+#elif defined(_WIN32)
+    //FIXME notimp
+#endif
+
+    free(thread);
+    return result;
 }
 
 /*************************************************************************/

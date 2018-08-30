@@ -389,6 +389,9 @@ ALL_CXXFLAGS = $(BASE_CXXFLAGS) $(ALL_DEFS) $(CXXFLAGS)
 # Libraries to use when linking test programs.
 
 LIBS = -lm
+ifneq (,$(filter darwin %linux,$(shell uname -s 2>/dev/null | tr A-Z a-z)))
+LIBS += -lpthread
+endif
 
 ###########################################################################
 ############################### Build rules ###############################

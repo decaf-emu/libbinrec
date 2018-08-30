@@ -98,8 +98,54 @@ extern bool call_guest_code(
     binrec_arch_t arch, void *state, void *memory, uint32_t address,
     void (*log)(void *userdata, binrec_loglevel_t level, const char *message),
     void (*configure_handle)(binrec_t *handle),
-    void (*generated_code_callback)(uint32_t address, void *code,
+    void (*translated_code_callback)(uint32_t address, void *code,
                                     long code_size));
+
+/**
+ * spawn_guest_code:  Execute guest code at the given address on a separate
+ * thread, and return a thread identifier for wait_guest_code().  The guest
+ * code is translated and executed as for call_guest_code().
+ *
+ * Note that callback functions will be called in the thread executing
+ * guest code rather than the thread in which this function was called.
+ *
+ * This function will fail if the runtime environment does not support some
+ * form of threads.
+ *
+ * [Parameters]
+ *     arch: Guest architecture (BINREC_ARCH_*).
+ *     state: Processor state block.  Must be of the appropriate type for
+ *         the guest architecture (see definitions in tests/execute.h).
+ *     memory: Pointer to base of guest memory.
+ *     address: Address at which to start executing code.
+ *     log: Logging callback function, or NULL for none.
+ *     configure_handle: Pointer to function to set up translation
+ *         parameters, or NULL to leave parameters at the defaults.
+ *     translated_code_callback: Pointer to function which will be called
+ *         for each translated unit of code, or NULL for no callback.
+ * [Return value]
+ *     Thread identifier (non-NULL) if the thread was successfuly started;
+ *     NULL if thread creation failed.
+ */
+extern void *spawn_guest_code(
+    binrec_arch_t arch, void *state, void *memory, uint32_t address,
+    void (*log)(void *userdata, binrec_loglevel_t level, const char *message),
+    void (*configure_handle)(binrec_t *handle),
+    void (*translated_code_callback)(uint32_t address, void *code,
+                                    long code_size));
+
+/**
+ * wait_guest_code:  Wait for completion of guest code started with
+ * spawn_guest_code().
+ *
+ * [Parameters]
+ *     thread: ID of thread to wait for.  Behavior is undefined if this is
+ *         not a value returned by spawn_guest_code() or the thread has
+ *         already been waited for.
+ * [Return value]
+ *     Return value of call_guest_code() for the requested guest code.
+ */
+extern bool wait_guest_code(void *thread);
 
 /*************************************************************************/
 /*************************************************************************/
