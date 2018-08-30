@@ -1319,7 +1319,7 @@ static void append_jump(
     X86Opcode short_opcode, X86Opcode long_opcode, int label, long target)
 {
     if (target >= 0) {
-        const long offset = target - code->len;
+        const int64_t offset = target - code->len;
         ASSERT(offset >= INT64_C(-0x80000000) && offset <= INT64_C(0x7FFFFFFF));
         /* Jump displacements count from the end of the instruction, so we
          * have to take that into account here -- a 1-byte displacement
@@ -5942,7 +5942,7 @@ static void resolve_branches(HostX86Context *ctx)
             const int label = block_info->unresolved_branch_target;
             ASSERT(label >= 0 && label < ctx->unit->next_label);
             ASSERT(ctx->label_offsets[label] >= 0);
-            long offset = ctx->label_offsets[label] - branch_offset;
+            int64_t offset = ctx->label_offsets[label] - branch_offset;
             ASSERT(offset > 0);  // Or else it would have been resolved.
             ASSERT(offset < INT64_C(0x80000000));  // Sanity check.
             uint8_t *ptr = &ctx->handle->code_buffer[branch_offset];
