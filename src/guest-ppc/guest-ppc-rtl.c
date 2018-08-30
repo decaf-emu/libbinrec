@@ -7826,7 +7826,11 @@ static inline void translate_x1F(
         }
         if ((next_insn & 0xFFE007FE) == extract_bit_insn) {
             const int bit_index = (insn_SH(next_insn) - 1) & 31;
-            set_gpr(ctx, insn_rA(next_insn), get_crb(ctx, bit_index));
+            const int bit = get_crb(ctx, bit_index);
+            set_gpr(ctx, insn_rA(next_insn), bit);
+            if (insn_Rc(next_insn)) {
+                update_cr0(ctx, bit);
+            }
             ctx->skip_next_insn = true;
         }
         return;
