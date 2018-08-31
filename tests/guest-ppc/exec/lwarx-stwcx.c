@@ -50,10 +50,10 @@ int main(void)
         thread[i] = spawn_guest_code(BINREC_ARCH_PPC_7XX, &state[i], memory,
                                      start_address, NULL, NULL, NULL);
         if (!thread[i]) {
+            FAIL("Failed to spawn guest code (iteration %d)", i);
             for (i--; i >= 0; i--) {
                 wait_guest_code(thread[i]);
             }
-            FAIL("Failed to spawn guest code (iteration %d)", i);
             break;
         }
     }

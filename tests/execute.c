@@ -267,6 +267,8 @@ static void *cache_lookup(PPCState *state, uint32_t address)
 static
 #if defined(__linux__) || defined(__APPLE__)
     void *
+#elif defined(_WIN32)
+    WINAPI DWORD
 #else
     int
 #endif
@@ -384,17 +386,24 @@ void *spawn_guest_code(
     int error = pthread_create(&thread->handle, NULL, thread_runner, thread);
     if (error) {
         fprintf(stderr, "pthread_create(): %s", strerror(error));
-        free(thread);
-        return NULL;
+        goto error;
     }
-    return thread;
 #elif defined(_WIN32)
-    return NULL; //FIXME notimp
+    thread->handle = CreateThread(NULL, 0, thread_runner, thread, 0, NULL);
+    if (!thread->handle) {
+        fprintf(stderr, "CreateThread() failed: %d", GetLastError());
+        goto error;
+    }
 #else
     fprintf(stderr, "No thread library available\n");
+    goto error;
+#endif
+
+    return thread;
+
+  error:
     free(thread);
     return NULL;
-#endif
 }
 
 /*-----------------------------------------------------------------------*/
@@ -410,7 +419,10 @@ bool wait_guest_code(void *thread_)
     pthread_join(thread->handle, &result_);
     result = ((uintptr_t)result_ != 0);
 #elif defined(_WIN32)
-    //FIXME notimp
+    WaitForSingleObject(thread->handle, INFINITE);
+    DWORD result_ = 0;
+    GetExitCodeThread(thread->handle, &result_);
+    result = (result_ != 0);
 #endif
 
     free(thread);
