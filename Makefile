@@ -276,10 +276,15 @@ else ifneq ($(filter icc%,$(subst -, ,$(CC))),)
 else ifneq ($(filter gcc%,$(subst -, ,$(CC))),)
     CC_TYPE = gcc
 else
-    CC_VERSION_TEXT := $(shell '$(CC)' --version 2>&1)
+    CC_VERSION_TEXT := $(shell $(CC) --version 2>&1)
     ifneq (,$(filter clang LLVM,$(CC_VERSION_TEXT)))
         CC_TYPE = clang
-    else ifneq (,$(filter gcc,$(CC_VERSION_TEXT)))
+    else ifneq (,$(filter gcc GCC,$(CC_VERSION_TEXT)))
+        CC_TYPE = gcc
+    else ifneq (__GNUC__,$(shell echo __GNUC__ | $(CC) -E - 2>/dev/null | tail -1))
+        # GCC invoked as "cc" may not have any "gcc" in --version output,
+        # so treat a compiler whose preprocessor recognizes __GNUC__ (and
+        # thus translates it to something else) as GCC.
         CC_TYPE = gcc
     endif
 endif
