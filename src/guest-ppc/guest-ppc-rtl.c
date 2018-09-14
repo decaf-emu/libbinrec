@@ -8586,8 +8586,8 @@ static inline void translate_x3F(
                 get_fpr_as_type(ctx, insn_frB(insn), RTLTYPE_FLOAT64);
             /* Check first for frsp of an emulated fcfi, which we can
              * convert to FSCAST/FZCAST of the original value. */
-            const RTLRegister *frB_reg = &unit->regs[frB];
             const int result = rtl_alloc_register(unit, RTLTYPE_FLOAT32);
+            const RTLRegister *frB_reg = &unit->regs[frB];
             if (frB_reg->source == RTLREG_RESULT
              && (frB_reg->result.opcode == RTLOP_FSCAST
               || frB_reg->result.opcode == RTLOP_FZCAST)) {
