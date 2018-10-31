@@ -23,6 +23,16 @@
 #include <stdlib.h>
 #include <string.h>
 
+/* Work around warning bugs in various GCC versions. */
+#ifdef __GNUC__
+# if __GNUC__ == 8  // https://gcc.gnu.org/bugzilla/show_bug.cgi?id=87041
+#  pragma GCC diagnostic ignored "-Wformat"
+# endif
+# if __GNUC__ >= 8  // https://gcc.gnu.org/bugzilla/show_bug.cgi?id=87489
+#  pragma GCC diagnostic ignored "-Wnonnull"
+# endif
+#endif
+
 /*************************************************************************/
 /**************** Macros for checking conditions in tests ****************/
 /*************************************************************************/
