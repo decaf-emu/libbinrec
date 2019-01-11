@@ -3,6 +3,8 @@
 # No copyright is claimed on this file.
 #
 # Update history:
+#    - 2019-01-11: Fixed some incorrect register specifications in
+#         instruction operands.  The assembled code itself is unchanged.
 #    - 2016-12-13: Added tests to verify the behavior of psq_st with
 #         respect to double-precision values (as with stfs).
 #    - 2016-12-05: Added tests to verify behavior of fctiw with inputs near
@@ -11675,7 +11677,7 @@ get_load_address:
 1: beq cr1,0f
    addi %r6,%r6,32
 
-0: li 0,%r0
+0: li %r0,0
    mtcr %r0
 
    ########################################################################
@@ -13246,7 +13248,7 @@ get_load_address:
    bl check_ps
 0: psq_l %f3,4(%r4),1,0
    bl record
-   fadd %r4,%r2,%r1
+   fadd %f4,%f2,%f1
    fmr %f5,%f1
    bl check_ps
 
@@ -13261,7 +13263,7 @@ get_load_address:
 0: li %r0,4  # Should be ignored (0 means "zero" and not "r0").
    psq_lx %f3,0,%r7,1,0
    bl record
-   fadd %r4,%r2,%r1
+   fadd %f4,%f2,%f1
    fmr %f5,%f1
    bl check_ps
 
@@ -13287,7 +13289,7 @@ get_load_address:
    stw %r3,8(%r6)
    stw %r7,12(%r6)
    b 0f
-1: fadd %r4,%r2,%r1
+1: fadd %f4,%f2,%f1
    fmr %f5,%f1
    bl check_ps
 
@@ -13315,7 +13317,7 @@ get_load_address:
    stw %r3,8(%r6)
    stw %r7,12(%r6)
    b 0f
-1: fadd %r4,%r2,%r1
+1: fadd %f4,%f2,%f1
    fmr %f5,%f1
    bl check_ps
 
@@ -13518,7 +13520,7 @@ get_load_address:
 0: mtfsf 255,%f0
    psq_l %f3,20(%r30),0,0  # SNaN in ps1
    bl record
-   psq_st %r3,0(%r4),0,0
+   psq_st %f3,0(%r4),0,0
    lwz %r3,0(%r4)
    lis %r7,0x7FD0
    cmpw %r3,%r7
@@ -13538,7 +13540,7 @@ get_load_address:
 1: addi %r6,%r6,32
 0: psq_l %f3,24(%r30),1,0  # SNaN in ps0
    bl record
-   psq_st %r3,0(%r4),0,0
+   psq_st %f3,0(%r4),0,0
    lwz %r3,0(%r4)
    lis %r7,0xFFA0
    cmpw %r3,%r7
@@ -15437,7 +15439,7 @@ get_load_address:
    stw %r7,16(%r6)
    addi %r6,%r6,32
 0: mtcr %r0
-   ps_neg %f8,%r1
+   ps_neg %f8,%f1
    ps_cmpo0 cr7,%f8,%f0     # -1.0 < 0.0
    bl record
    mfcr %r3
@@ -16021,7 +16023,7 @@ get_load_address:
    stw %r7,16(%r6)
    addi %r6,%r6,32
 0: mtcr %r0
-   ps_neg %f8,%r1
+   ps_neg %f8,%f1
    ps_cmpo1 cr7,%f8,%f0     # -1.0 < 0.0
    bl record
    mfcr %r3
@@ -18659,7 +18661,7 @@ get_load_address:
    lfs %f4,44(%r30)
    li %r3,2
    stw %r3,0(%r4)
-   lfs %r5,0(%r4)
+   lfs %f5,0(%r4)
    bl add_fpscr_ux
    bl check_ps_pdenorm_inex
 
@@ -20112,7 +20114,7 @@ get_load_address:
    lfd %f4,152(%r31)
    bl add_fpscr_ox
    bl add_fpscr_fi
-   fmr %f5,%r4
+   fmr %f5,%f4
    bl check_ps_pnorm
 0: lfs %f13,48(%r30)    # -tiny
    ps_res %f4,%f13
@@ -20122,7 +20124,7 @@ get_load_address:
    fneg %f4,%f4
    bl add_fpscr_ox
    bl add_fpscr_fi
-   fmr %f5,%r4
+   fmr %f5,%f4
    bl check_ps_nnorm
 0: lfd %f14,152(%r31)   # +huge
    stfs %f14,0(%r4)
