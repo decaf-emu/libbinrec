@@ -2486,7 +2486,7 @@ get_load_address:
    mtxer %r3
    addi %r7,%r4,8
    li %r0,2
-   lswx %r26,%r0,%r7
+   lswx %r26,0,%r7
    bl record
    lis %r3,0x0809
    addi %r3,%r3,0x0A0B
@@ -2509,7 +2509,7 @@ get_load_address:
 0: li %r25,-1
    li %r3,0
    mtxer %r3
-   lswx %r24,%r0,%r4
+   lswx %r24,0,%r4
    bl record
    cmpwi %r25,-1
    beq 0f
@@ -2650,7 +2650,7 @@ get_load_address:
    mtxer %r3
    addi %r7,%r4,8
    li %r0,2
-   stswx %r26,%r0,%r7
+   stswx %r26,0,%r7
    bl record
    lhz %r3,8(%r4)
    cmpwi %r3,0x5859
@@ -2679,7 +2679,7 @@ get_load_address:
    mtxer %r3
    li %r3,-2
    stb %r3,0(%r4)
-   stswx %r24,%r0,%r4
+   stswx %r24,0,%r4
    bl record
    lbz %r3,0(%r4)
    cmpwi %r3,0xFE
