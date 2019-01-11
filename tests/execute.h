@@ -80,13 +80,14 @@ static inline void ppc32_fill_setup(binrec_setup_t *setup)
  * call level; in other words, this function acts like an indirect function
  * call to the given code.
  *
+ * Log messages are captured using the log_capture interface.
+ *
  * [Parameters]
  *     arch: Guest architecture (BINREC_ARCH_*).
  *     state: Processor state block.  Must be of the appropriate type for
  *         the guest architecture (see definitions in tests/execute.h).
  *     memory: Pointer to base of guest memory.
  *     address: Address at which to start executing code.
- *     log: Logging callback function, or NULL for none.
  *     configure_handle: Pointer to function to set up translation
  *         parameters, or NULL to leave parameters at the defaults.
  *     translated_code_callback: Pointer to function which will be called
@@ -96,7 +97,6 @@ static inline void ppc32_fill_setup(binrec_setup_t *setup)
  */
 extern bool call_guest_code(
     binrec_arch_t arch, void *state, void *memory, uint32_t address,
-    void (*log)(void *userdata, binrec_loglevel_t level, const char *message),
     void (*configure_handle)(binrec_t *handle),
     void (*translated_code_callback)(uint32_t address, void *code,
                                     long code_size));
@@ -104,7 +104,8 @@ extern bool call_guest_code(
 /**
  * spawn_guest_code:  Execute guest code at the given address on a separate
  * thread, and return a thread identifier for wait_guest_code().  The guest
- * code is translated and executed as for call_guest_code().
+ * code is translated and executed as for call_guest_code(), except that
+ * the log_capture interface is not used (since it is not thread-safe).
  *
  * Note that callback functions will be called in the thread executing
  * guest code rather than the thread in which this function was called.
@@ -118,9 +119,9 @@ extern bool call_guest_code(
  *         the guest architecture (see definitions in tests/execute.h).
  *     memory: Pointer to base of guest memory.
  *     address: Address at which to start executing code.
- *     log: Logging callback function, or NULL for none.
  *     configure_handle: Pointer to function to set up translation
  *         parameters, or NULL to leave parameters at the defaults.
+ *         (RTL verification via binrec_enable_verify() is always enabled.)
  *     translated_code_callback: Pointer to function which will be called
  *         for each translated unit of code, or NULL for no callback.
  * [Return value]
@@ -129,7 +130,6 @@ extern bool call_guest_code(
  */
 extern void *spawn_guest_code(
     binrec_arch_t arch, void *state, void *memory, uint32_t address,
-    void (*log)(void *userdata, binrec_loglevel_t level, const char *message),
     void (*configure_handle)(binrec_t *handle),
     void (*translated_code_callback)(uint32_t address, void *code,
                                     long code_size));

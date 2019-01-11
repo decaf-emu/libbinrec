@@ -53,8 +53,7 @@ int main(void)
     void *thread[NUM_THREADS];
     for (int i = 0; i < NUM_THREADS; i++) {
         thread[i] = spawn_guest_code(BINREC_ARCH_PPC_7XX, &state[i], memory,
-                                     start_address, NULL, configure_handle,
-                                     NULL);
+                                     start_address, configure_handle, NULL);
         if (!thread[i]) {
             for (i--; i >= 0; i--) {
                 wait_guest_code(thread[i]);

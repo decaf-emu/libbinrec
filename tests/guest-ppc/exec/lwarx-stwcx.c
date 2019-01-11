@@ -48,7 +48,7 @@ int main(void)
     void *thread[NUM_THREADS];
     for (int i = 0; i < NUM_THREADS; i++) {
         thread[i] = spawn_guest_code(BINREC_ARCH_PPC_7XX, &state[i], memory,
-                                     start_address, NULL, NULL, NULL);
+                                     start_address, NULL, NULL);
         if (!thread[i]) {
             FAIL("Failed to spawn guest code (iteration %d)", i);
             for (i--; i >= 0; i--) {

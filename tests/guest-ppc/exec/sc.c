@@ -52,7 +52,7 @@ int main(void)
     state.sc_handler = sc_handler;
 
     if (!call_guest_code(BINREC_ARCH_PPC_7XX, &state, memory, start_address,
-                         log_capture, NULL, NULL)) {
+                         NULL, NULL)) {
         const char *log_messages = get_log_messages();
         if (log_messages) {
             fputs(log_messages, stdout);

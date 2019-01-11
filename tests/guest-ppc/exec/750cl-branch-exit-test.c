@@ -39,8 +39,7 @@ int main(void)
     state.branch_exit_flag = true;  // Force an exit at every branch.
 
     if (!call_guest_code(BINREC_ARCH_PPC_7XX, &state, memory,
-                         PPC750CL_START_ADDRESS, log_capture,
-                         configure_handle, NULL)) {
+                         PPC750CL_START_ADDRESS, configure_handle, NULL)) {
         const char *log_messages = get_log_messages();
         if (log_messages) {
             fputs(log_messages, stderr);

@@ -9,6 +9,7 @@
 
 #include "src/common.h"
 #include "tests/execute.h"
+#include "tests/log-capture.h"
 /* Disable malloc() suppression from common.h. */
 #undef malloc
 #undef realloc
@@ -57,7 +58,6 @@ typedef struct ThreadState {
     void *state;
     void *memory;
     uint32_t address;
-    void (*log)(void *userdata, binrec_loglevel_t level, const char *message);
     void (*configure_handle)(binrec_t *handle);
     void (*translated_code_callback)(uint32_t address, void *code,
                                     long code_size);
@@ -143,6 +143,7 @@ static void init_cache(CodeCache *cache)
  *     handle: Translation handle.
  *     state: Processor state block for reference by optimizers.
  *     address: Guest address from which to execute.
+ *     check_verify: True to check for RTL verification errors.
  *     translated_code_callback: Function to call after translating code,
  *         or NULL for none.
  * [Return value]
@@ -150,6 +151,7 @@ static void init_cache(CodeCache *cache)
  */
 static bool translate(
     binrec_t *handle, void *state, uint32_t address, CodeCache *cache,
+    bool check_verify,
     void (*translated_code_callback)(uint32_t, void *, long))
 {
     if (address < cache->func_table_base) {
@@ -199,6 +201,14 @@ static bool translate(
             do {
                 success = binrec_translate(handle, state, address,
                                            address+limit-1, &code, &code_size);
+                if (check_verify && !success) {
+                    const char *log = get_log_messages();
+                    if (log && strstr(log, "RTL verification failed")) {
+                        fprintf(stderr, "RTL verification failure translating"
+                                " code at 0x%X\n", address);
+                        return false;
+                    }
+                }
             } while (!success && (limit /= 2) >= 4);
         }
         if (!success) {
@@ -259,43 +269,17 @@ static void *cache_lookup(PPCState *state, uint32_t address)
     }
 }
 
+
 /*-----------------------------------------------------------------------*/
 
 /**
- * Thread runner for spawn_guest_code().
+ * Implementation of call_guest_code() and spawn_guest_code().  Takes an
+ * additional parameter, capture_logs, to indicate whether to capture logs
+ * with the log_capture interface (set false for spawned threads).
  */
-static
-#if defined(__linux__) || defined(__APPLE__)
-    void *
-#elif defined(_WIN32)
-    WINAPI DWORD
-#else
-    int
-#endif
-    thread_runner(void *arg)
-{
-    ThreadState *thread = arg;
-
-    const bool result = call_guest_code(
-        thread->arch, thread->state, thread->memory, thread->address,
-        thread->log, thread->configure_handle,
-        thread->translated_code_callback);
-
-#if defined(__linux__) || defined(__APPLE__)
-    return (void *)(uintptr_t)result;
-#else
-    return result;
-#endif
-}
-
-/*************************************************************************/
-/************************** Interface routines ***************************/
-/*************************************************************************/
-
-bool call_guest_code(
+static bool do_call_guest_code(
     binrec_arch_t arch, void *state, void *memory, uint32_t address,
-    void (*log)(void *userdata, binrec_loglevel_t level, const char *message),
-    void (*configure_handle)(binrec_t *handle),
+    bool capture_logs, void (*configure_handle)(binrec_t *handle),
     void (*translated_code_callback)(uint32_t address, void *code,
                                     long code_size))
 {
@@ -313,13 +297,14 @@ bool call_guest_code(
     setup.host_features = binrec_native_features();
     setup.guest_memory_base = memory;
     ppc32_fill_setup(&setup);
-    setup.log = log;
+    setup.log = capture_logs ? log_capture : NULL;
 
     binrec_t *handle;
     handle = binrec_create_handle(&setup);
     if (!handle) {
         return false;
     }
+    binrec_enable_verify(handle, true);
     if (configure_handle) {
         (*configure_handle)(handle);
     }
@@ -340,7 +325,8 @@ bool call_guest_code(
         const uint32_t nia = state_cache_ppc.state.nia;
         if (UNLIKELY(nia - base >= limit) || UNLIKELY(!table[nia - base])) {
             if (!translate(handle, &state_cache_ppc.state, nia,
-                           &state_cache_ppc.cache, translated_code_callback)) {
+                           &state_cache_ppc.cache, capture_logs,
+                           translated_code_callback)) {
                 goto out;
             }
             table = state_cache_ppc.cache.func_table;
@@ -368,9 +354,50 @@ bool call_guest_code(
 
 /*-----------------------------------------------------------------------*/
 
+/**
+ * Thread runner for spawn_guest_code().
+ */
+static
+#if defined(__linux__) || defined(__APPLE__)
+    void *
+#elif defined(_WIN32)
+    WINAPI DWORD
+#else
+    int
+#endif
+    thread_runner(void *arg)
+{
+    ThreadState *thread = arg;
+
+    const bool result = do_call_guest_code(
+        thread->arch, thread->state, thread->memory, thread->address,
+        false, thread->configure_handle, thread->translated_code_callback);
+
+#if defined(__linux__) || defined(__APPLE__)
+    return (void *)(uintptr_t)result;
+#else
+    return result;
+#endif
+}
+
+/*************************************************************************/
+/************************** Interface routines ***************************/
+/*************************************************************************/
+
+bool call_guest_code(
+    binrec_arch_t arch, void *state, void *memory, uint32_t address,
+    void (*configure_handle)(binrec_t *handle),
+    void (*translated_code_callback)(uint32_t address, void *code,
+                                    long code_size))
+{
+    return do_call_guest_code(arch, state, memory, address, true,
+                              configure_handle, translated_code_callback);
+}
+
+/*-----------------------------------------------------------------------*/
+
 void *spawn_guest_code(
     binrec_arch_t arch, void *state, void *memory, uint32_t address,
-    void (*log)(void *userdata, binrec_loglevel_t level, const char *message),
     void (*configure_handle)(binrec_t *handle),
     void (*translated_code_callback)(uint32_t address, void *code,
                                     long code_size))
@@ -384,7 +411,6 @@ void *spawn_guest_code(
     thread->state = state;
     thread->memory = memory;
     thread->address = address;
-    thread->log = log;
     thread->configure_handle = configure_handle;
     thread->translated_code_callback = translated_code_callback;
 
