@@ -3,7 +3,7 @@ libbinrec: a recompiling translator for machine code
 Copyright (c) 2016 Andrew Church <achurch@achurch.org>
 See the file "COPYING" for conditions on use and redistribution.
 
-Version: 0.1
+Version: 0.2
 
 
 Overview

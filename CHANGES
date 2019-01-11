@@ -1,0 +1,14 @@
+libbinrec version history
+=========================
+
+Version 0.2
+-----------
+Changes:
+- Moved binrec_setup_t state offset fields to an architecture-specific
+  structure (binrec_setup_ppc_t) to ease future addition of guest
+  architectures.
+
+
+Version 0.1
+-----------
+Initial release.

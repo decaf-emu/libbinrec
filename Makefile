@@ -185,7 +185,7 @@ PREFIX = /usr/local
 PACKAGE = binrec
 
 # Library version:
-VERSION = 0.1
+VERSION = 0.2
 VERSION_MAJOR = $(firstword $(subst ., ,$(VERSION)))
 
 # Library output filenames: (note that $(OSTYPE) is set below)

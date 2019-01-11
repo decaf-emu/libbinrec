@@ -35,7 +35,7 @@ if(BINREC_ENABLE_RTL_DEBUG_OPTIMIZE)
    add_definitions(-DRTL_DEBUG_OPTIMIZE)
 endif()
 
-add_definitions(-DVERSION="0.1")
+add_definitions(-DVERSION="0.2")
 include_directories("${CMAKE_CURRENT_SOURCE_DIR}")
 
 # Build binrec library
