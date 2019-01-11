@@ -198,8 +198,8 @@ extern "C" {
  * Host-specific notes
  * ===================
  *
- * Intel/AMD x86 64-bit architecture (BINREC_ARCH_X86_*)
- * -----------------------------------------------------
+ * Intel/AMD x86 64-bit architecture (BINREC_ARCH_X86_64_*)
+ * --------------------------------------------------------
  *
  * Translated code assumes support for all instruction set extensions
  * through SSE3.  (More specifically, the following CPUID feature bits are
@@ -359,10 +359,12 @@ typedef struct binrec_setup_ppc_t {
      * uint64_t timebase_handler(void *state) */
     int timebase_handler;
     /* Pointer to function to handle system calls (sc instruction).
-     * Signature: void sc_handler(void *state) */
+     * Should return the (possibly changed) state block pointer.
+     * Signature: void *sc_handler(void *state) */
     int sc_handler;
-    /* Pointer to function to handle trap exceptions.  Signature:
-     * void trap_handler(void *state) */
+    /* Pointer to function to handle trap exceptions.  Should return the
+     * (possibly changed) state block pointer.
+     * Signature: void *trap_handler(void *state) */
     int trap_handler;
     /* Pointers to lookup tables (of type uint16_t[64]) for the fres and
      * frsqrte instructions.  See the BINREC_OPT_G_PPC_NATIVE_RECIPROCAL
@@ -1695,11 +1697,16 @@ extern void binrec_set_post_insn_callback(binrec_t *handle,
  *
  * On success, the returned block can be executed by calling it as a
  * function with the following signature:
- *     void code(void *state, void *memory);
+ *     void *code(void *state, void *memory);
  * where the "state" parameter is a pointer to a processor state block
  * whose structure conforms to the structure offsets specified in the
  * setup data passed to binrec_create_handle(), and "memory" is a pointer
- * to the base of the guest memory region.
+ * to the base of the guest memory region.  The return value of the code
+ * is the processor state block pointer; this may differ from the pointer
+ * passed to the block if, for example, a virtual system call caused the
+ * code's thread to migrate to a different virtual processor.  (libbinrec
+ * will never change the PSB pointer on its own, so library clients which
+ * do not use multiple PSBs can safely ignore the return value.)
  *
  * The returned code pointer will have been allocated with the code_malloc
  * or code_realloc function passed in the setup structure to

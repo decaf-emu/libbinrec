@@ -42,7 +42,7 @@ static const char expected[] =
     "   19: SLLI       r17, r15, 12\n"
     "   20: OR         r18, r16, r17\n"
     "   21: SET_ALIAS  a3, r18\n"
-    "   22: RETURN\n"
+    "   22: RETURN     r1\n"
     "\n"
     "Alias 1: int32 @ 964(r1)\n"
     "Alias 2: float64 @ 400(r1)\n"

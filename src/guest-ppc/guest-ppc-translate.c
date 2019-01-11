@@ -217,7 +217,7 @@ static bool add_epilogue(GuestPPCContext *ctx)
     }
     guest_ppc_flush_cr(ctx, false);
     guest_ppc_flush_fpscr(ctx);
-    rtl_add_insn(unit, RTLOP_RETURN, 0, 0, 0, 0);
+    rtl_add_insn(unit, RTLOP_RETURN, 0, ctx->psb_reg, 0, 0);
 
     if (UNLIKELY(rtl_get_error_state(unit))) {
         log_ice(ctx->handle, "Failed to generate epilogue");

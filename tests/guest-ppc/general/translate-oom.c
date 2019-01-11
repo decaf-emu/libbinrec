@@ -58,7 +58,7 @@ int main(void)
                  "    2: ILLEGAL\n"
                  "    3: LOAD_IMM   r3, 4\n"
                  "    4: SET_ALIAS  a1, r3\n"
-                 "    5: RETURN\n"
+                 "    5: RETURN     r1\n"
                  "\n"
                  "Alias 1: int32 @ 964(r1)\n"
                  "\n"

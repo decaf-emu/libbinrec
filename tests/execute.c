@@ -31,7 +31,7 @@
 /*************************************************************************/
 
 /* Cache of already-translated code, one entry per address. */
-typedef void (*GuestCode)(void *, void *);
+typedef void *(*GuestCode)(void *, void *);
 typedef struct CodeCache {
     GuestCode *func_table;
     uint32_t func_table_base;   // Guest address for func_table[0].
@@ -348,7 +348,13 @@ bool call_guest_code(
             limit = (state_cache_ppc.cache.func_table_limit
                      - state_cache_ppc.cache.func_table_base);
         }
-        (*table[nia - base])(&state_cache_ppc.state, memory);
+        PPCState *returned_state =
+            (*table[nia - base])(&state_cache_ppc.state, memory);
+        if (UNLIKELY(returned_state != &state_cache_ppc.state)) {
+            fprintf(stderr, "Code at 0x%X returned incorrect PSB pointer\n",
+                    nia);
+            retval = false;
+        }
     }
 
     retval = true;

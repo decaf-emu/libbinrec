@@ -18,12 +18,13 @@
 static uint32_t sc_r3;  // Value of r3 at sc instruction.
 static uint32_t sc_nia;  // Value of NIA at sc instruction.
 
-static void sc_handler(PPCState *state)
+static PPCState *sc_handler(PPCState *state)
 {
     ASSERT(state);
 
     sc_r3 = state->gpr[3];
     sc_nia = state->nia;
+    return state;
 }
 
 

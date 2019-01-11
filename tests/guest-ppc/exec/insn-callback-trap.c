@@ -28,9 +28,10 @@ static void post_insn_callback(UNUSED void *state, UNUSED uint32_t address)
     post_insn_count++;
 }
 
-static void trap_handler(PPCState *state)
+static PPCState *trap_handler(PPCState *state)
 {
     state->nia += 4;
+    return state;
 }
 
 static void configure_handle(binrec_t *handle)

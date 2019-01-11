@@ -39,7 +39,7 @@ static const char expected[] =
     "   14: SET_ALIAS  a4, r12\n"
     "   15: LOAD_IMM   r13, 12\n"
     "   16: SET_ALIAS  a1, r13\n"
-    "   17: RETURN\n"
+    "   17: RETURN     r1\n"
     "\n"
     "Alias 1: int32 @ 964(r1)\n"
     "Alias 2: float64[2] @ 400(r1)\n"

@@ -7,6 +7,12 @@ Changes:
 - Moved binrec_setup_t state offset fields to an architecture-specific
   structure (binrec_setup_ppc_t) to ease future addition of guest
   architectures.
+- Translated blocks now return the processor state block pointer as a
+  return value, so calls to subsequent blocks don't need to re-fetch it.
+- PowerPC sc and trap handler functions are now expected to return the
+  PSB pointer.  This may be a pointer to a different PSB, such as when a
+  virtual system call migrated the calling thread to a different virtual
+  processor.
 
 
 Version 0.1

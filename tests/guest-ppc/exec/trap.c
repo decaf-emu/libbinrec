@@ -686,7 +686,7 @@ static const uint32_t expected_traps[] = {
     0x0FE40014,  // twi 31,r4,20
 };
 
-static void trap_handler(PPCState *state)
+static PPCState *trap_handler(PPCState *state)
 {
     ASSERT(state);
     ASSERT(state->nia < 0x10000);
@@ -697,6 +697,7 @@ static void trap_handler(PPCState *state)
     trap_insns[trap_count++] = insn;
 
     state->nia += 4;  // Continue with the next instruction.
+    return state;
 }
 
 

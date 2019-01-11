@@ -28,8 +28,9 @@ static void post_insn_callback(UNUSED void *state, UNUSED uint32_t address)
     post_insn_count++;
 }
 
-static void sc_handler(UNUSED PPCState *state)
+static PPCState *sc_handler(PPCState *state)
 {
+    return state;
 }
 
 static void configure_handle(binrec_t *handle)

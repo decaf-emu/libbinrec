@@ -3217,7 +3217,7 @@ static void return_from_unit(GuestPPCContext *ctx, uint32_t address,
                      lookup_result, lookup_func, ctx->psb_reg, nia);
         rtl_add_insn(unit, RTLOP_CHAIN_RESOLVE,
                      0, lookup_result, 0, chain_insn);
-        rtl_add_insn(unit, RTLOP_RETURN, 0, 0, 0, 0);
+        rtl_add_insn(unit, RTLOP_RETURN, 0, ctx->psb_reg, 0, 0);
     } else {
         rtl_add_insn(unit, RTLOP_GOTO,
                      0, 0, 0, guest_ppc_get_epilogue_label(ctx));
@@ -7579,8 +7579,9 @@ static void translate_trap(
     const int trap_handler = rtl_alloc_register(unit, RTLTYPE_ADDRESS);
     rtl_add_insn(unit, RTLOP_LOAD, trap_handler, ctx->psb_reg, 0,
                  ctx->handle->setup.state_offsets_ppc.trap_handler);
-    rtl_add_insn(unit, RTLOP_CALL, 0, trap_handler, ctx->psb_reg, 0);
-    rtl_add_insn(unit, RTLOP_RETURN, 0, 0, 0, 0);
+    const int new_psb = rtl_alloc_register(unit, RTLTYPE_ADDRESS);
+    rtl_add_insn(unit, RTLOP_CALL, new_psb, trap_handler, ctx->psb_reg, 0);
+    rtl_add_insn(unit, RTLOP_RETURN, 0, new_psb, 0, 0);
 
     if (result) {
         rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, label);
@@ -8845,9 +8846,16 @@ static inline void translate_insn(
         const int sc_handler = rtl_alloc_register(unit, RTLTYPE_ADDRESS);
         rtl_add_insn(unit, RTLOP_LOAD, sc_handler, ctx->psb_reg, 0,
                      ctx->handle->setup.state_offsets_ppc.sc_handler);
-        rtl_add_insn(unit, RTLOP_CALL, 0, sc_handler, ctx->psb_reg, 0);
+        const int new_psb = rtl_alloc_register(unit, RTLTYPE_ADDRESS);
+        rtl_add_insn(unit, RTLOP_CALL, new_psb, sc_handler, ctx->psb_reg, 0);
+        /* The post-instruction callback needs to use the new PSB in case
+         * it was changed by the sc handler, but we also need to preserve
+         * the original PSB for subsequent code. */
+        const int old_psb = ctx->psb_reg;
+        ctx->psb_reg = new_psb;
         post_insn_callback(ctx, address);
-        rtl_add_insn(unit, RTLOP_RETURN, 0, 0, 0, 0);
+        rtl_add_insn(unit, RTLOP_RETURN, 0, ctx->psb_reg, 0, 0);
+        ctx->psb_reg = old_psb;
         return;
       }  // case OPCD_SC
 

@@ -832,10 +832,11 @@ typedef struct FailureRecord {
 /*************************************************************************/
 
 /* Handler for system call exceptions. */
-static void sc_handler(PPCState *state)
+static PPCState *sc_handler(PPCState *state)
 {
     ASSERT(state);
     state->gpr[3] = 1;
+    return state;
 }
 
 /*-----------------------------------------------------------------------*/
@@ -851,11 +852,12 @@ static uint64_t timebase_handler(PPCState *state)
 /*-----------------------------------------------------------------------*/
 
 /* Handler for trap exceptions. */
-static void trap_handler(PPCState *state)
+static PPCState *trap_handler(PPCState *state)
 {
     ASSERT(state);
     state->gpr[3] = 0;
     state->nia += 4;  // Continue with the next instruction.
+    return state;
 }
 
 /*************************************************************************/
