@@ -163,12 +163,13 @@ extern "C" {
  * The value of the NIA field in the PSB is set as the SRR0 register would
  * be set on a true PowerPC processor: to the address of the trap
  * instruction for trap exceptions, and to the address of the instruction
- * _following_ the sc instruction for system call exceptions.  The
- * translated code will return immediately to its caller when the handler
- * returns, and the call to the handler may in fact be translated as a
- * tail call.  The translated code does not check for NULL function
- * pointers, so it will crash if an exception occurs and the associated
- * function pointer is not set.
+ * _following_ the sc instruction for system call exceptions (but see also
+ * the BINREC_OPT_G_PPC_SC_BLR optimization flag).  The translated code
+ * will return immediately to its caller when the handler returns, and the
+ * call to the handler may in fact be translated as a tail call.  The
+ * translated code does not check for NULL function pointers, so it will
+ * crash if an exception occurs and the associated function pointer is
+ * not set.
  *
  * All instruction words with the primary opcode of the sc instruction
  * (0x11) are decoded as that instruction.  This deviates from the PowerPC
@@ -1156,6 +1157,19 @@ typedef struct binrec_setup_t {
 #define BINREC_OPT_G_PPC_PS_STORE_DENORMALS  (1<<13)
 
 /**
+ * BINREC_OPT_G_PPC_SC_BLR:  Optimize an instruction sequence of "sc; blr"
+ * by setting NIA to the value of the LR register rather than the address
+ * of the instruction following the "sc" when calling the sc handler.
+ * This avoids the need to translate and call a block containing a single
+ * blr after returning from the sc handler.
+ *
+ * This optimization is UNSAFE: the sc handler cannot recover the original
+ * address of the instruction which triggered the exception when this
+ * optimization is triggered.
+ */
+#define BINREC_OPT_G_PPC_SC_BLR  (1<<14)
+
+/**
  * BINREC_OPT_G_PPC_SINGLE_PREC_INPUTS:  Assume that the inputs to a
  * single-precision floating-point instruction are in single precision.
  *
@@ -1191,7 +1205,7 @@ typedef struct binrec_setup_t {
  * the PowerPC architecture specification, it will behave correctly under
  * this optimization.
  */
-#define BINREC_OPT_G_PPC_SINGLE_PREC_INPUTS  (1<<14)
+#define BINREC_OPT_G_PPC_SINGLE_PREC_INPUTS  (1<<15)
 
 /**
  * BINREC_OPT_G_PPC_TRIM_CR_STORES:  Analyze the data flow through each
@@ -1210,7 +1224,7 @@ typedef struct binrec_setup_t {
  * This optimization has no effect unless BINREC_OPT_G_PPC_USE_SPLIT_FIELDS
  * is also enabled.
  */
-#define BINREC_OPT_G_PPC_TRIM_CR_STORES  (1<<15)
+#define BINREC_OPT_G_PPC_TRIM_CR_STORES  (1<<16)
 
 /**
  * BINREC_OPT_G_PPC_USE_SPLIT_FIELDS:  Treat subfields of certain registers
@@ -1229,7 +1243,7 @@ typedef struct binrec_setup_t {
  * in the processor state block.  System call and trap handlers are not
  * affected.
  */
-#define BINREC_OPT_G_PPC_USE_SPLIT_FIELDS  (1<<16)
+#define BINREC_OPT_G_PPC_USE_SPLIT_FIELDS  (1<<17)
 
 /*------------ Host-architecture-specific optimization flags ------------*/
 

@@ -5,6 +5,7 @@ Version 0.2
 -----------
 New features:
 - Added binrec_enable_verify().
+- Added the BINREC_OPT_G_PPC_SC_BLR optimization flag.
 
 Changes:
 - Moved binrec_setup_t state offset fields to an architecture-specific
