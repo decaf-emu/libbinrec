@@ -956,7 +956,7 @@ static inline void set_fpr(GuestPPCContext * const ctx, int index, int reg)
             } else {
                 rtl_add_insn(
                     unit, RTLOP_STORE, 0, ctx->psb_reg, ps1_64,
-                    ctx->handle->setup.state_offset_fpr + index*16 + 8);
+                    ctx->handle->setup.state_offsets_ppc.fpr + index*16 + 8);
             }
             if (fpstate) {
                 rtl_add_insn(unit, RTLOP_FSETSTATE, 0, fpstate, 0, 0);
@@ -1393,7 +1393,7 @@ static void flush_fpr(GuestPPCContext *ctx, int index, bool clear_live)
             if (current_type==RTLTYPE_FLOAT32 && base_type==RTLTYPE_FLOAT64) {
                 rtl_add_insn(
                     ctx->unit, RTLOP_STORE, 0, ctx->psb_reg, reg,
-                    ctx->handle->setup.state_offset_fpr + 16*index + 8);
+                    ctx->handle->setup.state_offsets_ppc.fpr + 16*index + 8);
             }
         }
         rtl_add_insn(ctx->unit, RTLOP_SET_ALIAS,
@@ -4500,7 +4500,7 @@ static void translate_fres_lookup(GuestPPCContext *ctx, int input, int output,
     rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, label_continue);
     const int lut = rtl_alloc_register(unit, RTLTYPE_ADDRESS);
     rtl_add_insn(unit, RTLOP_LOAD, lut, ctx->psb_reg, 0,
-                 ctx->handle->setup.state_offset_fres_lut);
+                 ctx->handle->setup.state_offsets_ppc.fres_lut);
     const int mantissa_in = rtl_alloc_register(unit, RTLTYPE_INT32);
     rtl_add_insn(unit, RTLOP_GET_ALIAS, mantissa_in, 0, 0, alias_mant);
     const int index = rtl_alloc_register(unit, RTLTYPE_INT32);
@@ -4822,7 +4822,7 @@ static void translate_frsqrte_lookup(GuestPPCContext *ctx, int input,
     rtl_add_insn(unit, RTLOP_LABEL, 0, 0, 0, label_continue);
     const int lut = rtl_alloc_register(unit, RTLTYPE_ADDRESS);
     rtl_add_insn(unit, RTLOP_LOAD, lut, ctx->psb_reg, 0,
-                 ctx->handle->setup.state_offset_frsqrte_lut);
+                 ctx->handle->setup.state_offsets_ppc.frsqrte_lut);
     const int mantissa_in = rtl_alloc_register(unit, RTLTYPE_INT32);
     rtl_add_insn(unit, RTLOP_GET_ALIAS, mantissa_in, 0, 0, alias_mant_hi);
     const int index_mant = rtl_alloc_register(unit, RTLTYPE_INT32);
@@ -5256,7 +5256,7 @@ static void translate_load_store_ps(
     if (have_constant_gqr) {
         uint32_t *state_gqr_ptr =
             (uint32_t *)((uintptr_t)ctx->handle->opt_state
-                         + ctx->handle->setup.state_offset_gqr);
+                         + ctx->handle->setup.state_offsets_ppc.gqr);
         cgqr_value_raw = state_gqr_ptr[gqr_index];
     } else {
         cgqr_value_raw = 0;
@@ -5282,7 +5282,7 @@ static void translate_load_store_ps(
         label_out = rtl_alloc_label(unit);
         gqr = rtl_alloc_register(unit, RTLTYPE_INT32);
         rtl_add_insn(unit, RTLOP_LOAD, gqr, ctx->psb_reg, 0,
-                     ctx->handle->setup.state_offset_gqr + gqr_index*4);
+                     ctx->handle->setup.state_offsets_ppc.gqr + gqr_index*4);
         gqr_type = rtl_alloc_register(unit, RTLTYPE_INT32);
         rtl_add_insn(unit, RTLOP_BFEXT,
                      gqr_type, gqr, 0, (is_store ? 0 : 16) | 3<<8);
@@ -5748,7 +5748,7 @@ static void translate_load_store_string(
     }
 
     const int psb_reg = ctx->psb_reg;
-    const int gpr_base = ctx->handle->setup.state_offset_gpr;
+    const int gpr_base = ctx->handle->setup.state_offsets_ppc.gpr;
     const int endian_flip = ctx->handle->host_little_endian ? 3 : 0;
 
     if (is_imm) {
@@ -6086,9 +6086,9 @@ static void translate_lwarx(
         ctx->paired_lwarx_data_be = value_be;
     } else {
         rtl_add_insn(unit, RTLOP_STORE_I8, 0, psb_reg, rtl_imm32(unit, 1),
-                     handle->setup.state_offset_reserve_flag);
+                     handle->setup.state_offsets_ppc.reserve_flag);
         rtl_add_insn(unit, RTLOP_STORE, 0, psb_reg, value_be,
-                     handle->setup.state_offset_reserve_state);
+                     handle->setup.state_offsets_ppc.reserve_state);
     }
     set_gpr(ctx, insn_rD(insn), value);
 }
@@ -6195,7 +6195,7 @@ static void translate_move_spr(
             const int label_end = rtl_alloc_label(unit);
             const int func = rtl_alloc_register(unit, RTLTYPE_ADDRESS);
             rtl_add_insn(unit, RTLOP_LOAD, func, ctx->psb_reg, 0,
-                         ctx->handle->setup.state_offset_timebase_handler);
+                         ctx->handle->setup.state_offsets_ppc.timebase_handler);
             rtl_add_insn(unit, RTLOP_GOTO_IF_Z, 0, func, 0, label_no_handler);
 
             const int result64 = rtl_alloc_register(unit, RTLTYPE_INT64);
@@ -6228,7 +6228,7 @@ static void translate_move_spr(
         } else {
             const int value = rtl_alloc_register(unit, RTLTYPE_INT32);
             rtl_add_insn(unit, RTLOP_LOAD, value, ctx->psb_reg, 0,
-                         ctx->handle->setup.state_offset_pvr);
+                         ctx->handle->setup.state_offsets_ppc.pvr);
             set_gpr(ctx, insn_rD(insn), value);
         }
         break;
@@ -6244,7 +6244,8 @@ static void translate_move_spr(
         if (to_spr) {
             const int rS = get_gpr(ctx, insn_rS(insn));
             rtl_add_insn(unit, RTLOP_STORE, 0, ctx->psb_reg, rS,
-                         ctx->handle->setup.state_offset_gqr + 4 * (spr & 7));
+                         ctx->handle->setup.state_offsets_ppc.gqr
+                             + 4 * (spr & 7));
             if (ctx->handle->guest_opt & BINREC_OPT_G_PPC_CONSTANT_GQRS) {
                 return_from_unit(ctx, address, rtl_imm32(unit, address+4),
                                  true);
@@ -6252,7 +6253,8 @@ static void translate_move_spr(
         } else {
             const int value = rtl_alloc_register(unit, RTLTYPE_INT32);
             rtl_add_insn(unit, RTLOP_LOAD, value, ctx->psb_reg, 0,
-                         ctx->handle->setup.state_offset_gqr + 4 * (spr & 7));
+                         ctx->handle->setup.state_offsets_ppc.gqr
+                             + 4 * (spr & 7));
             set_gpr(ctx, insn_rD(insn), value);
         }
         break;
@@ -6265,7 +6267,7 @@ static void translate_move_spr(
         } else {
             const int value = rtl_alloc_register(unit, RTLTYPE_INT32);
             rtl_add_insn(unit, RTLOP_LOAD, value, ctx->psb_reg, 0,
-                         ctx->handle->setup.state_offset_pir);
+                         ctx->handle->setup.state_offsets_ppc.pir);
             set_gpr(ctx, insn_rD(insn), value);
         }
         break;
@@ -7303,7 +7305,7 @@ static void translate_stwcx(
         const int zero = rtl_imm32(unit, 0);
         const int so = get_xer_so(ctx);
         rtl_add_insn(unit, RTLOP_STORE_I8, 0, psb_reg, zero,
-                     handle->setup.state_offset_reserve_flag);
+                     handle->setup.state_offsets_ppc.reserve_flag);
         if (ctx->use_split_fields) {
             const int one = rtl_imm32(unit, 1);
             set_crf(ctx, 0, zero, zero, one, so);
@@ -7329,7 +7331,7 @@ static void translate_stwcx(
     } else {
         flag = rtl_alloc_register(unit, RTLTYPE_INT32);
         rtl_add_insn(unit, RTLOP_LOAD_U8, flag, psb_reg, 0,
-                     handle->setup.state_offset_reserve_flag);
+                     handle->setup.state_offsets_ppc.reserve_flag);
     }
     const int zero = rtl_imm32(unit, 0);
     const int so = get_xer_so(ctx);
@@ -7354,7 +7356,7 @@ static void translate_stwcx(
         rtl_add_insn(unit, RTLOP_GOTO_IF_Z, 0, flag, 0, skip_label);
     }
     rtl_add_insn(unit, RTLOP_STORE_I8, 0, psb_reg, zero,
-                 handle->setup.state_offset_reserve_flag);
+                 handle->setup.state_offsets_ppc.reserve_flag);
 
     int old_value;
     if (is_paired) {
@@ -7362,7 +7364,7 @@ static void translate_stwcx(
     } else {
         old_value = rtl_alloc_register(unit, RTLTYPE_INT32);
         rtl_add_insn(unit, RTLOP_LOAD, old_value, psb_reg, 0,
-                     handle->setup.state_offset_reserve_state);
+                     handle->setup.state_offsets_ppc.reserve_state);
     }
 
     int new_value = get_gpr(ctx, insn_rS(insn));
@@ -7576,7 +7578,7 @@ static void translate_trap(
     post_insn_callback(ctx, address);
     const int trap_handler = rtl_alloc_register(unit, RTLTYPE_ADDRESS);
     rtl_add_insn(unit, RTLOP_LOAD, trap_handler, ctx->psb_reg, 0,
-                 ctx->handle->setup.state_offset_trap_handler);
+                 ctx->handle->setup.state_offsets_ppc.trap_handler);
     rtl_add_insn(unit, RTLOP_CALL, 0, trap_handler, ctx->psb_reg, 0);
     rtl_add_insn(unit, RTLOP_RETURN, 0, 0, 0, 0);
 
@@ -8842,7 +8844,7 @@ static inline void translate_insn(
         set_nia_imm(ctx, address + 4);
         const int sc_handler = rtl_alloc_register(unit, RTLTYPE_ADDRESS);
         rtl_add_insn(unit, RTLOP_LOAD, sc_handler, ctx->psb_reg, 0,
-                     ctx->handle->setup.state_offset_sc_handler);
+                     ctx->handle->setup.state_offsets_ppc.sc_handler);
         rtl_add_insn(unit, RTLOP_CALL, 0, sc_handler, ctx->psb_reg, 0);
         post_insn_callback(ctx, address);
         rtl_add_insn(unit, RTLOP_RETURN, 0, 0, 0, 0);

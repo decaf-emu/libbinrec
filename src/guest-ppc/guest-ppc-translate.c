@@ -55,7 +55,7 @@ static bool init_unit(GuestPPCContext *ctx)
     /* Allocate an alias register for the output NIA. */
     ctx->alias.nia = rtl_alloc_alias_register(unit, RTLTYPE_INT32);
     rtl_set_alias_storage(unit, ctx->alias.nia, ctx->psb_reg,
-                          ctx->handle->setup.state_offset_nia);
+                          ctx->handle->setup.state_offsets_ppc.nia);
 
     /* Check which guest CPU registers are referenced in the unit, to avoid
      * creating unnecessary RTL alias registers below. */
@@ -82,7 +82,7 @@ static bool init_unit(GuestPPCContext *ctx)
         if (touched.gpr & (1 << i)) {
             ctx->alias.gpr[i] = rtl_alloc_alias_register(unit, RTLTYPE_INT32);
             rtl_set_alias_storage(unit, ctx->alias.gpr[i], ctx->psb_reg,
-                                  ctx->handle->setup.state_offset_gpr + i*4);
+                                  ctx->handle->setup.state_offsets_ppc.gpr + i*4);
         }
     }
 
@@ -96,14 +96,14 @@ static bool init_unit(GuestPPCContext *ctx)
                     rtl_alloc_alias_register(unit, RTLTYPE_FLOAT64);
             }
             rtl_set_alias_storage(unit, ctx->alias.fpr[i], ctx->psb_reg,
-                                  ctx->handle->setup.state_offset_fpr + i*16);
+                                  ctx->handle->setup.state_offsets_ppc.fpr + i*16);
         }
     }
 
     if (touched.crb || touched.cr) {
         ctx->alias.cr = rtl_alloc_alias_register(unit, RTLTYPE_INT32);
         rtl_set_alias_storage(unit, ctx->alias.cr, ctx->psb_reg,
-                              ctx->handle->setup.state_offset_cr);
+                              ctx->handle->setup.state_offsets_ppc.cr);
     }
 
     if (ctx->use_split_fields) {
@@ -147,19 +147,19 @@ static bool init_unit(GuestPPCContext *ctx)
     if (touched.lr) {
         ctx->alias.lr = rtl_alloc_alias_register(unit, RTLTYPE_INT32);
         rtl_set_alias_storage(unit, ctx->alias.lr, ctx->psb_reg,
-                              ctx->handle->setup.state_offset_lr);
+                              ctx->handle->setup.state_offsets_ppc.lr);
     }
 
     if (touched.ctr) {
         ctx->alias.ctr = rtl_alloc_alias_register(unit, RTLTYPE_INT32);
         rtl_set_alias_storage(unit, ctx->alias.ctr, ctx->psb_reg,
-                              ctx->handle->setup.state_offset_ctr);
+                              ctx->handle->setup.state_offsets_ppc.ctr);
     }
 
     if (touched.xer) {
         ctx->alias.xer = rtl_alloc_alias_register(unit, RTLTYPE_INT32);
         rtl_set_alias_storage(unit, ctx->alias.xer, ctx->psb_reg,
-                              ctx->handle->setup.state_offset_xer);
+                              ctx->handle->setup.state_offsets_ppc.xer);
         if (ctx->use_split_fields && touched.xer_so) {
             ctx->alias.xer_so = rtl_alloc_alias_register(unit, RTLTYPE_INT32);
             /* As with CR bit aliases, this initialization may not be
@@ -176,7 +176,7 @@ static bool init_unit(GuestPPCContext *ctx)
     if (touched.fpscr) {
         ctx->alias.fpscr = rtl_alloc_alias_register(unit, RTLTYPE_INT32);
         rtl_set_alias_storage(unit, ctx->alias.fpscr, ctx->psb_reg,
-                              ctx->handle->setup.state_offset_fpscr);
+                              ctx->handle->setup.state_offsets_ppc.fpscr);
         if (ctx->use_split_fields && touched.fr_fi_fprf) {
             ctx->alias.fr_fi_fprf =
                 rtl_alloc_alias_register(unit, RTLTYPE_INT32);
