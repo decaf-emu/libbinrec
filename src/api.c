@@ -543,6 +543,14 @@ void binrec_set_post_insn_callback(binrec_t *handle,
 
 /*-----------------------------------------------------------------------*/
 
+void binrec_enable_verify(binrec_t *handle, int enable)
+{
+    ASSERT(handle);
+    handle->do_verify = (enable != 0);
+}
+
+/*-----------------------------------------------------------------------*/
+
 int binrec_translate(binrec_t *handle, void *state, uint32_t address,
                      uint32_t limit, void **code_ret, long *size_ret)
 {
@@ -609,6 +617,15 @@ int binrec_translate(binrec_t *handle, void *state, uint32_t address,
                     address);
         /* Don't treat this as an error; just translate the unoptimized
          * unit. */
+    }
+
+    if (handle->do_verify) {
+        if (!rtl_verify_unit(unit, address)) {
+            log_error(handle, "RTL verification failed for code at 0x%X",
+                      address);
+            rtl_destroy_unit(unit);
+            return 0;
+        }
     }
 
     handle->code_buffer_size = CODE_EXPAND_SIZE;

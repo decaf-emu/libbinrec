@@ -157,6 +157,7 @@ extern "C" int main(void)
     handle.enable_branch_exit_test(false);
     handle.set_pre_insn_callback(nullptr);
     handle.set_post_insn_callback(nullptr);
+    handle.enable_verify(false);
 
     static const uint8_t ppc_code[] = {
         0x38,0x60,0x00,0x01,  // li r3,1

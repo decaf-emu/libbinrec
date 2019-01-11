@@ -57,6 +57,10 @@ int main(void)
     }
 
     if (!rtl_finalize_unit(unit)) {
+        const char *disassembly = rtl_disassemble_unit(unit, false);
+        if (disassembly) {
+            fputs(disassembly, stdout);
+        }
         const char *log_messages = get_log_messages();
         if (log_messages) {
             fputs(log_messages, stdout);
@@ -65,11 +69,27 @@ int main(void)
     }
 
     if (!rtl_optimize_unit(unit, opt_flags)) {
+        const char *disassembly = rtl_disassemble_unit(unit, false);
+        if (disassembly) {
+            fputs(disassembly, stdout);
+        }
         const char *log_messages = get_log_messages();
         if (log_messages) {
             fputs(log_messages, stdout);
         }
         FAIL("rtl_optimize_unit(unit, opt_flags) was not true as expected");
+    }
+
+    if (!rtl_verify_unit(unit, 0)) {
+        const char *disassembly = rtl_disassemble_unit(unit, false);
+        if (disassembly) {
+            fputs(disassembly, stdout);
+        }
+        const char *log_messages = get_log_messages();
+        if (log_messages) {
+            fputs(log_messages, stdout);
+        }
+        FAIL("rtl_verify_unit(unit) was not true as expected");
     }
 
     const char *disassembly;

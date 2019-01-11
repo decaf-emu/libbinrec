@@ -1180,7 +1180,8 @@ static inline void fold_one_reg_constant(RTLUnit * const unit,
         if (condition && unit->regs[src2].death == reg->birth) {
             rollback_reg_death(unit, src2);
         }
-        if (unit->regs[src3].death == reg->birth) {
+        if (unit->regs[src3].death == reg->birth
+         && src3 != src1 && src3 != src2) {
             rollback_reg_death(unit, src3);
         }
     }

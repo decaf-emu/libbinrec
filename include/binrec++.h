@@ -215,6 +215,14 @@ class Handle {
     }
 
     /**
+     * enable_verify:  Enable or disable verification of translated code.
+     * Wraps binrec_enable_verify().
+     */
+    void enable_verify(bool enable) {
+        ::binrec_enable_verify(handle, enable);
+    }
+
+    /**
      * translate:  Translate a block of guest machine code into native
      * machine code.  Wraps binrec_translate().
      */

@@ -133,6 +133,44 @@ static NOINLINE bool rtl_add_insn_with_new_block(
 /*-----------------------------------------------------------------------*/
 
 /**
+ * verify_reg:  Verify that the given register is valid and is initialized
+ * by its birth instruction.
+ *
+ * [Parameters]
+ *     unit: RTL unit to operate on.
+ *     reg_index: Index of register to verify.
+ *     address: Guest code address associated with unit.
+ *     insn_index: Index of instruction referencing register.
+ * [Return value]
+ *     True if register is properly initialized, false if not.
+ */
+static bool verify_reg(RTLUnit *unit, int reg_index,
+                       uint32_t address, int insn_index)
+{
+    if (reg_index < 1 || reg_index >= unit->regs_size) {
+        log_error(unit->handle, "0x%X/%d: Register r%d invalid",
+                  address, insn_index, reg_index);
+        return false;
+    }
+    const RTLRegister *reg = &unit->regs[reg_index];
+    if (reg->birth < 0 || (uint32_t)reg->birth >= unit->num_insns) {
+        log_error(unit->handle,
+                  "0x%X/%d: Register r%d has invalid birth insn %d",
+                  address, insn_index, reg_index, reg->birth);
+        return false;
+    }
+    if (unit->insns[reg->birth].dest != reg_index
+     || unit->insns[reg->birth].opcode == RTLOP_NOP) {
+        log_error(unit->handle, "0x%X/%d: Register r%d is not initialized",
+                  address, insn_index, reg_index);
+        return false;
+    }
+    return true;
+}
+
+/*-----------------------------------------------------------------------*/
+
+/**
  * fcmp_name:  Return the name of the given floating-point comparison
  * (RTLFCMP_*).
  */
@@ -1601,6 +1639,45 @@ bool rtl_optimize_unit(RTLUnit *unit, unsigned int flags)
     unit->block_seen = NULL;
 
     return true;
+}
+
+/*-----------------------------------------------------------------------*/
+
+bool rtl_verify_unit(RTLUnit *unit, uint32_t address)
+{
+    ASSERT(unit != NULL);
+    ASSERT(unit->finalized);
+    ASSERT(unit->insns != NULL);
+    ASSERT(unit->blocks != NULL);
+    ASSERT(unit->regs != NULL);
+    ASSERT(unit->label_blockmap != NULL);
+
+    bool error = false;
+
+    /* Check that all registers used as instruction inputs are properly set. */
+    for (unsigned int i = 0; i < unit->num_insns; i++) {
+        const RTLInsn *insn = &unit->insns[i];
+        if (insn->src1 && !verify_reg(unit, insn->src1, address, i)) {
+            error = true;
+        }
+        if (insn->src2 && !verify_reg(unit, insn->src2, address, i)) {
+            error = true;
+        }
+        if (insn->opcode == RTLOP_SELECT
+         || insn->opcode == RTLOP_FMADD
+         || insn->opcode == RTLOP_FMSUB
+         || insn->opcode == RTLOP_FNMADD
+         || insn->opcode == RTLOP_FNMSUB
+         || insn->opcode == RTLOP_CMPXCHG
+         || insn->opcode == RTLOP_CALL
+         || insn->opcode == RTLOP_CALL_TRANSPARENT) {
+            if (insn->src3 && !verify_reg(unit, insn->src3, address, i)) {
+                error = true;
+            }
+        }
+    }
+
+    return !error;
 }
 
 /*-----------------------------------------------------------------------*/

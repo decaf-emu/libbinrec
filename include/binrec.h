@@ -1669,6 +1669,17 @@ extern void binrec_set_pre_insn_callback(binrec_t *handle,
 extern void binrec_set_post_insn_callback(binrec_t *handle,
                                           void (*callback)(void *, uint32_t));
 
+/**
+ * binrec_enable_verify:  Enable or disable verification checks on
+ * translated blocks.  This has no effect on the generated code, and is
+ * intended for catching bugs in libbinrec.
+ *
+ * [Parameters]
+ *     handle: Handle to operate on.
+ *     enable: True to enable verification, false to disable.
+ */
+extern void binrec_enable_verify(binrec_t *handle, int enable);
+
 /*************************************************************************/
 /********************** Interface: Code translation **********************/
 /*************************************************************************/

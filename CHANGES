@@ -3,6 +3,9 @@ libbinrec version history
 
 Version 0.2
 -----------
+New features:
+- Added binrec_enable_verify().
+
 Changes:
 - Moved binrec_setup_t state offset fields to an architecture-specific
   structure (binrec_setup_ppc_t) to ease future addition of guest
@@ -13,6 +16,10 @@ Changes:
   PSB pointer.  This may be a pointer to a different PSB, such as when a
   virtual system call migrated the calling thread to a different virtual
   processor.
+
+Bug fixes:
+- Fixed a wrong-code bug triggered by over-optimization of RTL SELECT
+  instructions.
 
 
 Version 0.1

@@ -758,6 +758,21 @@ extern void rtl_set_membase_pointer(RTLUnit *unit, int reg);
 extern bool rtl_optimize_unit(RTLUnit *unit, unsigned int flags);
 
 /**
+ * rtl_verify_unit:  Verify that the given unit is properly constructed
+ * (no uses of undefined registers, etc).
+ *
+ * [Parameters]
+ *     unit: RTLUnit to verify.
+ *     address: Guest code address associated with unit (for warning and
+ *         error messages).
+ * [Return value]
+ *     False on error (major code error or out of memory), true otherwise
+ *     (including minor code errors).
+ */
+#define rtl_verify_unit INTERNAL(rtl_verify_unit)
+extern bool rtl_verify_unit(RTLUnit *unit, uint32_t address);
+
+/**
  * rtl_disassemble_unit:  Return a string containing a disassembled version
  * of the RTL code in the given unit.  The returned string pointer remains
  * valid until the next call to rtl_disassemble_unit() on the same unit, or

@@ -374,6 +374,9 @@ struct binrec_t {
     /* Is the branch exit test enabled? */
     bool use_branch_exit_test;
 
+    /* Is block verification enabled? */
+    bool do_verify;
+
     /* Pre- and post-instruction callbacks (NULL if none). */
     void (*pre_insn_callback)(void *, uint32_t);
     void (*post_insn_callback)(void *, uint32_t);
