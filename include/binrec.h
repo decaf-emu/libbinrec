@@ -155,15 +155,18 @@ extern "C" {
  * instructions are implemented as control transfers to host-side
  * functions, pointers to which should be stored in the PSB at the offsets
  * indicated by state_offsets_ppc.sc_handler and .trap_handler
- * respectively.  The signature of the functions is "void handler(PSB *)",
- * taking the pointer to the PSB which was passed to the translated code.
+ * respectively.  The signature of the functions is:
+ *      void sc_handler(PSB *, uint32_t insn);
+ *      void trap_handler(PSB *);
+ * taking the pointer to the PSB which was passed to the translated code
+ * and, for the sc handler, the instruction word which caused the call.
  * The value of the NIA field in the PSB is set as the SRR0 register would
  * be set on a true PowerPC processor: to the address of the trap
  * instruction for trap exceptions, and to the address of the instruction
  * _following_ the sc instruction for system call exceptions.  The
  * translated code will return immediately to its caller when the handler
- * returns (and the call to the handler may in fact be translated as a
- * tail call).  The translated code does not check for NULL function
+ * returns, and the call to the handler may in fact be translated as a
+ * tail call.  The translated code does not check for NULL function
  * pointers, so it will crash if an exception occurs and the associated
  * function pointer is not set.
  *

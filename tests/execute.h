@@ -35,7 +35,7 @@ typedef struct PPCState {
     uint32_t nia;
     uint64_t tb;
     uint64_t (*timebase_handler)(struct PPCState *state);
-    struct PPCState *(*sc_handler)(struct PPCState *state);
+    struct PPCState *(*sc_handler)(struct PPCState *state, uint32_t insn);
     struct PPCState *(*trap_handler)(struct PPCState *state);
     void *(*chain_lookup)(struct PPCState *state, uint32_t branch_address);
     uint32_t branch_exit_flag;

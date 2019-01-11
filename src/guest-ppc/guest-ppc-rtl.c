@@ -8846,8 +8846,10 @@ static inline void translate_insn(
         const int sc_handler = rtl_alloc_register(unit, RTLTYPE_ADDRESS);
         rtl_add_insn(unit, RTLOP_LOAD, sc_handler, ctx->psb_reg, 0,
                      ctx->handle->setup.state_offsets_ppc.sc_handler);
+        const uint32_t insn_reg = rtl_imm32(unit, insn);
         const int new_psb = rtl_alloc_register(unit, RTLTYPE_ADDRESS);
-        rtl_add_insn(unit, RTLOP_CALL, new_psb, sc_handler, ctx->psb_reg, 0);
+        rtl_add_insn(unit, RTLOP_CALL, new_psb, sc_handler, ctx->psb_reg,
+                     insn_reg);
         /* The post-instruction callback needs to use the new PSB in case
          * it was changed by the sc handler, but we also need to preserve
          * the original PSB for subsequent code. */

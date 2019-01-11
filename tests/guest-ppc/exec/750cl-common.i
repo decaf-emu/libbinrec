@@ -832,7 +832,7 @@ typedef struct FailureRecord {
 /*************************************************************************/
 
 /* Handler for system call exceptions. */
-static PPCState *sc_handler(PPCState *state)
+static PPCState *sc_handler(PPCState *state, UNUSED uint32_t insn)
 {
     ASSERT(state);
     state->gpr[3] = 1;
