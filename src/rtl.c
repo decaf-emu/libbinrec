@@ -1663,14 +1663,7 @@ bool rtl_verify_unit(RTLUnit *unit, uint32_t address)
         if (insn->src2 && !verify_reg(unit, insn->src2, address, i)) {
             error = true;
         }
-        if (insn->opcode == RTLOP_SELECT
-         || insn->opcode == RTLOP_FMADD
-         || insn->opcode == RTLOP_FMSUB
-         || insn->opcode == RTLOP_FNMADD
-         || insn->opcode == RTLOP_FNMSUB
-         || insn->opcode == RTLOP_CMPXCHG
-         || insn->opcode == RTLOP_CALL
-         || insn->opcode == RTLOP_CALL_TRANSPARENT) {
+        if (rtl_opcode_has_src3(insn->opcode)) {
             if (insn->src3 && !verify_reg(unit, insn->src3, address, i)) {
                 error = true;
             }

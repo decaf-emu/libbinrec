@@ -1149,40 +1149,56 @@ static inline void fold_one_reg_constant(RTLUnit * const unit,
 
     RTLInsn * const birth_insn = &unit->insns[reg->birth];
 
-    /* Convert SELECT with a constant condition operand to MOVE.  The MOVE
-     * will be folded in turn if possible. */
+    /* Convert SELECT with a constant condition operand or with identical
+     * value operands to MOVE.  The MOVE will be folded in turn if possible. */
     if (reg->result.opcode == RTLOP_SELECT) {
         const int src1 = reg->result.src1;
         const int src2 = reg->result.src2;
         const int src3 = reg->result.src3;
-        if (unit->regs[src3].source != RTLREG_CONSTANT) {
-            return;  // Can't fold anything if the condition isn't constant.
-        }
-        const bool condition = (unit->regs[reg->result.src3].value.i64 != 0);
-        birth_insn->opcode = RTLOP_MOVE;
-        if (!condition) {
-            birth_insn->src1 = src2;
-            reg->result.src1 = src2;
-        }
-        birth_insn->src2 = 0;
-        birth_insn->src3 = 0;
-        reg->result.opcode = RTLOP_MOVE;
-        reg->result.src2 = 0;
-        reg->result.src3 = 0;
+        if (src1 == src2) {
+            birth_insn->opcode = RTLOP_MOVE;
+            birth_insn->src2 = 0;
+            birth_insn->src3 = 0;
+            reg->result.opcode = RTLOP_MOVE;
+            reg->result.src2 = 0;
+            reg->result.src3 = 0;
 #ifdef RTL_DEBUG_OPTIMIZE
-        log_info(unit->handle, "Reduced r%d SELECT (always %s) to MOVE from"
-                 " r%d at %d", (int)(reg - unit->regs),
-                 condition ? "true" : "false", reg->result.src1, reg->birth);
+            log_info(unit->handle, "Reduced r%d SELECT (identical values) to"
+                     " MOVE from r%d at %d", (int)(reg - unit->regs),
+                     reg->result.src1, reg->birth);
 #endif
-        if (!condition && unit->regs[src1].death == reg->birth) {
-            rollback_reg_death(unit, src1);
-        }
-        if (condition && unit->regs[src2].death == reg->birth) {
-            rollback_reg_death(unit, src2);
-        }
-        if (unit->regs[src3].death == reg->birth
-         && src3 != src1 && src3 != src2) {
-            rollback_reg_death(unit, src3);
+            if (unit->regs[src3].death == reg->birth && src3 != src1) {
+                rollback_reg_death(unit, src3);
+            }
+        } else if (unit->regs[src3].source == RTLREG_CONSTANT) {
+            const bool condition = (unit->regs[reg->result.src3].value.i64 != 0);
+            birth_insn->opcode = RTLOP_MOVE;
+            if (!condition) {
+                birth_insn->src1 = src2;
+                reg->result.src1 = src2;
+            }
+            birth_insn->src2 = 0;
+            birth_insn->src3 = 0;
+            reg->result.opcode = RTLOP_MOVE;
+            reg->result.src2 = 0;
+            reg->result.src3 = 0;
+#ifdef RTL_DEBUG_OPTIMIZE
+            log_info(unit->handle, "Reduced r%d SELECT (always %s) to MOVE from"
+                     " r%d at %d", (int)(reg - unit->regs),
+                     condition ? "true" : "false", reg->result.src1, reg->birth);
+#endif
+            if (!condition && unit->regs[src1].death == reg->birth) {
+                rollback_reg_death(unit, src1);
+            }
+            if (condition && unit->regs[src2].death == reg->birth) {
+                rollback_reg_death(unit, src2);
+            }
+            if (unit->regs[src3].death == reg->birth
+             && src3 != src1 && src3 != src2) {
+                rollback_reg_death(unit, src3);
+            }
+        } else {
+            return;  // Can't fold.
         }
     }
 
