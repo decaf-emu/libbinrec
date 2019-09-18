@@ -269,8 +269,7 @@ typedef struct RTLBlock {
     int16_t entries[7];
 
     /* unit->blocks[] index of an extension block used to hold additional
-     * entry edges that don't fit in entries[], or -1 if none.  See
-     * RTLExtraEntryBlock for format. */
+     * entry edges that don't fit in entries[], or -1 if none. */
     int16_t entry_overflow;
 
     /* unit->blocks[] indices of successor blocks.  Note that a terminating
