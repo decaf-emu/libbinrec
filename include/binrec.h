@@ -322,9 +322,9 @@ typedef enum binrec_loglevel_t {
 /**
  * BINREC_FEATURE_X86_*:  Feature flags for the x86 architecture.
  */
-#define BINREC_FEATURE_X86_FMA      (1U << 0)
+#define BINREC_FEATURE_X86_FMA      (1U << 0)  // FMA3 only (FMA4 unsupported).
 #define BINREC_FEATURE_X86_MOVBE    (1U << 1)
-#define BINREC_FEATURE_X86_LZCNT    (1U << 2)  // a.k.a. ABM
+#define BINREC_FEATURE_X86_LZCNT    (1U << 2)  // Also known as ABM.
 #define BINREC_FEATURE_X86_BMI1     (1U << 3)
 #define BINREC_FEATURE_X86_BMI2     (1U << 4)
 
