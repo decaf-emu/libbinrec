@@ -102,6 +102,33 @@ extern bool call_guest_code(
                                     long code_size));
 
 /**
+ * call_guest_code_log:  Execute guest code like call_guest_code(), but
+ * pass libbinrec log messages to the given log callback function.
+ *
+ * [Parameters]
+ *     arch: Guest architecture (BINREC_ARCH_*).
+ *     state: Processor state block.  Must be of the appropriate type for
+ *         the guest architecture (see definitions in tests/execute.h).
+ *     memory: Pointer to base of guest memory.
+ *     address: Address at which to start executing code.
+ *     log_callback: Logging callback function, or NULL to discard log
+ *         messages.
+ *     configure_handle: Pointer to function to set up translation
+ *         parameters, or NULL to leave parameters at the defaults.
+ *     translated_code_callback: Pointer to function which will be called
+ *         for each translated unit of code, or NULL for no callback.
+ * [Return value]
+ *     True if code was successfully executed; false if translation failed.
+ */
+extern bool call_guest_code_log(
+    binrec_arch_t arch, void *state, void *memory, uint32_t address,
+    void (*log_callback)(void *userdata, binrec_loglevel_t level,
+                         const char *message),
+    void (*configure_handle)(binrec_t *handle),
+    void (*translated_code_callback)(uint32_t address, void *code,
+                                    long code_size));
+
+/**
  * spawn_guest_code:  Execute guest code at the given address on a separate
  * thread, and return a thread identifier for wait_guest_code().  The guest
  * code is translated and executed as for call_guest_code(), except that

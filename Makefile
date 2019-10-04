@@ -222,7 +222,7 @@ BENCHMARK_BENCH_OBJECTS := \
 BENCHMARK_OBJECTS := $(BENCHMARK_SOURCES:%.c=%.o) \
                      $(BENCHMARK_LIB_SOURCES:%.c=%.o) \
                      $(BENCHMARK_BENCH_OBJECTS:%.c=%.o) \
-                     tests/execute.o
+                     tests/execute.o tests/log-capture.o
 BENCHMARK_BINS := benchmarks/bench
 
 ###########################################################################
@@ -579,7 +579,7 @@ BENCHMARK_LIB_FLAGS := -Ibenchmarks/library $(foreach i,$(patsubst benchmarks/li
 
 $(BENCHMARK_LIB_SOURCES:%.c=%.o): ALL_CFLAGS += $(BENCHMARK_LIB_FLAGS)
 $(filter benchmarks/library/math/%,$(BENCHMARK_LIB_SOURCES:%.c=%.o)): ALL_CFLAGS += \
-    $(if $(filter clang gcc,$(CC_TYPE)),-Wno-shadow -Wno-attributes) \
+    $(if $(filter clang gcc,$(CC_TYPE)),-Wno-shadow -Wno-attributes -Wno-implicit-fallthrough) \
     $(if $(filter clang,$(CC_TYPE)),-Wno-header-guard) \
     $(if $(filter gcc,$(CC_TYPE)),-Wno-old-style-declaration)
 

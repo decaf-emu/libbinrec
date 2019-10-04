@@ -595,18 +595,18 @@ static bool call_guest(void)
 
     bool success = false;
 
-    if (blob->init && !call_guest_code(binrec_arch, state, memory, blob->init,
-                                       quiet ? NULL : log_callback,
-                                       configure_binrec,
-                                       dump ? dump_translated_code : NULL)) {
+    if (blob->init
+     && !call_guest_code_log(binrec_arch, state, memory, blob->init,
+                             quiet ? NULL : log_callback, configure_binrec,
+                             dump ? dump_translated_code : NULL)) {
         fprintf(stderr, "Guest code init() execution failed\n");
         goto done;
     }
 
     *arg_ptr = count;
-    if (!call_guest_code(binrec_arch, state, memory, blob->main,
-                         quiet ? NULL : log_callback, configure_binrec,
-                         dump ? dump_translated_code : NULL)) {
+    if (!call_guest_code_log(binrec_arch, state, memory, blob->main,
+                             quiet ? NULL : log_callback, configure_binrec,
+                             dump ? dump_translated_code : NULL)) {
         fprintf(stderr, "Guest code main() execution failed\n");
         goto done;
     }
@@ -616,10 +616,10 @@ static bool call_guest(void)
         fprintf(stderr, "Benchmark reported failure\n");
     }
 
-    if (blob->fini && !call_guest_code(binrec_arch, state, memory, blob->fini,
-                                       quiet ? NULL : log_callback,
-                                       configure_binrec,
-                                       dump ? dump_translated_code : NULL)) {
+    if (blob->fini
+     && !call_guest_code_log(binrec_arch, state, memory, blob->fini,
+                             quiet ? NULL : log_callback, configure_binrec,
+                             dump ? dump_translated_code : NULL)) {
         fprintf(stderr, "Guest code fini() execution failed\n");
         success = false;
         goto done;
