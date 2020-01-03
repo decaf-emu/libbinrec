@@ -6053,13 +6053,16 @@ static bool init_context(HostX86Context *ctx, binrec_t *handle, RTLUnit *unit)
     ctx->handle = handle;
     ctx->unit = unit;
 
+    /* Deliberately uint64_t because 4*uint16*uint16 can overflow 32 bits. */
+    const uint64_t alias_size_per_block = 4 * unit->next_alias;
+
     ctx->blocks = binrec_malloc(
         handle, sizeof(*ctx->blocks) * unit->num_blocks);
     ctx->regs = binrec_malloc(handle, sizeof(*ctx->regs) * unit->next_reg);
     ctx->label_offsets = binrec_malloc(
         handle, sizeof(*ctx->label_offsets) * unit->next_label);
     ctx->alias_buffer = binrec_malloc(
-        handle, ((4 * unit->next_alias) * unit->num_blocks));
+        handle, alias_size_per_block * unit->num_blocks);
     if (!ctx->blocks || !ctx->regs || !ctx->label_offsets
      || !ctx->alias_buffer) {
         log_error(handle, "No memory for output translation context");
@@ -6074,7 +6077,7 @@ static bool init_context(HostX86Context *ctx, binrec_t *handle, RTLUnit *unit)
     memset(ctx->regs, 0, sizeof(*ctx->regs) * unit->next_reg);
     memset(ctx->label_offsets, -1,
            sizeof(*ctx->label_offsets) * unit->next_label);
-    memset(ctx->alias_buffer, 0, ((4 * unit->next_alias) * unit->num_blocks));
+    memset(ctx->alias_buffer, 0, alias_size_per_block * unit->num_blocks);
     memset(ctx->stack_callsave, -1, sizeof(ctx->stack_callsave));
     ctx->stack_mxcsr = -1;
 

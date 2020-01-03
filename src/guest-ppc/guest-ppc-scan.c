@@ -782,6 +782,10 @@ static inline void update_used_changed(
             }
             mark_gpr_used(block, insn_rB(insn));
             mark_gpr_changed(block, insn_rD(insn));
+            /* In the (architecturally nonsensical) case of two lwarx
+             * instructions followed by a stwcx., we want to pair the
+             * second lwarx, not the first, so this test deliberately
+             * checks whether paired_stwcx (not paired_lwarx) is set. */
             if ((ctx->handle->guest_opt & BINREC_OPT_G_PPC_PAIRED_LWARX_STWCX)
              && block->paired_stwcx == ~0u) {
                 block->paired_lwarx = address;
@@ -893,12 +897,10 @@ static inline void update_used_changed(
             }
             mark_gpr_used(block, insn_rB(insn));
             if (is_fp) {
-                const bool fp_type =
-                    (insn_XO_10(insn) & 0x040) ? false : false;
                 if (is_store) {
-                    mark_fpr_used(block, insn_frD(insn), fp_type);
+                    mark_fpr_used(block, insn_frD(insn), false);
                 } else {
-                    mark_fpr_changed(block, insn_frD(insn), fp_type);
+                    mark_fpr_changed(block, insn_frD(insn), false);
                 }
             } else {
                 if (is_store) {
